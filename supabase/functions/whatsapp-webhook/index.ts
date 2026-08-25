@@ -1206,7 +1206,7 @@ Deno.serve(async (req) => {
 
               if (!pipelineId) {
                 console.warn(
-                  `[WEBHOOK] lead sem canal de funil para o número ${phoneNumberId} (${matchedIntegration?.key}) — usando funil padrão do tenant.`,
+                  `[WEBHOOK] lead sem canal de funil para o número ${matchedIntegration?.key} — usando funil padrão do tenant.`,
                 );
                 const { data: fallbackPipelines } = await supabase
                   .from("crm_pipelines")
