@@ -803,6 +803,7 @@ export type Database = {
           id: string
           lead_id: string
           started_at: string
+          started_by_automation_id: string | null
           status: string
           timeout_at: string | null
           updated_at: string
@@ -816,6 +817,7 @@ export type Database = {
           id?: string
           lead_id: string
           started_at?: string
+          started_by_automation_id?: string | null
           status?: string
           timeout_at?: string | null
           updated_at?: string
@@ -829,6 +831,7 @@ export type Database = {
           id?: string
           lead_id?: string
           started_at?: string
+          started_by_automation_id?: string | null
           status?: string
           timeout_at?: string | null
           updated_at?: string
@@ -862,6 +865,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads_com_pagamento"
             referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "bot_executions_started_by_automation_id_fkey"
+            columns: ["started_by_automation_id"]
+            isOneToOne: false
+            referencedRelation: "crm_automations"
+            referencedColumns: ["id"]
           },
         ]
       }
