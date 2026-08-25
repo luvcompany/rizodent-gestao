@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions, type ConditionsConfig } from "../_shared/automationConditions.ts";
+import { filtrarMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,12 +39,16 @@ Deno.serve(async (req) => {
     console.log(`[enqueue-stage-automation] user=${userData.user.id} automation=${automationId} force=${force}`);
 
 
-    const [{ data: profile }, { data: roleRow }] = await Promise.all([
+    // user_roles pode ter MAIS DE UMA linha por usuário: com maybeSingle() a
+    // consulta voltava vazia e um gerente legítimo era barrado (ou um papel
+    // secundário era ignorado). Lê todos os papéis e usa o de maior alcance.
+    const [{ data: profile }, { data: roleRows }] = await Promise.all([
       admin.from("profiles").select("tenant_id").eq("id", userData.user.id).maybeSingle(),
-      admin.from("user_roles").select("role").eq("user_id", userData.user.id).maybeSingle(),
+      admin.from("user_roles").select("role").eq("user_id", userData.user.id),
     ]);
 
-    const role = roleRow?.role as AppRole | undefined;
+    const roles = ((roleRows || []) as Array<{ role: AppRole }>).map((r) => r.role);
+    const role = (["superadmin", "gerente", "crc", "posvenda"] as AppRole[]).find((r) => roles.includes(r));
     if (!role || !allowedManagerRoles.has(role)) {
       return json({ error: "Sem permissão para disparar automações" }, 403);
     }
@@ -97,11 +102,15 @@ Deno.serve(async (req) => {
     }
 
     const allowedRoles = ((pipeline as any).allowed_roles || []) as string[];
-    if (role !== "superadmin" && allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    if (role !== "superadmin" && allowedRoles.length > 0 && !roles.some((r) => allowedRoles.includes(r))) {
       return json({ error: "Seu perfil não tem acesso a este funil" }, 403);
     }
 
-    const leads = await fetchAllLeads(admin, automation.stage_id, pipelineTenantId || userTenantId || null);
+    const tenantParaLeads = pipelineTenantId || userTenantId || null;
+    // Mundo do funil: o disparo em massa só alcança leads do número daquele funil
+    // (leads do mundo legado ficam de fora quando o funil é de um número próprio).
+    const numeroDoMundo = await numeroDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
+    const leads = await fetchAllLeads(admin, automation.stage_id, tenantParaLeads, numeroDoMundo);
     const conditions = (actionConfig.conditions as ConditionsConfig | undefined) || undefined;
     const hasConditions = !!(conditions && Array.isArray(conditions.rules) && conditions.rules.length > 0);
     const eligibleLeads = leads.filter((lead) => {
@@ -148,7 +157,7 @@ Deno.serve(async (req) => {
   }
 });
 
-async function fetchAllLeads(admin: any, stageId: string, tenantId: string | null) {
+async function fetchAllLeads(admin: any, stageId: string, tenantId: string | null, numberId: string | null) {
   const leads: Array<Record<string, any>> = [];
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
@@ -156,7 +165,11 @@ async function fetchAllLeads(admin: any, stageId: string, tenantId: string | nul
       .from("crm_leads")
       .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
       .eq("stage_id", stageId)
+      // Leads bloqueados ou com automações pausadas nunca entram na fila.
+      .eq("is_blocked", false)
+      .not("automation_paused", "is", true)
       .range(from, from + pageSize - 1);
+    query = filtrarMundo(query, numberId);
     if (tenantId) query = query.eq("tenant_id", tenantId);
     const { data, error } = await query;
     if (error) throw error;
