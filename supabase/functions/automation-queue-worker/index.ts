@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
       try {
         const { data: lead } = await supabase
           .from("crm_leads")
-          .select("phone, is_blocked, last_inbound_at")
+          .select("phone, is_blocked, last_inbound_at, automation_paused, whatsapp_number_id, tenant_id")
           .eq("id", item.lead_id)
           .maybeSingle();
 
@@ -157,24 +157,52 @@ Deno.serve(async (req) => {
           return;
         }
 
-        // GUARD DE JANELA DE 24h: mensagens LIVRES (áudio/bot/arquivo) só saem se o
-        // lead respondeu nas últimas 24h. Fora da janela o WhatsApp recusa (131047)
-        // e cria uma mensagem "falhada" na conversa. Aqui cancelamos antes de tentar.
-        // Template NÃO entra nesse guard (passa fora da janela).
-        if (FREEFORM_ACTIONS.has(item.action_type)) {
-          const lastInbound = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
-          const windowOpen = lastInbound > 0 && (Date.now() - lastInbound) < WINDOW_MS;
-          if (!windowOpen) {
+        // RE-VALIDAÇÃO EM RUNTIME: entre o enfileiramento e a execução o mundo pode
+        // ter mudado — automação desativada, lead pausado, ou lead que passou a
+        // pertencer a outro número (outro funil/closer). Executar nesse caso mandaria
+        // mensagem pelo número errado.
+        if (lead.automation_paused === true) {
+          await supabase
+            .from("crm_automation_queue")
+            .update({
+              status: "cancelled",
+              error_message: "automações pausadas para este lead",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", item.id);
+          stats.cancelled++;
+          console.log(`[queue-worker] item ${item.id} cancelado — lead ${item.lead_id} com automações pausadas`);
+          return;
+        }
+
+        if (item.automation_id) {
+          const { data: auto } = await supabase
+            .from("crm_automations")
+            .select("id, is_active, stage_id, tenant_id")
+            .eq("id", item.automation_id)
+            .maybeSingle();
+
+          const cancelar = async (motivo: string) => {
             await supabase
               .from("crm_automation_queue")
-              .update({
-                status: "cancelled",
-                error_message: "Janela de 24h fechada — mensagem livre não enviada (o lead precisa ter respondido nas últimas 24h). Use um template para reabrir a conversa.",
-                updated_at: new Date().toISOString(),
-              })
+              .update({ status: "cancelled", error_message: motivo, updated_at: new Date().toISOString() })
               .eq("id", item.id);
-            stats.window_closed++;
-            console.log(`[queue-worker] item ${item.id} (${item.action_type}) fora da janela de 24h — cancelado`);
+            stats.cancelled++;
+            console.log(`[queue-worker] item ${item.id} cancelado — ${motivo}`);
+          };
+
+          if (!auto || (auto as any).is_active === false) {
+            await cancelar("automação desativada ou removida");
+            return;
+          }
+          if ((auto as any).tenant_id && lead.tenant_id && (auto as any).tenant_id !== lead.tenant_id) {
+            await cancelar("automação e lead de clientes diferentes");
+            return;
+          }
+
+          const mundo = await mundoDaEtapa(supabase, (auto as any).stage_id ?? null, mundoCache);
+          if ((auto as any).stage_id && !mesmoMundo(lead.whatsapp_number_id, mundo.numberId)) {
+            await cancelar("lead pertence a outro número de WhatsApp");
             return;
           }
         }
@@ -187,7 +215,9 @@ Deno.serve(async (req) => {
           (item.action_config || {}) as Record<string, any>,
           item.lead_id,
           lead.phone,
+          item.automation_id ?? null,
         );
+
 
         await supabase
           .from("crm_automation_queue")
