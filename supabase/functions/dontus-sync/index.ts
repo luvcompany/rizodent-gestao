@@ -11,6 +11,7 @@
 // pg_cron (x-cron-secret + AUTOMATION_CRON_TOKEN).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { mcpToolCall as mcpToolCallTenant, resolveTeamToken } from "../_shared/dontusClient.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,12 +33,18 @@ const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anterior
 const KOMMO_BASE_ENABLED = false;
 const REDIRECT_URI = "http://localhost:8976/callback";
 
-const CLINICA_MAP: Record<number, { id: string; nome: string }> = {
+// MULTI-CLIENTE: o Dontus deixou de ser exclusivo da Rizodent. O tenant vem no
+// body/query (default = Rizodent) e o mapa de clínicas é hidratado da tabela
+// `clinicas` do tenant, com fallback para o mapa fixo abaixo (Rizodent).
+// O sync roda serialmente (cron/admin-api), por isso o estado por requisição
+// mora em variáveis de módulo.
+const CLINICA_MAP_RIZODENT: Record<number, { id: string; nome: string }> = {
   2: { id: "c9f82611-a9d2-4729-9b44-afeb2208bc0e", nome: "Ipiaú" },
   3: { id: "91e304ed-53bb-483c-bfca-0c6e599c52ba", nome: "Guanambi" },
   4: { id: "87062a6d-ddd8-4ffa-95a6-b36d42eea327", nome: "Itabuna" },
   5: { id: "93c99d9a-8698-495a-829b-a6592ade8d06", nome: "Rizodent VCA" },
 };
+let CLINICA_MAP: Record<number, { id: string; nome: string }> = { ...CLINICA_MAP_RIZODENT };
 
 // Nome da clínica ≠ cidade (ex.: "Rizodent VCA" → "Vitória da Conquista").
 function cidadeDaClinica(nome: string): string {
@@ -296,6 +303,11 @@ async function mcpCall(accessToken: string, method: string, params: any): Promis
 }
 
 async function mcpToolCall(admin: any, teamToken: string, name: string, args: any): Promise<any[]> {
+  // Tenant não-Rizodent usa as credenciais próprias (dontus_credenciais) via
+  // cliente compartilhado; o estado singleton local é do mundo legado.
+  if (RIZODENT_TENANT_ID !== RIZODENT_TENANT_ID_DEFAULT) {
+    return await mcpToolCallTenant(admin, teamToken, name, args, RIZODENT_TENANT_ID);
+  }
   let token = await getAccessToken(admin, teamToken);
   let attempt = 0;
   while (attempt < 2) {
@@ -643,7 +655,28 @@ async function ensureDontusTelefones(
 }
 
 // ============ Execução real do plano (não-dry-run) ============
-const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
+const RIZODENT_TENANT_ID_DEFAULT = "00000000-0000-0000-0000-000000000010";
+// Tenant ATIVO da requisição (default: Rizodent). Nome mantido para não mexer
+// nas ~25 chamadas que já o usam.
+let RIZODENT_TENANT_ID = RIZODENT_TENANT_ID_DEFAULT;
+
+/** Hidrata CLINICA_MAP a partir da tabela clinicas do tenant (fallback: mapa fixo). */
+async function hydrateClinicaMap(admin: any, tenantId: string) {
+  if (tenantId === RIZODENT_TENANT_ID_DEFAULT) {
+    CLINICA_MAP = { ...CLINICA_MAP_RIZODENT };
+    return;
+  }
+  const { data } = await admin
+    .from("clinicas")
+    .select("id, nome, id_clinica_dontus")
+    .eq("tenant_id", tenantId);
+  const mapa: Record<number, { id: string; nome: string }> = {};
+  for (const c of data ?? []) {
+    const idc = Number((c as any).id_clinica_dontus);
+    if (Number.isFinite(idc) && idc > 0) mapa[idc] = { id: (c as any).id, nome: (c as any).nome };
+  }
+  CLINICA_MAP = Object.keys(mapa).length ? mapa : { ...CLINICA_MAP_RIZODENT };
+}
 
 async function resolveFallbackUser(admin: any): Promise<string | null> {
   const { data } = await admin.from("profiles")
@@ -2385,6 +2418,11 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch { body = {}; }
 
+  // Tenant da requisição (default: Rizodent) + mapa de clínicas correspondente.
+  const urlTenant = (() => { try { return new URL(req.url).searchParams.get("tenant_id"); } catch { return null; } })();
+  RIZODENT_TENANT_ID = String(body.tenant_id || urlTenant || RIZODENT_TENANT_ID_DEFAULT);
+  await hydrateClinicaMap(admin, RIZODENT_TENANT_ID);
+
   // Varredura de fim de expediente da etapa "Reagendar" (não consulta o Dontus).
   if (String(body.mode || "") === "reagendar_expirado") {
     const out = await sweepReagendarExpirado(admin, body.dry_run !== false);
@@ -2393,10 +2431,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  const teamToken = Deno.env.get("DONTUS_TEAM_TOKEN");
+  const teamToken = await resolveTeamToken(admin, RIZODENT_TENANT_ID);
   if (!teamToken) {
     return new Response(JSON.stringify({
-      error: "DONTUS_TEAM_TOKEN não configurado. Adicione em Project Settings → Secrets.",
+      error: "Credencial do Dontus não configurada para esta clínica (team token ausente).",
     }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
   const date: string = String(body.date || new Date().toISOString().slice(0, 10));
