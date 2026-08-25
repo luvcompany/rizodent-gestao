@@ -4905,6 +4905,14 @@ export type Database = {
         }
         Returns: string
       }
+      funil_do_papel_do_usuario: {
+        Args: { _pipeline_id: string }
+        Returns: boolean
+      }
+      funil_do_papel_do_usuario_por_etapa: {
+        Args: { _stage_id: string }
+        Returns: boolean
+      }
       generate_tenant_invoices: { Args: never; Returns: number }
       get_conversation_leads: {
         Args: { p_limit?: number; p_tenant_id?: string }
