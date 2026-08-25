@@ -326,6 +326,8 @@ async function sendAction(
   config: Record<string, any>,
   leadId: string,
   phone: string | null,
+  // Automação de origem: gravada na execução do bot (gate de time_window).
+  automationId?: string | null,
 ) {
   switch (actionType) {
     case "send_template": {
@@ -369,7 +371,7 @@ async function sendAction(
           Authorization: `Bearer ${serviceKey}`,
           apikey: serviceKey,
         },
-        body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
+        body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation", automationId: automationId ?? null }),
       });
       const txt = await resp.text();
       if (!resp.ok) throw new Error(`bot-engine ${resp.status}: ${txt.substring(0, 400)}`);
