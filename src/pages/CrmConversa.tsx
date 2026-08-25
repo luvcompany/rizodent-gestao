@@ -117,7 +117,7 @@ export default function CrmConversa() {
   const [leadLoading, setLeadLoading] = useState(true);
   const [phoneCopied, setPhoneCopied] = useState(false);
   const [nameCopied, setNameCopied] = useState(false);
-  const { initiateCall, requestCallPermission, state: callState } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, state: callState, podeLigarPorWhatsapp } = useWhatsappCall();
 
 
   const copyPhone = async () => {
@@ -359,7 +359,7 @@ export default function CrmConversa() {
           </div>
           {/* Ações do lead — ícone compacto + tooltip (ícone+nome no hover) p/ não estourar o header em telas/painéis estreitos */}
           <div className="flex items-center gap-1 shrink-0">
-          {getLeadChannel(lead) !== "instagram" && lead.phone && (
+          {getLeadChannel(lead) !== "instagram" && lead.phone && podeLigarPorWhatsapp((lead as any).whatsapp_number_id) && (
             <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>
                 <Button
@@ -384,7 +384,7 @@ export default function CrmConversa() {
               </TooltipContent>
             </Tooltip>
           )}
-          {getLeadChannel(lead) !== "instagram" && lead.phone && (
+          {getLeadChannel(lead) !== "instagram" && lead.phone && podeLigarPorWhatsapp((lead as any).whatsapp_number_id) && (
             <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>
                 <Button

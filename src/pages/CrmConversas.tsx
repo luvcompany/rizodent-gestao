@@ -284,7 +284,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
   const isCrmMobile = useIsCrmMobile();
-  const { initiateCall, requestCallPermission, state: callState } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, state: callState, podeLigarPorWhatsapp } = useWhatsappCall();
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   // On mobile, force single-panel view: list | chat | lead details.
@@ -1391,7 +1391,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
                 {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
                 <div className="flex items-center gap-1 shrink-0">
-                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && podeLigarPorWhatsapp((selectedLead as any).whatsapp_number_id) && (
                   <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
                       <Button
@@ -1419,7 +1419,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
                   <Api4ComDialButton leadId={selectedLead.id} phone={selectedLead.phone} />
                 )}
-                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && podeLigarPorWhatsapp((selectedLead as any).whatsapp_number_id) && (
                   <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
                       <Button

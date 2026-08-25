@@ -46,6 +46,14 @@ interface Ctx {
   restoreIncoming: () => void;
   initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => Promise<void>;
   requestCallPermission: (params: { toPhone: string; leadId?: string | null; phoneNumberId?: string }) => Promise<void>;
+  /**
+   * A Cloud API não oferece chamadas em números de coexistência — quem usa esse
+   * tipo de conexão liga pelo WhatsApp do próprio celular. Nesses casos os
+   * botões de ligar e de pedir permissão não devem aparecer; resta a telefonia
+   * (Api4Com). Recebe o whatsapp_number_id do lead (NULL = número principal,
+   * que é Cloud API pura e mantém as chamadas).
+   */
+  podeLigarPorWhatsapp: (whatsappNumberId?: string | null) => boolean;
 }
 
 const WhatsappCallContext = createContext<Ctx | null>(null);
@@ -106,6 +114,8 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // cadastrado em whatsapp_numbers = mundo legado (número principal), visível
   // apenas para crc/gerente/superadmin.
   const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
+  // Números conectados em coexistência: a Cloud API não faz chamadas neles.
+  const [numerosCoexistencia, setNumerosCoexistencia] = useState<Set<string>>(() => new Set());
   const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin";
   useEffect(() => {
     if (!user || !tenantId) return;
@@ -113,11 +123,14 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     (async () => {
       const { data } = await supabase
         .from("whatsapp_numbers")
-        .select("phone_number_id")
+        .select("id, phone_number_id, is_coexistence")
         .eq("tenant_id", tenantId);
       if (cancelled) return;
       allowedPhoneNumberIdsRef.current = new Set(
         ((data as any[]) || []).map((n) => String(n.phone_number_id)).filter(Boolean),
+      );
+      setNumerosCoexistencia(
+        new Set(((data as any[]) || []).filter((n) => n.is_coexistence).map((n) => String(n.id))),
       );
     })();
     return () => { cancelled = true; };
@@ -564,7 +577,13 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [user?.id, tenantId]);
 
-  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission]);
+  const podeLigarPorWhatsapp = useCallback(
+    (whatsappNumberId?: string | null) =>
+      !whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId)),
+    [numerosCoexistencia],
+  );
+
+  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp]);
 
   return (
     <WhatsappCallContext.Provider value={value}>
