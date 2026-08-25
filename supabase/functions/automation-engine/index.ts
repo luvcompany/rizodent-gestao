@@ -869,6 +869,10 @@ Deno.serve(async (req) => {
       const TZ_OFFSET = "-03:00";
       const CRON_GRACE_MS = 90 * 1000;
 
+      // Escopo: agendamentos/tarefas do TENANT da automação e leads do MUNDO da etapa.
+      const mundoBefore = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
+      const tenantBefore = mundoBefore.tenantId ?? (auto as any).tenant_id ?? null;
+
       // Check appointments — only CONFIRMED ones receive "X horas antes"
       // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
       // must NOT trigger this automation until a CRC confirms them.
@@ -879,27 +883,31 @@ Deno.serve(async (req) => {
         // follow-up (que roda depois) nunca chegar a executar. Um agendamento passado
         // nunca cai na janela "X antes", então filtrá-los é seguro.
         const beforeSchedFloor = new Date(now - beforeMs - 2 * 86400000).toISOString().split("T")[0];
-        const appointments = await fetchAllRows(() =>
-          supabase
+        const appointments = await fetchAllRows(() => {
+          let q = supabase
             .from("crm_appointments")
             .select("id, lead_id, scheduled_date, scheduled_time, created_at")
             .eq("status", "confirmed")
-            .gte("scheduled_date", beforeSchedFloor)
-            .order("id"),
-        );
+            .gte("scheduled_date", beforeSchedFloor);
+          if (tenantBefore) q = q.eq("tenant_id", tenantBefore);
+          return q.order("id");
+        });
 
         console.log(
           `[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`,
         );
 
         for (const appt of appointments || []) {
-          const { data: lead } = await supabase
-            .from("crm_leads")
-            .select("id, phone, stage_id")
-            .eq("id", appt.lead_id)
-            .eq("stage_id", auto.stage_id)
-            .eq("is_blocked", false)
-            .maybeSingle();
+          const { data: lead } = await filtrarMundo(
+            supabase
+              .from("crm_leads")
+              .select("id, phone, stage_id")
+              .eq("id", appt.lead_id)
+              .eq("stage_id", auto.stage_id)
+              .eq("is_blocked", false),
+            mundoBefore.numberId,
+          ).maybeSingle();
+
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
 
