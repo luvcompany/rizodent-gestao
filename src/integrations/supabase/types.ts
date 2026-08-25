@@ -1028,6 +1028,7 @@ export type Database = {
           created_at: string
           endereco: string | null
           id: string
+          id_clinica_dontus: number | null
           location_link: string | null
           nome: string
           telefone: string | null
@@ -1040,6 +1041,7 @@ export type Database = {
           created_at?: string
           endereco?: string | null
           id?: string
+          id_clinica_dontus?: number | null
           location_link?: string | null
           nome: string
           telefone?: string | null
@@ -1052,6 +1054,7 @@ export type Database = {
           created_at?: string
           endereco?: string | null
           id?: string
+          id_clinica_dontus?: number | null
           location_link?: string | null
           nome?: string
           telefone?: string | null
