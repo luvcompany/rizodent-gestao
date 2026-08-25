@@ -496,6 +496,27 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [tenant.id, cacheKey]);
 
 
+  // Conexões de WhatsApp visíveis (para o badge de "mundo" na lista)
+  useEffect(() => {
+    if (!tenant.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("whatsapp_numbers")
+        .select("id, display_name, phone_e164, is_active")
+        .eq("tenant_id", tenant.id)
+        .eq("is_active", true);
+      if (cancelled) return;
+      const rows = ((data as any[]) || []);
+      const map: Record<string, string> = {};
+      rows.forEach((n) => { map[n.id] = n.display_name || n.phone_e164 || "Conexão"; });
+      map["__legacy__"] = "Principal";
+      setNumberNames(map);
+      setMultiNumberTenant(rows.length > 1);
+    })();
+    return () => { cancelled = true; };
+  }, [tenant.id]);
+
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
   useEffect(() => {
