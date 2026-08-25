@@ -72,7 +72,7 @@ const TaskReminderWatcher = () => {
       .select("id, scheduled_date, scheduled_time, lead_id, crm_leads!inner(name, assigned_to)")
       .eq("status", "confirmed")
       .eq("scheduled_date", todayStr)
-      .eq("crm_leads.assigned_to", user.id)
+      .or(`crm_leads.assigned_to.eq.${user.id},crm_leads.assigned_to.is.null`)
       .limit(20);
 
     // Process tasks

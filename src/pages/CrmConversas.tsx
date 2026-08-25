@@ -501,18 +501,26 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     if (!tenant.id) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("whatsapp_numbers")
-        .select("id, display_name, phone_e164, is_active")
-        .eq("tenant_id", tenant.id)
-        .eq("is_active", true);
+      const [{ data }, { data: legacyConfig }] = await Promise.all([
+        supabase
+          .from("whatsapp_numbers")
+          .select("id, display_name, phone_e164, is_active")
+          .eq("tenant_id", tenant.id)
+          .eq("is_active", true),
+        (supabase as any)
+          .from("whatsapp_config")
+          .select("id")
+          .eq("tenant_id", tenant.id)
+          .maybeSingle(),
+      ]);
       if (cancelled) return;
       const rows = ((data as any[]) || []);
       const map: Record<string, string> = {};
       rows.forEach((n) => { map[n.id] = n.display_name || n.phone_e164 || "Conexão"; });
       map["__legacy__"] = "Principal";
       setNumberNames(map);
-      setMultiNumberTenant(rows.length > 1);
+      const legacyActive = !!legacyConfig;
+      setMultiNumberTenant(rows.length + (legacyActive ? 1 : 0) > 1);
     })();
     return () => { cancelled = true; };
   }, [tenant.id]);

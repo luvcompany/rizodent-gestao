@@ -106,7 +106,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // cadastrado em whatsapp_numbers = mundo legado (número principal), visível
   // apenas para crc/gerente/superadmin.
   const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
-  const legacyVisible = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin";
   useEffect(() => {
     if (!user || !tenantId) return;
     let cancelled = false;
