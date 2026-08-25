@@ -24,6 +24,7 @@ import SlashCommandMenu from "./SlashCommandMenu";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
+import { createChatMediaPath } from "@/lib/mediaUtils";
 
 
 const getInvokeErrorMessage = (data: any, error: any) => {
@@ -97,7 +98,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return body;
   };
 
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { tenant } = useTenant();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
@@ -279,8 +280,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   }, [externalMessage, onExternalMessageConsumed]);
 
   const uploadFile = async (file: globalThis.File, folder: string, contentType?: string): Promise<string | null> => {
-    const ext = file.name.split(".").pop() || "bin";
-    const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    let path: string;
+    try {
+      path = await createChatMediaPath(folder, file.name, tenant.id, user?.id);
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao preparar upload.");
+      return null;
+    }
     const { error } = await supabase.storage.from("chat-media").upload(path, file, {
       contentType: contentType || file.type || undefined,
     });

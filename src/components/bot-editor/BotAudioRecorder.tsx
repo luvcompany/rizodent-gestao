@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button";
 import AudioPlayer from "@/components/chat/AudioPlayer";
 import AudioRecorderComposer from "@/components/chat/AudioRecorderComposer";
 import { supabase } from "@/integrations/supabase/client";
-import { getSignedMediaUrl } from "@/lib/mediaUtils";
+import { createChatMediaPath, getSignedMediaUrl } from "@/lib/mediaUtils";
 import { toast } from "sonner";
 import { Mic, Trash2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 
 type BotAudioRecorderProps = {
   value?: string | null;
@@ -13,6 +15,8 @@ type BotAudioRecorderProps = {
 };
 
 export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderProps) {
+  const { user } = useAuth();
+  const { tenant } = useTenant();
   const [savedPreviewUrl, setSavedPreviewUrl] = useState<string | null>(null);
   const [recorderActive, setRecorderActive] = useState(false);
 
@@ -40,7 +44,7 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
     async (audioBlob: Blob) => {
       try {
         const audioFile = new File([audioBlob], `audio_${Date.now()}.ogg`, { type: "audio/ogg" });
-        const path = `audio/${Date.now()}_${Math.random().toString(36).slice(2)}.ogg`;
+        const path = await createChatMediaPath("audio", audioFile.name, tenant.id, user?.id);
 
         console.log(`[BotAudioRecorder] Uploading: size=${audioFile.size}, type=${audioFile.type}, path=${path}`);
 
@@ -72,7 +76,7 @@ export default function BotAudioRecorder({ value, onChange }: BotAudioRecorderPr
         throw err;
       }
     },
-    [onChange],
+    [onChange, tenant.id, user?.id],
   );
 
   const deleteAudio = () => {
