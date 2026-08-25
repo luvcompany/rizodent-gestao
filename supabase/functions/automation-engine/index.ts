@@ -74,6 +74,8 @@ function nextCommercialFireAt(now: Date = new Date()): string | null {
 }
 
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { filtrarMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -98,6 +100,10 @@ Deno.serve(async (req) => {
     requestBody = {};
   }
   const pendingBatchLimit = Math.min(Math.max(Number(requestBody.pending_batch_limit) || 250, 1), 500);
+
+  // Mundo (número de WhatsApp) de cada etapa, resolvido uma vez por tick.
+  const mundoCache = new Map<string, MundoDaEtapa>();
+
 
   const results: Record<string, number> = {
     progressive_reengagement: 0,
@@ -137,15 +143,22 @@ Deno.serve(async (req) => {
       const thresholdMs = amount * (noResponseUnitsMs[unit] || 3600000);
       const nowMs = Date.now();
 
+      // Mundo da etapa: automação de funil de closer/recepção só alcança leads
+      // carimbados com o número daquele funil; funil legado só alcança leads NULL.
+      const mundo = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
+
       const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .eq("is_blocked", false)
-          .order("id"),
+        filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, last_inbound_at, last_outbound_at, created_at, updated_at")
+            .eq("stage_id", auto.stage_id)
+            .not("automation_paused", "is", true)
+            .eq("is_blocked", false),
+          mundo.numberId,
+        ).order("id"),
       );
+
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -235,7 +248,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
@@ -554,15 +567,19 @@ Deno.serve(async (req) => {
       }>;
       if (!layers.length) continue;
 
+      const mundoReeng = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
       const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, last_inbound_at, last_outbound_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .eq("is_blocked", false)
-          .order("id"),
+        filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, last_inbound_at, last_outbound_at")
+            .eq("stage_id", auto.stage_id)
+            .not("automation_paused", "is", true)
+            .eq("is_blocked", false),
+          mundoReeng.numberId,
+        ).order("id"),
       );
+
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) {
@@ -665,16 +682,20 @@ Deno.serve(async (req) => {
       const staleDays = config.stale_days || 7;
       const cutoff = new Date(Date.now() - staleDays * 86400000).toISOString();
 
+      const mundoStale = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
       const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, updated_at, last_message_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .eq("is_blocked", false)
-          .lt("updated_at", cutoff)
-          .order("id"),
+        filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, updated_at, last_message_at")
+            .eq("stage_id", auto.stage_id)
+            .not("automation_paused", "is", true)
+            .eq("is_blocked", false)
+            .lt("updated_at", cutoff),
+          mundoStale.numberId,
+        ).order("id"),
       );
+
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -688,7 +709,7 @@ Deno.serve(async (req) => {
 
         if (existing && existing.length > 0) continue;
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
         if (config.target_stage_id) {
           const tenantLead = await tenantDoLead(supabase, lead.id);
@@ -725,23 +746,32 @@ Deno.serve(async (req) => {
       const hoursAfter = config.hours_after || 2;
       const cutoffTime = new Date(Date.now() - hoursAfter * 3600000).toISOString();
 
-      const appointments = await fetchAllRows(() =>
-        supabase
+      // Escopo: agendamentos do TENANT da automação (a varredura era global) e
+      // leads do MUNDO da etapa (número do funil) — nunca de outro número.
+      const mundoNoShow = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
+      const tenantNoShow = mundoNoShow.tenantId ?? (auto as any).tenant_id ?? null;
+
+      const appointments = await fetchAllRows(() => {
+        let q = supabase
           .from("crm_appointments")
           .select("id, lead_id, scheduled_date, scheduled_time, status")
           .eq("status", "confirmed")
-          .lt("scheduled_date", new Date().toISOString().split("T")[0])
-          .order("id"),
-      );
+          .lt("scheduled_date", new Date().toISOString().split("T")[0]);
+        if (tenantNoShow) q = q.eq("tenant_id", tenantNoShow);
+        return q.order("id");
+      });
 
       for (const appt of appointments || []) {
-        const { data: lead } = await supabase
-          .from("crm_leads")
-          .select("id, phone, stage_id")
-          .eq("id", appt.lead_id)
-          .eq("stage_id", auto.stage_id)
-          .eq("is_blocked", false)
-          .maybeSingle();
+        const { data: lead } = await filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, stage_id")
+            .eq("id", appt.lead_id)
+            .eq("stage_id", auto.stage_id)
+            .eq("is_blocked", false),
+          mundoNoShow.numberId,
+        ).maybeSingle();
+
 
         if (!lead) continue;
         if (!(await passesConditions(supabase, lead.id, config))) continue;
@@ -775,7 +805,7 @@ Deno.serve(async (req) => {
             });
           }
         } else {
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           await supabase.from("crm_automation_queue").insert({
             automation_id: auto.id,
             lead_id: lead.id,
@@ -839,6 +869,10 @@ Deno.serve(async (req) => {
       const TZ_OFFSET = "-03:00";
       const CRON_GRACE_MS = 90 * 1000;
 
+      // Escopo: agendamentos/tarefas do TENANT da automação e leads do MUNDO da etapa.
+      const mundoBefore = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
+      const tenantBefore = mundoBefore.tenantId ?? (auto as any).tenant_id ?? null;
+
       // Check appointments — only CONFIRMED ones receive "X horas antes"
       // Pending appointments (e.g. pre-scheduled by bot, awaiting human confirmation)
       // must NOT trigger this automation until a CRC confirms them.
@@ -849,27 +883,31 @@ Deno.serve(async (req) => {
         // follow-up (que roda depois) nunca chegar a executar. Um agendamento passado
         // nunca cai na janela "X antes", então filtrá-los é seguro.
         const beforeSchedFloor = new Date(now - beforeMs - 2 * 86400000).toISOString().split("T")[0];
-        const appointments = await fetchAllRows(() =>
-          supabase
+        const appointments = await fetchAllRows(() => {
+          let q = supabase
             .from("crm_appointments")
             .select("id, lead_id, scheduled_date, scheduled_time, created_at")
             .eq("status", "confirmed")
-            .gte("scheduled_date", beforeSchedFloor)
-            .order("id"),
-        );
+            .gte("scheduled_date", beforeSchedFloor);
+          if (tenantBefore) q = q.eq("tenant_id", tenantBefore);
+          return q.order("id");
+        });
 
         console.log(
           `[BEFORE_SCHEDULED] Checking ${appointments?.length || 0} appointments, beforeMs=${beforeMs}, now=${new Date(now).toISOString()}`,
         );
 
         for (const appt of appointments || []) {
-          const { data: lead } = await supabase
-            .from("crm_leads")
-            .select("id, phone, stage_id")
-            .eq("id", appt.lead_id)
-            .eq("stage_id", auto.stage_id)
-            .eq("is_blocked", false)
-            .maybeSingle();
+          const { data: lead } = await filtrarMundo(
+            supabase
+              .from("crm_leads")
+              .select("id, phone, stage_id")
+              .eq("id", appt.lead_id)
+              .eq("stage_id", auto.stage_id)
+              .eq("is_blocked", false),
+            mundoBefore.numberId,
+          ).maybeSingle();
+
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
 
@@ -925,27 +963,32 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id} (claim ok)`);
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           results.before_scheduled++;
         }
       }
 
       // Check tasks
       if (scheduledType === "task" || scheduledType === "both") {
-        const tasks = await fetchAllRows(() =>
-          supabase.from("crm_tasks").select("id, lead_id, due_date, title").eq("status", "pending").order("id"),
-        );
+        const tasks = await fetchAllRows(() => {
+          let q = supabase.from("crm_tasks").select("id, lead_id, due_date, title").eq("status", "pending");
+          if (tenantBefore) q = q.eq("tenant_id", tenantBefore);
+          return q.order("id");
+        });
 
         console.log(`[BEFORE_SCHEDULED] Checking ${tasks?.length || 0} pending tasks, beforeMs=${beforeMs}`);
 
         for (const task of tasks || []) {
-          const { data: lead } = await supabase
-            .from("crm_leads")
-            .select("id, phone, stage_id")
-            .eq("id", task.lead_id)
-            .eq("stage_id", auto.stage_id)
-            .eq("is_blocked", false)
-            .maybeSingle();
+          const { data: lead } = await filtrarMundo(
+            supabase
+              .from("crm_leads")
+              .select("id, phone, stage_id")
+              .eq("id", task.lead_id)
+              .eq("stage_id", auto.stage_id)
+              .eq("is_blocked", false),
+            mundoBefore.numberId,
+          ).maybeSingle();
+
           if (!lead) continue;
           if (!(await passesConditions(supabase, lead.id, config))) continue;
 
@@ -978,7 +1021,7 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           results.before_scheduled++;
         }
       }
@@ -1061,7 +1104,11 @@ async function sendAction(
   config: Record<string, any>,
   leadId: string,
   phone: string | null,
+  // Automação de origem: gravada na execução do bot para que o gate de
+  // time_window avalie SÓ ela (e não qualquer automação com o mesmo bot).
+  automationId?: string | null,
 ) {
+
   try {
     // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
     // precisa pertencer a ele. Ids de outro tenant => ação pulada com log.
@@ -1114,7 +1161,7 @@ async function sendAction(
           const resp = await fetch(`${supabaseUrl}/functions/v1/bot-engine`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
-            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation" }),
+            body: JSON.stringify({ leadId, botId: config.bot_id, trigger: "automation", automationId: automationId ?? null }),
           });
           const respText = await resp.text();
           if (!resp.ok) throw new Error(`send_bot failed (${resp.status}): ${respText.substring(0, 500)}`);
@@ -1257,7 +1304,7 @@ async function sendAction(
               console.log(
                 `[AUTOMATION-ENGINE] Chained trigger ${targetAuto.trigger_type} -> ${targetAuto.action_type} for lead ${leadId} on stage ${config.target_stage_id}`,
               );
-              await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone);
+              await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone, targetAuto.id);
             }
           }
         }
@@ -1272,7 +1319,7 @@ async function sendAction(
           const subType = (sub?.action_type ?? sub?.type) as string | undefined;
           const subConfig = (sub?.action_config ?? sub?.config ?? {}) as Record<string, any>;
           if (!subType) continue;
-          await sendAction(supabase, supabaseUrl, serviceKey, subType, subConfig, leadId, phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, subType, subConfig, leadId, phone, automationId ?? null);
         }
         break;
       }

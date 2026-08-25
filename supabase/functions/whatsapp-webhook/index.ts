@@ -1752,7 +1752,7 @@ Deno.serve(async (req) => {
               try {
                 const { data: botExec } = await supabase
                   .from("bot_executions")
-                  .select("id, started_at, bot_id")
+                  .select("id, started_at, bot_id, started_by_automation_id")
                   .eq("lead_id", lead.id)
                   .eq("status", "waiting_reply")
                   .order("started_at", { ascending: false })
@@ -1768,15 +1768,27 @@ Deno.serve(async (req) => {
                 } else if (botExec) {
                   // Gate: if this bot was started by a time_window automation that is
                   // currently CLOSED, cancel the execution and do not continue.
+                  // Avalia SÓ a automação que iniciou esta execução (quando conhecida);
+                  // antes, qualquer automação time_window com o mesmo bot_id — de outro
+                  // funil, outro número ou até de outro cliente — podia cancelar a conversa.
                   let windowClosed = false;
                   try {
-                    const { data: twAutos } = await supabase
+                    let twQuery = supabase
                       .from("crm_automations")
                       .select("id, action_config, is_active")
                       .eq("trigger_type", "time_window")
-                      .eq("action_type", "send_bot");
-                    const related = (twAutos || []).filter((a: any) => (a.action_config?.bot_id) === botExec.bot_id);
+                      .eq("action_type", "send_bot")
+                      .eq("is_active", true)
+                      .eq("tenant_id", tenantId);
+                    if ((botExec as any).started_by_automation_id) {
+                      twQuery = twQuery.eq("id", (botExec as any).started_by_automation_id);
+                    }
+                    const { data: twAutos } = await twQuery;
+                    const related = (botExec as any).started_by_automation_id
+                      ? (twAutos || [])
+                      : (twAutos || []).filter((a: any) => (a.action_config?.bot_id) === botExec.bot_id);
                     if (related.length > 0) {
+
                       const nowMs = Date.now();
                       const brNow = new Date(nowMs - 3 * 3600 * 1000);
                       const brDay = brNow.getUTCDay();

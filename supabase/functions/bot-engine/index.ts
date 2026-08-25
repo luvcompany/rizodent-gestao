@@ -1,6 +1,7 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
 
 
@@ -473,6 +474,13 @@ Deno.serve(async (req) => {
       if (!startNode) return json({ error: "No start node found" }, 400);
 
       // Create execution
+      // `automationId` (quando o start vem de uma automação) fica gravado para que
+      // o gate de time_window avalie SÓ a automação que iniciou esta execução.
+      const startedByAutomationId: string | null =
+        typeof body.automationId === "string" ? body.automationId
+        : typeof body.automation_id === "string" ? body.automation_id
+        : null;
+
       const { data: execution, error: execError } = await supabase
         .from("bot_executions")
         .insert({
@@ -482,9 +490,11 @@ Deno.serve(async (req) => {
           status: "active",
           current_node_id: startNode.id,
           variables: {},
+          started_by_automation_id: startedByAutomationId,
         })
         .select()
         .single();
+
 
       if (execError) return json({ error: execError.message }, 500);
 
@@ -1338,15 +1348,45 @@ async function executeNode(
 
     case "move_stage": {
       if (data.stageId && data.stageId !== lead.stage_id) {
-        await supabase.from("crm_leads").update({ stage_id: data.stageId }).eq("id", lead.id);
+        // A etapa destino tem de ser do MESMO cliente e do MESMO mundo (número de
+        // WhatsApp) do lead. Sem isso, um bot podia mover o lead para o funil de
+        // outro número/cliente — e a conversa desaparecia do dono dela.
+        const { data: destStage } = await supabase
+          .from("crm_stages")
+          .select("id, name, pipeline_id, tenant_id")
+          .eq("id", data.stageId)
+          .maybeSingle();
+
+        if (!destStage) {
+          console.warn(`[bot-engine] move_stage abortado — etapa ${data.stageId} não existe`);
+          return {};
+        }
+        if ((destStage as any).tenant_id && lead.tenant_id && (destStage as any).tenant_id !== lead.tenant_id) {
+          console.warn(`[bot-engine] move_stage abortado — etapa ${data.stageId} é de outro cliente (lead ${lead.id})`);
+          return {};
+        }
+
+        const numeroDestino = await numeroDoFunil(supabase, (destStage as any).pipeline_id ?? null, (destStage as any).tenant_id ?? lead.tenant_id ?? null);
+        if (!mesmoMundo(lead.whatsapp_number_id, numeroDestino)) {
+          console.warn(`[bot-engine] move_stage abortado — etapa ${data.stageId} pertence a outro número de WhatsApp (lead ${lead.id})`);
+          return {};
+        }
+
+        // pipeline_id acompanha a etapa: mover só stage_id deixava o lead num funil
+        // que não contém a etapa dele.
+        await supabase
+          .from("crm_leads")
+          .update({ stage_id: data.stageId, pipeline_id: (destStage as any).pipeline_id ?? lead.pipeline_id })
+          .eq("id", lead.id);
         await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
           .eq("lead_id", lead.id).eq("stage_id", lead.stage_id).is("exited_at", null);
         await supabase.from("crm_lead_stage_history").insert({ lead_id: lead.id, stage_id: data.stageId });
-        const { data: stages } = await supabase.from("crm_stages").select("id, name").in("id", [lead.stage_id, data.stageId]);
-        const fromName = stages?.find((s: any) => s.id === lead.stage_id)?.name || "?";
-        const toName = stages?.find((s: any) => s.id === data.stageId)?.name || "?";
+        const { data: fromStage } = await supabase.from("crm_stages").select("name").eq("id", lead.stage_id).maybeSingle();
+        const fromName = (fromStage as any)?.name || "?";
+        const toName = (destStage as any).name || "?";
         await supabase.from("messages").insert({
           lead_id: lead.id,
+          tenant_id: lead.tenant_id ?? null,
           content: `Etapa alterada: ${fromName} → ${toName} (Bot)`,
           type: "system",
           direction: "outbound",
@@ -1355,6 +1395,7 @@ async function executeNode(
       }
       return {};
     }
+
 
     case "add_tag": {
       if (data.tag) {

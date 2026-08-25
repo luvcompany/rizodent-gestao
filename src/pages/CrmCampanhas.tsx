@@ -42,11 +42,21 @@ export default function CrmCampanhas() {
     if (form.pipeline_id) supabase.from("crm_stages").select("id, name").eq("pipeline_id", form.pipeline_id).order("position").then(({ data }) => setStages(data || []));
   }, [form.pipeline_id]);
 
-  const preview = async () => {
-    let q = supabase.from("crm_leads").select("id", { count: "exact", head: true });
+  // A audiência nunca inclui leads bloqueados nem leads com automações pausadas;
+  // o RLS já restringe ao número/funil visível para o usuário (cada número é um mundo).
+  const audienceQuery = (select: string, opts?: { count: "exact"; head: true }) => {
+    let q = supabase
+      .from("crm_leads")
+      .select(select, opts as any)
+      .eq("is_blocked", false)
+      .not("automation_paused", "is", true);
     if (form.pipeline_id) q = q.eq("pipeline_id", form.pipeline_id);
     if (form.stage_id) q = q.eq("stage_id", form.stage_id);
-    const { count } = await q;
+    return q;
+  };
+
+  const preview = async () => {
+    const { count } = await audienceQuery("id", { count: "exact", head: true });
     setPreviewCount(count || 0);
   };
 
@@ -64,15 +74,13 @@ export default function CrmCampanhas() {
     const leads: { id: string }[] = [];
     let from = 0;
     while (true) {
-      let q = supabase.from("crm_leads").select("id").range(from, from + PAGE - 1);
-      if (form.pipeline_id) q = q.eq("pipeline_id", form.pipeline_id);
-      if (form.stage_id) q = q.eq("stage_id", form.stage_id);
-      const { data, error } = await q;
+      const { data, error } = await audienceQuery("id").range(from, from + PAGE - 1);
       if (error || !data || data.length === 0) break;
-      leads.push(...(data as { id: string }[]));
+      leads.push(...(data as unknown as { id: string }[]));
       if (data.length < PAGE) break;
       from += PAGE;
     }
+
     if (leads.length > 0) {
       // Insert recipients in chunks to avoid payload size limits
       const CHUNK = 500;
