@@ -319,7 +319,7 @@ Deno.serve(async (req) => {
           const ini = addDays(fim, -29) < limiteAntigo ? limiteAntigo : addDays(fim, -29);
           const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
             input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: ini, dataFim: fim },
-          });
+          }, u.tenant_id);
           run.lidos += rows.length;
           for (const p of rows) {
             const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
