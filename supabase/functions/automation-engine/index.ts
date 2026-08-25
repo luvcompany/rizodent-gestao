@@ -567,15 +567,19 @@ Deno.serve(async (req) => {
       }>;
       if (!layers.length) continue;
 
+      const mundoReeng = await mundoDaEtapa(supabase, auto.stage_id, mundoCache);
       const leads = await fetchAllRows(() =>
-        supabase
-          .from("crm_leads")
-          .select("id, phone, last_inbound_at, last_outbound_at")
-          .eq("stage_id", auto.stage_id)
-          .not("automation_paused", "is", true)
-          .eq("is_blocked", false)
-          .order("id"),
+        filtrarMundo(
+          supabase
+            .from("crm_leads")
+            .select("id, phone, last_inbound_at, last_outbound_at")
+            .eq("stage_id", auto.stage_id)
+            .not("automation_paused", "is", true)
+            .eq("is_blocked", false),
+          mundoReeng.numberId,
+        ).order("id"),
       );
+
 
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) {
