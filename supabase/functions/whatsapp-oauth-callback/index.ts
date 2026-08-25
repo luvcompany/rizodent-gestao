@@ -41,7 +41,72 @@ function popupResponse(
   return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }
 
+async function ensureRoleChannelForNumber(
+  tenantId: string,
+  userId: string,
+  roles: string[],
+  integrationKey: string,
+  numberId: string,
+) {
+  const roleForPipeline = roles.find((role) => role === "closer" || role === "recepcao");
+  if (roleForPipeline) {
+    const { data: pipelineId, error: pipeErr } = await supabase.rpc("ensure_role_default_pipeline", {
+      _tenant_id: tenantId,
+      _role: roleForPipeline,
+    });
+    if (pipeErr || !pipelineId) {
+      console.warn(`[wa-oauth-callback] funil padrão ${roleForPipeline} indisponível: ${pipeErr?.message ?? "sem id"}`);
+    } else {
+      await supabase
+        .from("funnel_channels")
+        .delete()
+        .eq("tenant_id", tenantId)
+        .eq("channel_type", "whatsapp")
+        .eq("channel_config->>integration_key", integrationKey);
+      const { error: channelErr } = await supabase.from("funnel_channels").insert({
+        pipeline_id: pipelineId,
+        channel_type: "whatsapp",
+        channel_config: { integration_key: integrationKey },
+        tenant_id: tenantId,
+      });
+      if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
+    }
+  }
+
+  const { error: overrideErr } = await supabase.from("user_permission_overrides").upsert(
+    {
+      user_id: userId,
+      scope: "whatsapp_number",
+      resource_id: numberId,
+      granted: true,
+      created_by: userId,
+    },
+    { onConflict: "user_id,scope,resource_id" },
+  );
+  if (overrideErr) console.warn(`[wa-oauth-callback] override failed: ${overrideErr.message}`);
+}
+
 async function ensureRecepcaoChannelForNumber(
+  tenantId: string,
+  userId: string,
+  integrationKey: string,
+  numberId: string,
+) {
+  const roles = ["recepcao"];
+  await ensureRoleChannelForNumber(tenantId, userId, roles, integrationKey, numberId);
+}
+
+async function ensureRoleChannelForConnectedNumber(
+  tenantId: string,
+  userId: string,
+  roles: string[],
+  integrationKey: string,
+  numberId: string,
+) {
+  await ensureRoleChannelForNumber(tenantId, userId, roles, integrationKey, numberId);
+}
+
+async function legacyEnsureRecepcaoChannelForNumber(
   tenantId: string,
   userId: string,
   integrationKey: string,
