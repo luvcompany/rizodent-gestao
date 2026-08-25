@@ -12,10 +12,11 @@ type AudioRecorderComposerProps = {
   autoStart?: boolean;
   preferredMimeTypes?: string[];
   /**
-   * Grava no formato nativo do navegador (WebM/Opus, instantâneo) e reembala
-   * em Ogg/Opus depois de parar, em vez de esperar o encoder WASM carregar.
-   * Em uso apenas pelo perfil closer enquanto está em avaliação; qualquer
-   * falha cai automaticamente no caminho padrão.
+   * Padrão do sistema: grava no formato nativo do navegador (WebM/Opus,
+   * instantâneo) e reembala em Ogg/Opus depois de parar, em vez de esperar o
+   * encoder WASM carregar — o que fazia os primeiros segundos se perderem.
+   * Onde o navegador não grava Opus nativo (Safari) ou já grava Ogg (Firefox),
+   * o caminho antigo continua valendo sozinho. Passe `false` só para reverter.
    */
   gravacaoNativa?: boolean;
 };
@@ -86,7 +87,7 @@ export default function AudioRecorderComposer({
   showMicButton = true,
   autoStart = false,
   preferredMimeTypes,
-  gravacaoNativa = false,
+  gravacaoNativa = true,
 }: AudioRecorderComposerProps) {
   const [mode, setMode] = useState<RecorderMode>("idle");
   const [recordingPaused, setRecordingPaused] = useState(false);

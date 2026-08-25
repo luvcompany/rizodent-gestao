@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Mic, Paperclip, Trash2, Square, Pause, Play, X, Loader2 } from "lucide-react";
+import { NATIVE_OPUS_MIME, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
 import AudioPlayer from "./AudioPlayer";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -40,6 +41,8 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingDiscardedRef = useRef(false);
+  // Gravação nativa: o blob sai em WebM e vira Ogg antes do upload.
+  const precisaRemuxRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File, folder: string): Promise<string | null> => {
@@ -58,19 +61,31 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
 
   const startRecording = async () => {
     try {
+      // Em paralelo com o microfone, não depois dele.
+      if (podeGravarOpusNativo()) void preloadRemuxer();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       recordingDiscardedRef.current = false;
       setRecordingPaused(false);
 
-      const OpusMediaRecorder = (await import("opus-media-recorder")).default;
-      const workerOptions = {
-        OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
-        WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
-        encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
-      };
-
-      const recorder = new OpusMediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" }, workerOptions);
+      // Formato nativo do navegador: começa a capturar na hora. O encoder WASM
+      // (~270 KB) só era baixado aqui dentro, e até ele responder nada era
+      // gravado — os primeiros segundos de fala se perdiam. A embalagem vira
+      // Ogg/Opus no onstop, que é o que a Meta aceita como mensagem de voz.
+      let recorder: any;
+      if (podeGravarOpusNativo()) {
+        recorder = new MediaRecorder(stream, { mimeType: NATIVE_OPUS_MIME });
+        precisaRemuxRef.current = true;
+      } else {
+        precisaRemuxRef.current = false;
+        const OpusMediaRecorder = (await import("opus-media-recorder")).default;
+        const workerOptions = {
+          OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
+          WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
+          encoderWorkerFactory: () => new Worker("/encoderWorker.umd.js"),
+        };
+        recorder = new OpusMediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" }, workerOptions);
+      }
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
@@ -92,7 +107,20 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
           return;
         }
 
-        const oggBlob = new Blob(audioChunksRef.current, { type: "audio/ogg;codecs=opus" });
+        let oggBlob = new Blob(audioChunksRef.current, {
+          type: precisaRemuxRef.current ? NATIVE_OPUS_MIME : "audio/ogg;codecs=opus",
+        });
+
+        if (precisaRemuxRef.current) {
+          precisaRemuxRef.current = false;
+          const convertido = await remuxWebmParaOgg(oggBlob);
+          if (!convertido) {
+            toast.error("Não foi possível preparar o áudio. Grave novamente.");
+            return;
+          }
+          oggBlob = convertido;
+        }
+
         if (oggBlob.size < 100) { toast.error("Gravação muito curta."); return; }
 
         setUploading(true);
