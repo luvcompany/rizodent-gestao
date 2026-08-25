@@ -353,6 +353,7 @@ async function handleCallsChange(supabase: any, value: any) {
             assigned_to: assignedTo,
             tenant_id: tenantId,
             tags: [],
+            whatsapp_number_id: whatsappNumberId,
           })
           .select("id")
           .single();
