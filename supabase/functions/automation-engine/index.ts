@@ -74,6 +74,8 @@ function nextCommercialFireAt(now: Date = new Date()): string | null {
 }
 
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { filtrarMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
