@@ -1070,6 +1070,154 @@ export type Database = {
           },
         ]
       }
+      closer_pacientes: {
+        Row: {
+          cidade: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          lead_id: string | null
+          nome: string
+          observacoes: string | null
+          telefone: string | null
+          tenant_id: string
+          updated_at: string
+          whatsapp_number_id: string
+        }
+        Insert: {
+          cidade?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          lead_id?: string | null
+          nome: string
+          observacoes?: string | null
+          telefone?: string | null
+          tenant_id: string
+          updated_at?: string
+          whatsapp_number_id: string
+        }
+        Update: {
+          cidade?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          lead_id?: string | null
+          nome?: string
+          observacoes?: string | null
+          telefone?: string | null
+          tenant_id?: string
+          updated_at?: string
+          whatsapp_number_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "closer_pacientes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closer_pacientes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "closer_pacientes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closer_pacientes_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      closer_pagamentos: {
+        Row: {
+          clinica_id: string | null
+          created_at: string
+          created_by: string | null
+          data_pagamento: string
+          especialidade: string | null
+          forma_pagamento: string | null
+          id: string
+          paciente_id: string
+          tenant_id: string
+          tipo: string | null
+          valor: number
+          whatsapp_number_id: string
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_pagamento?: string
+          especialidade?: string | null
+          forma_pagamento?: string | null
+          id?: string
+          paciente_id: string
+          tenant_id: string
+          tipo?: string | null
+          valor: number
+          whatsapp_number_id: string
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          data_pagamento?: string
+          especialidade?: string | null
+          forma_pagamento?: string | null
+          id?: string
+          paciente_id?: string
+          tenant_id?: string
+          tipo?: string | null
+          valor?: number
+          whatsapp_number_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "closer_pagamentos_clinica_id_fkey"
+            columns: ["clinica_id"]
+            isOneToOne: false
+            referencedRelation: "clinicas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closer_pagamentos_paciente_id_fkey"
+            columns: ["paciente_id"]
+            isOneToOne: false
+            referencedRelation: "closer_pacientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closer_pagamentos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "closer_pagamentos_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_appointments: {
         Row: {
           cancelled_reason: string | null
@@ -4831,7 +4979,37 @@ export type Database = {
             }[]
           }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
+      closer_clinicas_do_tenant: {
+        Args: never
+        Returns: {
+          cidade: string
+          id: string
+          nome: string
+        }[]
+      }
+      closer_dashboard_metrics: { Args: { p_mes?: string }; Returns: Json }
+      closer_especialidades_do_tenant: {
+        Args: never
+        Returns: {
+          especialidade: string
+        }[]
+      }
       closer_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
+      closer_vincular_paciente: {
+        Args: {
+          p_cidade?: string
+          p_clinica_id?: string
+          p_data_pagamento?: string
+          p_especialidade?: string
+          p_forma_pagamento?: string
+          p_lead_id: string
+          p_nome: string
+          p_telefone?: string
+          p_tipo?: string
+          p_valor?: number
+        }
+        Returns: string
+      }
       crm_cleanup_contratado_sem_pagamento: {
         Args: { p_tenant_id: string }
         Returns: {
