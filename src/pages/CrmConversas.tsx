@@ -274,6 +274,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
+  // Identificação do "mundo" (conexão de WhatsApp) na lista. Só aparece quando o
+  // tenant tem mais de um número ativo — com só o principal não poluímos a UI.
+  const [numberNames, setNumberNames] = useState<Record<string, string>>({});
+  const [multiNumberTenant, setMultiNumberTenant] = useState(false);
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
