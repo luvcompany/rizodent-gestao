@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     if (!lead) return json({ error: "Lead not found" }, 404);
 
     // Visibilidade por número (papel recepcao).
-    const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx);
+    const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx, leadId);
     if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
 
     const requesterTenant = ctx.tenantId;

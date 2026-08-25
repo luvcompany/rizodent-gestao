@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "chat-media owner read" ON storage.objects;

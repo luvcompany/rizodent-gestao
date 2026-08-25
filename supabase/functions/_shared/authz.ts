@@ -112,13 +112,37 @@ export async function assertNumberAccess(
   req: Request,
   whatsappNumberId: string | null,
   ctx: CallerContext,
+  leadId?: string | null,
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  if (ctx.isServiceRole || ctx.isSuperadmin || !whatsappNumberId) return { ok: true };
+  if (ctx.isServiceRole || ctx.isSuperadmin) return { ok: true };
   const authHeader = req.headers.get("Authorization") || req.headers.get("authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
   const url = (globalThis as any).Deno?.env?.get?.("SUPABASE_URL") || "";
   const anon = (globalThis as any).Deno?.env?.get?.("SUPABASE_ANON_KEY") || "";
+  const serviceRoleKey = (globalThis as any).Deno?.env?.get?.("SUPABASE_SERVICE_ROLE_KEY") || "";
   if (!jwt || !url || !anon) return { ok: false, status: 401, error: "Unauthorized" };
+  const admin = serviceRoleKey ? createClient(url, serviceRoleKey) : null;
+
+  if (!whatsappNumberId) {
+    if (!admin) return { ok: false, status: 500, error: "Backend sem credencial administrativa" };
+    const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", ctx.userId);
+    const scopedRole = Array.isArray(roles) && roles.some((r: any) => r.role === "closer" || r.role === "recepcao");
+    if (!scopedRole) return { ok: true };
+    if (!leadId) return { ok: false, status: 403, error: "Sem acesso ao mundo legado" };
+    const { data: lead } = await admin
+      .from("crm_leads")
+      .select("tenant_id, whatsapp_number_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!lead) return { ok: false, status: 404, error: "Lead não encontrado" };
+    if (!ctx.isSuperadmin && (lead as any).tenant_id !== ctx.tenantId) {
+      return { ok: false, status: 403, error: "Recurso de outro tenant" };
+    }
+    const leadNumberId = (lead as any).whatsapp_number_id ?? null;
+    if (!leadNumberId) return { ok: false, status: 403, error: "Sem acesso ao mundo legado" };
+    whatsappNumberId = leadNumberId;
+  }
+
   const asUser = createClient(url, anon, { global: { headers: { Authorization: `Bearer ${jwt}` } } });
   const { data, error } = await asUser.rpc("can_access_whatsapp_number", { _number_id: whatsappNumberId });
   if (error) return { ok: false, status: 500, error: error.message };

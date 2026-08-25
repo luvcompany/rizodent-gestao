@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { compressImage } from "@/components/chat/imageCompressor";
 import { toast } from "sonner";
+import { createChatMediaPath } from "@/lib/mediaUtils";
 
 export const MEDIA_LIMITS = {
   image: 5 * 1024 * 1024,
@@ -57,8 +58,13 @@ export async function uploadAutomationMedia(
     }
   }
 
-  const ext = name.includes(".") ? name.split(".").pop() : "bin";
-  const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  let path: string;
+  try {
+    path = await createChatMediaPath(folder, name);
+  } catch (err: any) {
+    toast.error(err?.message || "Erro ao preparar upload.");
+    return null;
+  }
   const contentType = opts?.contentType || (file as File).type || undefined;
 
   const { error } = await supabase.storage.from("chat-media").upload(path, toUpload, {

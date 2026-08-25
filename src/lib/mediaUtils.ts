@@ -11,6 +11,40 @@ const SIGNED_URL_TTL = 50 * 60_000; // 50 minutes (URLs expire in 60 min, refres
 // Dedup in-flight requests
 const inflightRequests = new Map<string, Promise<string>>();
 
+function sanitizePathPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").slice(0, 120) || "arquivo";
+}
+
+/**
+ * Builds the tenant/user-scoped path required by the chat-media INSERT policy.
+ */
+export async function createChatMediaPath(folder: string, fileName: string, tenantId?: string | null, userId?: string | null): Promise<string> {
+  let resolvedUserId = userId ?? null;
+  let resolvedTenantId = tenantId ?? null;
+
+  if (!resolvedUserId) {
+    const { data } = await supabase.auth.getUser();
+    resolvedUserId = data.user?.id ?? null;
+  }
+
+  if (!resolvedTenantId && resolvedUserId) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", resolvedUserId)
+      .maybeSingle();
+    resolvedTenantId = (data as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  }
+
+  if (!resolvedTenantId || !resolvedUserId) {
+    throw new Error("Usuário ou clínica não identificado para upload de mídia.");
+  }
+
+  const ext = sanitizePathPart(fileName.split(".").pop() || "bin");
+  const safeFolder = sanitizePathPart(folder);
+  return `${resolvedTenantId}/${resolvedUserId}/${safeFolder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+}
+
 /**
  * Extracts the storage path from a chat-media URL (public or signed).
  * Returns null if the URL is not a chat-media storage URL.

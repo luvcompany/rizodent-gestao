@@ -4788,6 +4788,10 @@ export type Database = {
           table_name: string
         }[]
       }
+      call_recording_belongs_to_current_tenant: {
+        Args: { _object_name: string }
+        Returns: boolean
+      }
       can_access_instagram_account: {
         Args: { _account_id: string }
         Returns: boolean

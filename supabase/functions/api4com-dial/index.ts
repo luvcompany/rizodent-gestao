@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       // Visibilidade por número (papel recepcao).
       const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, {
         ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false,
-      } as any);
+      } as any, leadId);
       if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
       // Telefone SEMPRE do lead: body.phone não pode redirecionar a ligação.
       phone = lead.phone || "";

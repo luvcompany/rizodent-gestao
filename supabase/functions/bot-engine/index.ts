@@ -366,7 +366,7 @@ Deno.serve(async (req) => {
         // Papéis recepção/closer só agem nos leads do número deles.
         const { data: leadNum } = await supabase
           .from("crm_leads").select("whatsapp_number_id").eq("id", leadId).maybeSingle();
-        const numCheck = await assertNumberAccess(req, (leadNum as any)?.whatsapp_number_id ?? null, ctx);
+        const numCheck = await assertNumberAccess(req, (leadNum as any)?.whatsapp_number_id ?? null, ctx, leadId);
         if (!numCheck.ok) return json({ error: numCheck.error }, numCheck.status);
       }
     }

@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Mic, Paperclip, Trash2, Square, Pause, Play, X, Loader2 } from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
+import { createChatMediaPath } from "@/lib/mediaUtils";
 
 export interface DisparoData {
   delay_minutes: number;
@@ -26,6 +29,8 @@ interface Props {
 }
 
 export default function FollowUpDisparoInput({ index, disparo, onChange, onRemove, canRemove }: Props) {
+  const { user } = useAuth();
+  const { tenant } = useTenant();
   const [recording, setRecording] = useState(false);
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -38,8 +43,13 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadFile = async (file: File, folder: string): Promise<string | null> => {
-    const ext = file.name.split(".").pop() || "bin";
-    const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    let path: string;
+    try {
+      path = await createChatMediaPath(folder, file.name, tenant.id, user?.id);
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao preparar upload.");
+      return null;
+    }
     const { error } = await supabase.storage.from("chat-media").upload(path, file);
     if (error) { toast.error(`Erro upload: ${error.message}`); return null; }
     const { data } = await supabase.storage.from("chat-media").createSignedUrl(path, 3600);
