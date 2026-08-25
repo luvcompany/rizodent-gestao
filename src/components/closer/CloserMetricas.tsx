@@ -7,7 +7,8 @@ import { hojeNaClinica } from "@/lib/moeda";
  * Números do closer na tela de Início. Vêm da RPC closer_dashboard_metrics,
  * que soma apenas closer_pagamentos/closer_pacientes — o universo dele, nunca o
  * faturamento da clínica. Faturamento conta pela DATA DO PAGAMENTO e
- * "fechamentos" é a quantidade de pacientes vinculados.
+ * "fechamentos" conta pacientes com pagamento registrado — sem dinheiro
+ * lançado não é fechamento, e assim o número nunca contradiz o faturamento.
  */
 
 type Metricas = {

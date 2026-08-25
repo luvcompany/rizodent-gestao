@@ -206,8 +206,8 @@ BEGIN
 END $fn$;
 
 -- Números do Início. INVOKER de propósito: as somas passam pela RLS, então cada
--- um vê o próprio faturamento. Conta pela data do pagamento; "fechamentos" é a
--- quantidade de pacientes vinculados.
+-- um vê o próprio faturamento. Conta pela data do pagamento, e "fechamentos" é
+-- a quantidade de pacientes com pagamento registrado no período.
 CREATE OR REPLACE FUNCTION public.closer_dashboard_metrics(p_mes date DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path TO 'public' AS $fn$
 DECLARE
@@ -223,8 +223,12 @@ BEGIN
   SELECT COALESCE(sum(valor),0) INTO v_dia FROM closer_pagamentos WHERE data_pagamento = v_hoje;
   SELECT COALESCE(sum(valor),0) INTO v_mes FROM closer_pagamentos WHERE data_pagamento BETWEEN v_ini AND v_fim;
   SELECT COALESCE(sum(valor),0) INTO v_total FROM closer_pagamentos;
-  SELECT count(*) INTO v_fech_mes FROM closer_pacientes WHERE created_at::date BETWEEN v_ini AND v_fim;
-  SELECT count(*) INTO v_fech_total FROM closer_pacientes;
+  -- Fechamento é venda fechada: conta o paciente que TEM pagamento registrado,
+  -- pela data do pagamento — a mesma do faturamento. Assim os dois números
+  -- nunca se contradizem.
+  SELECT count(DISTINCT paciente_id) INTO v_fech_mes
+    FROM closer_pagamentos WHERE data_pagamento BETWEEN v_ini AND v_fim;
+  SELECT count(DISTINCT paciente_id) INTO v_fech_total FROM closer_pagamentos;
 
   v_dias_mes := EXTRACT(day FROM v_fim)::int;
   v_dias_corridos := GREATEST(1, LEAST(v_dias_mes, (v_hoje - v_ini)::int + 1));
