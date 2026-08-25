@@ -238,7 +238,7 @@ Deno.serve(async (req) => {
       if (!teamToken) {
         run.error_message = "clínica sem credencial do Dontus (team token ausente)";
         resultados.push({ unidade: u.nome, pulado: run.error_message });
-        if (!dryRun) await admin.from("dontus_lembrete_runs").insert(run).catch?.(() => {});
+        if (!dryRun) { try { await admin.from("dontus_lembretes_runs").insert(run); } catch { /* log best-effort */ } }
         continue;
       }
       const hoje = hojeLocal(u.timezone);
