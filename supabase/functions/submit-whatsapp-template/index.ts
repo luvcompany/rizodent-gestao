@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCaller } from "../_shared/authz.ts";
+import { escopoDoNumero, escopoLegado, numeroPorPhoneNumberId } from "../_shared/wabaEscopo.ts";
 
 
 const corsHeaders = {
@@ -41,30 +42,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN");
-
     const supabase = supabaseAdmin;
     const callerTenantId = ctx.tenantId;
 
-    // Get WABA_ID from integrations table (escopado ao tenant do chamador)
-    let integQuery = supabase
-      .from("integrations")
-      .select("config")
-      .eq("key", "whatsapp_config");
-    if (callerTenantId) integQuery = integQuery.eq("tenant_id", callerTenantId);
-    const { data: integration } = await integQuery.maybeSingle();
-
-    const config = integration?.config as Record<string, string> | null;
-    const WABA_ID = config?.waba_id || Deno.env.get("WABA_ID");
-
-    if (!WHATSAPP_TOKEN || !WABA_ID) {
-      return new Response(
-        JSON.stringify({ error: "API do WhatsApp não configurada. Adicione WHATSAPP_TOKEN e WABA_ID." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const { template_name } = await req.json();
+    const { template_name, phone_number_id } = await req.json();
     if (!template_name) {
       return new Response(
         JSON.stringify({ error: "template_name é obrigatório" }),
@@ -72,12 +53,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Cada número é um mundo: token+waba_id vêm do NÚMERO informado (validado no
+    // tenant do chamador); sem número, do mundo legado (`whatsapp_config`).
+    // Sem fallback de env: credencial de um número não pode submeter na WABA de outro.
+    let escopo;
+    if (phone_number_id) {
+      const num = await numeroPorPhoneNumberId(supabase, String(phone_number_id), callerTenantId);
+      if (!num) {
+        return new Response(
+          JSON.stringify({ error: "phone_number_id não pertence a este cliente." }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      escopo = await escopoDoNumero(supabase, num.id, callerTenantId);
+    } else {
+      escopo = await escopoLegado(supabase, callerTenantId);
+    }
+
+    const WHATSAPP_TOKEN = escopo?.token || null;
+    const WABA_ID = escopo?.wabaId || null;
+
+    if (!WHATSAPP_TOKEN || !WABA_ID) {
+      return new Response(
+        JSON.stringify({ error: "WhatsApp não configurado para este número (token/waba_id ausentes)." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let tplQuery = supabase
       .from("crm_whatsapp_templates")
       .select("*")
-      .eq("name", template_name);
+      .eq("name", template_name)
+      .eq("waba_id", WABA_ID);
     if (callerTenantId) tplQuery = tplQuery.eq("tenant_id", callerTenantId);
-    const { data: template, error: fetchErr } = await tplQuery.maybeSingle();
+    const { data: tplRows, error: fetchErr } = await tplQuery
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const template = (tplRows || [])[0] || null;
 
 
     if (fetchErr || !template) {

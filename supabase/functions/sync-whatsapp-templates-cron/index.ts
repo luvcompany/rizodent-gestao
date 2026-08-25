@@ -11,6 +11,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { numeroPorPhoneNumberId, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,6 +61,16 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
     let synced = 0;
 
+    // Mundo desta integração: `whatsapp_config` = mundo legado (whatsapp_number_id
+    // NULL); qualquer outra chave = número próprio cadastrado em whatsapp_numbers.
+    // Sem isso, sincronizar a WABA A apagava/renomeava os templates da WABA B.
+    const phoneNumberIdIntg: string = cfg?.phone_number_id || "";
+    const numeroDaIntg = intg.key === "whatsapp_config"
+      ? null
+      : await numeroPorPhoneNumberId(supabase, phoneNumberIdIntg, intg.tenant_id);
+    const whatsappNumberId = numeroDaIntg?.id ?? null;
+    const ownerRole = whatsappNumberId ? await papelDonoDoNumero(supabase, whatsappNumberId) : null;
+
     try {
       // Busca todos os templates da Meta (com paginação)
       let allMetaTemplates: any[] = [];
@@ -100,6 +111,8 @@ Deno.serve(async (req) => {
           body_text: bodyComp?.text || null,
           footer_text: footerComp?.text || null,
           buttons: buttonsComp?.buttons || null,
+          waba_id: wabaId,
+          whatsapp_number_id: whatsappNumberId,
           updated_at: new Date().toISOString(),
         };
 
@@ -109,6 +122,7 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("meta_template_id", t.id)
           .eq("tenant_id", intg.tenant_id)
+          .eq("waba_id", wabaId)
           .limit(1);
         const existing = existingRows && existingRows[0];
 
@@ -139,6 +153,7 @@ Deno.serve(async (req) => {
           await supabase.from("crm_whatsapp_templates").insert({
             ...payload,
             tenant_id: intg.tenant_id,
+            owner_role: ownerRole,
             created_at: new Date().toISOString(),
           });
         }
@@ -149,10 +164,14 @@ Deno.serve(async (req) => {
       // (só remove os que têm meta_template_id preenchido)
       const metaIds = allMetaTemplates.map((t: any) => t.id).filter(Boolean);
       if (metaIds.length > 0) {
+        // DELETE escopado à WABA da vez: antes era por tenant inteiro, então o
+        // sync da WABA A apagava todos os templates da WABA B (que obviamente
+        // não estão na lista da Meta da WABA A).
         const { data: localWithMeta } = await supabase
           .from("crm_whatsapp_templates")
           .select("id, meta_template_id")
-          .eq("tenant_id", intg.tenant_id);
+          .eq("tenant_id", intg.tenant_id)
+          .eq("waba_id", wabaId);
 
         for (const local of (localWithMeta || [])) {
           if (local.meta_template_id && !metaIds.includes(local.meta_template_id)) {
@@ -160,7 +179,8 @@ Deno.serve(async (req) => {
               .from("crm_whatsapp_templates")
               .delete()
               .eq("id", local.id)
-              .eq("tenant_id", intg.tenant_id);
+              .eq("tenant_id", intg.tenant_id)
+              .eq("waba_id", wabaId);
           }
         }
       }

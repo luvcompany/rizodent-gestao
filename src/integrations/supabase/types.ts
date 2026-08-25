@@ -2695,6 +2695,8 @@ export type Database = {
           status: string
           tenant_id: string | null
           updated_at: string
+          waba_id: string | null
+          whatsapp_number_id: string | null
         }
         Insert: {
           body_text?: string | null
@@ -2714,6 +2716,8 @@ export type Database = {
           status?: string
           tenant_id?: string | null
           updated_at?: string
+          waba_id?: string | null
+          whatsapp_number_id?: string | null
         }
         Update: {
           body_text?: string | null
@@ -2733,6 +2737,8 @@ export type Database = {
           status?: string
           tenant_id?: string | null
           updated_at?: string
+          waba_id?: string | null
+          whatsapp_number_id?: string | null
         }
         Relationships: [
           {
@@ -2740,6 +2746,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_whatsapp_templates_whatsapp_number_id_fkey"
+            columns: ["whatsapp_number_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -5289,6 +5302,8 @@ export type Database = {
           status: string
           tenant_id: string | null
           updated_at: string
+          waba_id: string | null
+          whatsapp_number_id: string | null
         }
         SetofOptions: {
           from: "*"

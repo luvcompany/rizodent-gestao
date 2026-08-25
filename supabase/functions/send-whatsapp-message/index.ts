@@ -5,6 +5,7 @@ import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 // Teto de mídia aceito pela Meta (16 MB no maior tipo).
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
+import { escopoDoLead } from "../_shared/wabaEscopo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,15 +66,31 @@ const hasOfficialTemplatePlaceholders = (content: string | null | undefined) =>
 
 // Sempre escopado ao tenant do lead: nomes de template não são globais, então
 // buscar só por `name` podia devolver (e enviar) o template de outro tenant.
-async function resolveTemplateForSend(supabase: any, templateName: string, tenantId: string | null) {
-  const withTenant = (q: any) => (tenantId ? q.eq("tenant_id", tenantId) : q);
+async function resolveTemplateForSend(
+  supabase: any,
+  templateName: string,
+  tenantId: string | null,
+  wabaId: string | null,
+) {
+  // Escopo de WABA: o template TEM de existir na WABA do número por onde a
+  // mensagem vai sair. Template de outra WABA com o mesmo nome é outro template.
+  const withTenant = (q: any) => {
+    let out = tenantId ? q.eq("tenant_id", tenantId) : q;
+    if (wabaId) out = out.eq("waba_id", wabaId);
+    return out;
+  };
 
-  const { data: exactTemplate } = await withTenant(
+  // limit(1) determinístico: com duas WABAs o maybeSingle() estourava
+  // ("multiple rows") e o envio de template morria sem explicação.
+  const { data: exactRows } = await withTenant(
     supabase
       .from("crm_whatsapp_templates")
       .select(TEMPLATE_SELECT)
       .eq("name", templateName),
-  ).maybeSingle();
+  )
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  const exactTemplate = (exactRows || [])[0] || null;
 
   if (exactTemplate?.body_text && hasOfficialTemplatePlaceholders(exactTemplate.body_text)) {
     return exactTemplate;
@@ -295,8 +312,10 @@ Deno.serve(async (req) => {
     }
 
 
-    let whatsappToken = Deno.env.get("WHATSAPP_TOKEN") || "";
-    let phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+    // Credencial NUNCA vem de env: token e phone_number_id só valem quando saem
+    // JUNTOS da mesma config de integração (senão sai pelo número errado).
+    let whatsappToken = "";
+    let phoneNumberId = "";
 
     const { data: leadData } = await supabase
       .from("crm_leads")
@@ -404,9 +423,11 @@ Deno.serve(async (req) => {
           if (integration?.config) {
             const cfg = integration.config as any;
             const resolvedToken = cfg.access_token || cfg.token;
-            if (resolvedToken) whatsappToken = resolvedToken;
-            if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
-            resolvedCredentials = !!(whatsappToken && phoneNumberId);
+            if (resolvedToken && cfg.phone_number_id) {
+              whatsappToken = resolvedToken;
+              phoneNumberId = cfg.phone_number_id;
+              resolvedCredentials = true;
+            }
           }
         }
       }
@@ -433,6 +454,13 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    // WABA efetiva deste envio (para casar o template no mundo certo).
+    const escopoEnvio = await escopoDoLead(supabase, {
+      whatsapp_number_id: (leadData as any)?.whatsapp_number_id ?? null,
+      tenant_id: leadTenantId,
+    });
+    const wabaDoEnvio = escopoEnvio.wabaId;
 
     if (!resolvedCredentials || !whatsappToken || !phoneNumberId) {
       return new Response(JSON.stringify({
@@ -595,7 +623,7 @@ Deno.serve(async (req) => {
 
       if (template_name) {
         const [tplRow, tplLead, nextAppt] = await Promise.all([
-          resolveTemplateForSend(supabase, template_name, leadTenantId),
+          resolveTemplateForSend(supabase, template_name, leadTenantId, wabaDoEnvio),
           supabase
             .from("crm_leads")
             .select("name, phone, source, servico_interesse")
@@ -612,6 +640,15 @@ Deno.serve(async (req) => {
             .maybeSingle()
             .then(({ data }) => data),
         ]);
+
+        if (!tplRow) {
+          console.warn(`[send-whatsapp] template "${template_name}" inexistente na WABA ${wabaDoEnvio ?? "(legada)"} (lead ${lead_id})`);
+          return new Response(JSON.stringify({
+            error: "Template não existe na WABA deste número",
+            template_name,
+            waba_id: wabaDoEnvio,
+          }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
 
         if (tplRow) {
           resolvedTemplateName = tplRow.name;
