@@ -96,22 +96,24 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const [resultados, setResultados] = useState<Paciente[]>([]);
   const [buscando, setBuscando] = useState(false);
 
-  /** Um formulário só: dados do paciente + do primeiro pagamento. */
-  const vazio = useMemo(
-    () => ({
-      nome: "",
-      telefone: "",
-      cidade: SEM_CIDADE,
-      clinica_id: "",
-      valor: "",
-      data_pagamento: hojeNaClinica(),
-      tipo: "primeiro",
-      especialidade: "",
-      forma_pagamento: "",
-    }),
-    [],
-  );
-  const [form, setForm] = useState(vazio);
+  /**
+   * Um formulário só: dados do paciente + do primeiro pagamento.
+   * A data é calculada a cada abertura — o painel vive enquanto a aba do CRM
+   * estiver aberta, e quem deixa o sistema aberto de um dia para o outro
+   * pegaria a data de ontem já preenchida.
+   */
+  const formVazio = () => ({
+    nome: "",
+    telefone: "",
+    cidade: SEM_CIDADE,
+    clinica_id: "",
+    valor: "",
+    data_pagamento: hojeNaClinica(),
+    tipo: "primeiro",
+    especialidade: "",
+    forma_pagamento: "",
+  });
+  const [form, setForm] = useState(formVazio);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -175,7 +177,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     if (alvo) {
       const dele = pagamentos.filter((x) => x.paciente_id === alvo.id);
       setForm({
-        ...vazio,
+        ...formVazio(),
         nome: alvo.nome,
         telefone: alvo.telefone || "",
         cidade: alvo.cidade || SEM_CIDADE,
@@ -185,7 +187,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       });
     } else {
       setForm({
-        ...vazio,
+        ...formVazio(),
         nome: lead.name || "",
         telefone: semDDI(lead.phone),
         cidade: lead.cidade || SEM_CIDADE,
@@ -277,7 +279,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
     toast.success(valor > 0 ? "Paciente vinculado e pagamento lançado" : "Paciente vinculado");
     setFormAberto(false);
-    setForm(vazio);
+    setForm(formVazio());
     void carregar();
   };
 

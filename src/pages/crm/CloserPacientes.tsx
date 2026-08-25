@@ -204,8 +204,17 @@ export default function CloserPacientes() {
     void carregar();
   };
 
-  const apagarPagamento = async (id: string) => {
-    const { error } = await (supabase as any).from("closer_pagamentos").delete().eq("id", id);
+  /**
+   * Apagar é a única forma de corrigir um lançamento errado, então o botão
+   * fica no caminho de quem quer consertar — e não pode disparar num toque
+   * torto: confirma citando valor e data.
+   */
+  const apagarPagamento = async (pg: Pagamento) => {
+    const ok = window.confirm(
+      `Apagar o pagamento de ${brl(Number(pg.valor))} de ${dataBR(pg.data_pagamento)}?\n\nIsto não pode ser desfeito.`,
+    );
+    if (!ok) return;
+    const { error } = await (supabase as any).from("closer_pagamentos").delete().eq("id", pg.id);
     if (error) {
       toast.error(`Não foi possível apagar: ${error.message}`);
       return;
@@ -305,7 +314,7 @@ export default function CloserPacientes() {
                           <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
                           <button
                             type="button"
-                            onClick={() => apagarPagamento(pg.id)}
+                            onClick={() => apagarPagamento(pg)}
                             className="text-muted-foreground transition-colors hover:text-destructive"
                             aria-label="Remover pagamento"
                           >

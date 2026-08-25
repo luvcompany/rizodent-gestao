@@ -125,6 +125,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     if (!allowed) return <Navigate to="/crm/closer" replace />;
   }
 
+  // As telas de /crm/closer são o universo do closer: pacientes e faturamento
+  // dele, que por decisão do produto não se misturam com os da clínica. A RLS
+  // já devolve vazio para os demais perfis; aqui o acesso nem chega a abrir.
+  if (
+    location.pathname.startsWith("/crm/closer") &&
+    userRole !== "closer" &&
+    userRole !== "gerente" &&
+    userRole !== "superadmin"
+  ) {
+    return <Navigate to="/crm" replace />;
+  }
 
   return <>{children}</>;
 };
