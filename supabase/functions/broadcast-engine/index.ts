@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
+import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -53,6 +54,13 @@ Deno.serve(async (req) => {
     const template = (bc as any).crm_whatsapp_templates;
     if (!template) return new Response(JSON.stringify({ error: "Template not found" }), { status: 404, headers: corsHeaders });
 
+    // Mundo (número de WhatsApp) do funil da transmissão: destinatários de outro
+    // mundo não podem receber — sairiam pelo número errado.
+    const numeroDoMundo = (bc as any).filter_pipeline_id
+      ? await numeroDoFunil(supabase, (bc as any).filter_pipeline_id, (bc as any).tenant_id ?? null)
+      : null;
+    const checarMundo = !!(bc as any).filter_pipeline_id;
+
     // Process pending recipients in pages until none remain (or safety cap reached)
     let sentCount = 0;
     let failedCount = 0;
@@ -63,7 +71,7 @@ Deno.serve(async (req) => {
     while (processed < MAX_TOTAL) {
       const { data: recipients, error: fetchErr } = await supabase
         .from("crm_broadcast_recipients")
-        .select("id, lead_id, crm_leads(phone, name)")
+        .select("id, lead_id, crm_leads(phone, name, is_blocked, tenant_id, whatsapp_number_id)")
         .eq("broadcast_id", broadcast_id)
         .eq("status", "pending")
         .limit(PAGE);
@@ -80,14 +88,40 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        if (lead.is_blocked) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "lead bloqueado" }).eq("id", r.id);
+          failedCount++;
+          processed++;
+          continue;
+        }
+
+        if ((bc as any).tenant_id && lead.tenant_id && lead.tenant_id !== (bc as any).tenant_id) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "lead de outro cliente" }).eq("id", r.id);
+          failedCount++;
+          processed++;
+          continue;
+        }
+
+        if (checarMundo && !mesmoMundo(lead.whatsapp_number_id, numeroDoMundo)) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "lead de outro número de WhatsApp" }).eq("id", r.id);
+          failedCount++;
+          processed++;
+          continue;
+        }
+
         try {
           const resp = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+            // Formato esperado pelo send-whatsapp-message: `to`, `type` e
+            // `template_language` (antes ia `language`, sem `type`/`to`, e o envio
+            // era recusado/tratado como texto).
             body: JSON.stringify({
               lead_id: r.lead_id,
+              to: lead.phone,
+              type: "template",
               template_name: template.name,
-              language: template.language || "pt_BR",
+              template_language: template.language || "pt_BR",
             }),
           });
 
