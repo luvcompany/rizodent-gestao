@@ -507,7 +507,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           .select("id, display_name, phone_e164, is_active")
           .eq("tenant_id", tenant.id)
           .eq("is_active", true),
-        supabase
+        (supabase as any)
           .from("whatsapp_config")
           .select("id")
           .eq("tenant_id", tenant.id)
