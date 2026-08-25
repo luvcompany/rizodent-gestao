@@ -64,11 +64,15 @@ const TaskReminderWatcher = () => {
 
     // Check appointments
     const todayStr = now.toISOString().slice(0, 10);
+    // Só alerta agendamentos de leads do PRÓPRIO usuário (mesmo critério das
+    // tarefas). O !inner garante que o filtro no lead realmente restringe as
+    // linhas — e a RLS do lead já limita ao mundo do número acessível.
     const { data: appointments } = await supabase
       .from("crm_appointments")
-      .select("id, scheduled_date, scheduled_time, lead_id, crm_leads(name)")
+      .select("id, scheduled_date, scheduled_time, lead_id, crm_leads!inner(name, assigned_to)")
       .eq("status", "confirmed")
       .eq("scheduled_date", todayStr)
+      .eq("crm_leads.assigned_to", user.id)
       .limit(20);
 
     // Process tasks
