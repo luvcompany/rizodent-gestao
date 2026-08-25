@@ -1104,7 +1104,11 @@ async function sendAction(
   config: Record<string, any>,
   leadId: string,
   phone: string | null,
+  // Automação de origem: gravada na execução do bot para que o gate de
+  // time_window avalie SÓ ela (e não qualquer automação com o mesmo bot).
+  automationId?: string | null,
 ) {
+
   try {
     // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
     // precisa pertencer a ele. Ids de outro tenant => ação pulada com log.
