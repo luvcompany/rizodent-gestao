@@ -1168,9 +1168,11 @@ Deno.serve(async (req) => {
                 .order("created_at", { ascending: true }).limit(1);
               lead = mesmoNumero?.[0] || null;
             } else {
+              // Número principal (sem linha em whatsapp_numbers): só o mundo
+              // legado. Nunca casa lead carimbado de outro número.
               const { data: leadRows } = await supabase
                 .from("crm_leads").select(LEAD_COLS)
-                .eq("tenant_id", tenantId).eq("phone", from)
+                .eq("tenant_id", tenantId).eq("phone", from).is("whatsapp_number_id", null)
                 .order("created_at", { ascending: true }).limit(1);
               lead = leadRows?.[0] || null;
             }
@@ -1186,13 +1188,16 @@ Deno.serve(async (req) => {
 
               let pipelineId: string | null = null;
               if (matchedIntegration) {
-                const { data: funnelChannel } = await supabase
+                // Determinístico: se houver mais de uma linha (legado), usa a mais recente.
+                const { data: funnelChannels } = await supabase
                   .from("funnel_channels")
-                  .select("pipeline_id")
+                  .select("pipeline_id, created_at")
                   .eq("tenant_id", tenantId)
                   .eq("channel_type", "whatsapp")
                   .eq("channel_config->>integration_key", matchedIntegration.key)
-                  .maybeSingle();
+                  .order("created_at", { ascending: false })
+                  .limit(1);
+                const funnelChannel = funnelChannels?.[0];
                 if (funnelChannel) {
                   pipelineId = funnelChannel.pipeline_id;
                   console.log(`[WEBHOOK] Pipeline do funnel_channels: ${pipelineId}`);
@@ -1200,14 +1205,19 @@ Deno.serve(async (req) => {
               }
 
               if (!pipelineId) {
-                const { data: fallbackPipeline } = await supabase
+                console.warn(
+                  `[WEBHOOK] lead sem canal de funil para o número ${phoneNumberId} (${matchedIntegration?.key}) — usando funil padrão do tenant.`,
+                );
+                const { data: fallbackPipelines } = await supabase
                   .from("crm_pipelines")
-                  .select("id")
+                  .select("id, is_default, created_at")
                   .eq("tenant_id", tenantId)
-                  .limit(1)
-                  .maybeSingle();
-                pipelineId = fallbackPipeline?.id || null;
+                  .order("is_default", { ascending: false })
+                  .order("created_at", { ascending: true })
+                  .limit(1);
+                pipelineId = fallbackPipelines?.[0]?.id || null;
               }
+
 
               if (pipelineId) {
                 const { data: stage } = await supabase
