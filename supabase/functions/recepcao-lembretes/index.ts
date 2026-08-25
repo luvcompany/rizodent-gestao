@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
         for (const j of janelas) {
           const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
             input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: j.ini, dataFim: j.fim },
-          });
+          }, u.tenant_id);
           run.lidos += rows.length;
           for (const p of rows) {
             const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
@@ -433,7 +433,7 @@ Deno.serve(async (req) => {
 
       const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
         input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: alvo, dataFim: alvo },
-      });
+      }, u.tenant_id);
       run.lidos = rows.length;
 
       // Filtra por status (fail-closed) e normaliza telefone
