@@ -58,6 +58,7 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.462.0",
+    "mediabunny": "^1.55.2",
     "next-themes": "^0.3.0",
     "opus-media-recorder": "^0.8.0",
     "react": "^18.3.1",

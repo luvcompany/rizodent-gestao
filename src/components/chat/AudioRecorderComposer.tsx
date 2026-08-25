@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { NATIVE_OPUS_MIME, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
 import { Loader2, Mic, Pause, Play, Send, Square, X } from "lucide-react";
 
 type AudioRecorderComposerProps = {
@@ -10,6 +11,13 @@ type AudioRecorderComposerProps = {
   showMicButton?: boolean;
   autoStart?: boolean;
   preferredMimeTypes?: string[];
+  /**
+   * Grava no formato nativo do navegador (WebM/Opus, instantâneo) e reembala
+   * em Ogg/Opus depois de parar, em vez de esperar o encoder WASM carregar.
+   * Em uso apenas pelo perfil closer enquanto está em avaliação; qualquer
+   * falha cai automaticamente no caminho padrão.
+   */
+  gravacaoNativa?: boolean;
 };
 
 type RecorderMode = "idle" | "preparing" | "recording" | "preview" | "sending";
@@ -20,12 +28,34 @@ const LIVE_SAMPLE_MS = 60;
 const MAX_WAVEFORM_SAMPLES = 300;
 
 let opusModulePromise: Promise<any> | null = null;
+let opusWarmStarted = false;
 
 function preloadOpusRecorder() {
   if (!opusModulePromise) {
     opusModulePromise = import("opus-media-recorder").then((m) => m.default).catch(() => null);
   }
   return opusModulePromise;
+}
+
+const supportsMime = (mime: string) =>
+  typeof MediaRecorder !== "undefined" &&
+  typeof MediaRecorder.isTypeSupported === "function" &&
+  MediaRecorder.isTypeSupported(mime);
+
+/**
+ * Baixa o polyfill (chunk JS + worker + 225 KB de WASM) ANTES do clique.
+ * Sem isso o download só começa dentro de startRecording e o encoder leva
+ * segundos para ligar o microfone — tempo em que nada é capturado, embora as
+ * barras de nível já reajam à voz. Idempotente e silencioso.
+ */
+function warmOpusRecorder() {
+  if (opusWarmStarted) return;
+  opusWarmStarted = true;
+  void preloadOpusRecorder();
+  try {
+    void fetch("/encoderWorker.umd.js", { cache: "force-cache" }).catch(() => undefined);
+    void fetch("/OggOpusEncoder.wasm", { cache: "force-cache" }).catch(() => undefined);
+  } catch { /* noop */ }
 }
 
 const createEmptyBars = () => Array.from({ length: BAR_COUNT }, () => MIN_LEVEL);
@@ -56,6 +86,7 @@ export default function AudioRecorderComposer({
   showMicButton = true,
   autoStart = false,
   preferredMimeTypes,
+  gravacaoNativa = false,
 }: AudioRecorderComposerProps) {
   const [mode, setMode] = useState<RecorderMode>("idle");
   const [recordingPaused, setRecordingPaused] = useState(false);
@@ -76,6 +107,12 @@ export default function AudioRecorderComposer({
   const sampleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement>(null);
   const waveformHistoryRef = useRef<number[]>([]);
+  // Gravação nativa: o blob sai em WebM e precisa virar Ogg antes de ir ao chat.
+  const precisaRemuxRef = useRef(false);
+  // Só é verdade quando o encoder está de fato recebendo áudio. No polyfill o
+  // `recorder.state` vira "recording" antes disso, e o medidor de nível passava
+  // a reagir à voz enquanto nada era gravado.
+  const captureStartedRef = useRef(false);
   const currentDraftUrlRef = useRef<string | null>(null);
   const discardRecordingRef = useRef(false);
   const pausedRef = useRef(false);
@@ -122,6 +159,8 @@ export default function AudioRecorderComposer({
     audioChunksRef.current = [];
     waveformHistoryRef.current = [];
     discardRecordingRef.current = false;
+    captureStartedRef.current = false;
+    precisaRemuxRef.current = false;
     pausedRef.current = false;
 
     setRecordingPaused(false);
@@ -166,15 +205,31 @@ export default function AudioRecorderComposer({
     }, 1000);
   }, [clearTimer]);
 
-  const finalizeDraft = useCallback(() => {
+  const finalizeDraft = useCallback(async () => {
     if (discardRecordingRef.current) {
       discardRecordingRef.current = false;
+      precisaRemuxRef.current = false;
       resetToIdle();
       return;
     }
 
     const mimeType = mediaRecorderRef.current?.mimeType || "audio/ogg;codecs=opus";
-    const blob = new Blob(audioChunksRef.current, { type: mimeType });
+    let blob = new Blob(audioChunksRef.current, { type: mimeType });
+
+    // Gravação nativa: troca a embalagem WebM -> Ogg mantendo os pacotes Opus.
+    // A Meta só entrega como MENSAGEM DE VOZ o que chega em Ogg/Opus; WebM ela
+    // nem aceita. Se a reembalagem falhar, descartamos a gravação em vez de
+    // enviar um arquivo que o paciente não conseguiria ouvir.
+    if (precisaRemuxRef.current) {
+      precisaRemuxRef.current = false;
+      const ogg = await remuxWebmParaOgg(blob);
+      if (!ogg) {
+        toast.error("Não foi possível preparar o áudio. Grave novamente.");
+        resetToIdle();
+        return;
+      }
+      blob = ogg;
+    }
 
     if (blob.size < 100) {
       toast.error("Gravação muito curta ou vazia.");
@@ -196,9 +251,35 @@ export default function AudioRecorderComposer({
     setMode("preview");
   }, [resetToIdle, setManagedDraftUrl]);
 
+  /**
+   * Deixa pronto, antes do clique, o que a gravação vai precisar: o remuxer no
+   * caminho nativo (JS puro, alguns KB) ou o codificador WASM no caminho padrão.
+   * Não faz nada onde o navegador grava Ogg direto (Firefox) nem no Instagram,
+   * que já usa formato nativo.
+   */
+  const aquecerCodificador = useCallback(() => {
+    if (preferredMimeTypes?.some(supportsMime)) return;
+    if (supportsMime("audio/ogg;codecs=opus")) return;
+    if (gravacaoNativa && podeGravarOpusNativo()) {
+      void preloadRemuxer();
+      return;
+    }
+    warmOpusRecorder();
+  }, [gravacaoNativa, preferredMimeTypes]);
+
+  useEffect(() => {
+    if (disabled) return;
+    const t = setTimeout(aquecerCodificador, 400);
+    return () => clearTimeout(t);
+  }, [disabled, aquecerCodificador]);
+
   const startRecording = useCallback(async () => {
     if (disabled || mode !== "idle") return;
 
+    // Dispara o carregamento do codificador em PARALELO com o microfone. Antes
+    // as duas esperas eram em série: só depois de o microfone abrir é que os
+    // ~270 KB começavam a baixar.
+    aquecerCodificador();
     setMode("preparing");
     setRecordingTime(0);
     setRecordingPaused(false);
@@ -207,6 +288,8 @@ export default function AudioRecorderComposer({
     waveformHistoryRef.current = [];
     audioChunksRef.current = [];
     discardRecordingRef.current = false;
+    captureStartedRef.current = false;
+    precisaRemuxRef.current = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -226,8 +309,17 @@ export default function AudioRecorderComposer({
         typeof MediaRecorder.isTypeSupported === "function" &&
         MediaRecorder.isTypeSupported("audio/ogg;codecs=opus");
 
+      // Caminho nativo (em avaliação no perfil closer): o navegador já grava em
+      // Opus, só que em WebM. Gravar assim começa na hora — o container vira Ogg
+      // depois de parar, em finalizeDraft. Perde-se nada de qualidade: os
+      // pacotes são copiados, não recodificados.
+      const usarNativo = gravacaoNativa && !preferredNativeMime && !nativeOgg && podeGravarOpusNativo();
+
       if (preferredNativeMime) {
         recorder = new MediaRecorder(stream, { mimeType: preferredNativeMime });
+      } else if (usarNativo) {
+        recorder = new MediaRecorder(stream, { mimeType: NATIVE_OPUS_MIME });
+        precisaRemuxRef.current = true;
       } else if (nativeOgg) {
         recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
@@ -252,6 +344,7 @@ export default function AudioRecorderComposer({
       recorder.onerror = () => { toast.error("Erro ao gravar áudio"); resetToIdle(); };
       recorder.onstart = () => {
         if (discardRecordingRef.current) return;
+        captureStartedRef.current = true;
         startMeter();
         setMode("recording");
         startRecordingTimer();
@@ -284,7 +377,10 @@ export default function AudioRecorderComposer({
           source.connect(analyser);
           audioContextRef.current = ctx;
           analyserRef.current = analyser;
-          if (recorder.state === "recording" && !discardRecordingRef.current) {
+          // captureStartedRef, e não recorder.state: no polyfill o state já é
+          // "recording" antes de o microfone ser ligado ao encoder, e as barras
+          // reagiam à voz enquanto nada estava sendo gravado.
+          if (captureStartedRef.current && !discardRecordingRef.current) {
             startMeter();
           }
         } catch {
@@ -401,6 +497,8 @@ export default function AudioRecorderComposer({
     return (
       <button
         onClick={startRecording}
+        onPointerEnter={aquecerCodificador}
+        onFocus={aquecerCodificador}
         className="p-2 text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         title="Gravar áudio"
@@ -483,8 +581,8 @@ export default function AudioRecorderComposer({
             mode === "preparing" || recordingPaused ? "bg-muted-foreground" : "bg-destructive animate-pulse"
           }`}
         />
-        <span className="text-xs font-medium tabular-nums text-foreground">
-          {formatTime(recordingTime)}
+        <span className="min-w-[4.5rem] text-xs font-medium tabular-nums text-foreground">
+          {mode === "preparing" ? "Preparando…" : formatTime(recordingTime)}
         </span>
       </div>
 

@@ -98,7 +98,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return body;
   };
 
-  const { profile, user } = useAuth();
+  const { profile, user, userRole } = useAuth();
+  // Gravação nativa em avaliação: só o perfil closer. Se o papel ainda não
+  // resolveu, fica false — ninguém entra no caminho novo por acidente.
+  const gravacaoNativaDeAudio = userRole === "closer";
   const { tenant } = useTenant();
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
@@ -914,6 +917,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           <AudioRecorderComposer
             disabled={optimizing || uploading}
             onSendAudio={sendRecordedAudio}
+            gravacaoNativa={gravacaoNativaDeAudio && !isInstagram}
             onModeChange={setRecorderActive}
             showMicButton={!newMessage.trim() && !attachedFile}
             preferredMimeTypes={isInstagram ? ["audio/mp4", "audio/mp4;codecs=mp4a.40.2", "audio/wav"] : undefined}
