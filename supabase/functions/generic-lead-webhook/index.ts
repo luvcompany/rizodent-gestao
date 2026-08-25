@@ -106,8 +106,14 @@ Deno.serve(async (req) => {
 
 
     // Per-tenant duplicate check (avoids cross-tenant collisions on the same phone).
+    // Cada número é um mundo: lead de origem externa (formulário/anúncio) pertence
+    // ao MUNDO LEGADO (whatsapp_number_id NULL), então a dedup só olha esse mundo —
+    // nunca reaproveita/atualiza lead carimbado de outro número.
+    // Ponto de extensão: se o payload passar a aceitar um identificador de número,
+    // resolver o whatsapp_number_id aqui e trocar o `.is(...)` por `.eq(...)`.
     const { data: existing } = await supabase
-      .from("crm_leads").select("id").eq("phone", normalizedPhone).eq("tenant_id", tenantId).limit(1);
+      .from("crm_leads").select("id").eq("phone", normalizedPhone).eq("tenant_id", tenantId)
+      .is("whatsapp_number_id", null).limit(1);
     if (existing && existing.length > 0) {
       return new Response(JSON.stringify({ status: "duplicate", lead_id: existing[0].id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -146,6 +152,7 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("tenant_id", tenantId)
         .eq("phone", normalizedPhone)
+        .is("whatsapp_number_id", null)
         .limit(1)
         .maybeSingle();
       if (existing?.id) {
@@ -164,6 +171,8 @@ Deno.serve(async (req) => {
       source: source || "webhook",
       assigned_to: assignedTo,
       tenant_id: tenantId,
+      // Mundo legado (número principal) — explícito para não herdar default algum.
+      whatsapp_number_id: null,
     }).select("id").single();
 
     if (error) {
