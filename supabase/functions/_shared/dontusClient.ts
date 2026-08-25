@@ -29,6 +29,38 @@ function randomVerifier(): string {
   return b64url(arr);
 }
 
+// ============ Credenciais POR TENANT ============
+// Cada cliente pode ter o SEU acesso ao Dontus (tabela dontus_credenciais).
+// Sem linha para o tenant, cai no comportamento LEGADO: estado em
+// dontus_sync_state (singleton) + secret DONTUS_TEAM_TOKEN — Rizodent segue
+// idêntica.
+
+type CredRow = { client_id: string | null; team_token: string | null; access_token: string | null; token_expires_at: string | null };
+
+async function credRow(admin: any, tenantId?: string | null): Promise<CredRow | null> {
+  if (!tenantId) return null;
+  const { data } = await admin
+    .from("dontus_credenciais")
+    .select("client_id, team_token, access_token, token_expires_at")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  return (data as CredRow) ?? null;
+}
+
+/** Token de equipe do tenant, com fallback para o secret global (legado). */
+export async function resolveTeamToken(admin: any, tenantId?: string | null): Promise<string> {
+  const row = await credRow(admin, tenantId);
+  if (row?.team_token) return row.team_token;
+  return Deno.env.get("DONTUS_TEAM_TOKEN") ?? "";
+}
+
+async function saveCred(admin: any, tenantId: string, patch: Record<string, unknown>) {
+  await admin.from("dontus_credenciais").upsert(
+    { tenant_id: tenantId, ...patch, updated_at: new Date().toISOString() },
+    { onConflict: "tenant_id" },
+  );
+}
+
 async function ensureClientId(admin: any): Promise<string> {
   const { data } = await admin.from("dontus_sync_state").select("client_id").eq("id", "singleton").maybeSingle();
   if (data?.client_id) return data.client_id;
@@ -109,7 +141,44 @@ async function performAuthorize(clientId: string, teamToken: string): Promise<st
   return tj.access_token;
 }
 
-export async function getAccessToken(admin: any, teamToken: string, forceRefresh = false): Promise<string> {
+export async function getAccessToken(
+  admin: any,
+  teamToken: string,
+  forceRefresh = false,
+  tenantId?: string | null,
+): Promise<string> {
+  // Caminho POR TENANT: credenciais e cache de token na própria linha.
+  const row = await credRow(admin, tenantId);
+  if (tenantId && row) {
+    if (!forceRefresh && row.access_token && row.token_expires_at) {
+      const exp = new Date(row.token_expires_at).getTime();
+      if (exp - Date.now() > 24 * 3600 * 1000) return row.access_token;
+    }
+    let clientId = row.client_id ?? "";
+    if (!clientId) {
+      const res = await fetch(`${DONTUS_BASE}/oauth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: [REDIRECT_URI],
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code"],
+          response_types: ["code"],
+          client_name: "CRClin Sync",
+        }),
+      });
+      if (!res.ok) throw new Error(`oauth/register failed: ${res.status} ${await res.text()}`);
+      clientId = (await res.json()).client_id;
+      await saveCred(admin, tenantId, { client_id: clientId });
+    }
+    const token = await performAuthorize(clientId, row.team_token || teamToken);
+    await saveCred(admin, tenantId, {
+      access_token: token,
+      token_expires_at: new Date(Date.now() + 29 * 24 * 3600 * 1000).toISOString(),
+    });
+    return token;
+  }
+
   if (!forceRefresh) {
     const { data } = await admin.from("dontus_sync_state").select("access_token, token_expires_at").eq("id", "singleton").maybeSingle();
     if (data?.access_token && data?.token_expires_at) {
@@ -153,8 +222,14 @@ async function mcpCall(accessToken: string, method: string, params: any): Promis
   return JSON.parse(jsonStr);
 }
 
-export async function mcpToolCall(admin: any, teamToken: string, name: string, args: any): Promise<any[]> {
-  let token = await getAccessToken(admin, teamToken);
+export async function mcpToolCall(
+  admin: any,
+  teamToken: string,
+  name: string,
+  args: any,
+  tenantId?: string | null,
+): Promise<any[]> {
+  let token = await getAccessToken(admin, teamToken, false, tenantId);
   let attempt = 0;
   while (attempt < 2) {
     try {
@@ -200,7 +275,7 @@ export async function mcpToolCall(admin: any, teamToken: string, name: string, a
       return [];
     } catch (e: any) {
       if (e?.code === 401 && attempt === 0) {
-        token = await getAccessToken(admin, teamToken, true);
+        token = await getAccessToken(admin, teamToken, true, tenantId);
         attempt++;
         continue;
       }

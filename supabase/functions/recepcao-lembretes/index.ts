@@ -17,7 +17,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
-import { mcpToolCall } from "../_shared/dontusClient.ts";
+import { mcpToolCall, resolveTeamToken } from "../_shared/dontusClient.ts";
 import { normalizeBrPhone, primeiroNome } from "../_shared/phoneBR.ts";
 import { localParts } from "../_shared/tz.ts";
 
@@ -203,10 +203,20 @@ Deno.serve(async (req) => {
     return json({ error: "kind inválido (vespera|duas_horas|aniversario|espelho)" }, 400);
   }
 
-  const teamToken = Deno.env.get("DONTUS_TEAM_TOKEN") || "";
-  if (!teamToken) return json({ error: "DONTUS_TEAM_TOKEN ausente" }, 500);
+  // MULTI-CLIENTE: credencial do Dontus resolvida por TENANT da unidade
+  // (dontus_credenciais), com fallback para o secret global (Rizodent).
+  const tokenPorTenant = new Map<string, string>();
+  async function teamTokenDoTenant(tenantId: string): Promise<string> {
+    const cache = tokenPorTenant.get(tenantId);
+    if (cache !== undefined) return cache;
+    const t = await resolveTeamToken(admin, tenantId);
+    tokenPorTenant.set(tenantId, t);
+    return t;
+  }
 
+  const tenantFiltro = body?.tenant_id ? String(body.tenant_id) : null;
   let q = admin.from("dontus_unidades").select("*").eq("ativo", true);
+  if (tenantFiltro) q = q.eq("tenant_id", tenantFiltro);
   if (unidadesFiltro?.length) q = q.in("id_clinica", unidadesFiltro);
   const { data: unidades, error: uErr } = await q;
   if (uErr) return json({ error: uErr.message }, 500);
@@ -224,6 +234,13 @@ Deno.serve(async (req) => {
     };
 
     try {
+      const teamToken = await teamTokenDoTenant(u.tenant_id);
+      if (!teamToken) {
+        run.error_message = "clínica sem credencial do Dontus (team token ausente)";
+        resultados.push({ unidade: u.nome, pulado: run.error_message });
+        if (!dryRun) { try { await admin.from("dontus_lembretes_runs").insert(run); } catch { /* log best-effort */ } }
+        continue;
+      }
       const hoje = hojeLocal(u.timezone);
       const agora = Date.now();
 
@@ -279,7 +296,7 @@ Deno.serve(async (req) => {
         for (const j of janelas) {
           const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
             input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: j.ini, dataFim: j.fim },
-          });
+          }, u.tenant_id);
           run.lidos += rows.length;
           for (const p of rows) {
             const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
@@ -302,7 +319,7 @@ Deno.serve(async (req) => {
           const ini = addDays(fim, -29) < limiteAntigo ? limiteAntigo : addDays(fim, -29);
           const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_relatorio_pacientes", {
             input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: ini, dataFim: fim },
-          });
+          }, u.tenant_id);
           run.lidos += rows.length;
           for (const p of rows) {
             const { phone, motivo } = normalizeBrPhone(p?.celular ?? p?.telefone, u.ddd_padrao);
@@ -416,7 +433,7 @@ Deno.serve(async (req) => {
 
       const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
         input: { contexto: { idDontus: u.id_dontus, idClinica: u.id_clinica }, dataInicio: alvo, dataFim: alvo },
-      });
+      }, u.tenant_id);
       run.lidos = rows.length;
 
       // Filtra por status (fail-closed) e normaliza telefone

@@ -18,6 +18,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import EmojiPickerButton from "@/components/chat/EmojiPickerButton";
+import { useTenant } from "@/contexts/TenantContext";
 
 type IgComment = {
   id: string;
@@ -47,9 +48,12 @@ type Thread = {
   unread: number;
 };
 
-const INSTAGRAM_PIPELINE_ID = "c2d3e4f5-0001-4000-8000-000000000002";
 
 export default function InstagramComments() {
+  const { tenant } = useTenant();
+  // Funil do Instagram resolvido pelo tenant corrente (nunca UUID fixo:
+  // com multi-cliente o UUID da Rizodent criaria lead no funil errado).
+  const [instagramPipelineId, setInstagramPipelineId] = useState<string | null>(null);
   const [comments, setComments] = useState<IgComment[]>([]);
   const [accountsMap, setAccountsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -80,6 +84,17 @@ export default function InstagramComments() {
     setComments((msgs as IgComment[]) ?? []);
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      let q = supabase.from("crm_pipelines").select("id").eq("is_instagram", true);
+      if (tenant?.id) q = q.eq("tenant_id", tenant.id);
+      const { data } = await q.limit(1).maybeSingle();
+      if (ativo) setInstagramPipelineId((data as any)?.id ?? null);
+    })();
+    return () => { ativo = false; };
+  }, [tenant?.id]);
 
   useEffect(() => {
     loadAll();
@@ -213,6 +228,17 @@ export default function InstagramComments() {
         if (!selected.sender_id || !selected.instagram_account_id) {
           throw new Error("Dados do remetente ausentes");
         }
+        // Funil do Instagram do tenant corrente (state ou busca sob demanda).
+        let igPipelineId = instagramPipelineId;
+        if (!igPipelineId) {
+          let q = supabase.from("crm_pipelines").select("id").eq("is_instagram", true);
+          if (tenant?.id) q = q.eq("tenant_id", tenant.id);
+          const { data: igPipe } = await q.limit(1).maybeSingle();
+          igPipelineId = (igPipe as any)?.id ?? null;
+          if (igPipelineId) setInstagramPipelineId(igPipelineId);
+        }
+        if (!igPipelineId) throw new Error("Funil do Instagram não configurado para esta clínica");
+
         // ensure lead exists
         let leadId: string | null = null;
         const { data: existing } = await supabase
@@ -226,7 +252,7 @@ export default function InstagramComments() {
           const { data: firstStage } = await supabase
             .from("crm_stages")
             .select("id")
-            .eq("pipeline_id", INSTAGRAM_PIPELINE_ID)
+            .eq("pipeline_id", igPipelineId)
             .order("position", { ascending: true })
             .limit(1)
             .maybeSingle();
@@ -238,7 +264,7 @@ export default function InstagramComments() {
             .from("crm_leads")
             .insert({
               name: displayName,
-              pipeline_id: INSTAGRAM_PIPELINE_ID,
+              pipeline_id: igPipelineId,
               stage_id: firstStage.id,
               source: accountName ? `Instagram (${accountName})` : "Instagram",
               instagram_user_id: selected.sender_id,

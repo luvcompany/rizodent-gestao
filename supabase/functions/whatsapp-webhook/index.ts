@@ -6,14 +6,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature-256",
 };
 
-const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET") ?? "";
+// MULTI-APP: cada cliente pode ter o SEU app Meta. Validar contra um único
+// secret global rejeitaria 100% dos eventos dos apps dos outros clientes.
+// Candidatos = envs atuais (Rizodent inalterada) + os app_secret gravados nas
+// integrations whatsapp_% (um por app/cliente).
+const ENV_APP_SECRETS = [
+  Deno.env.get("WHATSAPP_APP_SECRET"),
+  Deno.env.get("META_APP_SECRET"),
+  Deno.env.get("META_APP_SECRET_V2"),
+].filter((s): s is string => !!s && s.length > 0);
 
-async function verifyMetaSignature(rawBody: string, signature: string | null): Promise<boolean> {
-  if (!APP_SECRET) return false;
-  if (!signature || !signature.startsWith("sha256=")) return false;
-  const sigHex = signature.slice("sha256=".length);
+async function hmacMatches(rawBody: string, sigHex: string, appSecret: string): Promise<boolean> {
+  if (!appSecret) return false;
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", enc.encode(APP_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey("raw", enc.encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
   const computed = Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
   if (computed.length !== sigHex.length) return false;
@@ -21,6 +27,35 @@ async function verifyMetaSignature(rawBody: string, signature: string | null): P
   for (let i = 0; i < computed.length; i++) mismatch |= computed.charCodeAt(i) ^ sigHex.charCodeAt(i);
   return mismatch === 0;
 }
+
+async function verifyMetaSignature(supabase: any, rawBody: string, signature: string | null): Promise<boolean> {
+  if (!signature || !signature.startsWith("sha256=")) return false;
+  const sigHex = signature.slice("sha256=".length);
+
+  const candidates: string[] = [...ENV_APP_SECRETS];
+  try {
+    const { data: integs } = await supabase
+      .from("integrations")
+      .select("config")
+      .like("key", "whatsapp_%");
+    for (const it of integs || []) {
+      const s = (it?.config as any)?.app_secret;
+      if (typeof s === "string" && s.length > 0 && !candidates.includes(s)) candidates.push(s);
+    }
+  } catch (e) {
+    console.log("[WEBHOOK] Falha ao coletar app_secret das integrações:", (e as any)?.message);
+  }
+  if (candidates.length === 0) {
+    console.error("[WEBHOOK] Nenhum app_secret configurado — rejeitando");
+    return false;
+  }
+  for (const secret of candidates) {
+    if (await hmacMatches(rawBody, sigHex, secret)) return true;
+  }
+  console.warn(`[WEBHOOK] Assinatura inválida (testados ${candidates.length} secrets)`);
+  return false;
+}
+
 
 // ============ WhatsApp Business Calling API — event handler ============
 // COEXISTÊNCIA (field="smb_message_echoes"): espelho do que a atendente enviou
@@ -739,7 +774,7 @@ Deno.serve(async (req) => {
     try {
       const rawBody = await req.text();
       const signature = req.headers.get("x-hub-signature-256");
-      const valid = await verifyMetaSignature(rawBody, signature);
+      const valid = await verifyMetaSignature(supabase, rawBody, signature);
       if (!valid) {
         console.warn("[WEBHOOK] Invalid or missing x-hub-signature-256");
         return new Response("Forbidden", { status: 403, headers: corsHeaders });
@@ -959,26 +994,33 @@ Deno.serve(async (req) => {
 
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
-              // Coleta todos os tokens disponíveis (integração atual + outras integrações + env)
-              // Necessário porque nem todo token tem permissão `ads_read` para buscar dados da conta de anúncios.
+              // Coleta tokens do MESMO tenant (integração atual + outras do tenant).
+              // Necessário porque nem todo token tem permissão `ads_read`.
+              // NUNCA usa token global/env nem de outro tenant — isso vazaria
+              // credencial de um cliente para o tráfego de outro.
               const tokens: string[] = [];
               const primary = (matchedIntegration?.config as any)?.access_token;
               if (primary) tokens.push(primary);
               try {
-                const { data: integs } = await supabase
-                  .from("integrations")
-                  .select("config")
-                  .eq("key", "whatsapp")
-                  .eq("status", "connected");
-                if (integs) {
-                  for (const it of integs) {
-                    const t = (it.config as any)?.access_token;
-                    if (t && !tokens.includes(t)) tokens.push(t);
+                if (matchedIntegration?.tenant_id) {
+                  const { data: integs } = await supabase
+                    .from("integrations")
+                    .select("config")
+                    .eq("tenant_id", matchedIntegration.tenant_id)
+                    .eq("key", "whatsapp")
+                    .eq("status", "connected");
+                  if (integs) {
+                    for (const it of integs) {
+                      const t = (it.config as any)?.access_token;
+                      if (t && !tokens.includes(t)) tokens.push(t);
+                    }
                   }
                 }
               } catch (_) { /* skip */ }
-              const envTok = Deno.env.get("WHATSAPP_TOKEN") || "";
-              if (envTok && !tokens.includes(envTok)) tokens.push(envTok);
+              if (tokens.length === 0) {
+                console.log("[AD-ENRICHMENT] Tenant sem token com ads_read — enriquecimento vazio");
+              }
+
 
               for (const metaToken of tokens) {
                 try {
@@ -1143,9 +1185,17 @@ Deno.serve(async (req) => {
 
             // Download and store media if present
             let mediaUrl: string | null = null;
-            const whatsappToken = (matchedIntegration?.config as any)?.access_token || Deno.env.get("WHATSAPP_TOKEN") || "";
+            // Token SÓ da própria integração: baixar mídia com credencial de
+            // outro app/tenant é vazamento cross-cliente.
+            const whatsappToken = (matchedIntegration?.config as any)?.access_token
+              || (matchedIntegration?.config as any)?.token || "";
             if (mediaId && MEDIA_TYPES.has(msgType)) {
-              mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
+              if (!whatsappToken) {
+                console.warn(`[MEDIA] Integração ${matchedIntegration?.key} sem token próprio — download de ${mediaId} ignorado`);
+              } else {
+                mediaUrl = await downloadAndStoreMedia(mediaId, msgType, whatsappToken, supabase);
+              }
+
             }
 
             // Find or create lead by phone (scoped by tenant)
