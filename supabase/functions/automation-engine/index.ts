@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
@@ -709,7 +709,7 @@ Deno.serve(async (req) => {
 
         if (existing && existing.length > 0) continue;
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
         if (config.target_stage_id) {
           const tenantLead = await tenantDoLead(supabase, lead.id);
@@ -805,7 +805,7 @@ Deno.serve(async (req) => {
             });
           }
         } else {
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           await supabase.from("crm_automation_queue").insert({
             automation_id: auto.id,
             lead_id: lead.id,
@@ -963,7 +963,7 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id} (claim ok)`);
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           results.before_scheduled++;
         }
       }
@@ -1021,7 +1021,7 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
           results.before_scheduled++;
         }
       }
@@ -1304,7 +1304,7 @@ async function sendAction(
               console.log(
                 `[AUTOMATION-ENGINE] Chained trigger ${targetAuto.trigger_type} -> ${targetAuto.action_type} for lead ${leadId} on stage ${config.target_stage_id}`,
               );
-              await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone);
+              await sendAction(supabase, supabaseUrl, serviceKey, targetAuto.action_type, targetConfig, leadId, phone, targetAuto.id);
             }
           }
         }
@@ -1319,7 +1319,7 @@ async function sendAction(
           const subType = (sub?.action_type ?? sub?.type) as string | undefined;
           const subConfig = (sub?.action_config ?? sub?.config ?? {}) as Record<string, any>;
           if (!subType) continue;
-          await sendAction(supabase, supabaseUrl, serviceKey, subType, subConfig, leadId, phone);
+          await sendAction(supabase, supabaseUrl, serviceKey, subType, subConfig, leadId, phone, automationId ?? null);
         }
         break;
       }
