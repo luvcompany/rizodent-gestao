@@ -473,6 +473,13 @@ Deno.serve(async (req) => {
       if (!startNode) return json({ error: "No start node found" }, 400);
 
       // Create execution
+      // `automationId` (quando o start vem de uma automação) fica gravado para que
+      // o gate de time_window avalie SÓ a automação que iniciou esta execução.
+      const startedByAutomationId: string | null =
+        typeof body.automationId === "string" ? body.automationId
+        : typeof body.automation_id === "string" ? body.automation_id
+        : null;
+
       const { data: execution, error: execError } = await supabase
         .from("bot_executions")
         .insert({
@@ -482,9 +489,11 @@ Deno.serve(async (req) => {
           status: "active",
           current_node_id: startNode.id,
           variables: {},
+          started_by_automation_id: startedByAutomationId,
         })
         .select()
         .single();
+
 
       if (execError) return json({ error: execError.message }, 500);
 
