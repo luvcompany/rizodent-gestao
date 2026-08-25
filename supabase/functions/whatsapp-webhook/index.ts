@@ -1280,8 +1280,11 @@ Deno.serve(async (req) => {
                       .from("crm_leads")
                       .select("id, name, source")
                       .eq("tenant_id", tenantId).eq("phone", from);
-                    // Mesmo escopo da busca: por número quando o número é cadastrado.
-                    if (waNumberId) raceQuery = raceQuery.eq("whatsapp_number_id", waNumberId);
+                    // Mesmo escopo da busca: por número quando cadastrado, mundo
+                    // legado (NULL) quando é o número principal.
+                    raceQuery = waNumberId
+                      ? raceQuery.eq("whatsapp_number_id", waNumberId)
+                      : raceQuery.is("whatsapp_number_id", null);
                     const { data: existing } = await raceQuery
                       .order("created_at", { ascending: true }).limit(1).maybeSingle();
                     lead = existing as any;
