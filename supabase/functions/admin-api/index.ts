@@ -9,6 +9,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
+import { papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
 import {
   BAHIA_TZ,
   addDays,
@@ -1148,21 +1149,80 @@ async function reportClientesPagantes(tenantId: string, p: URLSearchParams) {
 }
 
 // ── WhatsApp templates (Meta) ────────────────────────────────────────────────
-async function resolveWhatsAppCreds(tenantId: string): Promise<{ token: string; wabaId: string; appId: string } | null> {
-  const { data: list } = await admin
+type CredsWaba = {
+  token: string;
+  wabaId: string;
+  appId: string;
+  numberId: string | null;
+  integrationKey: string;
+  /** true quando caiu na WABA legada por falta de parâmetro explícito */
+  legado: boolean;
+};
+
+/**
+ * Credenciais/WABA por NÚMERO (cada número é um mundo).
+ * - `phone_number_id` (ou `integration_key`) escolhe o número explicitamente,
+ *   sempre validado contra whatsapp_numbers/integrations DO TENANT;
+ * - sem parâmetro → integração legada `whatsapp_config` (número principal).
+ * Antes pegava "a primeira integração whatsapp_% conectada", ou seja, a WABA de
+ * um closer podia responder por chamadas do número principal e vice-versa.
+ */
+async function resolveWhatsAppCreds(
+  tenantId: string,
+  opts?: { phoneNumberId?: string | null; integrationKey?: string | null },
+): Promise<CredsWaba | { erro: string; status: number } | null> {
+  const pnid = (opts?.phoneNumberId || "").trim();
+  const key = (opts?.integrationKey || "").trim();
+
+  let integrationKey = "whatsapp_config";
+  let numberId: string | null = null;
+  let legado = true;
+
+  if (pnid || key) {
+    const alvoPnid = pnid || (key.startsWith("whatsapp_") ? key.slice("whatsapp_".length) : "");
+    if (key === "whatsapp_config" || !alvoPnid) {
+      integrationKey = "whatsapp_config";
+    } else {
+      const { data: nums } = await admin
+        .from("whatsapp_numbers")
+        .select("id, phone_number_id")
+        .eq("tenant_id", tenantId)
+        .eq("phone_number_id", alvoPnid)
+        .limit(1);
+      const num = (nums || [])[0];
+      if (!num) return { erro: "phone_number_id não pertence a este cliente.", status: 404 };
+      numberId = num.id;
+      integrationKey = `whatsapp_${num.phone_number_id}`;
+      legado = false;
+    }
+  }
+
+  const { data: intg } = await admin
     .from("integrations")
-    .select("config")
+    .select("config, status")
     .eq("tenant_id", tenantId)
-    .eq("status", "connected")
-    .like("key", "whatsapp_%")
-    .limit(1);
-  const cfg = (list && (list as any)[0]?.config) as any;
-  if (!cfg) return null;
+    .eq("key", integrationKey)
+    .maybeSingle();
+  const cfg = ((intg as any)?.config ?? {}) as any;
+  if ((intg as any)?.status === "disabled") return { erro: "Integração desativada.", status: 403 };
   const token = cfg.access_token || cfg.token;
   const wabaId = cfg.waba_id;
   const appId = cfg.app_id || Deno.env.get("META_APP_ID") || "";
   if (!token || !wabaId) return null;
-  return { token, wabaId, appId };
+  return { token, wabaId, appId, numberId, integrationKey, legado };
+}
+
+function credsErro(c: any): c is { erro: string; status: number } {
+  return !!c && typeof c === "object" && "erro" in c;
+}
+
+async function contarNumerosDoTenant(tenantId: string): Promise<number> {
+  const { count } = await admin
+    .from("whatsapp_numbers")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+  return count || 0;
 }
 
 async function adminUploadMediaToMeta(appId: string, token: string, bytes: Uint8Array, fileName: string, fileType: string): Promise<{ handle?: string; error?: string }> {
@@ -1235,19 +1295,36 @@ async function templatesUploadMedia(tenantId: string, body: any) {
   const { data: signed, error: signErr } = await admin.storage.from("chat-media").createSignedUrl(path, 60 * 60 * 24 * 30);
   if (signErr || !signed?.signedUrl) return json({ error: `falha ao assinar URL: ${signErr?.message || "?"}` }, 500);
   const mediaUrl = signed.signedUrl;
+  // Patch do header: por id, ou por (name, waba_id) — NUNCA por name solto,
+  // que atingiria o template homônimo de outra WABA do mesmo cliente.
   let patched = false;
-  if (body.template_name) {
-    const { error: updErr } = await admin.from("crm_whatsapp_templates")
+  if (body.template_id || body.template_name) {
+    let upd = admin.from("crm_whatsapp_templates")
       .update({ header_content: mediaUrl, updated_at: new Date().toISOString() })
-      .eq("name", body.template_name)
       .eq("tenant_id", tenantId);
+    if (body.template_id) {
+      upd = upd.eq("id", body.template_id);
+    } else {
+      const creds = await resolveWhatsAppCreds(tenantId, {
+        phoneNumberId: body?.phone_number_id ?? null,
+        integrationKey: body?.integration_key ?? null,
+      });
+      if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+      if (!creds?.wabaId) return json({ error: "Informe template_id: não foi possível resolver a WABA do template." }, 400);
+      upd = upd.eq("name", body.template_name).eq("waba_id", creds.wabaId);
+    }
+    const { error: updErr } = await upd;
     patched = !updErr;
   }
   return json({ media_url: mediaUrl, size: bytes!.length, mime, patched });
 }
 
 async function templatesCreate(tenantId: string, body: any) {
-  const creds = await resolveWhatsAppCreds(tenantId);
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: body?.phone_number_id ?? null,
+    integrationKey: body?.integration_key ?? null,
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
   if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
   const { name, language, category, header_type, header_content, body_text, footer_text, buttons } = body;
   if (!name || !body_text) return json({ error: "name e body_text são obrigatórios." }, 400);
@@ -1298,14 +1375,30 @@ async function templatesCreate(tenantId: string, body: any) {
     body_text, footer_text: footer_text || null,
     buttons: buttons && buttons.length > 0 ? buttons : null,
     meta_template_id: (metaData as any).id, status: (metaData as any).status || "PENDING",
+    waba_id: creds.wabaId, whatsapp_number_id: creds.numberId,
+    owner_role: creds.numberId ? await papelDonoDoNumero(admin, creds.numberId) : null,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   });
-  return json({ success: true, meta_template_id: (metaData as any).id, status: (metaData as any).status || "PENDING", waba_id: creds.wabaId });
+  return json({
+    success: true,
+    meta_template_id: (metaData as any).id,
+    status: (metaData as any).status || "PENDING",
+    waba_id: creds.wabaId,
+    integration_key: creds.integrationKey,
+    escopo: creds.legado ? "numero_principal_legado" : "numero_especifico",
+  });
 }
 
 async function templatesList(tenantId: string, p: URLSearchParams) {
-  const creds = await resolveWhatsAppCreds(tenantId);
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: p.get("phone_number_id"),
+    integrationKey: p.get("integration_key"),
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
   if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  // Sem parâmetro e com mais de um número no cliente: a lista é SÓ do número
+  // principal (WABA legada) — a resposta avisa para não induzir a erro.
+  const varios = creds.legado ? (await contarNumerosDoTenant(tenantId)) > 1 : false;
   const nameFilter = p.get("name");
   let out: any[] = [];
   let next: string | null = `https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates?fields=name,status,category,language,quality_score,rejected_reason,sub_category&limit=100`;
@@ -1326,7 +1419,16 @@ async function templatesList(tenantId: string, p: URLSearchParams) {
     next = (d as any).paging?.next || null;
   }
   if (nameFilter) out = out.filter((t) => t.name === nameFilter);
-  return json({ data: out, count: out.length });
+  return json({
+    data: out,
+    count: out.length,
+    waba_id: creds.wabaId,
+    integration_key: creds.integrationKey,
+    escopo: creds.legado ? "numero_principal_legado" : "numero_especifico",
+    aviso: varios
+      ? "Este cliente tem mais de um número de WhatsApp; sem phone_number_id a lista é apenas do número principal."
+      : undefined,
+  });
 }
 
 
@@ -1538,7 +1640,7 @@ Deno.serve(async (req) => {
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
           "GET /reports/ligacoes?from=YYYY-MM-DD&to=YYYY-MM-DD",
-          "GET /templates?name=  (lista status dos templates na Meta)",
+          "GET /templates?name=&phone_number_id=  (lista status dos templates na Meta; sem phone_number_id usa o número principal)",
           "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
           "POST /sync-comparecimento  { from, to, dryRun (default true) }  → resumo por unidade",
           "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",

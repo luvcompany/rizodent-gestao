@@ -759,9 +759,11 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
     const leadArr = Array.from(leadIds);
     const stuck: any[] = [];
     for (let i = 0; i < leadArr.length; i += CH) {
+      // Promove só lead do mundo legado — nunca lead carimbado de um número.
       const { data: leads } = await admin.from("crm_leads")
         .select("id, name, pipeline_id, stage_id, assigned_to")
-        .eq("tenant_id", TENANT).in("id", leadArr.slice(i, i + CH)).in("stage_id", naoContratadoIds);
+        .eq("tenant_id", TENANT).is("whatsapp_number_id", null)
+        .in("id", leadArr.slice(i, i + CH)).in("stage_id", naoContratadoIds);
       for (const l of leads || []) stuck.push(l);
     }
     if (!stuck.length) return out;
@@ -867,7 +869,8 @@ async function reconcileRemovidosNoDontus(
             .select("lead_id").eq("paciente_id", p.paciente_id);
           const leadIds = Array.from(new Set((links || []).map((r: any) => r.lead_id).filter(Boolean)));
           const { data: leads } = leadIds.length
-            ? await admin.from("crm_leads").select("id").eq("tenant_id", RIZODENT_TENANT_ID).in("id", leadIds)
+            // Nunca apagar lead carimbado de outro número (mundo do closer/recepção).
+            ? await admin.from("crm_leads").select("id").eq("tenant_id", RIZODENT_TENANT_ID).is("whatsapp_number_id", null).in("id", leadIds)
             : { data: [] as any[] };
 
           for (const l of (leads || [])) {
@@ -1100,9 +1103,13 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
           if (item.telefone) {
             const tail = tailPhone(item.telefone);
             if (tail) {
+              // Dontus é a operação do MUNDO LEGADO (número principal):
+              // só casa lead com whatsapp_number_id NULL. Lead carimbado de um
+              // número (closer/recepção) é outro mundo e não pode ser tocado.
               const { data } = await admin.from("crm_leads")
                 .select("id, name, phone, pipeline_id, stage_id")
                 .eq("tenant_id", RIZODENT_TENANT_ID)
+                .is("whatsapp_number_id", null)
                 .ilike("phone", `%${tail}`)
                 .order("created_at", { ascending: false }).limit(10);
               existing = (data || []).find((l: any) => namesCompatible(l.name, item.paciente_nome)) || null;
@@ -1520,8 +1527,10 @@ async function syncClinica(
     if (telefone) {
       const tail = tailPhone(telefone);
       if (tail) {
+        // Mundo legado apenas (ver comentário acima).
         const { data: leads } = await admin.from("crm_leads")
           .select("id, name, phone, stage_id, pipeline_id, created_at")
+          .is("whatsapp_number_id", null)
           .ilike("phone", `%${tail}`)
           .order("created_at", { ascending: false }).limit(10);
         if (leads?.length) {
@@ -1947,7 +1956,7 @@ async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boo
   return (count ?? 0) > 0;
 }
 
-type DontusAg = { idStatus: number; descricao: string; nome: string; clinica: string };
+type DontusAg = { idStatus: number; descricao: string; nome: string; clinica: string; consumida?: boolean };
 
 async function syncComparecimento(
   admin: any,
@@ -1996,9 +2005,11 @@ async function syncComparecimento(
   const leadIds = [...new Set(pend.map((a: any) => a.lead_id))] as string[];
   const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null; stage_id: string | null }>();
   for (const bloco of chunkArr(leadIds, 200)) {
+    // Comparecimento vale só para o mundo legado (número principal).
     const { data } = await admin.from("crm_leads")
       .select("id, name, phone, cidade, stage_id")
       .eq("tenant_id", RIZODENT_TENANT_ID)
+      .is("whatsapp_number_id", null)
       .in("id", bloco);
     for (const l of (data || [])) {
       leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null, stage_id: l.stage_id ?? null });
@@ -2078,8 +2089,10 @@ async function syncComparecimento(
     if (!lead) continue;
     const tail = tailPhone(lead.phone);
     const cand = tail ? (idx.get(`${tail}|${appt.scheduled_date}`) || []) : [];
-    // Guard anti-falso-positivo: exige nome compatível.
-    const dont = cand.find((c) => namesCompatible(lead.name, c.nome)) || null;
+    // Guard anti-falso-positivo: exige nome compatível E consome a entrada uma
+    // única vez — um comparecimento no Dontus não pode fechar dois agendamentos.
+    const dont = cand.find((c) => namesCompatible(lead.name, c.nome) && !c.consumida) || null;
+    if (dont) dont.consumida = true;
     const unidade = dont?.clinica || appt.lead_cidade || lead.cidade || "Sem unidade";
 
     let statusNovo: string | null = null;
@@ -2220,17 +2233,12 @@ async function moveLeadStageServer(
       .select("id, name").eq("pipeline_id", lead.pipeline_id).order("position");
     target = (stages || []).find((s: any) => matcher(normStage(s.name)));
   }
+  // Sem fallback para "Funil Principal": mover para outro funil arrancava o
+  // lead do mundo do número dele (closer/recepção) e o fazia desaparecer.
   if (!target) {
-    const { data: pipelines } = await admin.from("crm_pipelines")
-      .select("id, name").eq("tenant_id", lead.tenant_id);
-    const principal = (pipelines || []).find((p: any) => /funil principal/i.test(p.name));
-    if (principal) {
-      const { data: fp } = await admin.from("crm_stages")
-        .select("id, name").eq("pipeline_id", principal.id).order("position");
-      target = (fp || []).find((s: any) => matcher(normStage(s.name)));
-    }
+    console.log(`[dontus-sync] etapa alvo não existe no funil do lead ${lead.id} — pulando movimentação.`);
+    return null;
   }
-  if (!target) return null;
 
   const { error } = await admin.from("crm_leads")
     .update({ stage_id: target.id, updated_at: new Date().toISOString() })

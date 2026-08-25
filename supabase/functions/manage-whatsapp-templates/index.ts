@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
+import { escopoDoNumero, escopoLegado, filtrarWaba, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
 
 
 const corsHeaders = {
@@ -7,59 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-async function resolveCredentials(supabase: any, integrationKey?: string, tenantId?: string | null) {
-  // If an integration_key is provided, resolve from integrations table.
-  // SEMPRE filtrando pelo tenant do chamador: a key não é única globalmente
-  // (unique é por tenant) e o client roda com service role — sem o filtro,
-  // um usuário resolveria credenciais/WABA de outro tenant.
-  if (integrationKey && tenantId) {
-    const { data: intg } = await supabase
-      .from("integrations")
-      .select("config")
-      .eq("key", integrationKey)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (intg?.config) {
-      const cfg = intg.config as any;
-      const token = cfg.access_token || cfg.token;
-      const wabaId = cfg.waba_id;
-      if (token && wabaId) {
-        return { token, wabaId, appId: cfg.app_id || Deno.env.get("META_APP_ID") || "" };
-      }
-    }
-  }
-  // No key (or key didn't resolve) — fall back to the tenant's connected WhatsApp integration.
-  // This lets non-crc users (gerente, posvenda) send templates even though RLS hides the
-  // integrations table from them on the client.
-  if (tenantId) {
-    const { data: list } = await supabase
-      .from("integrations")
-      .select("config")
-      .eq("tenant_id", tenantId)
-      .eq("status", "connected")
-      .like("key", "whatsapp_%")
-      .limit(1);
-    const cfg = (list && list[0]?.config) as any;
-    if (cfg) {
-      const token = cfg.access_token || cfg.token;
-      const wabaId = cfg.waba_id;
-      if (token && wabaId) return { token, wabaId, appId: cfg.app_id || Deno.env.get("META_APP_ID") || "" };
-    }
-  }
-  // Fallback de env é legado v1 e vale SÓ para o tenant Rizodent. Para qualquer
-  // outro tenant sem integração própria, negar — senão o tenant listaria/criaria
-  // templates na WABA da Rizodent.
-  const RIZODENT_TENANT_ID = "00000000-0000-0000-0000-000000000010";
-  if (tenantId === RIZODENT_TENANT_ID) {
-    return {
-      token: Deno.env.get("WHATSAPP_TOKEN") || "",
-      wabaId: Deno.env.get("WABA_ID") || "",
-      appId: Deno.env.get("META_APP_ID") || "",
-    };
-  }
-  return { token: "", wabaId: "", appId: "" };
-}
 
 // Upload resumable do Meta: devolve o `header_handle` exigido para criar template
 // com cabeçalho de MÍDIA (vídeo/imagem/documento). Sem isso não dá para ter vídeo
@@ -127,7 +75,9 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("user_id", user.id);
     const rolesSet = new Set((callerRoles || []).map((r: any) => r.role));
-    const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao"];
+    // 'closer' faltava aqui: template criado por closer ficava com owner_role null
+    // e (pela RLS de owner_role) invisível para o próprio closer.
+    const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao", "closer"];
     const callerPrimaryRole = rolePriority.find((r) => rolesSet.has(r)) || null;
 
     // Any authenticated tenant user can list/create/delete their own templates.
@@ -137,10 +87,10 @@ Deno.serve(async (req) => {
 
 
     const body = await req.json();
-    const { action, integration_key } = body;
+    // `integration_key` deixou de ser aceito: a WABA vem do NÚMERO do chamador.
+    const { action } = body;
 
-    // Resolve caller's tenant so we can fall back to the tenant's WhatsApp integration
-    // when integration_key isn't supplied (e.g. non-crc users can't read integrations on the client).
+    // Tenant do chamador (usado para resolver o número/WABA do mundo dele).
     const { data: profile } = await supabase
       .from("profiles")
       .select("tenant_id")
@@ -148,11 +98,82 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const callerTenantId = profile?.tenant_id || null;
 
-    const { token: WHATSAPP_TOKEN, wabaId: WABA_ID, appId: META_APP_ID } = await resolveCredentials(supabase, integration_key, callerTenantId);
+    // ===== WABA do CHAMADOR (cada número é um mundo) =====
+    // Antes: qualquer integração whatsapp_% do tenant (arbitrária) — o closer
+    // listava/criava templates na WABA do número principal e vice-versa.
+    // Agora: closer/recepcao operam na WABA do número concedido a eles;
+    // crc/gerente/superadmin/posvenda operam na WABA legada (whatsapp_config),
+    // podendo apontar outro número via `phone_number_id` (validado por acesso).
+    const escopoRestrito = (rolesSet.has("closer") || rolesSet.has("recepcao")) && !isPrivileged;
+    let escopo = null as Awaited<ReturnType<typeof escopoLegado>> | null;
+
+    if (escopoRestrito) {
+      const { data: ovr } = await supabase
+        .from("user_permission_overrides")
+        .select("resource_id")
+        .eq("user_id", user.id)
+        .eq("scope", "whatsapp_number")
+        .eq("granted", true);
+      const numeros = (ovr || []).map((o: any) => o.resource_id);
+      if (numeros.length === 0) {
+        return new Response(
+          JSON.stringify({ error: "Seu usuário não tem número de WhatsApp vinculado." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const alvo = typeof body.phone_number_id === "string" && body.phone_number_id
+        ? (await supabase.from("whatsapp_numbers").select("id").eq("phone_number_id", body.phone_number_id)
+            .eq("tenant_id", callerTenantId).in("id", numeros).limit(1)).data?.[0]?.id
+        : numeros[0];
+      if (!alvo) {
+        return new Response(
+          JSON.stringify({ error: "Número informado não pertence ao seu usuário." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      escopo = await escopoDoNumero(supabase, alvo, callerTenantId);
+    } else if (typeof body.phone_number_id === "string" && body.phone_number_id) {
+      const { data: numRow } = await supabase
+        .from("whatsapp_numbers")
+        .select("id")
+        .eq("phone_number_id", body.phone_number_id)
+        .eq("tenant_id", callerTenantId)
+        .limit(1);
+      const numId = numRow?.[0]?.id;
+      if (!numId) {
+        return new Response(
+          JSON.stringify({ error: "Número não encontrado neste cliente." }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: podeVer } = await userClient.rpc("can_access_whatsapp_number", { p_number_id: numId });
+      if (podeVer !== true) {
+        return new Response(
+          JSON.stringify({ error: "Sem acesso a este número de WhatsApp." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      escopo = await escopoDoNumero(supabase, numId, callerTenantId);
+    } else {
+      escopo = await escopoLegado(supabase, callerTenantId);
+    }
+
+    const WHATSAPP_TOKEN = escopo?.token || "";
+    const WABA_ID = escopo?.wabaId || "";
+    const META_APP_ID = escopo?.appId || Deno.env.get("META_APP_ID") || "";
+    const escopoNumberId = escopo?.whatsappNumberId ?? null;
+    // owner_role do template: no mundo legado fica com o papel do chamador; num
+    // número próprio, com o papel dono daquele número (quando houver um só).
+    const ownerRoleTemplate = escopoNumberId
+      ? (await papelDonoDoNumero(supabase, escopoNumberId)) || callerPrimaryRole
+      : callerPrimaryRole;
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
-        JSON.stringify({ error: "WhatsApp não configurado. Configure os secrets WHATSAPP_TOKEN e WABA_ID ou preencha na integração." }),
+        JSON.stringify({ error: "WhatsApp não configurado para este número (token/WABA ausentes na integração)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -209,6 +230,7 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("meta_template_id", tmpl.meta_template_id)
           .eq("tenant_id", callerTenantId)
+          .eq("waba_id", WABA_ID)
           .limit(1);
         const existing = existingRows && existingRows[0];
 
@@ -231,6 +253,9 @@ Deno.serve(async (req) => {
           await supabase.from("crm_whatsapp_templates").insert({
             ...tmpl,
             tenant_id: callerTenantId,
+            waba_id: WABA_ID,
+            whatsapp_number_id: escopoNumberId,
+            owner_role: ownerRoleTemplate,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -243,6 +268,7 @@ Deno.serve(async (req) => {
           .from("crm_whatsapp_templates")
           .select("id, meta_template_id")
           .eq("tenant_id", callerTenantId)
+          .eq("waba_id", WABA_ID)
           .not("meta_template_id", "is", null);
 
         if (localTemplates) {
@@ -250,7 +276,7 @@ Deno.serve(async (req) => {
             (lt: any) => !metaTemplateIds.includes(lt.meta_template_id)
           );
           for (const d of toDelete) {
-            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id).eq("tenant_id", callerTenantId);
+            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id).eq("tenant_id", callerTenantId).eq("waba_id", WABA_ID);
           }
         }
       }
@@ -480,7 +506,9 @@ Deno.serve(async (req) => {
         meta_template_id: metaData.id,
         status: metaData.status || "PENDING",
         created_by_user_id: user.id,
-        owner_role: callerPrimaryRole,
+        owner_role: ownerRoleTemplate,
+        waba_id: WABA_ID,
+        whatsapp_number_id: escopoNumberId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -502,8 +530,8 @@ Deno.serve(async (req) => {
 
     // ACTION: DELETE - Delete template from Meta API
     if (action === "delete") {
-      const { template_name } = body;
-      if (!template_name) {
+      const { template_name, template_id } = body;
+      if (!template_name && !template_id) {
         return new Response(
           JSON.stringify({ error: "template_name é obrigatório para deletar" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -511,14 +539,26 @@ Deno.serve(async (req) => {
       }
 
       // Only the template's creator OR admin/gerente/superadmin may delete (Meta is shared)
-      if (!isPrivileged) {
-        const { data: ownerRow } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("created_by_user_id")
-          .eq("name", template_name)
-          .eq("tenant_id", callerTenantId)
-          .maybeSingle();
+      // Alvo local sempre dentro da WABA do chamador: por id, ou por (name, waba_id).
+      let alvoQuery = supabase
+        .from("crm_whatsapp_templates")
+        .select("id, name, created_by_user_id")
+        .eq("tenant_id", callerTenantId)
+        .eq("waba_id", WABA_ID);
+      alvoQuery = template_id ? alvoQuery.eq("id", template_id) : alvoQuery.eq("name", template_name);
+      const { data: alvoRows } = await filtrarWaba(alvoQuery, escopoNumberId).limit(1);
+      const alvo = (alvoRows || [])[0];
+      const nomeNaMeta = alvo?.name || template_name;
 
+      if (!nomeNaMeta) {
+        return new Response(
+          JSON.stringify({ error: "Template não encontrado nesta WABA" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!isPrivileged) {
+        const ownerRow = alvo;
         if (!ownerRow || (ownerRow as any).created_by_user_id !== user.id) {
           return new Response(
             JSON.stringify({ error: "Forbidden: only the template owner or an admin can delete this template" }),
@@ -528,7 +568,7 @@ Deno.serve(async (req) => {
       }
 
       const metaRes = await fetch(
-        `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?name=${encodeURIComponent(template_name)}`,
+        `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?name=${encodeURIComponent(nomeNaMeta)}`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
@@ -537,7 +577,14 @@ Deno.serve(async (req) => {
       const metaData = await metaRes.json();
 
       // Always delete locally, even if Meta API fails (e.g. permission issues)
-      await supabase.from("crm_whatsapp_templates").delete().eq("name", template_name).eq("tenant_id", callerTenantId);
+      if (alvo?.id) {
+        await supabase.from("crm_whatsapp_templates").delete().eq("id", alvo.id).eq("tenant_id", callerTenantId);
+      } else {
+        await filtrarWaba(
+          supabase.from("crm_whatsapp_templates").delete().eq("name", nomeNaMeta).eq("tenant_id", callerTenantId).eq("waba_id", WABA_ID),
+          escopoNumberId,
+        );
+      }
 
       if (!metaRes.ok) {
         console.warn("[DELETE] Meta API error, deleted locally only:", JSON.stringify(metaData));
