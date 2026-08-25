@@ -68,7 +68,7 @@ type SyncMsg = {
 };
 
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, userRole, loading: authLoading } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const isAuthed = !!user && !authLoading;
   const [state, setState] = useState<CallState>({ phase: "idle" });
@@ -128,9 +128,9 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!row.phone_number_id) return legacyVisible;
     if (!allowed) return legacyVisible; // lista ainda não carregada: só privilegiado
     if (allowed.has(String(row.phone_number_id))) return true;
-    // Não está entre os números visíveis: pode ser mundo legado (número principal
-    // sem linha em whatsapp_numbers) ou número de outro usuário.
-    return legacyVisible && allowed.size === 0;
+    // Número sem linha visível em whatsapp_numbers: tratado como mundo legado
+    // (número principal) — só crc/gerente/superadmin recebem o toque.
+    return legacyVisible;
   }, [legacyVisible]);
 
   // --- Realtime: escuta whatsapp_calls do tenant
