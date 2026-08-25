@@ -231,8 +231,16 @@ export default function CrmCalendario() {
 
   useEffect(() => {
     (async () => {
+      // O closer não lê `clinicas` (policy closer_sem_acesso_clinicas), então a
+      // consulta direta volta vazia para ele. A RPC devolve só id/nome/cidade
+      // das clínicas ativas do próprio cliente, sem abrir a tabela.
       const { data } = await supabase.from("clinicas").select("cidade").eq("ativa", true);
-      const unique = Array.from(new Set((data || []).map((c: any) => c.cidade).filter(Boolean)));
+      let linhas = (data || []) as { cidade: string | null }[];
+      if (linhas.length === 0) {
+        const { data: viaRpc } = await (supabase as any).rpc("closer_clinicas_do_tenant");
+        linhas = (viaRpc || []) as { cidade: string | null }[];
+      }
+      const unique = Array.from(new Set(linhas.map((c) => c.cidade).filter(Boolean) as string[]));
       setTenantCities(unique);
     })();
   }, []);

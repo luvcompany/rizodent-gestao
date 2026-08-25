@@ -24,6 +24,9 @@ const RECEPCAO_ROTAS_EXATAS = ["/crm"];
 // o próprio número de WhatsApp.
 const CLOSER_PREFIXES = [
   "/crm/closer",
+  // Calendário dos agendamentos dele (a RLS já limita ao número do closer) e
+  // a aba de pacientes/pagamentos próprios.
+  "/crm/calendario",
   "/crm/conversas",
   "/crm/conversa",
   "/crm/campanhas",

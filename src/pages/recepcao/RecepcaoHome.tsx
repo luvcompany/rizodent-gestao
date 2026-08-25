@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import CloserMetricas from "@/components/closer/CloserMetricas";
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
   CalendarDays, Bell, Loader2,
@@ -106,7 +107,7 @@ function Spark({ pontos, cor }: { pontos: number[]; cor: string }) {
 }
 
 export default function RecepcaoHome() {
-  const { profile } = useAuth();
+  const { profile, userRole } = useAuth();
   const navigate = useNavigate();
   const [leads, setLeads] = useState<Fila[]>([]);
   const [consultas, setConsultas] = useState<Consulta[]>([]);
@@ -218,6 +219,9 @@ export default function RecepcaoHome() {
             </Link>
           </div>
         </header>
+
+        {/* Faturamento do closer — só para ele; a recepção não lança pagamentos. */}
+        {userRole === "closer" && <CloserMetricas />}
 
         {/* indicadores */}
         <section className="grid grid-cols-1 gap-3.5 md:grid-cols-3">

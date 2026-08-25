@@ -42,6 +42,7 @@ const CrmIntegracoes = lazyWithPreload(() => import("./pages/CrmIntegracoes"));
 const CrmRelatorios = lazyWithPreload(() => import("./pages/CrmRelatorios"));
 const CrmConversas = lazyWithPreload(() => import("./pages/CrmConversas"));
 const RecepcaoHome = lazyWithPreload(() => import("./pages/recepcao/RecepcaoHome"));
+const CloserPacientes = lazyWithPreload(() => import("./pages/crm/CloserPacientes"));
 const RecepcaoConexoes = lazyWithPreload(() => import("./pages/recepcao/RecepcaoConexoes"));
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
 const CrmLigacoes = lazyWithPreload(() => import("./pages/CrmLigacoes"));
@@ -260,6 +261,7 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/recepcao" element={withRouteSuspense(<RecepcaoHome />)} />
               {/* Closer usa a MESMA tela inicial da recepção (componente compartilhado). */}
               <Route path="/crm/closer" element={withRouteSuspense(<RecepcaoHome />)} />
+              <Route path="/crm/closer/pacientes" element={withRouteSuspense(<CloserPacientes />)} />
               <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />
