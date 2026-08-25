@@ -323,13 +323,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Lead carimbado com um número específico (caso da Recepção, 4 unidades no
-    // mesmo tenant): a resposta TEM de sair pelo número daquela unidade. Sem
-    // isto, o fallback "qualquer integração ativa do tenant" mandaria o lembrete
-    // da unidade A pelo número da unidade B. No-op onde o carimbo é NULL.
-    let resolvedFromNumber = false;
+    // ===== REGRA ESTRUTURAL: o número de saída vem do CARIMBO DO LEAD =====
+    // "Cada número é um mundo": o lead carimbado pertence àquele número e a
+    // resposta TEM de sair por ele. Sem fallback para "qualquer integração do
+    // tenant" — era isso que fazia mover o lead de funil trocar o número de
+    // saída e a resposta de bot sair pelo número errado.
+    let resolvedCredentials = false;
     const leadWaNumberId: string | null = (leadData as any)?.whatsapp_number_id ?? null;
+
     if (leadWaNumberId) {
+      // (a) Lead carimbado: whatsapp_numbers -> integração whatsapp_<phone_number_id>.
       const { data: waNum } = await supabase
         .from("whatsapp_numbers")
         .select("phone_number_id, token")
@@ -337,30 +340,53 @@ Deno.serve(async (req) => {
         .eq("tenant_id", leadTenantId)
         .eq("is_active", true)   // is_active existe para desligar um número: respeitar
         .maybeSingle();
-      if (waNum?.phone_number_id && waNum?.token) {
-        phoneNumberId = waNum.phone_number_id;
-        whatsappToken = waNum.token;
-        resolvedFromNumber = true;
-        console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
-      } else {
-        console.warn(`[send-whatsapp-message] lead ${lead_id} carimbado com número ${leadWaNumberId} sem credenciais em whatsapp_numbers`);
-      }
-    }
 
-    // O carimbo do lead tem PRECEDÊNCIA: quando ele resolve, os fallbacks por
-    // pipeline/tenant não podem sobrescrever o número da unidade.
-    let resolvedFromTenant = resolvedFromNumber;
-    if (!resolvedFromNumber && leadData?.pipeline_id) {
-      const { data: funnelChannel } = await supabase
-        .from("funnel_channels")
-        .select("channel_config")
-        .eq("channel_type", "whatsapp")
-        .eq("pipeline_id", leadData.pipeline_id)
+      if (!waNum?.phone_number_id) {
+        console.warn(`[send-whatsapp-message] lead ${lead_id} carimbado com número ${leadWaNumberId} sem cadastro ativo`);
+        return new Response(JSON.stringify({ error: "Número do lead sem credenciais" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: intgNumero } = await supabase
+        .from("integrations")
+        .select("config, status")
         .eq("tenant_id", leadTenantId)
+        .eq("key", `whatsapp_${waNum.phone_number_id}`)
         .maybeSingle();
 
-      if (funnelChannel?.channel_config) {
-        const integrationKey = (funnelChannel.channel_config as any)?.integration_key;
+      if ((intgNumero as any)?.status === "disabled") {
+        console.warn(`[send-whatsapp-message] integração whatsapp_${waNum.phone_number_id} desativada (lead ${lead_id})`);
+        return new Response(JSON.stringify({ error: "Integração desativada" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const cfgNumero = ((intgNumero as any)?.config ?? {}) as any;
+      const tokenNumero = cfgNumero.access_token || cfgNumero.token || waNum.token;
+      if (!tokenNumero) {
+        console.warn(`[send-whatsapp-message] número ${leadWaNumberId} sem token (lead ${lead_id})`);
+        return new Response(JSON.stringify({ error: "Número do lead sem credenciais" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      phoneNumberId = cfgNumero.phone_number_id || waNum.phone_number_id;
+      whatsappToken = tokenNumero;
+      resolvedCredentials = true;
+      console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
+    } else {
+      // (b) Lead do mundo legado: canal do funil e, na falta dele, whatsapp_config.
+      if (leadData?.pipeline_id) {
+        const { data: funnelChannel } = await supabase
+          .from("funnel_channels")
+          .select("channel_config")
+          .eq("channel_type", "whatsapp")
+          .eq("pipeline_id", leadData.pipeline_id)
+          .eq("tenant_id", leadTenantId)
+          .maybeSingle();
+
+        const integrationKey = (funnelChannel?.channel_config as any)?.integration_key;
         if (integrationKey) {
           const { data: integration } = await supabase
             .from("integrations")
@@ -380,34 +406,35 @@ Deno.serve(async (req) => {
             const resolvedToken = cfg.access_token || cfg.token;
             if (resolvedToken) whatsappToken = resolvedToken;
             if (cfg.phone_number_id) phoneNumberId = cfg.phone_number_id;
-            resolvedFromTenant = true;
+            resolvedCredentials = !!(whatsappToken && phoneNumberId);
           }
+        }
+      }
+
+      if (!resolvedCredentials) {
+        const { data: legacy } = await supabase
+          .from("integrations")
+          .select("config, status")
+          .eq("tenant_id", leadTenantId)
+          .eq("key", "whatsapp_config")
+          .maybeSingle();
+
+        if ((legacy as any)?.status === "disabled") {
+          return new Response(JSON.stringify({ error: "Integração desativada" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const cfg = ((legacy as any)?.config ?? {}) as any;
+        const legacyToken = cfg.access_token || cfg.token;
+        if (legacyToken && cfg.phone_number_id) {
+          whatsappToken = legacyToken;
+          phoneNumberId = cfg.phone_number_id;
+          resolvedCredentials = true;
         }
       }
     }
 
-    // Se não houver canal por pipeline, tentar QUALQUER integração WhatsApp
-    // ativa do MESMO tenant (e nunca de outro cliente).
-    if (!resolvedFromTenant) {
-      const { data: tenantIntegrations } = await supabase
-        .from("integrations")
-        .select("config, status")
-        .eq("tenant_id", leadTenantId)
-        .like("key", "whatsapp_%")
-        .neq("status", "disabled");
-      const intg = (tenantIntegrations || []).find((i: any) => {
-        const cfg = (i.config as any) || {};
-        return (cfg.access_token || cfg.token) && cfg.phone_number_id;
-      });
-      if (intg) {
-        const cfg = (intg.config as any) || {};
-        whatsappToken = cfg.access_token || cfg.token || whatsappToken;
-        phoneNumberId = cfg.phone_number_id || phoneNumberId;
-        resolvedFromTenant = true;
-      }
-    }
-
-    if (!resolvedFromTenant || !whatsappToken || !phoneNumberId) {
+    if (!resolvedCredentials || !whatsappToken || !phoneNumberId) {
       return new Response(JSON.stringify({
         error: "Sem credenciais WhatsApp para o cliente deste lead",
         tenant_id: leadTenantId,
@@ -415,6 +442,7 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
 
     // (IDOR) Todo id de mensagem vindo do corpo tem de ser do MESMO lead/tenant
     // do envio — senão dava para ler/reagir a mensagens de outra conversa.
