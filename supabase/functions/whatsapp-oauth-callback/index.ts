@@ -41,7 +41,7 @@ function popupResponse(
   return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }
 
-async function ensureRoleChannelForNumber(
+async function ensureRoleChannelForConnectedNumber(
   tenantId: string,
   userId: string,
   roles: string[],
@@ -71,67 +71,6 @@ async function ensureRoleChannelForNumber(
       });
       if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
     }
-  }
-
-  const { error: overrideErr } = await supabase.from("user_permission_overrides").upsert(
-    {
-      user_id: userId,
-      scope: "whatsapp_number",
-      resource_id: numberId,
-      granted: true,
-      created_by: userId,
-    },
-    { onConflict: "user_id,scope,resource_id" },
-  );
-  if (overrideErr) console.warn(`[wa-oauth-callback] override failed: ${overrideErr.message}`);
-}
-
-async function ensureRecepcaoChannelForNumber(
-  tenantId: string,
-  userId: string,
-  integrationKey: string,
-  numberId: string,
-) {
-  const roles = ["recepcao"];
-  await ensureRoleChannelForNumber(tenantId, userId, roles, integrationKey, numberId);
-}
-
-async function ensureRoleChannelForConnectedNumber(
-  tenantId: string,
-  userId: string,
-  roles: string[],
-  integrationKey: string,
-  numberId: string,
-) {
-  await ensureRoleChannelForNumber(tenantId, userId, roles, integrationKey, numberId);
-}
-
-async function legacyEnsureRecepcaoChannelForNumber(
-  tenantId: string,
-  userId: string,
-  integrationKey: string,
-  numberId: string,
-) {
-  const { data: pipelineId, error: pipeErr } = await supabase.rpc("ensure_role_default_pipeline", {
-    _tenant_id: tenantId,
-    _role: "recepcao",
-  });
-  if (pipeErr || !pipelineId) {
-    console.warn(`[wa-oauth-callback] funil padrão recepção indisponível: ${pipeErr?.message ?? "sem id"}`);
-  } else {
-    await supabase
-      .from("funnel_channels")
-      .delete()
-      .eq("tenant_id", tenantId)
-      .eq("channel_type", "whatsapp")
-      .eq("channel_config->>integration_key", integrationKey);
-    const { error: channelErr } = await supabase.from("funnel_channels").insert({
-      pipeline_id: pipelineId,
-      channel_type: "whatsapp",
-      channel_config: { integration_key: integrationKey },
-      tenant_id: tenantId,
-    });
-    if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
   }
 
   const { error: overrideErr } = await supabase.from("user_permission_overrides").upsert(
@@ -200,7 +139,7 @@ Deno.serve(async (req: Request) => {
       console.warn("[wa-oauth-callback] tenant mismatch para user", stateRow.user_id);
       return popupResponse("whatsapp", "error");
     }
-    if (!roleList.some((r: string) => r === "crc" || r === "gerente")) {
+    if (!roleList.some((r: string) => r === "crc" || r === "gerente" || r === "closer" || r === "recepcao")) {
       console.warn("[wa-oauth-callback] papel sem permissão:", roleList);
       return popupResponse("whatsapp", "error");
     }
@@ -484,7 +423,7 @@ Deno.serve(async (req: Request) => {
               else connectedNumberId = insertedNum?.id ?? null;
             }
             if (connectedNumberId) {
-              await ensureRecepcaoChannelForNumber(tenantId, stateRow.user_id, key, connectedNumberId);
+              await ensureRoleChannelForConnectedNumber(tenantId, stateRow.user_id, roleList, key, connectedNumberId);
             }
           } catch (e) {
             console.warn(`[wa-oauth-callback] whatsapp_numbers upsert error for ${phone_number_id}:`, e);
