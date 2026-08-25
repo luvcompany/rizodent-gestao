@@ -220,18 +220,98 @@ Deno.serve(async (req) => {
         return json({ error: "Número já conectado em outra conta" }, 409);
       }
 
-      // 7a) Funil precisa ser do próprio tenant.
+      const key = `whatsapp_${phone_number_id}`;
+
+      // 3c) Coexistência (WhatsApp Business App): assinar o app na WABA e pedir
+      // o sync de estado + histórico. Sem essa sequência a Meta DESATIVA a
+      // coexistência em 24h e o webhook fica mudo. Tudo BEST-EFFORT: falha aqui
+      // nunca aborta a conexão — só volta como aviso para o usuário.
+      const avisos: string[] = [];
+      let isCoexistence = false;
+
+      try {
+        const r = await fetch(`https://graph.facebook.com/${API_VERSION}/${waba_id}/subscribed_apps`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) {
+          const t = (await r.text()).slice(0, 300);
+          console.error(`[minha-conexao-whatsapp] subscribed_apps ${r.status}: ${t}`);
+          avisos.push(`Não foi possível assinar o app na conta do WhatsApp: ${t}`);
+        }
+      } catch (e) {
+        console.error(`[minha-conexao-whatsapp] subscribed_apps erro: ${(e as Error).message}`);
+        avisos.push(`Não foi possível assinar o app na conta do WhatsApp: ${(e as Error).message}`);
+      }
+
+      try {
+        const r = await fetch(
+          `https://graph.facebook.com/${API_VERSION}/${phone_number_id}?fields=is_on_biz_app,platform_type`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const t = await r.text();
+        if (!r.ok) {
+          console.error(`[minha-conexao-whatsapp] is_on_biz_app ${r.status}: ${t.slice(0, 300)}`);
+          avisos.push(`Não foi possível verificar a coexistência: ${t.slice(0, 300)}`);
+        } else {
+          isCoexistence = JSON.parse(t)?.is_on_biz_app === true;
+        }
+      } catch (e) {
+        console.error(`[minha-conexao-whatsapp] is_on_biz_app erro: ${(e as Error).message}`);
+        avisos.push(`Não foi possível verificar a coexistência: ${(e as Error).message}`);
+      }
+
+      if (isCoexistence) {
+        // Ordem obrigatória: primeiro o estado, depois o histórico.
+        for (const sync_type of ["smb_app_state_sync", "history"]) {
+          try {
+            const r = await fetch(`https://graph.facebook.com/${API_VERSION}/${phone_number_id}/smb_app_data`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ messaging_product: "whatsapp", sync_type }),
+            });
+            if (!r.ok) {
+              const t = (await r.text()).slice(0, 300);
+              console.error(`[minha-conexao-whatsapp] smb_app_data ${sync_type} ${r.status}: ${t}`);
+              avisos.push(`Sincronização "${sync_type}" falhou: ${t}`);
+            }
+          } catch (e) {
+            console.error(`[minha-conexao-whatsapp] smb_app_data ${sync_type} erro: ${(e as Error).message}`);
+            avisos.push(`Sincronização "${sync_type}" falhou: ${(e as Error).message}`);
+          }
+        }
+      }
+
+      // 7a) O funil precisa ser do MUNDO do chamador: do próprio tenant, que
+      // permita o papel dele e que não esteja vinculado a OUTRO número.
+      const meusPapeis = papeis.filter((p) => p === "closer" || p === "recepcao");
       if (pipeline_id) {
         const { data: pipe } = await admin
           .from("crm_pipelines")
-          .select("id")
+          .select("id, allowed_roles")
           .eq("id", pipeline_id)
           .eq("tenant_id", tenantId)
           .maybeSingle();
         if (!pipe) return json({ error: "Funil inválido para esta clínica" }, 403);
+
+        const permitidos: string[] = (pipe as any).allowed_roles ?? [];
+        const ehSuper = papeis.includes("superadmin");
+        if (!ehSuper && !meusPapeis.some((p) => permitidos.includes(p))) {
+          return json({ error: "Este funil não pertence ao seu escopo" }, 403);
+        }
+
+        const { data: canaisDoFunil } = await admin
+          .from("funnel_channels")
+          .select("id, channel_config")
+          .eq("channel_type", "whatsapp")
+          .eq("pipeline_id", pipeline_id);
+        const deOutroNumero = (canaisDoFunil ?? []).some((c: any) => {
+          const k = (c.channel_config ?? {})?.integration_key;
+          return k && k !== key;
+        });
+        if (deOutroNumero) return json({ error: "Funil já vinculado a outro número" }, 409);
       }
 
-      const key = `whatsapp_${phone_number_id}`;
       const config = {
         token,
         phone_number_id,
@@ -242,6 +322,7 @@ Deno.serve(async (req) => {
         display_name,
         pipeline_id: pipeline_id ?? "",
       };
+
 
       // 4) Upsert manual em integrations (tenant_id + key não tem unique).
       const { data: existente } = await admin
