@@ -1,6 +1,7 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
 
 
