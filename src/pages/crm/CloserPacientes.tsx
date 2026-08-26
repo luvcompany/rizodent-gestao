@@ -158,28 +158,90 @@ export default function CloserPacientes() {
     [pagamentos],
   );
 
+  const ultimos8 = (tel: string) => String(tel || "").replace(/\D/g, "").slice(-8);
+
   const salvarPaciente = async () => {
     if (!form.nome.trim()) {
       toast.error("Informe o nome do paciente");
       return;
     }
+
+    const telefoneDigitado = form.telefone.trim();
+    const chave = ultimos8(telefoneDigitado);
+
+    if (!editandoPaciente && chave) {
+      const duplicata = pacientes.find(
+        (p) => ultimos8(p.telefone) === chave && p.id !== editandoPaciente?.id,
+      );
+      if (duplicata) {
+        toast.error(`Já existe um paciente com esse telefone: ${duplicata.nome}. Edite o existente.`);
+        return;
+      }
+    }
+
     setSalvando(true);
-    const { error } = await (supabase as any).from("closer_pacientes").insert({
-      nome: form.nome.trim(),
-      telefone: form.telefone.trim() || null,
-      cidade: form.cidade.trim() || null,
-      observacoes: form.observacoes.trim() || null,
-    });
+
+    let error;
+    if (editandoPaciente) {
+      ({ error } = await (supabase as any)
+        .from("closer_pacientes")
+        .update({
+          nome: form.nome.trim(),
+          telefone: telefoneDigitado || null,
+          cidade: form.cidade.trim() || null,
+          observacoes: form.observacoes.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editandoPaciente.id));
+    } else {
+      ({ error } = await (supabase as any).from("closer_pacientes").insert({
+        nome: form.nome.trim(),
+        telefone: telefoneDigitado || null,
+        cidade: form.cidade.trim() || null,
+        observacoes: form.observacoes.trim() || null,
+      }));
+    }
+
     setSalvando(false);
     if (error) {
       toast.error(`Não foi possível salvar: ${error.message}`);
       return;
     }
-    toast.success("Paciente vinculado");
+    toast.success(editandoPaciente ? "Paciente atualizado" : "Paciente vinculado");
     setForm({ nome: "", telefone: "", cidade: "", observacoes: "" });
     setNovoAberto(false);
+    setEditandoPaciente(null);
     void carregar();
   };
+
+  const abrirEdicaoPaciente = (p: Paciente) => {
+    setEditandoPaciente(p);
+    setForm({
+      nome: p.nome,
+      telefone: p.telefone || "",
+      cidade: p.cidade || "",
+      observacoes: p.observacoes || "",
+    });
+    setNovoAberto(true);
+  };
+
+  const excluirPaciente = async (p: Paciente) => {
+    const lista = pagamentosPorPaciente.get(p.id) || [];
+    const totalPago = lista.reduce((s, x) => s + Number(x.valor), 0);
+    const mensagem = lista.length > 0
+      ? `Excluir ${p.nome}? Os ${lista.length} pagamentos lançados nele (${brl(totalPago)}) também serão apagados.`
+      : `Excluir ${p.nome}?`;
+    const ok = window.confirm(mensagem);
+    if (!ok) return;
+    const { error } = await (supabase as any).from("closer_pacientes").delete().eq("id", p.id);
+    if (error) {
+      toast.error(`Não foi possível excluir: ${error.message}`);
+      return;
+    }
+    toast.success("Paciente excluído");
+    void carregar();
+  };
+
 
   const salvarPagamento = async () => {
     if (!pagamentoPara) return;
