@@ -18,7 +18,11 @@ const corsHeaders = {
 };
 
 const API_VERSION = "v25.0";
-const PAPEIS_PERMITIDOS = new Set(["closer", "recepcao", "superadmin"]);
+// Num cliente novo é o DONO da operação (crc/gerente) que conecta o primeiro
+// número — sem isto ele não tem tela de autoatendimento e alguém precisa entrar
+// no banco por fora. O fluxo já é seguro: valida o token na Meta pelo servidor,
+// recusa número já usado por outro cliente e grava com credencial de serviço.
+const PAPEIS_PERMITIDOS = new Set(["closer", "recepcao", "crc", "gerente", "superadmin"]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

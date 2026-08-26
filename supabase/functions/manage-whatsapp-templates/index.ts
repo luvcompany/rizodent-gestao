@@ -87,8 +87,24 @@ Deno.serve(async (req) => {
 
 
     const body = await req.json();
-    // `integration_key` deixou de ser aceito: a WABA vem do NÚMERO do chamador.
     const { action } = body;
+
+    // As telas mandam `integration_key` (whatsapp_<pnid> / whatsapp_es_<pnid>).
+    // Ignorá-la fazia o seletor de conexão virar decoração — e, num cliente novo,
+    // não havia outro jeito de dizer qual número usar. Aqui ela é traduzida para
+    // phone_number_id; o acesso continua sendo checado abaixo.
+    if (!body.phone_number_id && typeof body.integration_key === "string" && body.integration_key) {
+      const chave = body.integration_key as string;
+      if (chave !== "whatsapp_config") {
+        const { data: intgSel } = await supabase
+          .from("integrations")
+          .select("config")
+          .eq("key", chave)
+          .maybeSingle();
+        const pnid = ((intgSel as any)?.config ?? {}).phone_number_id;
+        if (pnid) body.phone_number_id = String(pnid);
+      }
+    }
 
     // Tenant do chamador (usado para resolver o número/WABA do mundo dele).
     const { data: profile } = await supabase
@@ -297,10 +313,11 @@ Deno.serve(async (req) => {
     // que é o que permite criar TEMPLATE com cabeçalho de vídeo/imagem/documento.
     // Template é o único formato que entrega FORA da janela de 24h.
     if (action === "upload_media") {
-      // Closer/recepção também criam modelo com vídeo ou imagem — a mídia sobe
-      // na WABA do número DELES, que o escopo acima já resolveu. Sem isto, só
-      // conseguiriam modelo de texto.
-      if (!isPrivileged && !escopoRestrito) {
+      // Quem chegou aqui com um escopo de WABA resolvido já provou acesso ao
+      // número (o escopo passa por can_access_whatsapp_number). Decidir por
+      // lista de papéis deixava pós-venda — e qualquer papel novo — só com
+      // modelo de texto.
+      if (!escopo?.token || !escopo?.wabaId) {
         return new Response(JSON.stringify({ error: "Sem permissão." }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
