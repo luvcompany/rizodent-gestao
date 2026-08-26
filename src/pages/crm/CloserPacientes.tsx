@@ -400,7 +400,26 @@ export default function CloserPacientes() {
                     <Button size="sm" variant="outline" onClick={() => setPagamentoPara(p)}>
                       <Plus size={14} className="mr-1" /> Pagamento
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => abrirEdicaoPaciente(p)}
+                      title="Editar paciente"
+                      aria-label="Editar paciente"
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => excluirPaciente(p)}
+                      title="Excluir paciente"
+                      aria-label="Excluir paciente"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
+
                 </div>
 
                 {lista.length > 0 && (
