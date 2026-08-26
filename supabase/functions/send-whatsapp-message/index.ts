@@ -5,7 +5,7 @@ import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 // Teto de mídia aceito pela Meta (16 MB no maior tipo).
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
-import { escopoDoLead } from "../_shared/wabaEscopo.ts";
+import { escopoDoLead, escopoDoNumero } from "../_shared/wabaEscopo.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -457,6 +457,31 @@ Deno.serve(async (req) => {
           whatsappToken = legacyToken;
           phoneNumberId = cfg.phone_number_id;
           resolvedCredentials = true;
+        }
+      }
+
+      // Cliente sem a chave herdada `whatsapp_config` (todo cliente novo é
+      // assim): o lead sem carimbo — criado à mão pelo crc, por exemplo — sai
+      // pelo número ativo padrão do cliente. Sem isto, num cliente novo esse
+      // lead simplesmente não receberia mensagem.
+      if (!resolvedCredentials) {
+        const { data: numeroPadrao } = await supabase
+          .from("whatsapp_numbers")
+          .select("id")
+          .eq("tenant_id", leadTenantId)
+          .eq("is_active", true)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: true })
+          .limit(1);
+        const alvoId = (numeroPadrao as any[] | null)?.[0]?.id;
+        if (alvoId) {
+          const esc = await escopoDoNumero(supabase, alvoId, leadTenantId);
+          if (esc?.token && esc.phoneNumberId) {
+            whatsappToken = esc.token;
+            phoneNumberId = esc.phoneNumberId;
+            resolvedCredentials = true;
+            console.log(`[send-whatsapp] cliente sem whatsapp_config — usando número padrão ${esc.phoneNumberId}`);
+          }
         }
       }
     }

@@ -33,7 +33,16 @@ const vazio: EscopoWaba = {
   integrationKey: null,
 };
 
-/** Credenciais/WABA da integração legada (`whatsapp_config`) do tenant. */
+/**
+ * Credenciais/WABA do número PRINCIPAL do cliente.
+ *
+ * Historicamente isso era sempre a integração `whatsapp_config` — a chave que a
+ * Rizodent tem desde antes de existir cadastro de números. Um cliente NOVO não
+ * tem essa chave: ao conectar o primeiro número, o fluxo atual grava
+ * `whatsapp_<phone_number_id>`. Sem o fallback abaixo, o usuário principal de um
+ * cliente novo receberia "WhatsApp não configurado" ao criar ou sincronizar
+ * modelos, mesmo com o número conectado e funcionando.
+ */
 export async function escopoLegado(supabase: any, tenantId: string | null): Promise<EscopoWaba> {
   if (!tenantId) return { ...vazio };
   const { data: intg } = await supabase
@@ -45,15 +54,37 @@ export async function escopoLegado(supabase: any, tenantId: string | null): Prom
   const cfg = ((intg as any)?.config ?? {}) as any;
   const token = cfg.access_token || cfg.token || null;
   const phoneNumberId = cfg.phone_number_id || null;
-  return {
-    whatsappNumberId: null,
-    wabaId: cfg.waba_id || null,
-    // Credencial só quando token E phone_number_id vêm JUNTOS da mesma config.
-    phoneNumberId: token && phoneNumberId ? phoneNumberId : null,
-    token: token && phoneNumberId ? token : null,
-    appId: cfg.app_id || null,
-    integrationKey: "whatsapp_config",
-  };
+
+  if (token && phoneNumberId) {
+    return {
+      whatsappNumberId: null,
+      wabaId: cfg.waba_id || null,
+      phoneNumberId,
+      token,
+      appId: cfg.app_id || null,
+      integrationKey: "whatsapp_config",
+    };
+  }
+
+  // Cliente sem a chave herdada: usa o número ativo do cliente. Com mais de um,
+  // o padrão (is_default) manda; sem padrão, o mais antigo — determinístico, e
+  // nunca um número desativado.
+  const { data: numeros } = await supabase
+    .from("whatsapp_numbers")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  const primeiro = (numeros as any[] | null)?.[0]?.id;
+  if (primeiro) {
+    const doNumero = await escopoDoNumero(supabase, primeiro, tenantId);
+    if (doNumero?.token) return doNumero;
+  }
+
+  return { ...vazio };
 }
 
 /**
