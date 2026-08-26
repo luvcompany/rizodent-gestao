@@ -103,12 +103,27 @@ CREATE POLICY tenant_apaga_funnel_channels ON public.funnel_channels
 -- leads novos somem da visão deles". Esse aviso nunca virou código — e é
 -- exatamente a armadilha que espera qualquer cliente novo.
 --
--- Agora, ao cadastrar um número, todo usuário do cliente que NÃO é de escopo
--- restrito (closer/recepção têm o número deles, concedido na conexão) recebe
--- acesso automaticamente. Nada some para ninguém.
+-- MAS a concessão não pode ser cega: um número conectado POR um closer (ou por
+-- uma recepcionista) é o mundo DELE, e dar esse número aos demais desfaz o
+-- isolamento inteiro. Quem decide é quem conectou:
+--   conectado por crc/gerente/superadmin  => número da operação, todos os
+--     papéis gerais recebem (é o caso do primeiro número de um cliente novo);
+--   conectado por closer/recepção         => número próprio, ninguém mais recebe.
 CREATE OR REPLACE FUNCTION public.concede_numero_aos_gerais()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $fn$
+DECLARE v_dono_restrito boolean;
 BEGIN
+  -- Sem usuário logado (cron/servidor) não há como saber de quem é: não concede.
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles ur
+    WHERE ur.user_id = auth.uid()
+      AND ur.role IN ('closer'::app_role, 'recepcao'::app_role)
+  ) INTO v_dono_restrito;
+
+  IF v_dono_restrito THEN RETURN NEW; END IF;
+
   INSERT INTO public.user_permission_overrides (user_id, scope, resource_id, granted, created_by)
   SELECT DISTINCT p.id, 'whatsapp_number', NEW.id::text, true, auth.uid()
   FROM public.profiles p
@@ -124,8 +139,8 @@ CREATE TRIGGER trg_concede_numero_aos_gerais
   AFTER INSERT ON public.whatsapp_numbers
   FOR EACH ROW EXECUTE FUNCTION public.concede_numero_aos_gerais();
 
--- Mesma concessão para usuário criado DEPOIS do número (cliente cresce, entra
--- gente nova): ao ganhar um papel geral, recebe os números já cadastrados.
+-- Usuário que entra depois recebe só os números SEM dono restrito — os que já
+-- pertencem a um closer/recepção continuam sendo só deles.
 CREATE OR REPLACE FUNCTION public.concede_numeros_ao_novo_usuario()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $fn$
 DECLARE v_tenant uuid;
@@ -137,7 +152,15 @@ BEGIN
   INSERT INTO public.user_permission_overrides (user_id, scope, resource_id, granted, created_by)
   SELECT NEW.user_id, 'whatsapp_number', w.id::text, true, auth.uid()
   FROM public.whatsapp_numbers w
-  WHERE w.tenant_id = v_tenant AND w.is_active
+  WHERE w.tenant_id = v_tenant
+    AND w.is_active
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.user_permission_overrides o
+      JOIN public.user_roles ur ON ur.user_id = o.user_id
+      WHERE o.scope = 'whatsapp_number' AND o.resource_id = w.id::text AND o.granted
+        AND ur.role IN ('closer'::app_role, 'recepcao'::app_role)
+    )
   ON CONFLICT (user_id, scope, resource_id) DO UPDATE SET granted = true;
   RETURN NEW;
 END $fn$;
@@ -147,11 +170,7 @@ CREATE TRIGGER trg_concede_numeros_ao_novo_usuario
   AFTER INSERT ON public.user_roles
   FOR EACH ROW EXECUTE FUNCTION public.concede_numeros_ao_novo_usuario();
 
--- Backfill: quem já existe também passa a enxergar os números já cadastrados.
-INSERT INTO public.user_permission_overrides (user_id, scope, resource_id, granted)
-SELECT DISTINCT p.id, 'whatsapp_number', w.id::text, true
-FROM public.profiles p
-JOIN public.user_roles ur ON ur.user_id = p.id
-JOIN public.whatsapp_numbers w ON w.tenant_id = p.tenant_id AND w.is_active
-WHERE ur.role NOT IN ('closer'::app_role, 'recepcao'::app_role)
-ON CONFLICT (user_id, scope, resource_id) DO UPDATE SET granted = true;
+-- SEM backfill cego. Um backfill que desse todos os números a todos os papéis
+-- gerais desfaria o isolamento de quem já tem número próprio — foi o que
+-- aconteceu ao aplicar a primeira versão desta migração, e teve de ser revertido.
+-- Cliente novo não precisa de backfill: os gatilhos acima cobrem o caminho.
