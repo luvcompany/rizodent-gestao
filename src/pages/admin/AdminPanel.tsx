@@ -507,7 +507,11 @@ export const AdminCobranca = () => {
   useEffect(() => { load(); }, []);
 
   const togglePaid = async (inv: any) => {
-    await (supabase as any).from("tenant_invoices").update({ status: inv.status === "paid" ? "open" : "paid", paid_at: inv.status === "paid" ? null : new Date().toISOString() }).eq("id", inv.id);
+    // Sem conferir o retorno, uma falha aqui era invisível: o botão só recarregava
+    // a lista e a fatura voltava ao status antigo sem aviso.
+    const { data, error } = await (supabase as any).from("tenant_invoices").update({ status: inv.status === "paid" ? "open" : "paid", paid_at: inv.status === "paid" ? null : new Date().toISOString() }).eq("id", inv.id).select("id");
+    if (error) { toast.error(error.message || "Erro ao atualizar a fatura"); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para alterar esta fatura."); return; }
     load();
   };
 

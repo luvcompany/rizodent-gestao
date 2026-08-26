@@ -78,20 +78,35 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
       newOwner = roles[0];
     }
     const sharedRoles = roles.filter(r => r !== newOwner);
-    const { error } = table === "crm_whatsapp_templates"
-      ? await supabase.rpc("update_whatsapp_template_sharing" as any, {
+    if (table === "crm_whatsapp_templates") {
+      const { error } = await supabase.rpc("update_whatsapp_template_sharing" as any, {
         _template_id: rowId,
         _owner_role: newOwner,
         _shared_roles: sharedRoles,
-      })
-      : await (supabase.from(table) as any)
+      });
+      setSaving(false);
+      if (error) {
+        console.error("[ShareRoleDialog] update failed", error);
+        toast.error(`Erro ao atualizar compartilhamento: ${error.message || error.code || "desconhecido"}`);
+        return;
+      }
+    } else {
+      // O `.select()` confere o que gravou: quando a regra do banco recusa o
+      // UPDATE (ex.: bot de outro papel), não vem erro — vem sucesso com zero linhas.
+      const { data, error } = await (supabase.from(table) as any)
         .update({ owner_role: newOwner, shared_roles: sharedRoles })
-        .eq("id", rowId);
-    setSaving(false);
-    if (error) {
-      console.error("[ShareRoleDialog] update failed", error);
-      toast.error(`Erro ao atualizar compartilhamento: ${error.message || error.code || "desconhecido"}`);
-      return;
+        .eq("id", rowId)
+        .select("id");
+      setSaving(false);
+      if (error) {
+        console.error("[ShareRoleDialog] update failed", error);
+        toast.error(`Erro ao atualizar compartilhamento: ${error.message || error.code || "desconhecido"}`);
+        return;
+      }
+      if (!data || data.length === 0) {
+        toast.error("Seu perfil não tem permissão para alterar o compartilhamento deste item.");
+        return;
+      }
     }
     toast.success(roles.length === 0 ? `${itemLabel} compartilhado com todos` : `${itemLabel} visível para: ${roles.map(r => ROLE_LABEL[r]).join(", ")}`);
     onOpenChange(false);

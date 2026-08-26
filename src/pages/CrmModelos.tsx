@@ -371,8 +371,18 @@ export default function CrmModelos() {
           if (error) {
             toast.warning(`Falha ao excluir ${old.name} na Meta, removendo apenas local.`);
           }
-          await supabase.from("crm_whatsapp_templates").delete().eq("id", old.id);
-          deletedCount++;
+          const { data: removidos, error: erroLocal } = await supabase
+            .from("crm_whatsapp_templates")
+            .delete()
+            .eq("id", old.id)
+            .select("id");
+          if (erroLocal) {
+            toast.error(`Erro ao excluir ${old.name}: ${erroLocal.message}`);
+          } else if (!removidos || removidos.length === 0) {
+            toast.error(`Seu perfil não tem permissão para excluir ${old.name}.`);
+          } else {
+            deletedCount++;
+          }
         } catch (e: any) {
           toast.error(`Erro ao excluir ${old.name}: ${e?.message || String(e)}`);
         }
@@ -437,7 +447,7 @@ export default function CrmModelos() {
       created_by_user_id: user?.id || null,
       owner_role: ownerRole as any,
     }]);
-    if (error) toast.error("Erro ao duplicar"); else { toast.success("Duplicado"); fetchTemplates(); }
+    if (error) toast.error("Erro ao duplicar: " + error.message); else { toast.success("Duplicado"); fetchTemplates(); }
   };
 
   const openShare = (t: WhatsAppTemplate) => {
@@ -510,8 +520,16 @@ export default function CrmModelos() {
         buttons: form.buttons.length > 0 ? form.buttons : null,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from("crm_whatsapp_templates").update(payload).eq("id", form.id);
-      if (error) { toast.error("Erro ao salvar"); return; }
+      const { data: atualizados, error } = await supabase
+        .from("crm_whatsapp_templates")
+        .update(payload)
+        .eq("id", form.id)
+        .select("id");
+      if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+      if (!atualizados || atualizados.length === 0) {
+        toast.error("Seu perfil não tem permissão para editar este modelo.");
+        return;
+      }
       toast.success("Template atualizado");
       setModalOpen(false);
       resetForm();
@@ -582,7 +600,7 @@ export default function CrmModelos() {
         updated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from("crm_whatsapp_templates").insert([payload]);
-      if (error) { toast.error("Erro ao salvar rascunho"); return; }
+      if (error) { toast.error("Erro ao salvar rascunho: " + error.message); return; }
       toast.success("Rascunho salvo");
     }
 

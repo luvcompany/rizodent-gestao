@@ -78,7 +78,8 @@ function ImportTab() {
     // de quem importa (crc/gerente: NULL = mundo legado).
     const myNumberId = await getMyWhatsappNumberId(userRole);
     const tenantId = profile?.tenant_id ?? null;
-    let imported = 0, skipped = 0;
+    let imported = 0, skipped = 0, failed = 0;
+    let insertErrorMsg = "";
     const nameIdx = headers.indexOf(mapping.name);
     const phoneIdx = headers.indexOf(mapping.phone);
     const tagsIdx = mapping.tags ? headers.indexOf(mapping.tags) : -1;
@@ -109,14 +110,21 @@ function ImportTab() {
       });
       if (insErr) {
         console.error("[Import] erro ao inserir lead:", phone, insErr);
-        skipped++;
+        failed++;
+        if (!insertErrorMsg) insertErrorMsg = insErr.message;
         continue;
       }
       imported++;
     }
     setImporting(false);
-    setResult({ imported, skipped });
-    toast.success(`${imported} leads importados, ${skipped} ignorados`);
+    setResult({ imported, skipped: skipped + failed });
+    if (failed > 0) {
+      // Inserts recusados pelo banco (ex.: perfil sem acesso ao funil escolhido) não são
+      // meros "ignorados" — o motivo real precisa chegar ao usuário.
+      toast.error(`${imported} importados, ${skipped} ignorados e ${failed} recusados pelo banco: ${insertErrorMsg}`);
+    } else {
+      toast.success(`${imported} leads importados, ${skipped} ignorados`);
+    }
   };
 
   return (
@@ -190,15 +198,21 @@ function NotificationsTab() {
   };
 
   const savePrefs = async (newPrefs: typeof prefs) => {
+    // Os switches mudam antes da gravação (otimista): guardamos o estado anterior
+    // para reverter se o banco recusar ou falhar.
+    const prevPrefs = prefs;
     setPrefs(newPrefs);
     const { data: session } = await supabase.auth.getSession();
     const userId = session.session?.user.id;
-    if (!userId) return;
+    if (!userId) { setPrefs(prevPrefs); return; }
     const { data: existing } = await supabase.from("crm_notification_preferences").select("id").eq("user_id", userId).limit(1);
-    if (existing && existing.length > 0) {
-      await supabase.from("crm_notification_preferences").update(newPrefs).eq("user_id", userId);
-    } else {
-      await supabase.from("crm_notification_preferences").insert({ ...newPrefs, user_id: userId });
+    const { error } = existing && existing.length > 0
+      ? await supabase.from("crm_notification_preferences").update(newPrefs).eq("user_id", userId)
+      : await supabase.from("crm_notification_preferences").insert({ ...newPrefs, user_id: userId });
+    if (error) {
+      setPrefs(prevPrefs);
+      toast.error("Erro ao salvar preferências: " + error.message);
+      return;
     }
     toast.success("Preferências salvas");
   };
@@ -262,12 +276,18 @@ function BlockedTab() {
   useEffect(() => { load(); }, [load]);
 
   const unblock = async (id: string) => {
-    const { error } = await supabase.from("crm_leads").update({
+    // RLS que recusa o UPDATE devolve sucesso com zero linhas — o .select() é
+    // o que permite conferir se o lead foi mesmo desbloqueado.
+    const { data, error } = await supabase.from("crm_leads").update({
       is_blocked: false,
       blocked_at: null,
       blocked_by: null,
-    } as any).eq("id", id);
+    } as any).eq("id", id).select("id");
     if (error) { toast.error("Erro ao desbloquear: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para desbloquear este lead.");
+      return;
+    }
     toast.success("Lead desbloqueado");
     setLeads(prev => prev.filter(l => l.id !== id));
   };
@@ -356,6 +376,10 @@ type DeletedBackup = {
 };
 
 function LixeiraTab() {
+  const { userRole } = useAuth();
+  // A policy de DELETE em deleted_leads_backup só cobre gerente/superadmin;
+  // para os demais papéis o botão nunca funcionaria (0 linhas sem erro).
+  const podeApagarDefinitivo = userRole === "superadmin" || userRole === "gerente";
   const [items, setItems] = useState<DeletedBackup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -388,10 +412,14 @@ function LixeiraTab() {
 
   const purge = async (bk: DeletedBackup) => {
     setBusyId(bk.id);
-    const { error } = await supabase.from("deleted_leads_backup" as any).delete().eq("id", bk.id);
+    const { data, error } = await supabase.from("deleted_leads_backup" as any).delete().eq("id", bk.id).select("id");
     setBusyId(null);
     setConfirmDelete(null);
     if (error) { toast.error("Erro ao apagar definitivamente: " + error.message); return; }
+    if (!data || (data as any[]).length === 0) {
+      toast.error("Seu perfil não tem permissão para apagar este backup.");
+      return;
+    }
     toast.success("Backup apagado definitivamente");
     setItems((prev) => prev.filter((i) => i.id !== bk.id));
   };
@@ -466,9 +494,11 @@ function LixeiraTab() {
                           <RotateCcw size={14} className="mr-1" /> Restaurar
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(bk)} title="Apagar definitivamente">
-                        <Trash2 size={14} />
-                      </Button>
+                      {podeApagarDefinitivo && (
+                        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmDelete(bk)} title="Apagar definitivamente">
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

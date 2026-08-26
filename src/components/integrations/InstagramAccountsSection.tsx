@@ -66,11 +66,15 @@ export default function InstagramAccountsSection() {
       .select("id")
       .eq("key", "instagram_global")
       .maybeSingle();
-    const { error } = existing
-      ? await supabase.from("integrations").update({ status: newStatus }).eq("id", existing.id)
-      : await supabase.from("integrations").insert({ key: "instagram_global", status: newStatus, config: {} });
+    // O `.select()` confere o que realmente gravou: um UPDATE barrado pela RLS
+    // não devolve erro — devolve sucesso com zero linhas.
+    const { data, error } = existing
+      ? await supabase.from("integrations").update({ status: newStatus }).eq("id", existing.id).select("id")
+      : await supabase.from("integrations").insert({ key: "instagram_global", status: newStatus, config: {} }).select("id");
     if (error) {
-      toast.error("Erro ao alterar integração do Instagram");
+      toast.error("Erro ao alterar integração do Instagram: " + error.message);
+    } else if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para alterar a integração do Instagram.");
     } else {
       setGlobalEnabled(enabled);
       toast.success(
@@ -212,12 +216,17 @@ export default function InstagramAccountsSection() {
   };
 
   const handleToggle = async (acc: InstagramAccount) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("instagram_accounts")
       .update({ is_active: !acc.is_active })
-      .eq("id", acc.id);
+      .eq("id", acc.id)
+      .select("id");
     if (error) {
-      toast.error("Erro ao alterar status");
+      toast.error("Erro ao alterar status: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para alterar esta conta.");
       return;
     }
     toast.success(!acc.is_active ? "Conta ativada" : "Conta desativada");
@@ -226,9 +235,13 @@ export default function InstagramAccountsSection() {
 
   const handleDelete = async (acc: InstagramAccount) => {
     if (!confirm(`Remover a conta "${acc.name}"? Esta ação pode ser desfeita reconectando.`)) return;
-    const { error } = await supabase.from("instagram_accounts").delete().eq("id", acc.id);
+    const { data, error } = await supabase.from("instagram_accounts").delete().eq("id", acc.id).select("id");
     if (error) {
-      toast.error("Erro ao remover");
+      toast.error("Erro ao remover: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para remover esta conta.");
       return;
     }
     toast.success("Conta removida");

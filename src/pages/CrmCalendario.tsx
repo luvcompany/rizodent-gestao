@@ -329,14 +329,19 @@ export default function CrmCalendario() {
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const handleMarkDone = async (task: Task) => {
-    await supabase.from("crm_tasks").update({ status: "done" }).eq("id", task.id);
+    // O `.select()` torna a resposta verificável: RLS que recusa devolve
+    // sucesso com ZERO linhas, não erro.
+    const { data, error } = await supabase.from("crm_tasks").update({ status: "done" }).eq("id", task.id).select("id");
+    if (error) { toast.error("Erro ao concluir tarefa: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para concluir esta tarefa."); return; }
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "done" } : t));
     setSelectedTask(null);
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
-    if (error) { toast.error("Erro ao excluir tarefa"); return; }
+    const { data, error } = await supabase.from("crm_tasks").delete().eq("id", taskId).select("id");
+    if (error) { toast.error("Erro ao excluir tarefa: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta tarefa."); return; }
     toast.success("Tarefa excluída");
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     setSelectedTask(null);
@@ -344,8 +349,9 @@ export default function CrmCalendario() {
   };
 
   const handleDeleteAppointment = async (apptId: string) => {
-    const { error } = await supabase.from("crm_appointments").delete().eq("id", apptId);
-    if (error) { toast.error("Erro ao excluir agendamento"); return; }
+    const { data, error } = await supabase.from("crm_appointments").delete().eq("id", apptId).select("id");
+    if (error) { toast.error("Erro ao excluir agendamento: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este agendamento."); return; }
     toast.success("Agendamento excluído");
     setAppointments((prev) => prev.filter((a) => a.id !== apptId));
     setDeleteApptConfirm(null);
@@ -410,9 +416,10 @@ export default function CrmCalendario() {
 
   const handleApptReopen = async (appt: Appointment) => {
     setApptBusy(true);
-    const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", appt.id);
+    const { data, error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", appt.id).select("id");
     setApptBusy(false);
     if (error) { toastDbError(error, "Erro ao reabrir agendamento"); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para reabrir este agendamento."); return; }
     refreshAppt(appt.id, "confirmed");
     toast.success("Agendamento reaberto");
     setSelectedAppointment(null);
@@ -424,11 +431,16 @@ export default function CrmCalendario() {
       .update({ exited_at: new Date().toISOString() })
       .eq("lead_id", appt.lead_id)
       .is("exited_at", null);
-    await supabase.from("crm_lead_stage_history").insert({ lead_id: appt.lead_id, stage_id: apptMoveStageId });
-    const { error } = await supabase.from("crm_leads")
+    // Mostra o motivo real se o histórico falhar, mas não bloqueia: o passo
+    // decisivo é o update do lead logo abaixo, que é conferido.
+    const { error: histError } = await supabase.from("crm_lead_stage_history").insert({ lead_id: appt.lead_id, stage_id: apptMoveStageId });
+    if (histError) toastDbError(histError, "Erro ao registrar o histórico de etapa");
+    const { data, error } = await supabase.from("crm_leads")
       .update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId })
-      .eq("id", appt.lead_id);
+      .eq("id", appt.lead_id)
+      .select("id");
     if (error) { toastDbError(error, "Erro ao mover o lead"); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para mover este lead."); return; }
     toast.success("Lead movido de etapa");
     setSelectedAppointment(null);
   };

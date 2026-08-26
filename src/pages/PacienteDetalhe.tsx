@@ -121,10 +121,15 @@ const PacienteDetalhe = () => {
 
   const handleDeletePaciente = async () => {
     if (!id) return;
-    await supabase.from("pagamentos").delete().eq("paciente_id", id);
-    await supabase.from("tratamentos").delete().eq("paciente_id", id);
-    const { error } = await supabase.from("pacientes").delete().eq("id", id);
+    const { error: pagError } = await supabase.from("pagamentos").delete().eq("paciente_id", id);
+    if (pagError) { toast.error("Erro: " + pagError.message); return; }
+    const { error: tratError } = await supabase.from("tratamentos").delete().eq("paciente_id", id);
+    if (tratError) { toast.error("Erro: " + tratError.message); return; }
+    // Exclusão recusada pela regra do banco não devolve erro — devolve sucesso
+    // com zero linhas. O `.select()` é o que permite conferir se apagou mesmo.
+    const { data, error } = await supabase.from("pacientes").delete().eq("id", id).select("id");
     if (error) { toast.error("Erro: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este paciente."); return; }
     toast.success("Paciente excluído!");
     navigate("/pacientes");
   };
@@ -182,9 +187,11 @@ const PacienteDetalhe = () => {
   };
 
   const handleDeleteTratamento = async (tratId: string) => {
-    await supabase.from("pagamentos").delete().eq("tratamento_id", tratId);
-    const { error } = await supabase.from("tratamentos").delete().eq("id", tratId);
+    const { error: pagError } = await supabase.from("pagamentos").delete().eq("tratamento_id", tratId);
+    if (pagError) { toast.error("Erro: " + pagError.message); return; }
+    const { data, error } = await supabase.from("tratamentos").delete().eq("id", tratId).select("id");
     if (error) { toast.error("Erro: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este tratamento."); return; }
     setTratamentos(prev => prev.filter(t => t.id !== tratId));
     setPagamentos(prev => prev.filter(p => p.tratamento_id !== tratId));
     toast.success("Tratamento excluído!");
@@ -216,8 +223,9 @@ const PacienteDetalhe = () => {
   };
 
   const handleDeletePagamento = async (pagId: string) => {
-    const { error } = await supabase.from("pagamentos").delete().eq("id", pagId);
+    const { data, error } = await supabase.from("pagamentos").delete().eq("id", pagId).select("id");
     if (error) { toast.error("Erro: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este pagamento."); return; }
     setPagamentos(prev => prev.filter(p => p.id !== pagId));
     toast.success("Pagamento excluído!");
   };

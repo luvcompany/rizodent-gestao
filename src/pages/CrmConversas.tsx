@@ -421,10 +421,18 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   const handleStopBot = async () => {
     if (!activeExecution) return;
-    await supabase
+    // O `.select()` confere que a linha realmente mudou: RLS barrada devolve
+    // sucesso com zero linhas e o bot continuaria respondendo o paciente.
+    const { data, error } = await supabase
       .from("bot_executions")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
-      .eq("id", activeExecution.id);
+      .eq("id", activeExecution.id)
+      .select("id");
+    if (error) { toast.error("Erro ao encerrar bot: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para encerrar este bot.");
+      return;
+    }
     toast.success("Bot encerrado");
     setActiveExecution(null);
   };
@@ -772,7 +780,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
     // Remove from list after 10s since it's no longer assigned to current user
     const capturedLeadId = selectedLeadId;
-    setTimeout(() => {
+    const removeTimeout = window.setTimeout(() => {
       setLeads(prev => prev.filter(l => l.id !== capturedLeadId));
       setSelectedLeadId(prev => prev === capturedLeadId ? null : prev);
       setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
@@ -784,10 +792,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     });
 
     if (error || data?.error) {
-      // Rollback on failure
+      // Rollback on failure — inclusive o timeout que removeria o lead da lista
+      window.clearTimeout(removeTimeout);
       setSelectedLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
       setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, assigned_to: oldUserId ?? null } : l));
-      toast.error("Erro ao transferir lead");
+      const reason = typeof data?.error === "string" ? data.error : error?.message;
+      toast.error(reason ? `Erro ao transferir lead: ${reason}` : "Erro ao transferir lead");
       return;
     }
 
@@ -1267,7 +1277,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                             {isInbound && (
                               <DropdownMenuItem onClick={async (e) => {
                                 e.stopPropagation();
-                                await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id);
+                                const { data, error } = await supabase.from("crm_leads").update({ last_outbound_at: new Date().toISOString() }).eq("id", lead.id).select("id");
+                                if (error) { toast.error("Erro ao marcar como respondida: " + error.message); return; }
+                                if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para alterar este lead."); return; }
                                 setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, last_direction: "outbound", last_outbound_at: new Date().toISOString() } as any : l));
                                 if (selectedLeadId === lead.id) setSelectedLead(prev => prev ? { ...prev, last_direction: "outbound" } : prev);
                                 toast.success("Conversa marcada como respondida");
@@ -1281,12 +1293,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 if (!window.confirm("Bloquear este lead? As mensagens dele serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.")) return;
-                                const { error } = await supabase.from("crm_leads").update({
+                                const { data, error } = await supabase.from("crm_leads").update({
                                   is_blocked: true,
                                   blocked_at: new Date().toISOString(),
                                   blocked_by: user?.id || null,
-                                } as any).eq("id", lead.id);
+                                } as any).eq("id", lead.id).select("id");
                                 if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                                if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para bloquear este lead."); return; }
                                 setLeads(prev => prev.filter(l => l.id !== lead.id));
                                 if (selectedLeadId === lead.id) setSelectedLead(null as any);
                                 toast.success("Lead bloqueado");

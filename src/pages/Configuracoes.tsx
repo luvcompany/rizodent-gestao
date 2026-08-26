@@ -72,8 +72,21 @@ function PerfilTab() {
       if (error) throw error;
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = data.publicUrl + "?t=" + Date.now();
+      // Otimista com reversão: se o banco recusar (erro OU zero linhas pela
+      // RLS), a prévia volta para a foto anterior em vez de mentir.
+      const avatarAnterior = avatarUrl;
       setAvatarUrl(url);
-      await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", user.id);
+      const { data: linhas, error: updErr } = await supabase
+        .from("profiles")
+        .update({ avatar_url: data.publicUrl })
+        .eq("id", user.id)
+        .select("id");
+      if (updErr) { setAvatarUrl(avatarAnterior); throw updErr; }
+      if (!linhas || linhas.length === 0) {
+        setAvatarUrl(avatarAnterior);
+        toast.error("Seu perfil não tem permissão para atualizar a foto.");
+        return;
+      }
       toast.success("Foto atualizada!");
     } catch (err: any) {
       toast.error("Erro ao enviar foto: " + err.message);
@@ -211,15 +224,18 @@ function ClinicasTab() {
   };
 
   const toggleAtiva = async (c: Clinica) => {
-    const { error } = await supabase.from("clinicas").update({ ativa: !c.ativa } as any).eq("id", c.id);
+    // RLS que barra o update devolve sucesso com 0 linhas — o .select() torna isso visível.
+    const { data, error } = await supabase.from("clinicas").update({ ativa: !c.ativa } as any).eq("id", c.id).select("id");
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para alterar esta unidade."); return; }
     load();
   };
 
   const remove = async (c: Clinica) => {
     if (!confirm(`Excluir a clínica "${c.nome}"?`)) return;
-    const { error } = await supabase.from("clinicas").delete().eq("id", c.id);
+    const { data, error } = await supabase.from("clinicas").delete().eq("id", c.id).select("id");
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta unidade."); return; }
     toast.success("Clínica removida");
     load();
   };
@@ -231,12 +247,13 @@ function ClinicasTab() {
 
   const saveEdit = async (c: Clinica) => {
     setEditSaving(true);
-    const { error } = await supabase.from("clinicas").update({
+    const { data, error } = await supabase.from("clinicas").update({
       endereco: editForm.endereco.trim() || null,
       location_link: editForm.location_link.trim() || null,
-    } as any).eq("id", c.id);
+    } as any).eq("id", c.id).select("id");
     setEditSaving(false);
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para editar esta unidade."); return; }
     toast.success("Unidade atualizada");
     setEditId(null);
     load();

@@ -126,8 +126,14 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     setTotalPaid(paid);
 
     if (paid !== (lead.value || 0)) {
-      await supabase.from("crm_leads").update({ value: paid }).eq("id", lead.id);
-      onLeadUpdated({ value: paid });
+      // Sincronização automática, sem toast: o card só mostra o valor novo se o
+      // banco realmente gravou (RLS que recusa devolve sucesso com zero linhas).
+      const { data: updated, error } = await supabase
+        .from("crm_leads")
+        .update({ value: paid })
+        .eq("id", lead.id)
+        .select("id");
+      if (!error && updated && updated.length > 0) onLeadUpdated({ value: paid });
     }
 
     // Mover lead para etapa "contratado" automaticamente quando há pagamento
@@ -164,12 +170,15 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     // Só avança — não regride se já estiver em etapa igual ou posterior
     if (currentPos >= contratadoStage.position) return;
 
-    const { error } = await supabase
+    const { data: moved, error } = await supabase
       .from("crm_leads")
       .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
-      .eq("id", lead.id);
+      .eq("id", lead.id)
+      .select("id");
 
-    if (!error) {
+    // Movimento automático: se o banco recusar (erro ou RLS com zero linhas),
+    // não move o card nem anuncia — o toast só sai com a gravação confirmada.
+    if (!error && moved && moved.length > 0) {
       onLeadUpdated({ stage_id: contratadoStage.id } as any);
       toast.success("Lead movido para Contratado 🎉");
     }
@@ -196,11 +205,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   };
 
   const setAsPrimary = async (linkId: string, pacienteId: string) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("crm_lead_pacientes")
       .update({ is_primary: true })
-      .eq("id", linkId);
-    if (error) { toast.error("Erro ao definir principal"); return; }
+      .eq("id", linkId)
+      .select("id");
+    if (error) { toast.error("Erro ao definir principal: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para definir o paciente principal.");
+      return;
+    }
     onLeadUpdated({ paciente_id: pacienteId });
     await fetchAllLinks();
   };
@@ -230,16 +244,31 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
     const primaryId = linkedPacientes.find((p) => p.is_primary)?.id || lead.paciente_id;
     const [leadRes, pacienteRes] = await Promise.all([
-      supabase.from("crm_leads").update({ cidade: normalizedCity, updated_at: new Date().toISOString() }).eq("id", lead.id),
-      primaryId ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", primaryId) : Promise.resolve({ error: null }),
+      supabase.from("crm_leads").update({ cidade: normalizedCity, updated_at: new Date().toISOString() }).eq("id", lead.id).select("id"),
+      primaryId ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", primaryId).select("id") : Promise.resolve({ data: null, error: null }),
     ]);
 
     setSavingCity(false);
-    if (leadRes.error || pacienteRes.error) {
+    // A tela mudou antes do banco responder: qualquer falha precisa reverter.
+    const rollback = () => {
       const rollbackCity = previousCity === EMPTY_CITY_VALUE ? null : previousCity;
       setCidade(previousCity);
       onLeadUpdated({ cidade: rollbackCity });
-      toast.error("Erro ao salvar cidade");
+    };
+    if (leadRes.error || pacienteRes.error) {
+      rollback();
+      toast.error("Erro ao salvar cidade: " + (leadRes.error?.message || pacienteRes.error?.message));
+      return;
+    }
+    // RLS que recusa o update devolve sucesso com zero linhas.
+    if (!leadRes.data || leadRes.data.length === 0) {
+      rollback();
+      toast.error("Seu perfil não tem permissão para alterar a cidade deste lead.");
+      return;
+    }
+    if (primaryId && (!pacienteRes.data || pacienteRes.data.length === 0)) {
+      // A cidade do lead gravou; só o cadastro do paciente ficou como estava.
+      toast.error("Cidade salva no lead, mas seu perfil não tem permissão para atualizar o cadastro do paciente.");
     }
   };
 
@@ -311,20 +340,28 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       telefone: stripCountryCode(lead.phone || ""),
       cidade: normalizedCity,
     }).select("id").single();
-    if (error || !data) { toast.error("Erro ao criar paciente"); return; }
+    if (error || !data) {
+      toast.error("Erro ao criar paciente" + (error ? ": " + error.message : ""));
+      return;
+    }
 
     const isFirst = linkedPacientes.length === 0;
-    await supabase.from("crm_lead_pacientes").insert({
+    const { error: linkError } = await supabase.from("crm_lead_pacientes").insert({
       lead_id: lead.id, paciente_id: data.id, is_primary: isFirst,
     });
 
-    if (isFirst) onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
+    if (linkError) {
+      // O paciente foi criado; só o vínculo falhou — não anunciar "vinculado".
+      toast.error("Paciente criado, mas houve erro ao vincular ao lead: " + linkError.message);
+    } else if (isFirst) {
+      onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
+    }
     await fetchAllLinks();
 
     setLinkOpen(false);
     setDuplicateOpen(false);
     setNewPersonName("");
-    toast.success("Paciente criado e vinculado!");
+    if (!linkError) toast.success("Paciente criado e vinculado!");
 
     navigate("/atendimento", {
       state: {

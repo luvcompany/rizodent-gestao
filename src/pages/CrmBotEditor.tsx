@@ -287,30 +287,51 @@ function BotEditorInner() {
     setSaving(true);
 
     // Save flow
-    const { error } = await supabase.from("bots").update({
+    // RLS que barra o update devolve sucesso com 0 linhas — o .select() torna isso visível.
+    const { data: saved, error } = await supabase.from("bots").update({
       name: botName,
       description: botDescription,
       flow_json: { nodes, edges },
       mark_as_read: markAsRead,
       channels,
-    } as any).eq("id", id);
+    } as any).eq("id", id).select("id");
 
-    if (error) { setSaving(false); toast.error("Erro ao salvar"); return; }
+    if (error) { setSaving(false); toast.error("Erro ao salvar: " + error.message); return; }
+    if (!saved || saved.length === 0) {
+      setSaving(false);
+      toast.error("Seu perfil não tem permissão para editar este bot.");
+      return;
+    }
 
     // Auto-publish: create version
     const { data: bot } = await supabase.from("bots").select("current_version").eq("id", id).single();
     const newVersion = (bot?.current_version || 0) + 1;
 
-    await supabase.from("bot_versions").insert({
+    const { error: versionErr } = await supabase.from("bot_versions").insert({
       bot_id: id,
       version: newVersion,
       flow_json: { nodes, edges },
     });
+    if (versionErr) {
+      setSaving(false);
+      toast.error("O bot foi salvo, mas a publicação da versão falhou: " + versionErr.message);
+      return;
+    }
 
-    await supabase.from("bots").update({
+    const { data: published, error: publishErr } = await supabase.from("bots").update({
       status: "published",
       current_version: newVersion,
-    }).eq("id", id);
+    }).eq("id", id).select("id");
+    if (publishErr) {
+      setSaving(false);
+      toast.error("O bot foi salvo, mas a publicação falhou: " + publishErr.message);
+      return;
+    }
+    if (!published || published.length === 0) {
+      setSaving(false);
+      toast.error("Seu perfil não tem permissão para publicar este bot.");
+      return;
+    }
 
     setBotStatus("published");
     lastSavedRef.current = JSON.stringify({ nodes, edges, botName, botDescription, markAsRead, channels });

@@ -220,7 +220,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     const valor = centavosParaValor(form.valor);
     if (valor <= 0) { toast.error("Informe um valor válido"); return; }
     setSalvando(true);
-    const { error } = await (supabase as any)
+    // O `.select()` torna a resposta verificável: update barrado pela regra do
+    // banco não devolve erro — devolve sucesso com zero linhas.
+    const { data, error } = await (supabase as any)
       .from("closer_pagamentos")
       .update({
         valor,
@@ -230,9 +232,14 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
         tipo: form.tipo || null,
         data_pagamento: form.data_pagamento,
       })
-      .eq("id", editando.id);
+      .eq("id", editando.id)
+      .select("id");
     setSalvando(false);
     if (error) { toast.error(`Não foi possível salvar: ${error.message}`); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para alterar este pagamento.");
+      return;
+    }
     toast.success("Pagamento atualizado");
     setEditando(null);
     setFormAberto(false);
@@ -254,10 +261,11 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
   const vincularExistente = async (id: string) => {
     setSalvando(true);
-    const { error } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from("closer_pacientes")
       .update({ lead_id: lead.id, updated_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
     setSalvando(false);
     if (error) {
       toast.error(
@@ -265,6 +273,10 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
           ? "Este paciente já está vinculado a outra conversa."
           : `Não foi possível vincular: ${error.message}`,
       );
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para vincular este paciente.");
       return;
     }
     toast.success("Paciente vinculado");
@@ -335,10 +347,11 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       if (existente) {
         if (!existente.lead_id || existente.lead_id === lead.id) {
           setSalvando(true);
-          const { error } = await (supabase as any)
+          const { data: vinculado, error } = await (supabase as any)
             .from("closer_pacientes")
             .update({ lead_id: lead.id, updated_at: new Date().toISOString() })
-            .eq("id", existente.id);
+            .eq("id", existente.id)
+            .select("id");
           if (error) {
             setSalvando(false);
             toast.error(
@@ -346,6 +359,13 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                 ? "Este paciente já está vinculado a outra conversa."
                 : `Não foi possível vincular: ${error.message}`,
             );
+            return;
+          }
+          // Sem esta conferência, o pagamento abaixo seria lançado num
+          // paciente que não ficou vinculado a esta conversa.
+          if (!vinculado || vinculado.length === 0) {
+            setSalvando(false);
+            toast.error("Seu perfil não tem permissão para vincular este paciente.");
             return;
           }
           const ok = await lancarPagamentoEm(existente.id);
@@ -387,12 +407,17 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
 
   const desvincular = async (p: Paciente) => {
-    const { error } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from("closer_pacientes")
       .update({ lead_id: null })
-      .eq("id", p.id);
+      .eq("id", p.id)
+      .select("id");
     if (error) {
       toast.error(`Não foi possível desvincular: ${error.message}`);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para remover este vínculo.");
       return;
     }
     toast.success("Vínculo removido — o paciente continua na sua aba Pacientes");

@@ -63,12 +63,12 @@ export default function CrmCampanhas() {
   const create = async () => {
     if (!form.name || !form.template_id) return toast.error("Nome e template são obrigatórios");
     const totalLeads = previewCount || 0;
-    const { data: bc } = await supabase.from("crm_broadcasts").insert({
+    const { data: bc, error: bcError } = await supabase.from("crm_broadcasts").insert({
       name: form.name, template_id: form.template_id,
       filter_pipeline_id: form.pipeline_id || null, filter_stage_id: form.stage_id || null,
       total_leads: totalLeads, status: "draft",
     }).select().single();
-    if (!bc) return toast.error("Erro ao criar campanha");
+    if (bcError || !bc) return toast.error("Erro ao criar campanha" + (bcError ? ": " + bcError.message : ""));
 
     const PAGE = 1000;
     const leads: { id: string }[] = [];
@@ -81,17 +81,29 @@ export default function CrmCampanhas() {
       from += PAGE;
     }
 
+    // Confere o que realmente entrou: o toast usava o tamanho do array do cliente,
+    // e a campanha podia ficar com menos destinatários (ou zero) sem ninguém saber.
+    let inserted = 0;
+    let recipientsError: string | null = null;
     if (leads.length > 0) {
       // Insert recipients in chunks to avoid payload size limits
       const CHUNK = 500;
       for (let i = 0; i < leads.length; i += CHUNK) {
         const recipients = leads.slice(i, i + CHUNK).map(l => ({ broadcast_id: bc.id, lead_id: l.id }));
-        await supabase.from("crm_broadcast_recipients").insert(recipients);
+        const { data: ins, error: insError } = await supabase.from("crm_broadcast_recipients").insert(recipients).select("lead_id");
+        if (insError) { recipientsError = insError.message; break; }
+        inserted += ins?.length ?? 0;
       }
     }
     setOpen(false); setForm({ name: "", template_id: "", pipeline_id: "", stage_id: "" }); setPreviewCount(null);
     load();
-    toast.success(`Campanha criada com ${leads.length} destinatários`);
+    if (recipientsError) {
+      toast.error(`Campanha criada, mas houve erro ao adicionar destinatários: ${recipientsError}`);
+    } else if (inserted < leads.length) {
+      toast.error(`Campanha criada, mas só ${inserted} de ${leads.length} destinatários foram adicionados`);
+    } else {
+      toast.success(`Campanha criada com ${inserted} destinatários`);
+    }
   };
 
   const send = async (id: string) => {

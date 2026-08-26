@@ -140,11 +140,17 @@ export default function CrmAutomacoes() {
     const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
     const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
     if (match) {
-      await supabase.from("crm_automations").update({ action_config: config as any, is_active: rrActive }).eq("id", match.id);
+      const { data: salvo, error } = await supabase.from("crm_automations").update({ action_config: config as any, is_active: rrActive }).eq("id", match.id).select("id");
+      if (error) { toast.error("Erro ao salvar distribuição: " + error.message); return; }
+      if (!salvo || salvo.length === 0) {
+        toast.error("Seu perfil não tem permissão para alterar esta distribuição.");
+        return;
+      }
     } else {
       const { data: stagesData } = await supabase.from("crm_stages").select("id").eq("pipeline_id", selectedPipelineId).order("position").limit(1);
       if (!stagesData?.length) return toast.error("Pipeline sem etapas");
-      await supabase.from("crm_automations").insert({ stage_id: stagesData[0].id, action_type: "assign_lead", trigger_type: "on_enter", action_config: config as any, is_active: rrActive });
+      const { error } = await supabase.from("crm_automations").insert({ stage_id: stagesData[0].id, action_type: "assign_lead", trigger_type: "on_enter", action_config: config as any, is_active: rrActive });
+      if (error) { toast.error("Erro ao salvar distribuição: " + error.message); return; }
     }
     toast.success("Distribuição automática salva");
     setRoundRobinOpen(false);
@@ -160,7 +166,20 @@ export default function CrmAutomacoes() {
     reordered.splice(toIdx, 0, moved);
     setStages(reordered);
     for (let i = 0; i < reordered.length; i++) {
-      await supabase.from("crm_stages").update({ position: i }).eq("id", reordered[i].id);
+      const { data, error } = await supabase.from("crm_stages").update({ position: i }).eq("id", reordered[i].id).select("id");
+      // Falha no MEIO do laço deixa o banco meio reordenado — voltar a tela
+      // para a ordem antiga mentiria dos dois lados. A verdade está no banco:
+      // recarrega dele.
+      if (error) {
+        toast.error("Erro ao salvar a ordem das etapas: " + error.message);
+        void fetchData();
+        return;
+      }
+      if (!data || data.length === 0) {
+        toast.error("Seu perfil não tem permissão para reordenar estas etapas.");
+        void fetchData();
+        return;
+      }
     }
     toast.success("Ordem das etapas atualizada");
   };
@@ -407,7 +426,12 @@ export default function CrmAutomacoes() {
   };
 
   const handleDeleteAutomation = async (id: string) => {
-    await supabase.from("crm_automations").delete().eq("id", id);
+    const { data, error } = await supabase.from("crm_automations").delete().eq("id", id).select("id");
+    if (error) { toast.error("Erro ao remover automação: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para remover esta automação.");
+      return;
+    }
     toast.success("Automação removida");
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
@@ -495,14 +519,25 @@ export default function CrmAutomacoes() {
     let updated = 0;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const { error: upErr } = await supabase
+      // Contar o que o banco devolve, não o tamanho do chunk: a RLS pode
+      // recusar parte dos leads sem erro nenhum (vem 0 linhas em silêncio).
+      const { data: movidos, error: upErr } = await supabase
         .from("crm_leads")
         .update({ stage_id: targetStageId, updated_at: new Date().toISOString() })
-        .in("id", chunk);
+        .in("id", chunk)
+        .select("id");
       if (upErr) { toast.error("Erro ao mover: " + upErr.message); return; }
-      updated += chunk.length;
+      updated += movidos?.length ?? 0;
     }
     console.log(`[BulkMove] auto=${auto.id} source=${sourceName} target=${targetName} moved=${updated}/${matching.length}`);
+    if (updated === 0) {
+      toast.error("Seu perfil não tem permissão para mover estes leads.");
+      return;
+    }
+    if (updated < matching.length) {
+      toast.warning(`Apenas ${updated} de ${matching.length} lead(s) foram movidos — os demais não puderam ser alterados pelo seu perfil.`);
+      return;
+    }
     toast.success(`✓ ${updated} lead(s) movido(s) de "${sourceName}" para "${targetName}"`);
   };
 
@@ -583,18 +618,25 @@ export default function CrmAutomacoes() {
                   <DropdownMenuItem onClick={async () => {
                     const pipe = pipelines.find(p => p.id === selectedPipelineId);
                     if (!pipe) return;
-                    const { data } = await supabase.from("crm_pipelines").insert({
+                    const { data, error } = await supabase.from("crm_pipelines").insert({
                       name: `${pipe.name} (cópia)`, color: pipe.color,
                       ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
                     }).select().single();
+                    if (error) { toast.error("Erro ao duplicar funil: " + error.message); return; }
                     if (data) {
                       // Duplicate stages
+                      let etapasComFalha = 0;
                       for (const s of stages) {
-                        await supabase.from("crm_stages").insert({
+                        const { error: stageErr } = await supabase.from("crm_stages").insert({
                           pipeline_id: data.id, name: s.name, color: s.color, position: s.position,
                         });
+                        if (stageErr) etapasComFalha++;
                       }
-                      toast.success("Funil duplicado");
+                      if (etapasComFalha > 0) {
+                        toast.error(`Funil duplicado, mas ${etapasComFalha} de ${stages.length} etapa(s) não puderam ser copiadas.`);
+                      } else {
+                        toast.success("Funil duplicado");
+                      }
                       fetchData(data.id);
                     }
                   }}>
@@ -602,8 +644,15 @@ export default function CrmAutomacoes() {
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
                     if (!confirm("Excluir este funil e todas suas etapas?")) return;
-                    await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
-                    await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId);
+                    const { error: stagesErr } = await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
+                    if (stagesErr) { toast.error("Erro ao excluir as etapas do funil: " + stagesErr.message); return; }
+                    const { data: funilApagado, error: pipeErr } = await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId).select("id");
+                    if (pipeErr) { toast.error("Erro ao excluir funil: " + pipeErr.message); return; }
+                    if (!funilApagado || funilApagado.length === 0) {
+                      toast.error("Seu perfil não tem permissão para excluir este funil.");
+                      fetchData();
+                      return;
+                    }
                     toast.success("Funil excluído");
                     fetchData();
                   }}>
@@ -650,11 +699,22 @@ export default function CrmAutomacoes() {
                 <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline mt-0.5">Configurar</button>
               </div>
               <Switch checked={rrActive} onCheckedChange={async (v) => {
+                const anterior = rrActive;
                 setRrActive(v);
                 const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
                 const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
                 if (match) {
-                  await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id);
+                  const { data: salvo, error } = await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id).select("id");
+                  if (error) {
+                    toast.error("Erro ao alterar distribuição: " + error.message);
+                    setRrActive(anterior);
+                    return;
+                  }
+                  if (!salvo || salvo.length === 0) {
+                    toast.error("Seu perfil não tem permissão para alterar esta distribuição.");
+                    setRrActive(anterior);
+                    return;
+                  }
                   toast.success(v ? "Distribuição ativada" : "Distribuição desativada");
                 }
               }} />
@@ -682,7 +742,12 @@ export default function CrmAutomacoes() {
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
                     <button onClick={async () => {
-                      await supabase.from("funnel_channels").delete().eq("id", ch.id);
+                      const { data, error } = await supabase.from("funnel_channels").delete().eq("id", ch.id).select("id");
+                      if (error) { toast.error("Erro ao remover fonte: " + error.message); return; }
+                      if (!data || data.length === 0) {
+                        toast.error("Seu perfil não tem permissão para remover esta fonte.");
+                        return;
+                      }
                       toast.success("Fonte removida");
                       setChannels(prev => prev.filter(c => c.id !== ch.id));
                     }}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
@@ -694,9 +759,14 @@ export default function CrmAutomacoes() {
               onClick={async () => {
                 const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
                 if (!type || !selectedPipelineId) return;
-                const { data } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() }).select().single();
+                const { data, error } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() }).select().single();
+                if (error) { toast.error("Erro ao adicionar fonte: " + error.message); return; }
+                if (!data) {
+                  toast.error("Seu perfil não tem permissão para adicionar fontes neste funil.");
+                  return;
+                }
                 toast.success("Fonte adicionada");
-                if (data) setChannels(prev => [...prev, data as FunnelChannel]);
+                setChannels(prev => [...prev, data as FunnelChannel]);
               }}
               className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
             >
@@ -738,7 +808,13 @@ export default function CrmAutomacoes() {
                                         setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
                                       }}
                                       onBlur={async (e) => {
-                                        await supabase.from("crm_stages").update({ name: e.target.value }).eq("id", stage.id);
+                                        const { data, error } = await supabase.from("crm_stages").update({ name: e.target.value }).eq("id", stage.id).select("id");
+                                        if (error || !data || data.length === 0) {
+                                          toast.error(error ? "Erro ao renomear etapa: " + error.message : "Seu perfil não tem permissão para renomear esta etapa.");
+                                          // O nome na tela já é o digitado (onChange otimista); relê o valor do banco para reverter
+                                          const { data: atual } = await supabase.from("crm_stages").select("name").eq("id", stage.id).single();
+                                          if (atual) setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: atual.name } : s));
+                                        }
                                       }}
                                     />
                                   </div>
@@ -753,8 +829,13 @@ export default function CrmAutomacoes() {
                                             <button
                                               key={c}
                                               onClick={async () => {
+                                                const corAnterior = stage.color;
                                                 setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: c } : s));
-                                                await supabase.from("crm_stages").update({ color: c }).eq("id", stage.id);
+                                                const { data, error } = await supabase.from("crm_stages").update({ color: c }).eq("id", stage.id).select("id");
+                                                if (error || !data || data.length === 0) {
+                                                  toast.error(error ? "Erro ao alterar a cor da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
+                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: corAnterior } : s));
+                                                }
                                               }}
                                               className={`w-6 h-6 rounded-md border-2 ${stage.color === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
                                               style={{ backgroundColor: c }}
@@ -785,8 +866,13 @@ export default function CrmAutomacoes() {
                                             <button
                                               key={opt.key}
                                               onClick={async () => {
+                                                const tipoAnterior = { is_won: stage.is_won, is_lost: stage.is_lost };
                                                 setStages(prev => prev.map(s => s.id === stage.id ? { ...s, is_won: opt.won, is_lost: opt.lost } : s));
-                                                await supabase.from("crm_stages").update({ is_won: opt.won, is_lost: opt.lost } as any).eq("id", stage.id);
+                                                const { data, error } = await supabase.from("crm_stages").update({ is_won: opt.won, is_lost: opt.lost } as any).eq("id", stage.id).select("id");
+                                                if (error || !data || data.length === 0) {
+                                                  toast.error(error ? "Erro ao alterar o tipo da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
+                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, ...tipoAnterior } : s));
+                                                }
                                               }}
                                               className={`w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${active ? "bg-muted font-medium" : ""}`}
                                             >
@@ -1053,7 +1139,8 @@ export default function CrmAutomacoes() {
                 {duplicateRules.action === "notify" && "O lead será criado normalmente, mas uma notificação será gerada avisando sobre a duplicata."}
               </p>
             </div>
-            <Button className="w-full" onClick={() => { toast.success("Regras de duplicados salvas"); setDuplicateRulesOpen(false); }}>
+            {/* Não há gravação no banco por trás deste botão — nada afirmar que salvou */}
+            <Button className="w-full" onClick={() => { toast.warning("As regras de duplicados ainda não são gravadas — este controle está em desenvolvimento."); setDuplicateRulesOpen(false); }}>
               Salvar Regras
             </Button>
           </div>

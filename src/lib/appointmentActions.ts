@@ -51,9 +51,9 @@ export function statusForRescheduledOrigin(scheduled_date: string, scheduled_tim
   return nowMs() >= ms + 3 * 60 * 60 * 1000 ? "no_show" : "rescheduled";
 }
 
-const TRIGGER_HINTS = ["imutável", "imutavel", "reabertura é ação de gerente", "reabertura e acao de gerente", "após o desfecho", "apos o desfecho", "remarcação"];
+const TRIGGER_HINTS = ["imutável", "imutavel", "reabertura é ação de gerente", "reabertura e acao de gerente", "após o desfecho", "apos o desfecho", "remarcação", "permissão", "permissao"];
 
-/** Mostra a mensagem do gatilho do banco quando existir; senão um erro genérico. */
+/** Mostra a mensagem do gatilho do banco (ou de permissão) quando existir; senão um erro genérico. */
 export function toastDbError(error: unknown, fallback = "Erro ao atualizar agendamento") {
   const msg = (error as any)?.message ? String((error as any).message) : "";
   const lower = msg.toLowerCase();
@@ -159,8 +159,17 @@ export async function rescheduleAppointment(args: {
   } as any);
   if (insErr) { toastDbError(insErr, "Erro ao criar o novo agendamento"); return false; }
 
-  // "reagendado" exato: não pode cair na etapa de espera "Reagendar"
-  const movedStageId = await moveLeadToStageCrossPipeline(leadId, (n) => n.startsWith("reagendado"));
+  // "reagendado" exato: não pode cair na etapa de espera "Reagendar".
+  // A remarcação em si JÁ aconteceu (desfecho gravado + novo agendamento
+  // criado) — se só o movimento de etapa falhar, o fluxo segue e avisa o
+  // parcial, em vez de anunciar "Erro ao remarcar" para uma remarcação feita.
+  let movedStageId: string | null = null;
+  let falhaDeEtapa: string | null = null;
+  try {
+    movedStageId = await moveLeadToStageCrossPipeline(leadId, (n) => n.startsWith("reagendado"));
+  } catch (e: any) {
+    falhaDeEtapa = e?.message || String(e);
+  }
 
   const antigo = `${old.scheduled_date.split("-").reverse().join("/")} às ${(old.scheduled_time || "").slice(0, 5)}`;
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
@@ -176,7 +185,11 @@ export async function rescheduleAppointment(args: {
     }).catch((e) => console.error("[Reschedule] Automation error:", e));
   }
 
-  toast.success("Consulta remarcada");
+  if (falhaDeEtapa) {
+    toast.warning(`Consulta remarcada, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);
+  } else {
+    toast.success("Consulta remarcada");
+  }
   return true;
 }
 
@@ -212,10 +225,18 @@ export async function compareceuEAgendou(args: {
   } as any);
   if (insErr) { toastDbError(insErr, "Erro ao criar o novo agendamento"); return false; }
 
-  const movedStageId = await moveLeadToStageCrossPipeline(
-    leadId,
-    (n) => n.includes("compareceu") && n.includes("agendou"),
-  );
+  // Mesmo raciocínio da remarcação: o desfecho e o novo agendamento já estão
+  // gravados — falha só no movimento de etapa vira aviso parcial, não erro.
+  let movedStageId: string | null = null;
+  let falhaDeEtapa: string | null = null;
+  try {
+    movedStageId = await moveLeadToStageCrossPipeline(
+      leadId,
+      (n) => n.includes("compareceu") && n.includes("agendou"),
+    );
+  } catch (e: any) {
+    falhaDeEtapa = e?.message || String(e);
+  }
 
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
   await systemMessage(leadId, `📅 Compareceu e agendou — novo horário ${novo}`);
@@ -230,6 +251,10 @@ export async function compareceuEAgendou(args: {
     }).catch((e) => console.error("[CompareceuEAgendou] Automation error:", e));
   }
 
-  toast.success("Comparecimento registrado com novo agendamento");
+  if (falhaDeEtapa) {
+    toast.warning(`Comparecimento registrado, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);
+  } else {
+    toast.success("Comparecimento registrado com novo agendamento");
+  }
   return true;
 }

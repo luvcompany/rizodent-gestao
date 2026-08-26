@@ -28,7 +28,17 @@ export async function moveLeadToStageInCurrentPipeline(
   if (!target || target.id === lead.stage_id) return lead.stage_id;
 
   const nowIso = new Date().toISOString();
-  await supabase.from("crm_leads").update({ stage_id: target.id, updated_at: nowIso }).eq("id", leadId);
+  // RLS barrada não devolve erro — devolve 0 linhas. Sem o throw, o chamador
+  // anuncia (toast + mensagem de sistema) um movimento de etapa que não houve.
+  const { data: movedRows, error: moveErr } = await supabase
+    .from("crm_leads")
+    .update({ stage_id: target.id, updated_at: nowIso })
+    .eq("id", leadId)
+    .select("id");
+  if (moveErr) throw moveErr;
+  if (!movedRows || movedRows.length === 0) {
+    throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
+  }
 
   const { data: openEntry } = await supabase
     .from("crm_lead_stage_history")
@@ -80,10 +90,15 @@ export async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<
   if (!firstStage) return lead.stage_id;
 
   const nowIso = new Date().toISOString();
-  await supabase
+  const { data: movedRows, error: moveErr } = await supabase
     .from("crm_leads")
     .update({ pipeline_id: targetPipeline.id, stage_id: firstStage.id, updated_at: nowIso })
-    .eq("id", leadId);
+    .eq("id", leadId)
+    .select("id");
+  if (moveErr) throw moveErr;
+  if (!movedRows || movedRows.length === 0) {
+    throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
+  }
 
   const { data: openEntry } = await supabase
     .from("crm_lead_stage_history")
@@ -155,7 +170,15 @@ export async function moveLeadToStageCrossPipeline(
   const crossPipeline = target.pipeline_id !== lead.pipeline_id;
   const updatePayload: any = { stage_id: target.id, updated_at: nowIso };
   if (crossPipeline) updatePayload.pipeline_id = target.pipeline_id;
-  await supabase.from("crm_leads").update(updatePayload).eq("id", leadId);
+  const { data: movedRows, error: moveErr } = await supabase
+    .from("crm_leads")
+    .update(updatePayload)
+    .eq("id", leadId)
+    .select("id");
+  if (moveErr) throw moveErr;
+  if (!movedRows || movedRows.length === 0) {
+    throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
+  }
 
   const { data: openEntry } = await supabase
     .from("crm_lead_stage_history")

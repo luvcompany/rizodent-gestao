@@ -273,8 +273,14 @@ const CadastroLeads = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase.from("leads_diarios").delete().eq("id", id);
+      // DELETE barrado pela RLS devolve sucesso com zero linhas — o .select()
+      // é o que permite conferir se o registro foi mesmo excluído.
+      const { data, error } = await supabase.from("leads_diarios").delete().eq("id", id).select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error("Seu perfil não tem permissão para excluir este registro.");
+        return;
+      }
       toast.success("Registro excluído!");
       fetchRegistros();
     } catch (err: any) {

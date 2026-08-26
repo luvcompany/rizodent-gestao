@@ -23,7 +23,24 @@ const ChangePassword = () => {
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: pwd });
     if (error) { setLoading(false); return toast.error(error.message); }
-    if (user) await supabase.from("profiles").update({ must_change_password: false } as any).eq("id", user.id);
+    if (user) {
+      // Sem conferir este update, uma falha aqui deixava o usuário preso no
+      // loop de troca de senha: o toast dizia "Senha atualizada!" mas o
+      // ProtectedRoute continuava mandando de volta para esta tela.
+      const { data: perfil, error: flagError } = await supabase
+        .from("profiles")
+        .update({ must_change_password: false } as any)
+        .eq("id", user.id)
+        .select("id");
+      if (flagError || !perfil || perfil.length === 0) {
+        setLoading(false);
+        return toast.error(
+          "Senha alterada, mas não foi possível liberar o acesso: " +
+            (flagError?.message || "registro não atualizado") +
+            ". Tente salvar novamente."
+        );
+      }
+    }
     await refreshProfile();
     toast.success("Senha atualizada!");
     navigate("/dashboard");

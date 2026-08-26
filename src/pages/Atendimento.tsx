@@ -323,14 +323,27 @@ const Atendimento = () => {
           const currentPos = currentStage?.position ?? -1;
           if (currentPos >= contratadoStage.position) continue; // já está em etapa igual ou posterior
 
-          await supabase
+          // Update barrado pela RLS não devolve erro — devolve ZERO linhas.
+          // Sem o `.select()`, a tela anunciava "Pagamento registrado" e o lead
+          // ficava para trás em silêncio.
+          const { data: moved, error: moveError } = await supabase
             .from("crm_leads")
             .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
-            .eq("id", lead.leadId);
+            .eq("id", lead.leadId)
+            .select("id");
+          if (moveError) throw moveError;
+          if (!moved || moved.length === 0) {
+            toast.error("O pagamento foi salvo, mas seu perfil não tem permissão para mover o lead para Contratado.");
+          }
         }
       }
-    } catch {
-      // Silencia erros — o pagamento já foi salvo com sucesso
+    } catch (err: any) {
+      // O pagamento já foi salvo — avisa que só a movimentação do lead falhou,
+      // sem derrubar o fluxo de sucesso do lançamento.
+      toast.error(
+        "O pagamento foi salvo, mas não foi possível mover o lead para Contratado: " +
+          (err?.message || "erro desconhecido")
+      );
     }
   };
 

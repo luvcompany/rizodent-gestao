@@ -31,9 +31,14 @@ export default function CrmRespostasRapidas() {
   const save = async () => {
     if (!title.trim() || !content.trim()) return toast.error("Preencha título e conteúdo");
     if (editing) {
-      await supabase.from("crm_quick_replies").update({ title, content }).eq("id", editing.id);
+      // Sem o `.select()`, um update recusado pelo banco volta como sucesso
+      // com zero linhas e o toast comemoraria à toa.
+      const { data, error } = await supabase.from("crm_quick_replies").update({ title, content }).eq("id", editing.id).select("id");
+      if (error) return toast.error("Erro ao atualizar: " + error.message);
+      if (!data || data.length === 0) return toast.error("Seu perfil não tem permissão para editar esta resposta.");
     } else {
-      await supabase.from("crm_quick_replies").insert({ title, content });
+      const { error } = await supabase.from("crm_quick_replies").insert({ title, content });
+      if (error) return toast.error("Erro ao criar: " + error.message);
     }
     setOpen(false); setEditing(null); setTitle(""); setContent("");
     load();
@@ -41,7 +46,9 @@ export default function CrmRespostasRapidas() {
   };
 
   const remove = async (id: string) => {
-    await supabase.from("crm_quick_replies").delete().eq("id", id);
+    const { data, error } = await supabase.from("crm_quick_replies").delete().eq("id", id).select("id");
+    if (error) return toast.error("Erro ao remover: " + error.message);
+    if (!data || data.length === 0) return toast.error("Seu perfil não tem permissão para remover esta resposta.");
     load(); toast.success("Removida");
   };
 

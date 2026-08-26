@@ -148,7 +148,21 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     setTransferring(true);
     try {
       if (phone.trim() !== (lead.phone || "")) {
-        await supabase.from("crm_leads").update({ phone: phone.trim() }).eq("id", lead.id);
+        // Mesma armadilha do salvar: update recusado pela regra do banco volta
+        // sem erro e sem linha — e a transferência seguiria com o telefone antigo.
+        const { data: tel, error: telErr } = await supabase
+          .from("crm_leads")
+          .update({ phone: phone.trim() })
+          .eq("id", lead.id)
+          .select("id");
+        if (telErr) {
+          toast.error("Erro ao salvar o telefone: " + telErr.message);
+          return;
+        }
+        if (!tel || tel.length === 0) {
+          toast.error("Seu perfil não tem permissão para alterar o telefone deste lead.");
+          return;
+        }
       }
       const { data: res, error: rpcErr } = await supabase.rpc("transfer_lead_to_whatsapp" as any, { p_lead_id: lead.id });
       if (rpcErr || (res as any)?.error) {

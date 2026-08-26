@@ -32,10 +32,21 @@ export default function LeadFollowUpPanel({ leadId }: Props) {
   const togglePause = async () => {
     if (!queue) return;
     const newStatus = queue.status === "paused" ? "waiting_disparo1" : "paused";
-    await supabase.from("crm_followup_queue").update({
+    // O `.select()` torna a resposta verificável: RLS que recusa o update
+    // devolve sucesso com zero linhas — sem conferir, o painel diria "Pausado"
+    // com o disparo ainda agendado.
+    const { data, error } = await supabase.from("crm_followup_queue").update({
       status: newStatus,
       updated_at: new Date().toISOString(),
-    }).eq("id", queue.id);
+    }).eq("id", queue.id).select("id");
+    if (error) {
+      toast.error("Erro ao atualizar follow up: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para alterar este follow up.");
+      return;
+    }
     setQueue((prev: any) => ({ ...prev, status: newStatus }));
     toast.success(newStatus === "paused" ? "Follow up pausado" : "Follow up retomado");
   };

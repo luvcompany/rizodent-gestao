@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Rule = {
   id: string;
@@ -15,6 +16,13 @@ type Rule = {
 };
 
 export default function AiRulesManager() {
+  const { userRole } = useAuth();
+  // Excluir orientação é restrito no banco: a regra nega o pós-venda sem
+  // devolver erro, então o botão nem aparece para ele.
+  // Espelha a permissão real do banco (delete_rules: crc/gerente/superadmin).
+  // A lista era por negação ("todo mundo menos pós-venda") e oferecia o botão
+  // a closer/recepção, para quem a exclusão sempre voltava vazia.
+  const canDelete = ["crc", "gerente", "superadmin"].includes(userRole ?? "");
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [newDir, setNewDir] = useState("");
@@ -51,8 +59,9 @@ export default function AiRulesManager() {
 
   const remove = async (id: string) => {
     if (!confirm("Remover esta orientação?")) return;
-    const { error } = await supabase.from("ai_assistant_rules" as any).delete().eq("id", id);
+    const { data, error } = await supabase.from("ai_assistant_rules" as any).delete().eq("id", id).select("id");
     if (error) toast.error(error.message);
+    else if (!data || data.length === 0) toast.error("Seu perfil não tem permissão para remover orientações.");
     else load();
   };
 
@@ -112,9 +121,11 @@ export default function AiRulesManager() {
                   <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingId(r.id); setEditingText(r.text); }}>
                     <Pencil size={14} />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => remove(r.id)}>
-                    <Trash2 size={14} />
-                  </Button>
+                  {canDelete && (
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => remove(r.id)}>
+                      <Trash2 size={14} />
+                    </Button>
+                  )}
                 </>
               )}
             </div>

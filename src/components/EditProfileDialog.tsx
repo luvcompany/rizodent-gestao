@@ -48,9 +48,25 @@ const EditProfileDialog = ({
       const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
       if (error) throw error;
       const url = getAvatarPublicUrl(path);
+      // Otimista: mostra a foto nova já — mas guarda a anterior, porque se o
+      // banco recusar a gravação a prévia mentiria até fechar o diálogo.
+      const avatarAnterior = avatarUrl;
       setAvatarUrl(url + "?t=" + Date.now());
       // Save avatar_url immediately
-      await supabase.from("profiles").update({ avatar_url: url }).eq("id", userId);
+      const { data, error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: url })
+        .eq("id", userId)
+        .select("id");
+      if (updateError) {
+        setAvatarUrl(avatarAnterior);
+        throw updateError;
+      }
+      if (!data || data.length === 0) {
+        setAvatarUrl(avatarAnterior);
+        toast.error("Seu perfil não tem permissão para atualizar a foto.");
+        return;
+      }
       toast.success("Foto atualizada!");
     } catch (err: any) {
       toast.error("Erro ao enviar foto: " + err.message);

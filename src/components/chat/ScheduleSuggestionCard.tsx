@@ -111,9 +111,12 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
     }
   };
 
-  const closeSuggestion = async (status: "scheduled" | "dismissed") => {
+  const closeSuggestion = async (status: "scheduled" | "dismissed"): Promise<boolean> => {
+    const acao = status === "dismissed" ? "descartar" : "concluir";
     const { data: u } = await supabase.auth.getUser();
-    await supabase
+    // O `.select()` torna a resposta verificável: RLS que recusa devolve
+    // sucesso com ZERO linhas, não erro.
+    const { data, error } = await supabase
       .from("ai_reply_suggestions" as any)
       .update({
         status,
@@ -121,7 +124,17 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
         decided_by: u.user?.id || null,
         ...(status === "scheduled" ? { final_text: suggestion.suggested_text } : {}),
       })
-      .eq("id", suggestion.id);
+      .eq("id", suggestion.id)
+      .select("id");
+    if (error) {
+      toast.error(`Erro ao ${acao} a sugestão: ` + error.message);
+      return false;
+    }
+    if (!data || (data as any[]).length === 0) {
+      toast.error(`Seu perfil não tem permissão para ${acao} esta sugestão.`);
+      return false;
+    }
+    return true;
   };
 
   const sendTemplate = async () => {
@@ -138,8 +151,17 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
         body: { lead_id: suggestion.lead_id, to: leadPhone, type: "template", template_name: templateName, template_language: "pt_BR" },
       });
       if (error) throw error;
-      await closeSuggestion("scheduled");
-      toast.success("Modelo de confirmação enviado ao paciente 🧡");
+      // O envio já aconteceu — a partir daqui o card SEMPRE sai da tela, mesmo
+      // que a marcação da sugestão falhe: mantê-lo com o botão ativo convidaria
+      // a um segundo clique, e o paciente receberia o modelo DUAS vezes.
+      const closed = await closeSuggestion("scheduled");
+      if (closed) {
+        toast.success("Modelo de confirmação enviado ao paciente 🧡");
+      } else {
+        toast.warning(
+          "Modelo enviado, mas a sugestão não pôde ser marcada como concluída. Se ela reaparecer, use \"Concluir sem enviar\" — não envie de novo.",
+        );
+      }
       onDone();
     } catch (e: any) {
       toast.error("Falha ao enviar o modelo: " + (e?.message || e));
@@ -149,12 +171,11 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   };
 
   const finishWithoutSending = async () => {
-    await closeSuggestion("scheduled");
-    onDone();
+    if (await closeSuggestion("scheduled")) onDone();
   };
 
   const discard = async (bad: boolean) => {
-    await closeSuggestion("dismissed");
+    if (!(await closeSuggestion("dismissed"))) return;
     if (bad) toast.success("Descartada. Dica: para a Bia aprender o certo, responda/agende do jeito correto.");
     onDone();
   };

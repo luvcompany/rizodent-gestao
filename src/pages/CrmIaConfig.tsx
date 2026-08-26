@@ -85,7 +85,7 @@ export default function CrmIaConfig() {
   const save = async () => {
     if (!config) return;
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("ai_assistant_config" as any)
       .update({
         name: config.name,
@@ -106,10 +106,17 @@ export default function CrmIaConfig() {
         recoil_hours: Number(config.recoil_hours) || 2,
         transcription_model: config.transcription_model || "google/gemini-2.5-flash",
       })
-      .eq("id", config.id);
+      .eq("id", config.id)
+      .select("id");
     setSaving(false);
-    if (error) toast.error("Erro ao salvar: " + error.message);
-    else toast.success("Configurações da IA salvas!");
+    if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+    if (!data || data.length === 0) {
+      // RLS: só crc/gerente gravam esta config — para os demais o update volta
+      // zero linhas sem erro e a tela confirmaria um salvamento que não houve.
+      toast.error("Seu perfil não tem permissão para salvar as configurações da IA.");
+      return;
+    }
+    toast.success("Configurações da IA salvas!");
   };
 
   if (loading) {

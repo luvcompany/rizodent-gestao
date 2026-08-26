@@ -92,8 +92,14 @@ const TiposProcedimento = () => {
       };
 
       if (editingId) {
-        const { error } = await supabase.from("tipos_procedimento").update(payload).eq("id", editingId);
+        // UPDATE barrado pela RLS não devolve erro — devolve sucesso com zero
+        // linhas. O .select() torna a resposta conferível.
+        const { data, error } = await supabase.from("tipos_procedimento").update(payload).eq("id", editingId).select("id");
         if (error) throw error;
+        if (!data || data.length === 0) {
+          toast.error("Seu perfil não tem permissão para editar procedimentos.");
+          return;
+        }
         toast.success("Procedimento atualizado!");
       } else {
         const { error } = await supabase.from("tipos_procedimento").insert(payload);
@@ -112,8 +118,12 @@ const TiposProcedimento = () => {
 
   const toggleAtivo = async (p: TipoProcedimento) => {
     try {
-      const { error } = await supabase.from("tipos_procedimento").update({ ativo: !p.ativo }).eq("id", p.id);
+      const { data, error } = await supabase.from("tipos_procedimento").update({ ativo: !p.ativo }).eq("id", p.id).select("id");
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.error("Seu perfil não tem permissão para alterar procedimentos.");
+        return;
+      }
       toast.success(p.ativo ? "Procedimento desativado" : "Procedimento ativado");
       fetchData();
     } catch (err: any) {

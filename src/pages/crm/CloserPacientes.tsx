@@ -181,9 +181,10 @@ export default function CloserPacientes() {
 
     setSalvando(true);
 
-    let error;
     if (editandoPaciente) {
-      ({ error } = await (supabase as any)
+      // UPDATE barrado pela RLS não devolve erro — devolve sucesso com zero
+      // linhas. O .select() é o que torna a resposta conferível.
+      const { data, error } = await (supabase as any)
         .from("closer_pacientes")
         .update({
           nome: form.nome.trim(),
@@ -192,20 +193,29 @@ export default function CloserPacientes() {
           observacoes: form.observacoes.trim() || null,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", editandoPaciente.id));
+        .eq("id", editandoPaciente.id)
+        .select("id");
+      setSalvando(false);
+      if (error) {
+        toast.error(`Não foi possível salvar: ${error.message}`);
+        return;
+      }
+      if (!data || data.length === 0) {
+        toast.error("Seu perfil não tem permissão para editar este paciente.");
+        return;
+      }
     } else {
-      ({ error } = await (supabase as any).from("closer_pacientes").insert({
+      const { error } = await (supabase as any).from("closer_pacientes").insert({
         nome: form.nome.trim(),
         telefone: telefoneDigitado || null,
         cidade: form.cidade.trim() || null,
         observacoes: form.observacoes.trim() || null,
-      }));
-    }
-
-    setSalvando(false);
-    if (error) {
-      toast.error(`Não foi possível salvar: ${error.message}`);
-      return;
+      });
+      setSalvando(false);
+      if (error) {
+        toast.error(`Não foi possível salvar: ${error.message}`);
+        return;
+      }
     }
     toast.success(editandoPaciente ? "Paciente atualizado" : "Paciente vinculado");
     setForm({ nome: "", telefone: "", cidade: "", observacoes: "" });
@@ -233,9 +243,19 @@ export default function CloserPacientes() {
       : `Excluir ${p.nome}?`;
     const ok = window.confirm(mensagem);
     if (!ok) return;
-    const { error } = await (supabase as any).from("closer_pacientes").delete().eq("id", p.id);
+    // DELETE barrado pela RLS volta sem erro e com zero linhas; o .select()
+    // confirma que a exclusão de fato aconteceu antes de anunciá-la.
+    const { data, error } = await (supabase as any)
+      .from("closer_pacientes")
+      .delete()
+      .eq("id", p.id)
+      .select("id");
     if (error) {
       toast.error(`Não foi possível excluir: ${error.message}`);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para excluir este paciente.");
       return;
     }
     toast.success("Paciente excluído");
@@ -289,7 +309,9 @@ export default function CloserPacientes() {
       return;
     }
     setSalvando(true);
-    const { error } = await (supabase as any)
+    // É dinheiro: UPDATE barrado pela RLS volta sem erro e com zero linhas,
+    // e a tela confirmaria um valor que não gravou. O .select() confere.
+    const { data, error } = await (supabase as any)
       .from("closer_pagamentos")
       .update({
         valor,
@@ -298,10 +320,15 @@ export default function CloserPacientes() {
         especialidade: formPag.especialidade || null,
         data_pagamento: formPag.data_pagamento,
       })
-      .eq("id", editando.id);
+      .eq("id", editando.id)
+      .select("id");
     setSalvando(false);
     if (error) {
       toast.error(`Não foi possível salvar: ${error.message}`);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para editar este pagamento.");
       return;
     }
     toast.success("Pagamento atualizado");
@@ -320,9 +347,19 @@ export default function CloserPacientes() {
       `Apagar o pagamento de ${brl(Number(pg.valor))} de ${dataBR(pg.data_pagamento)}?\n\nIsto não pode ser desfeito.`,
     );
     if (!ok) return;
-    const { error } = await (supabase as any).from("closer_pagamentos").delete().eq("id", pg.id);
+    // DELETE barrado pela RLS volta sem erro e com zero linhas; sem o
+    // .select() a tela diria "removido" com o pagamento intacto.
+    const { data, error } = await (supabase as any)
+      .from("closer_pagamentos")
+      .delete()
+      .eq("id", pg.id)
+      .select("id");
     if (error) {
       toast.error(`Não foi possível apagar: ${error.message}`);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para apagar este pagamento.");
       return;
     }
     toast.success("Pagamento removido");

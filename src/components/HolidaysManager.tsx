@@ -62,9 +62,24 @@ export const HolidaysManager = ({ clinicas, onChange }: Props) => {
   };
 
   const remove = async (id: string) => {
-    const { error } = await (supabase as any).from("dashboard_holidays").delete().eq("id", id);
+    // Delete barrado pela RLS não devolve erro — devolve sucesso com ZERO
+    // linhas. O `.select()` torna a resposta verificável; sem ele o feriado
+    // reaparecia na lista sem explicação.
+    const { data: removed, error } = await (supabase as any)
+      .from("dashboard_holidays")
+      .delete()
+      .eq("id", id)
+      .select("id");
     if (error) {
       toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
+      return;
+    }
+    if (!removed || removed.length === 0) {
+      toast({
+        title: "Sem permissão",
+        description: "Seu perfil não tem permissão para remover feriados.",
+        variant: "destructive",
+      });
       return;
     }
     await load();

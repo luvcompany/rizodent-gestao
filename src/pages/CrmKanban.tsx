@@ -263,15 +263,23 @@ const NewLeadDialog = memo(function NewLeadDialog({
     }
     setTransferring(true);
     try {
-      const { error } = await supabase.from("crm_leads")
+      const { data: movedRows, error } = await supabase.from("crm_leads")
         .update({
           stage_id: form.stage_id,
           pipeline_id: targetPipeline.id,
           assigned_to: userId || null,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", duplicateInfo.existingLeadId);
+        .eq("id", duplicateInfo.existingLeadId)
+        .select("id");
       if (error) throw error;
+      // Update barrado pela RLS não devolve erro — devolve ZERO linhas (caso
+      // típico: o lead duplicado pertence a outro número/funil). Sem conferir,
+      // a tela anunciava "movido" e nada tinha acontecido.
+      if (!movedRows || movedRows.length === 0) {
+        toast.error("Seu perfil não tem permissão para mover este lead.");
+        return;
+      }
       toast.success(`Lead "${duplicateInfo.existingLeadName}" movido para a etapa atual`);
       invalidateKanbanCache();
       handleClose();
@@ -853,12 +861,37 @@ export default function CrmKanban() {
               ? { ...l, stage_id: contratadoStage.id }
               : l
           ));
-          // Persiste no banco em paralelo
-          await Promise.all(leadsToMove.map(l =>
+          // Persiste no banco em paralelo. Update barrado pela RLS não devolve
+          // erro — devolve ZERO linhas; o `.select()` permite conferir o que
+          // realmente gravou.
+          const moveResults = await Promise.all(leadsToMove.map(l =>
             supabase.from("crm_leads")
               .update({ stage_id: contratadoStage.id, updated_at: now })
               .eq("id", l.id)
+              .select("id")
           ));
+          // Reverte no estado local os cards que o banco recusou — sem isso o
+          // Kanban mostrava em "Contratado" um lead que nunca foi gravado lá.
+          const failedIds = new Set(
+            leadsToMove
+              .filter((l, i) => {
+                const r = moveResults[i];
+                return !!r.error || !r.data || r.data.length === 0;
+              })
+              .map(l => l.id)
+          );
+          if (failedIds.size > 0) {
+            setLeads(prev => prev.map(l => {
+              if (!failedIds.has(l.id)) return l;
+              const original = leadsToMove.find(m => m.id === l.id);
+              return original ? { ...l, stage_id: original.stage_id } : l;
+            }));
+            // O card voltar sozinho sem explicação é o mesmo mistério que esta
+            // reforma veio eliminar — diz o motivo.
+            toast.error(
+              `${failedIds.size} lead(s) com pagamento não puderam ser movidos para "Contratado" pelo seu perfil.`,
+            );
+          }
         }
       }
     }
@@ -994,10 +1027,19 @@ export default function CrmKanban() {
     const previousStageId = movedLead?.stage_id;
 
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage_id: newStageId, position: newPosition } : l));
-    const { error } = await supabase.from("crm_leads").update({
+    // Update barrado pela RLS não devolve erro — devolve sucesso com ZERO
+    // linhas. O `.select()` torna a resposta verificável; sem ele o card ficava
+    // na coluna nova, disparava histórico/automação e voltava sozinho no
+    // próximo carregamento.
+    const { data: movedRows, error } = await supabase.from("crm_leads").update({
       stage_id: newStageId, position: newPosition, updated_at: new Date().toISOString()
-    }).eq("id", leadId);
-    if (error) { toast.error("Erro ao mover lead"); fetchData(); return; }
+    }).eq("id", leadId).select("id");
+    if (error) { toast.error("Erro ao mover lead: " + error.message); fetchData(); return; }
+    if (!movedRows || movedRows.length === 0) {
+      toast.error("Seu perfil não tem permissão para mover este lead.");
+      fetchData();
+      return;
+    }
 
     // Register stage history and system message (same as chat hook)
     if (previousStageId && previousStageId !== newStageId) {
@@ -1058,14 +1100,22 @@ export default function CrmKanban() {
     if (newStageInsertIdx !== null) {
       for (const s of stages) {
         if (s.position >= insertPos) {
-          await supabase.from("crm_stages").update({ position: s.position + 1 }).eq("id", s.id);
+          // Update barrado pela RLS não devolve erro — devolve ZERO linhas. Sem
+          // conferir, a etapa nova entrava com posição duplicada em silêncio.
+          const { data: shifted, error: shiftError } = await supabase.from("crm_stages")
+            .update({ position: s.position + 1 }).eq("id", s.id).select("id");
+          if (shiftError) { toast.error("Erro ao reordenar as etapas: " + shiftError.message); return; }
+          if (!shifted || shifted.length === 0) {
+            toast.error("Seu perfil não tem permissão para reordenar as etapas deste funil.");
+            return;
+          }
         }
       }
     }
     const { error } = await supabase.from("crm_stages").insert({
       pipeline_id: pipeline.id, name: newStageName, color: newStageColor, position: insertPos,
     });
-    if (error) { toast.error("Erro ao criar etapa"); return; }
+    if (error) { toast.error("Erro ao criar etapa: " + error.message); return; }
     toast.success("Etapa criada");
     invalidateKanbanCache();
     setNewStageOpen(false);

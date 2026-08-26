@@ -47,7 +47,7 @@ export default function CrmBots() {
         edges: [],
       },
     }).select().single();
-    if (error) { toast.error("Erro ao criar bot"); return; }
+    if (error) { toast.error("Erro ao criar bot: " + error.message); return; }
     navigate(`/crm/bots/${data.id}`);
   };
 
@@ -58,20 +58,25 @@ export default function CrmBots() {
       status: "draft",
       flow_json: bot.flow_json,
     });
-    if (error) { toast.error("Erro ao duplicar"); return; }
+    if (error) { toast.error("Erro ao duplicar bot: " + error.message); return; }
     toast.success("Bot duplicado");
     fetchBots();
   };
 
   const handleArchive = async (id: string) => {
-    await supabase.from("bots").update({ status: "archived" }).eq("id", id);
+    // Bot de outro papel: a RLS devolve sucesso com 0 linhas — o .select() torna isso visível.
+    const { data, error } = await supabase.from("bots").update({ status: "archived" }).eq("id", id).select("id");
+    if (error) { toast.error("Erro ao arquivar bot: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para arquivar este bot."); return; }
     toast.success("Bot arquivado");
     fetchBots();
   };
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    await supabase.from("bots").delete().eq("id", deleteId);
+    const { data, error } = await supabase.from("bots").delete().eq("id", deleteId).select("id");
+    if (error) { toast.error("Erro ao excluir bot: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este bot."); return; }
     setDeleteId(null);
     toast.success("Bot excluído");
     fetchBots();

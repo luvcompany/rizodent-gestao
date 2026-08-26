@@ -45,7 +45,11 @@ const lerCampo = (s: string): CampoNum => {
 const fmtPct = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)}%`);
 
 const RegistroDiarioTab = () => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
+  // A regra do banco só permite excluir registros para crc e gerente;
+  // superadmin é recusado em qualquer linha (0 linhas sem erro), então o
+  // botão de excluir nem aparece para ele.
+  const podeExcluir = userRole === "crc" || userRole === "gerente";
   const [clinicas, setClinicas] = useState<Tables<"clinicas">[]>([]);
   const [clinicaId, setClinicaId] = useState("");
   const [data, setData] = useState(() => toLocalDateISO());
@@ -245,8 +249,18 @@ const RegistroDiarioTab = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase.from("registros_diarios_atendimento").delete().eq("id", id);
+      // `.select()` para conferir: exclusão barrada pela regra do banco volta
+      // sem erro e com zero linhas — sem isso o toast anunciaria "excluído".
+      const { data: deleted, error } = await supabase
+        .from("registros_diarios_atendimento")
+        .delete()
+        .eq("id", id)
+        .select("id");
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        toast.error("Seu perfil não tem permissão para excluir este registro.");
+        return;
+      }
       toast.success("Registro excluído!");
       if (existingId === id) {
         setExistingId(null);
@@ -500,27 +514,29 @@ const RegistroDiarioTab = () => {
                             <Button variant="ghost" size="icon" onClick={() => handleEdit(r)} title="Editar">
                               <Pencil size={16} className="text-primary" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" title="Excluir">
-                                  <Trash2 size={16} className="text-destructive" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Deseja realmente excluir o registro de {format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}?
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleDelete(r.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                    Excluir
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            {podeExcluir && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" title="Excluir">
+                                    <Trash2 size={16} className="text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Deseja realmente excluir o registro de {format(new Date(r.data + "T00:00:00"), "dd/MM/yyyy")}?
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(r.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                      Excluir
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

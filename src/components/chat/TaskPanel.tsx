@@ -109,14 +109,16 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
     };
 
     if (editingTask) {
-      const { error } = await supabase.from("crm_tasks").update(payload).eq("id", editingTask.id);
+      // RLS que barra o update devolve sucesso com 0 linhas — o .select() torna isso visível.
+      const { data, error } = await supabase.from("crm_tasks").update(payload).eq("id", editingTask.id).select("id");
       setSaving(false);
-      if (error) { toast.error("Erro ao atualizar tarefa"); return; }
+      if (error) { toast.error("Erro ao atualizar tarefa: " + error.message); return; }
+      if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para editar esta tarefa."); return; }
       toast.success("Tarefa atualizada");
     } else {
       const { error } = await supabase.from("crm_tasks").insert({ ...payload, lead_id: leadId });
       setSaving(false);
-      if (error) { toast.error("Erro ao salvar tarefa"); return; }
+      if (error) { toast.error("Erro ao salvar tarefa: " + error.message); return; }
       toast.success("Tarefa criada");
     }
     setDialogOpen(false);
@@ -126,8 +128,9 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    const { error } = await supabase.from("crm_tasks").delete().eq("id", deleteId);
-    if (error) { toast.error("Erro ao excluir tarefa"); return; }
+    const { data, error } = await supabase.from("crm_tasks").delete().eq("id", deleteId).select("id");
+    if (error) { toast.error("Erro ao excluir tarefa: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta tarefa."); return; }
     toast.success("Tarefa excluída");
     setDeleteId(null);
     fetchTasks();
@@ -135,7 +138,13 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
 
   const toggleDone = async (task: Task) => {
     const newStatus = task.status === "done" ? "pending" : "done";
-    await supabase.from("crm_tasks").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", task.id);
+    const { data, error } = await supabase
+      .from("crm_tasks")
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq("id", task.id)
+      .select("id");
+    if (error) { toast.error("Erro ao atualizar tarefa: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para atualizar esta tarefa."); return; }
     fetchTasks();
   };
 

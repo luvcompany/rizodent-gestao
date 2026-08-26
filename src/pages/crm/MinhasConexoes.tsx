@@ -61,6 +61,19 @@ const rotuloStatus = (s: string | null) => {
   return { texto: s || "Pendente", ok: false };
 };
 
+// A function explica a recusa (ex.: "Este número não é seu") no corpo da
+// resposta non-2xx; sem ler o contexto, o usuário veria só "non-2xx status code".
+const detalheDoErro = async (error: unknown) => {
+  let detalhe = (error as { message?: string })?.message || "erro desconhecido";
+  const ctx = (error as { context?: Response })?.context;
+  if (ctx && typeof ctx.text === "function") {
+    try {
+      detalhe = JSON.parse(await ctx.text())?.error ?? detalhe;
+    } catch { /* corpo não-JSON */ }
+  }
+  return detalhe;
+};
+
 const formInicial = {
   display_name: "",
   phone_number_id: "",
@@ -177,7 +190,7 @@ export default function MinhasConexoes() {
     });
     setSalvandoCoex(null);
     if (error || (data as any)?.error) {
-      toast.error((data as any)?.error || "Não foi possível salvar");
+      toast.error("Não foi possível salvar: " + ((data as any)?.error || (await detalheDoErro(error))));
       return;
     }
     setItens((prev) => prev.map((c) => (c.number_id === item.number_id ? { ...c, is_coexistence: valor } : c)));
@@ -188,7 +201,7 @@ export default function MinhasConexoes() {
     const { error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
       body: { action: "disconnect", number_id: item.number_id },
     });
-    if (error) toast.error("Não foi possível desconectar");
+    if (error) toast.error("Não foi possível desconectar: " + (await detalheDoErro(error)));
     else {
       toast.success("Número desconectado");
       carregar();

@@ -67,16 +67,26 @@ export default function LeadCustomFields({ leadId }: Props) {
   }, [leadId]);
 
   const saveValue = async (fieldId: string, val: string) => {
+    // Atualização otimista: guarda o valor anterior para reverter se o banco recusar.
+    const previous = values[fieldId] || "";
     setValues((prev) => ({ ...prev, [fieldId]: val }));
 
-    const { error } = await supabase
+    // O `.select()` confere que a linha gravou: RLS barrada devolve sucesso com zero linhas.
+    const { data, error } = await supabase
       .from("crm_lead_custom_values")
       .upsert(
         { lead_id: leadId, field_id: fieldId, value: val || null },
         { onConflict: "lead_id,field_id" }
-      );
+      )
+      .select("id");
     if (error) {
-      toast.error("Erro ao salvar campo");
+      setValues((prev) => ({ ...prev, [fieldId]: previous }));
+      toast.error("Erro ao salvar campo: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      setValues((prev) => ({ ...prev, [fieldId]: previous }));
+      toast.error("Seu perfil não tem permissão para editar os campos deste lead.");
     }
   };
 
@@ -90,7 +100,12 @@ export default function LeadCustomFields({ leadId }: Props) {
     });
     setSaving(false);
     if (error) {
-      toast.error("Erro ao criar campo");
+      // 42501 = RLS recusou o insert (só crc/gerente criam campos).
+      if (error.code === "42501") {
+        toast.error("Seu perfil não tem permissão para criar campos personalizados.");
+      } else {
+        toast.error("Erro ao criar campo: " + error.message);
+      }
       return;
     }
     setNewFieldName("");

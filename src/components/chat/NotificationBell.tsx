@@ -80,23 +80,60 @@ const NotificationBell = () => {
   }, [user?.id]);
 
   const markAsRead = async (id: string) => {
+    // Guarda o valor ANTERIOR para reverter com fidelidade: repor `false` fixo
+    // marcaria como não lida uma notificação que já estava lida antes do clique.
+    const estavaLida = notifications.find((n) => n.id === id)?.is_read ?? false;
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
     );
-    await supabase
+    // O `.select()` torna a resposta verificável: quando a regra do banco
+    // recusa o update, não vem erro — vem sucesso com zero linhas, e o badge
+    // zerado voltava a apitar no próximo carregamento.
+    const { data, error } = await supabase
       .from("crm_notifications")
       .update({ is_read: true })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id");
+    if (error || !data || data.length === 0) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: estavaLida } : n))
+      );
+      toast.error(
+        error
+          ? "Erro ao marcar como lida: " + error.message
+          : "Seu perfil não tem permissão para marcar esta notificação como lida."
+      );
+    }
   };
 
   const markAllAsRead = async () => {
     const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
     if (!unreadIds.length) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    await supabase
+    const { data, error } = await supabase
       .from("crm_notifications")
       .update({ is_read: true })
-      .in("id", unreadIds);
+      .in("id", unreadIds)
+      .select("id");
+    if (error) {
+      setNotifications((prev) =>
+        prev.map((n) => (unreadIds.includes(n.id) ? { ...n, is_read: false } : n))
+      );
+      toast.error("Erro ao marcar notificações como lidas: " + error.message);
+      return;
+    }
+    const gravadas = new Set((data ?? []).map((d) => d.id));
+    if (gravadas.size < unreadIds.length) {
+      // Reverte só o que o banco não aceitou — o restante ficou lido de verdade.
+      setNotifications((prev) =>
+        prev.map((n) =>
+          unreadIds.includes(n.id) && !gravadas.has(n.id)
+            ? { ...n, is_read: false }
+            : n
+        )
+      );
+      toast.error("Seu perfil não tem permissão para marcar algumas notificações como lidas.");
+    }
   };
 
   const handleClick = (n: Notification) => {

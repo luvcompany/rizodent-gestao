@@ -191,10 +191,22 @@ export default function RecepcaoHome() {
    *  dentro da conversa, e a tela cobrava a confirmação sem oferecer o botão. */
   const confirmarConsulta = async (id: string) => {
     setConfirmando(id);
-    const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", id);
+    // Update barrado pela RLS não devolve erro — devolve sucesso com ZERO
+    // linhas. O `.select()` torna a resposta verificável; sem ele o cartão
+    // aparecia como confirmado e voltava a "a confirmar" no próximo
+    // carregamento.
+    const { data, error } = await supabase
+      .from("crm_appointments")
+      .update({ status: "confirmed" })
+      .eq("id", id)
+      .select("id");
     setConfirmando(null);
     if (error) {
-      toast.error("Não foi possível confirmar");
+      toast.error("Não foi possível confirmar: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para confirmar esta consulta.");
       return;
     }
     setConsultas((prev) => prev.map((c) => (c.id === id ? { ...c, status: "confirmed" } : c)));

@@ -26,21 +26,25 @@ export default function ConversationInlineNote({ note, authorName, onDeleted, on
 
   const handleSave = async () => {
     if (!editText.trim()) return;
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("crm_conversation_notes")
       .update({ content: editText.trim(), updated_at: new Date().toISOString() })
-      .eq("id", note.id);
-    if (error) { toast.error("Erro ao atualizar nota"); return; }
+      .eq("id", note.id)
+      .select("id");
+    if (error) { toast.error("Erro ao atualizar nota: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para editar esta nota."); return; }
     onUpdated(note.id, editText.trim());
     setEditing(false);
   };
 
   const handleDelete = async () => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("crm_conversation_notes")
       .delete()
-      .eq("id", note.id);
-    if (error) { toast.error("Erro ao excluir nota"); return; }
+      .eq("id", note.id)
+      .select("id");
+    if (error) { toast.error("Erro ao excluir nota: " + error.message); return; }
+    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta nota."); return; }
     onDeleted(note.id);
   };
 
@@ -121,7 +125,7 @@ export function AddInlineNoteButton({
       })
       .select()
       .single();
-    if (error) { toast.error("Erro ao criar nota"); return; }
+    if (error) { toast.error("Erro ao criar nota: " + error.message); return; }
     onNoteAdded(data as ConvNote);
     setText("");
     setOpen(false);

@@ -468,12 +468,19 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     };
     if (crossPipeline) updatePayload.pipeline_id = scheduledStage.pipeline_id;
 
-    const { error: moveError } = await supabase
+    const { data: movedRows, error: moveError } = await supabase
       .from("crm_leads")
       .update(updatePayload)
-      .eq("id", leadId);
+      .eq("id", leadId)
+      .select("id");
 
     if (moveError) throw moveError;
+    if (!movedRows || movedRows.length === 0) {
+      // RLS barrada não devolve erro — devolve 0 linhas. Sem esta checagem o
+      // fluxo registraria histórico e mensagem de uma mudança de etapa que não houve.
+      toast.error("Agendamento salvo, mas seu perfil não tem permissão para mover o lead de etapa.");
+      return leadData.stage_id;
+    }
 
     const { data: openEntry } = await supabase
       .from("crm_lead_stage_history")
@@ -523,7 +530,14 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     });
     if (apptError) { toastDbError(apptError, "Erro ao criar agendamento"); setSaving(false); return; }
 
-    await supabase.from("crm_tasks").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", task.id);
+    const { data: taskDone, error: taskDoneErr } = await supabase
+      .from("crm_tasks")
+      .update({ status: "done", updated_at: new Date().toISOString() })
+      .eq("id", task.id)
+      .select("id");
+    if (taskDoneErr || !taskDone || taskDone.length === 0) {
+      toast.error("O agendamento foi criado, mas a solicitação não pôde ser concluída e segue pendente.");
+    }
 
     const movedStageId = await moveLeadToScheduledStage();
 
@@ -584,10 +598,14 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
 
     // Auto-conclude any pending scheduling tasks for this lead
     if (pendingTasks.length > 0) {
-      await supabase
+      const { data: doneTasks, error: doneErr } = await supabase
         .from("crm_tasks")
         .update({ status: "done", updated_at: new Date().toISOString() })
-        .in("id", pendingTasks.map(t => t.id));
+        .in("id", pendingTasks.map(t => t.id))
+        .select("id");
+      if (doneErr || (doneTasks?.length ?? 0) < pendingTasks.length) {
+        toast.error("O agendamento foi criado, mas nem todas as solicitações pendentes foram concluídas.");
+      }
     }
 
     const movedStageId = await moveLeadToScheduledStage();
@@ -616,13 +634,19 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const handleEditAppointment = async (appt: Appointment) => {
     if (!editDate) { toast.error("Selecione a data"); return; }
     setEditSaving(true);
-    const { error } = await supabase.from("crm_appointments").update({
+    const { data, error } = await supabase.from("crm_appointments").update({
       scheduled_date: format(editDate, "yyyy-MM-dd"),
       scheduled_time: editTime,
       notes: editNotes || null,
       updated_at: new Date().toISOString(),
-    }).eq("id", appt.id);
+    }).eq("id", appt.id).select("id");
     if (error) { toastDbError(error, "Erro ao atualizar agendamento"); setEditSaving(false); return; }
+    if (!data || data.length === 0) {
+      toast.error("Este agendamento já foi alterado ou removido — recarregando");
+      setEditingId(null); setEditSaving(false);
+      await fetchAppointments();
+      return;
+    }
 
     await supabase.from("messages").insert({
       lead_id: leadId, direction: "outbound", type: "system",
@@ -635,12 +659,20 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   };
 
   const handleConfirmPendingAppointment = async (appt: Appointment) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("crm_appointments")
       .update({ status: "confirmed" })
       .eq("id", appt.id)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .select("id");
     if (error) { toastDbError(error, "Erro ao confirmar agendamento"); return; }
+    if (!data || data.length === 0) {
+      // 0 linhas: alguém já confirmou/alterou antes, ou a RLS barrou — sem a
+      // checagem o chat registraria uma confirmação que não existe.
+      toast.error("Este agendamento já foi confirmado ou alterado — recarregando");
+      await fetchAppointments();
+      return;
+    }
     await supabase.from("messages").insert({
       lead_id: leadId, direction: "outbound", type: "system",
       content: `✅ Agendamento confirmado: ${appt.scheduled_date.split("-").reverse().join("/")} às ${appt.scheduled_time?.slice(0, 5)}`,
@@ -651,8 +683,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   };
 
   const handleDeletePendingTask = async (taskId: string) => {
-    const { error } = await supabase.from("crm_tasks").delete().eq("id", taskId);
-    if (error) { toast.error("Erro ao excluir solicitação"); return; }
+    // RLS barrada não devolve erro — devolve sucesso com ZERO linhas. O
+    // `.select()` é o que torna a resposta verificável.
+    const { data, error } = await supabase.from("crm_tasks").delete().eq("id", taskId).select("id");
+    if (error) { toast.error("Erro ao excluir solicitação: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para excluir esta solicitação.");
+      fetchTasks();
+      return;
+    }
     toast.success("Solicitação excluída");
     fetchTasks();
   };

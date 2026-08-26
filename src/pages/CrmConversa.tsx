@@ -201,7 +201,8 @@ export default function CrmConversa() {
     if (error || data?.error) {
       // Rollback optimistic update
       setLead(prev => prev ? { ...prev, assigned_to: oldUserId } : prev);
-      toast.error("Erro ao transferir lead");
+      const motivo = data?.error || error?.message;
+      toast.error(motivo ? `Erro ao transferir lead: ${motivo}` : "Erro ao transferir lead");
       return;
     }
 
@@ -291,10 +292,18 @@ export default function CrmConversa() {
 
   const handleStopBot = async () => {
     if (!activeExecution) return;
-    await supabase
+    // Update recusado pela regra do banco vem como sucesso com zero linhas —
+    // o `.select()` é o que revela que o bot continuou rodando.
+    const { data, error } = await supabase
       .from("bot_executions")
       .update({ status: "cancelled", completed_at: new Date().toISOString() })
-      .eq("id", activeExecution.id);
+      .eq("id", activeExecution.id)
+      .select("id");
+    if (error) { toast.error("Erro ao encerrar o bot: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para encerrar este bot.");
+      return;
+    }
     toast.success("Bot encerrado");
     setActiveExecution(null);
   };

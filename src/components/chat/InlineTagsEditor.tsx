@@ -84,11 +84,18 @@ export default function InlineTagsEditor({
   }, [source]);
 
   const save = async (updates: Record<string, any>) => {
-    const { error } = await supabase
+    // O `.select()` confere que a linha gravou: RLS barrada devolve sucesso
+    // com zero linhas e a tag/origem apareceria na tela sem existir no banco.
+    const { data, error } = await supabase
       .from("crm_leads")
       .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq("id", leadId);
-    if (error) { toast.error("Erro ao salvar"); return; }
+      .eq("id", leadId)
+      .select("id");
+    if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para editar este lead.");
+      return;
+    }
     onUpdated(updates);
   };
 
