@@ -215,24 +215,30 @@ Deno.serve(async (req) => {
       .from("crm_pipelines")
       .insert([
         { tenant_id: tenant.id, name: "Funil Principal", color: "#6366f1", is_default: true },
-        { tenant_id: tenant.id, name: "Instagram",        color: "#ec4899", is_default: false },
+        { tenant_id: tenant.id, name: "Instagram",        color: "#ec4899", is_default: false, is_instagram: true },
       ])
       .select();
     if (pErr) throw pErr;
 
+    // Os nomes abaixo NÃO são decorativos: src/lib/appointmentOutcome.ts casa a
+    // etapa por TEXTO ("nao compar", "contrat", "nao contrat", "compareceu" +
+    // "agendou"). Cliente novo sem essas etapas fazia o desfecho do agendamento
+    // virar no-op silencioso. Renomear aqui exige renomear lá.
     const defaultStages = [
-      { name: "Novo Lead",      position: 0,  color: "#3b82f6" },
-      { name: "Conversando",    position: 1,  color: "#f59e0b" },
-      { name: "Relacionamento", position: 2,  color: "#8b5cf6" },
-      { name: "Follow - Up",    position: 3,  color: "#f59e0b" },
-      { name: "Recuperado",     position: 4,  color: "#8b5cf6" },
-      { name: "Pré - Agendado", position: 5,  color: "#bff075" },
-      { name: "Agendado",       position: 6,  color: "#c0ee1b" },
-      { name: "Não compareceu", position: 7,  color: "#eab308" },
-      { name: "Reagendado",     position: 8,  color: "#6366f1" },
-      { name: "Contratado",     position: 9,  color: "#84cc16", is_won: true },
-      { name: "Desqualificado", position: 10, color: "#ef4444" },
+      { name: "Novo Lead",            position: 0,  color: "#3b82f6" },
+      { name: "Conversando",          position: 1,  color: "#f59e0b" },
+      { name: "Relacionamento",       position: 2,  color: "#8b5cf6" },
+      { name: "Follow - Up",          position: 3,  color: "#f59e0b" },
+      { name: "Recuperado",           position: 4,  color: "#8b5cf6" },
+      { name: "Pré - Agendado",       position: 5,  color: "#bff075" },
+      { name: "Agendado",             position: 6,  color: "#c0ee1b" },
+      { name: "Não compareceu",       position: 7,  color: "#eab308" },
+      { name: "Compareceu e agendou", position: 8,  color: "#6366f1" },
+      { name: "Contratado",           position: 9,  color: "#84cc16", is_won: true },
+      { name: "Não contratado",       position: 10, color: "#f97316" },
+      { name: "Desqualificado",       position: 11, color: "#ef4444" },
     ];
+
     const stageRows = pipelinesInserted.flatMap((pipe: any) =>
       defaultStages.map((s) => ({
         ...s,
