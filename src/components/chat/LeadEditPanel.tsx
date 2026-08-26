@@ -75,7 +75,12 @@ const SOURCE_OPTIONS_INSTAGRAM = [
 ];
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
+  // Espelha a permissão do banco (migração 20260826180000_quem_apaga_lead):
+  // apagar lead é do crc e do closer, cada um no próprio mundo, além de
+  // gerente e superadmin. Recepção e pós-venda não apagam — e para elas o
+  // botão nem aparece, em vez de oferecer algo que o banco vai recusar.
+  const podeExcluir = ["crc", "closer", "gerente", "superadmin"].includes(userRole ?? "");
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
@@ -320,10 +325,21 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       ad_account_name: adAccountName || null,
       updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from("crm_leads").update(updates).eq("id", lead.id);
+    // `.select()` para saber se a linha foi mesmo alterada: sem ele, uma edição
+    // recusada pela regra do banco fechava o formulário com "Lead atualizado" e
+    // o valor antigo voltava no próximo carregamento.
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .update(updates)
+      .eq("id", lead.id)
+      .select("id");
     setSaving(false);
     if (error) {
-      toast.error("Erro ao salvar lead");
+      toast.error("Erro ao salvar lead: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para editar este lead.");
       return;
     }
     onLeadUpdated({ ...lead, ...updates } as Lead);
@@ -332,9 +348,21 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
   };
 
   const handleDelete = async () => {
-    const { error } = await supabase.from("crm_leads").delete().eq("id", lead.id);
+    // O `.select()` é o que torna a resposta verificável: quando a regra do
+    // banco recusa a exclusão, não vem erro nenhum — vem sucesso com ZERO
+    // linhas. Sem conferir o que voltou, a tela anunciava "excluído" e o lead
+    // continuava lá, que foi exatamente o defeito relatado.
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .delete()
+      .eq("id", lead.id)
+      .select("id");
     if (error) {
-      toast.error("Erro ao excluir lead");
+      toast.error("Erro ao excluir lead: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para excluir este lead.");
       return;
     }
     toast.success("Lead excluído");
@@ -416,9 +444,11 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
         <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
           <Ban size={14} />
         </Button>
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
-          <Trash2 size={14} />
-        </Button>
+        {podeExcluir && (
+          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
+            <Trash2 size={14} />
+          </Button>
+        )}
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -689,12 +719,19 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
-                const { error } = await supabase.from("crm_leads").update({
+                // Mesma armadilha da exclusão: update recusado pela regra do
+                // banco volta sem erro e sem linha. Sem o `.select()`, a tela
+                // dizia "bloqueado" e as mensagens continuavam chegando.
+                const { data, error } = await supabase.from("crm_leads").update({
                   is_blocked: true,
                   blocked_at: new Date().toISOString(),
                   blocked_by: user?.id || null,
-                } as any).eq("id", lead.id);
+                } as any).eq("id", lead.id).select("id");
                 if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                if (!data || data.length === 0) {
+                  toast.error("Seu perfil não tem permissão para bloquear este lead.");
+                  return;
+                }
                 toast.success("Lead bloqueado");
                 onLeadDeleted();
               }}
