@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
-import NotificationBell from "@/components/chat/NotificationBell";
+
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
   CalendarDays, Loader2,
@@ -221,17 +221,16 @@ export default function RecepcaoHome() {
 
           <div className="ml-auto flex items-center gap-2.5">
             {/* O closer trabalha dentro das conversas o dia todo: o aviso de
-                conexão e o atalho para abrir conversas viram ruído aqui. Fica só
-                o sino — e ele é o de verdade, que abre as notificações. */}
+                conexão e o atalho para abrir conversas viram ruído aqui.
+                O sino não é repetido: o cabeçalho do CRM, logo acima, já traz o
+                sino de verdade — e dois deles disputariam o mesmo canal de
+                tempo real, o que derrubava a tela inteira. */}
             {userRole !== "closer" && (
               <span className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium shadow-sm sm:flex">
                 <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${conectado === false ? "bg-red-500" : "bg-emerald-500"}`} />
                 {conectado === false ? "WhatsApp desconectado" : "WhatsApp conectado"}
               </span>
             )}
-            <span className="grid h-[38px] w-[38px] place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm">
-              <NotificationBell />
-            </span>
             {userRole !== "closer" && (
               <Link
                 to="/crm/conversas"

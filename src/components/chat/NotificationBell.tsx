@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId } from "react";
 import { Bell } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,11 @@ type Notification = {
 const NotificationBell = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Nome de canal por INSTÂNCIA. Com um nome fixo, dois sinos na mesma página
+  // pegavam o mesmo canal e o segundo chamava `.on()` depois do `subscribe()`
+  // do primeiro — o cliente lança ali, e sem ErrorBoundary o React derrubava a
+  // árvore inteira: a tela abria em branco, sem nada no console do usuário.
+  const instancia = useId().replace(/:/g, "");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -51,7 +56,7 @@ const NotificationBell = () => {
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
-      .channel("notifications-bell")
+      .channel(`notifications-bell-${instancia}`)
       .on(
         "postgres_changes",
         {
@@ -63,7 +68,9 @@ const NotificationBell = () => {
         (payload) => {
           const n = payload.new as Notification;
           setNotifications((prev) => [n, ...prev]);
-          toast.info(n.title, { description: n.body || undefined });
+          // `id` da própria notificação: se houver mais de um sino montado, os
+          // dois avisam a mesma coisa e o usuário vê um aviso só.
+          toast.info(n.title, { id: n.id, description: n.body || undefined });
         }
       )
       .subscribe();
