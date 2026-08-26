@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
+import NotificationBell from "@/components/chat/NotificationBell";
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
-  CalendarDays, Bell, Loader2,
+  CalendarDays, Loader2,
 } from "lucide-react";
 
 /**
@@ -114,6 +116,7 @@ export default function RecepcaoHome() {
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [agora, setAgora] = useState(Date.now());
+  const [confirmando, setConfirmando] = useState<string | null>(null);
 
   useEffect(() => {
     const carregar = async () => {
@@ -130,10 +133,14 @@ export default function RecepcaoHome() {
           .gte("last_message_at", desde)
           .order("last_inbound_at", { ascending: false })
           .limit(200),
+        // Só consulta que ainda vai acontecer: cancelada, remarcada ou já com
+        // desfecho (compareceu/faltou/fechou) não é "consulta de hoje" — antes
+        // um agendamento cancelado continuava na lista pedindo confirmação.
         supabase
           .from("crm_appointments")
           .select("id, scheduled_time, status, lead_name, notes")
           .eq("scheduled_date", dia)
+          .not("status", "in", "(cancelled,rescheduled,no_show,contracted,not_contracted)")
           .order("scheduled_time", { ascending: true })
           .limit(12),
         (supabase as any).rpc("integracoes_visiveis"),
@@ -180,6 +187,20 @@ export default function RecepcaoHome() {
     return balde;
   }, [leads]);
 
+  /** Confirma a presença sem sair do Início — antes só dava para fazer isso
+   *  dentro da conversa, e a tela cobrava a confirmação sem oferecer o botão. */
+  const confirmarConsulta = async (id: string) => {
+    setConfirmando(id);
+    const { error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", id);
+    setConfirmando(null);
+    if (error) {
+      toast.error("Não foi possível confirmar");
+      return;
+    }
+    setConsultas((prev) => prev.map((c) => (c.id === id ? { ...c, status: "confirmed" } : c)));
+    toast.success("Presença confirmada");
+  };
+
   const semConfirmar = consultas.filter((c) => c.status !== "confirmed").length;
   const primeiroNome = (profile?.nome ?? "").trim().split(/\s+/)[0] ?? "";
 
@@ -199,24 +220,26 @@ export default function RecepcaoHome() {
           </div>
 
           <div className="ml-auto flex items-center gap-2.5">
-            <span className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium shadow-sm sm:flex">
-              <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${conectado === false ? "bg-red-500" : "bg-emerald-500"}`} />
-              {conectado === false ? "WhatsApp desconectado" : "WhatsApp conectado"}
+            {/* O closer trabalha dentro das conversas o dia todo: o aviso de
+                conexão e o atalho para abrir conversas viram ruído aqui. Fica só
+                o sino — e ele é o de verdade, que abre as notificações. */}
+            {userRole !== "closer" && (
+              <span className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium shadow-sm sm:flex">
+                <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${conectado === false ? "bg-red-500" : "bg-emerald-500"}`} />
+                {conectado === false ? "WhatsApp desconectado" : "WhatsApp conectado"}
+              </span>
+            )}
+            <span className="grid h-[38px] w-[38px] place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm">
+              <NotificationBell />
             </span>
-            <span className="relative grid h-[38px] w-[38px] place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-sm">
-              <Bell size={17} />
-              {atrasadas > 0 && (
-                <i className="absolute -right-1.5 -top-1.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold not-italic text-white">
-                  {atrasadas}
-                </i>
-              )}
-            </span>
-            <Link
-              to="/crm/conversas"
-              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
-            >
-              <MessageSquare size={16} /> Abrir conversas
-            </Link>
+            {userRole !== "closer" && (
+              <Link
+                to="/crm/conversas"
+                className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+              >
+                <MessageSquare size={16} /> Abrir conversas
+              </Link>
+            )}
           </div>
         </header>
 
@@ -371,6 +394,16 @@ export default function RecepcaoHome() {
                         >
                           {confirmada ? "Confirmado" : "Sem confirmação"}
                         </span>
+                        {!confirmada && (
+                          <button
+                            type="button"
+                            onClick={() => confirmarConsulta(c.id)}
+                            disabled={confirmando === c.id}
+                            className="whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                          >
+                            {confirmando === c.id ? "..." : "Confirmar"}
+                          </button>
+                        )}
                       </li>
                     );
                   })}
