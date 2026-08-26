@@ -431,12 +431,19 @@ export default function CrmConversa() {
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   onClick={async () => {
                     if (!id) return;
-                    const { error } = await supabase.from("crm_leads").update({
+                    // Sem o `.select()`, um bloqueio recusado pela regra do
+                    // banco levava o usuário de volta ao funil com "Lead
+                    // bloqueado" na tela — e as mensagens continuavam chegando.
+                    const { data, error } = await supabase.from("crm_leads").update({
                       is_blocked: true,
                       blocked_at: new Date().toISOString(),
                       blocked_by: user?.id || null,
-                    } as any).eq("id", id);
+                    } as any).eq("id", id).select("id");
                     if (error) { toast.error("Erro ao bloquear: " + error.message); return; }
+                    if (!data || data.length === 0) {
+                      toast.error("Seu perfil não tem permissão para bloquear este lead.");
+                      return;
+                    }
                     toast.success("Lead bloqueado");
                     navigate("/crm");
                   }}

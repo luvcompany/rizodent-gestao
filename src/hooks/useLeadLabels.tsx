@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 export type LeadLabel = {
   id: string;
@@ -128,32 +129,45 @@ export function useLeadLabels() {
     return null;
   }, [user]);
 
+  // Marcador é de quem criou: o banco deixa VER o de outra pessoa (o
+  // superadmin enxerga todos) mas não deixa mexer. As duas funções agora
+  // devolvem se a mudança valeu, para a tela não comemorar à toa.
   const updateLabel = useCallback(async (id: string, patch: Partial<Pick<LeadLabel, "name" | "color" | "description">>) => {
-    const { error } = await supabase.from("crm_user_labels").update(patch).eq("id", id);
-    if (!error) {
-      labelsCache = labelsCache.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l);
-      notifySubscribers();
-    }
+    const { data, error } = await supabase.from("crm_user_labels").update(patch).eq("id", id).select("id");
+    if (error || !data || data.length === 0) return false;
+    labelsCache = labelsCache.map(l => l.id === id ? { ...l, ...patch } as LeadLabel : l);
+    notifySubscribers();
+    return true;
   }, []);
 
   const deleteLabel = useCallback(async (id: string) => {
-    const { error } = await supabase.from("crm_user_labels").delete().eq("id", id);
-    if (!error) {
-      labelsCache = labelsCache.filter(l => l.id !== id);
-      assignmentsCache = assignmentsCache.filter(a => a.label_id !== id);
-      notifySubscribers();
-    }
+    const { data, error } = await supabase.from("crm_user_labels").delete().eq("id", id).select("id");
+    if (error || !data || data.length === 0) return false;
+    labelsCache = labelsCache.filter(l => l.id !== id);
+    assignmentsCache = assignmentsCache.filter(a => a.label_id !== id);
+    notifySubscribers();
+    return true;
   }, []);
 
   const toggleAssignment = useCallback(async (leadId: string, labelId: string) => {
     if (!user) return;
     const existing = assignments.find(a => a.lead_id === leadId && a.label_id === labelId);
     if (existing) {
-      const { error } = await supabase.from("crm_lead_label_assignments").delete().eq("id", existing.id);
-      if (!error) {
-        assignmentsCache = assignmentsCache.filter(a => a.id !== existing.id);
-        notifySubscribers();
+      // Marcador aplicado por outra pessoa: a regra do banco só deixa quem
+      // criou tirar. Sem conferir a linha, o marcador sumia do card e voltava
+      // no próximo carregamento, sem nenhum aviso.
+      const { data, error } = await supabase
+        .from("crm_lead_label_assignments")
+        .delete()
+        .eq("id", existing.id)
+        .select("id");
+      if (error) return;
+      if (!data || data.length === 0) {
+        toast.error("Este marcador foi aplicado por outra pessoa — só quem aplicou pode tirar.");
+        return;
       }
+      assignmentsCache = assignmentsCache.filter(a => a.id !== existing.id);
+      notifySubscribers();
     } else {
       const { data, error } = await supabase
         .from("crm_lead_label_assignments")

@@ -408,8 +408,20 @@ export function useChatConversation(leadId: string | null | undefined) {
     const updatePayload: { stage_id: string; updated_at: string; pipeline_id?: string } = { stage_id: newStageId, updated_at: new Date().toISOString() };
     if (newPipelineId) updatePayload.pipeline_id = newPipelineId;
 
-    const { error } = await supabase.from("crm_leads").update(updatePayload).eq("id", leadId);
+    // A conversa abre por uma função que enxerga leads de funis que a regra de
+    // edição não libera. Sem conferir a linha afetada, mover de etapa "dava
+    // certo", o histórico era escrito e a automação da etapa disparava — com o
+    // lead parado onde estava.
+    const { data: movido, error } = await supabase
+      .from("crm_leads")
+      .update(updatePayload)
+      .eq("id", leadId)
+      .select("id");
     if (error) { toast.error("Erro ao mover lead"); return; }
+    if (!movido || movido.length === 0) {
+      toast.error("Seu perfil não tem permissão para mover este lead de etapa.");
+      return;
+    }
 
     // Close previous stage history entry
     const { data: openEntry } = await supabase
@@ -588,9 +600,17 @@ export function useChatConversation(leadId: string | null | undefined) {
   // ─── Notes ───
   const saveNotes = useCallback(async (updatedNotes: string) => {
     if (!leadId) return;
-    const { error } = await supabase.from("crm_leads").update({ notes: updatedNotes }).eq("id", leadId);
-    if (error) toast.error("Erro ao salvar nota");
-    return !error;
+    const { data, error } = await supabase
+      .from("crm_leads")
+      .update({ notes: updatedNotes })
+      .eq("id", leadId)
+      .select("id");
+    if (error) { toast.error("Erro ao salvar nota"); return false; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para escrever nota neste lead.");
+      return false;
+    }
+    return true;
   }, [leadId]);
 
   const addNote = useCallback(async (noteText: string, currentNotes: string | null) => {
@@ -611,10 +631,24 @@ export function useChatConversation(leadId: string | null | undefined) {
   }, []);
 
   const deleteSystemMessage = useCallback(async (messageId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== messageId));
-    const { error } = await supabase.from("messages").delete().eq("id", messageId);
+    // Some da tela antes de o banco confirmar (é o que dá a sensação de rápido),
+    // então quando o banco recusa é preciso PÔR DE VOLTA — senão o balão some,
+    // o aviso diz "excluída", e ela reaparece sozinha no próximo carregamento.
+    let anterior: ChatMessage[] = [];
+    setMessages((prev) => { anterior = prev; return prev.filter((m) => m.id !== messageId); });
+    const { data, error } = await supabase
+      .from("messages")
+      .delete()
+      .eq("id", messageId)
+      .select("id");
     if (error) {
+      setMessages(anterior);
       toast.error("Erro ao excluir confirmação");
+      return;
+    }
+    if (!data || data.length === 0) {
+      setMessages(anterior);
+      toast.error("Seu perfil não tem permissão para excluir esta confirmação.");
       return;
     }
     toast.success("Confirmação excluída");

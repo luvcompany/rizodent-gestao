@@ -100,9 +100,17 @@ export default function LeadCustomFields({ leadId }: Props) {
   };
 
   const deleteField = async (fieldId: string) => {
-    const { error } = await supabase.from("crm_custom_fields").delete().eq("id", fieldId);
+    const { data, error } = await supabase
+      .from("crm_custom_fields")
+      .delete()
+      .eq("id", fieldId)
+      .select("id");
     if (error) {
       toast.error("Erro ao excluir campo");
+      return;
+    }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para excluir campos personalizados.");
       return;
     }
     setFields((prev) => prev.filter((f) => f.id !== fieldId));

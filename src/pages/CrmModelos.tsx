@@ -464,7 +464,21 @@ export default function CrmModelos() {
       }
     }
 
-    await supabase.from("crm_whatsapp_templates").delete().eq("id", deleteId);
+    // Aqui nem o erro era lido. Modelo de outro perfil (ou de outro número)
+    // sai da Meta e continua na lista, com "excluído" na tela.
+    const { data: removidos, error: erroLocal } = await supabase
+      .from("crm_whatsapp_templates")
+      .delete()
+      .eq("id", deleteId)
+      .select("id");
+    if (erroLocal) {
+      toast.error("Erro ao excluir o modelo: " + erroLocal.message);
+      return;
+    }
+    if (!removidos || removidos.length === 0) {
+      toast.error("Seu perfil não tem permissão para excluir este modelo.");
+      return;
+    }
     toast.success("Template excluído");
     setDeleteId(null);
     fetchTemplates();

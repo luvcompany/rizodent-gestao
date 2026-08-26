@@ -32,7 +32,8 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
   const submit = async () => {
     if (!form.name.trim()) { toast.error("Dê um nome ao marcador"); return; }
     if (editing) {
-      await updateLabel(editing.id, { name: form.name.trim(), color: form.color, description: form.description.trim() || null });
+      const ok = await updateLabel(editing.id, { name: form.name.trim(), color: form.color, description: form.description.trim() || null });
+      if (!ok) { toast.error("Este marcador é de outra pessoa — só quem criou pode alterar."); return; }
       toast.success("Marcador atualizado");
     } else {
       await createLabel({ name: form.name.trim(), color: form.color, description: form.description.trim() || undefined });
@@ -43,7 +44,8 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
 
   const onDelete = async (id: string) => {
     if (!confirm("Excluir este marcador? Ele será removido de todos os leads.")) return;
-    await deleteLabel(id);
+    const ok = await deleteLabel(id);
+    if (!ok) { toast.error("Este marcador é de outra pessoa — só quem criou pode excluir."); return; }
     toast.success("Marcador excluído");
   };
 

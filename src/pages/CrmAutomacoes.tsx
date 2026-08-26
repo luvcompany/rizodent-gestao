@@ -219,21 +219,51 @@ export default function CrmAutomacoes() {
     setDeleteStageLoading(true);
     try {
       if (deleteStageLeadCount > 0) {
+        // Conferir o que REALMENTE foi afetado é obrigatório aqui, e não é
+        // preciosismo: a etapa apaga os leads dela em cascata. Se o mover (ou o
+        // apagar) for recusado pela regra do banco, não vem erro — vem zero
+        // linha — e a exclusão da etapa levaria embora, calada, os leads que
+        // ficaram para trás, junto com as mensagens e os agendamentos deles.
         if (deleteStageAction === "move") {
           if (!deleteStageMoveTo) { toast.error("Selecione uma etapa de destino para os leads"); return; }
-          const { error: moveErr } = await supabase
+          const { data: movidos, error: moveErr } = await supabase
             .from("crm_leads")
             .update({ stage_id: deleteStageMoveTo, updated_at: new Date().toISOString() })
-            .eq("stage_id", deleteStageId);
+            .eq("stage_id", deleteStageId)
+            .select("id");
           if (moveErr) { toast.error("Erro ao mover leads: " + moveErr.message); return; }
-          toast.success(`${deleteStageLeadCount} lead(s) movido(s)`);
+          if (!movidos || movidos.length < deleteStageLeadCount) {
+            toast.error(
+              `Só foi possível mover ${movidos?.length ?? 0} de ${deleteStageLeadCount} lead(s). A etapa não foi excluída, para não apagar os que ficaram.`,
+            );
+            return;
+          }
+          toast.success(`${movidos.length} lead(s) movido(s)`);
         } else {
-          const { error: delLeadsErr } = await supabase.from("crm_leads").delete().eq("stage_id", deleteStageId);
+          const { data: apagados, error: delLeadsErr } = await supabase
+            .from("crm_leads")
+            .delete()
+            .eq("stage_id", deleteStageId)
+            .select("id");
           if (delLeadsErr) { toast.error("Erro ao excluir leads: " + delLeadsErr.message); return; }
+          if (!apagados || apagados.length < deleteStageLeadCount) {
+            toast.error(
+              `Seu perfil só pôde excluir ${apagados?.length ?? 0} de ${deleteStageLeadCount} lead(s). A etapa não foi excluída.`,
+            );
+            return;
+          }
         }
       }
-      const { error } = await supabase.from("crm_stages").delete().eq("id", deleteStageId);
+      const { data: etapaApagada, error } = await supabase
+        .from("crm_stages")
+        .delete()
+        .eq("id", deleteStageId)
+        .select("id");
       if (error) { toast.error("Erro ao excluir etapa: " + error.message); return; }
+      if (!etapaApagada || etapaApagada.length === 0) {
+        toast.error("Seu perfil não tem permissão para excluir esta etapa.");
+        return;
+      }
       toast.success("Etapa excluída");
       setStages(prev => prev.filter(s => s.id !== deleteStageId));
       setAutomations(prev => prev.filter(a => a.stage_id !== deleteStageId));

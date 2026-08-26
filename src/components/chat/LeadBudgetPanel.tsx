@@ -207,8 +207,16 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
   const removeLink = async (linkId: string) => {
     if (!confirm("Remover este paciente deste lead?")) return;
-    const { error } = await supabase.from("crm_lead_pacientes").delete().eq("id", linkId);
+    const { data, error } = await supabase
+      .from("crm_lead_pacientes")
+      .delete()
+      .eq("id", linkId)
+      .select("id");
     if (error) { toast.error(`Erro ao remover: ${error.message}`); return; }
+    if (!data || data.length === 0) {
+      toast.error("Seu perfil não tem permissão para desvincular este paciente.");
+      return;
+    }
     await fetchAllLinks();
     toast.success("Vínculo removido");
   };
