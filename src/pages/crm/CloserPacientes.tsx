@@ -464,15 +464,18 @@ export default function CloserPacientes() {
         </ul>
       )}
 
-      {/* Vincular paciente */}
-      <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
+      {/* Vincular / Editar paciente */}
+      <Dialog open={novoAberto} onOpenChange={(o) => { setNovoAberto(o); if (!o) setEditandoPaciente(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Vincular paciente</DialogTitle>
+            <DialogTitle>{editandoPaciente ? "Editar paciente" : "Vincular paciente"}</DialogTitle>
             <DialogDescription>
-              O paciente fica ligado a você e entra no seu faturamento quando você lançar o pagamento.
+              {editandoPaciente
+                ? "Atualize os dados do paciente."
+                : "O paciente fica ligado a você e entra no seu faturamento quando você lançar o pagamento."}
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="nome">Nome</Label>
