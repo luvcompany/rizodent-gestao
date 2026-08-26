@@ -49,6 +49,7 @@ interface ItemConexao {
   pipeline_id: string | null;
   pipeline_name: string | null;
   criado_em: string | null;
+  is_coexistence: boolean;
 }
 
 /** Lista os números que o próprio usuário conectou. Nunca devolve token. */
@@ -69,7 +70,7 @@ async function listarMeusNumeros(
 
   const { data: numeros } = await admin
     .from("whatsapp_numbers")
-    .select("id, phone_number_id, display_name, phone_e164, waba_id, is_active, created_at")
+    .select("id, phone_number_id, display_name, phone_e164, waba_id, is_active, is_coexistence, created_at")
     .eq("tenant_id", tenantId)
     .in("id", ids);
 
@@ -106,6 +107,7 @@ async function listarMeusNumeros(
       pipeline_id: cfg.pipeline_id ?? null,
       pipeline_name: cfg.pipeline_id ? (nomePipeline.get(cfg.pipeline_id) ?? null) : null,
       criado_em: n.created_at ?? null,
+      is_coexistence: n.is_coexistence === true,
     };
   });
 }
@@ -433,6 +435,38 @@ Deno.serve(async (req) => {
       const itens = await listarMeusNumeros(admin, userId, tenantId);
       const item = itens.find((i) => i.number_id === numero.id) ?? null;
       return json({ item, integration_key: key, avisos });
+    }
+
+    // Marcar/desmarcar coexistência à mão. A detecção automática acontece na
+    // conexão, mas números conectados antes dela ficaram sem a marca — e só quem
+    // opera sabe se o número também é usado no celular. A marca muda a tela: em
+    // coexistência a Cloud API não faz chamadas, então os botões de ligar e de
+    // pedir permissão somem e fica só a telefonia.
+    if (action === "set_coexistence") {
+      const numberId = String((body as any).number_id ?? "");
+      const valor = (body as any).is_coexistence === true;
+      if (!numberId) return json({ error: "number_id é obrigatório" }, 400);
+
+      const { data: podeVer } = await admin
+        .from("user_permission_overrides")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("scope", "whatsapp_number")
+        .eq("resource_id", numberId)
+        .eq("granted", true)
+        .maybeSingle();
+
+      const privilegiado = papeis.some((p) => ["crc", "gerente", "superadmin"].includes(p));
+      if (!podeVer && !privilegiado) return json({ error: "Este número não é seu" }, 403);
+
+      const { error } = await admin
+        .from("whatsapp_numbers")
+        .update({ is_coexistence: valor, updated_at: new Date().toISOString() })
+        .eq("id", numberId)
+        .eq("tenant_id", tenantId);
+      if (error) return json({ error: error.message }, 500);
+
+      return json({ ok: true, is_coexistence: valor });
     }
 
     if (action === "disconnect") {

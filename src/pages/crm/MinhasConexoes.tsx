@@ -50,6 +50,7 @@ type Item = {
   pipeline_id: string | null;
   pipeline_name: string | null;
   criado_em: string | null;
+  is_coexistence?: boolean;
 };
 
 type Pipeline = { id: string; name: string };
@@ -79,6 +80,7 @@ export default function MinhasConexoes() {
   const [verToken, setVerToken] = useState(false);
   const [conectando, setConectando] = useState(false);
   const [paraRemover, setParaRemover] = useState<Item | null>(null);
+  const [salvandoCoex, setSalvandoCoex] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
@@ -163,6 +165,25 @@ export default function MinhasConexoes() {
     setConectando(false);
   };
 
+  /**
+   * Marca a conexão como coexistência (o número também é usado no aplicativo do
+   * celular). Muda a tela: a Cloud API não faz chamadas nesses números, então os
+   * botões de ligar e de pedir permissão somem das conversas e fica a telefonia.
+   */
+  const alternarCoexistencia = async (item: Item, valor: boolean) => {
+    setSalvandoCoex(item.number_id);
+    const { data, error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
+      body: { action: "set_coexistence", number_id: item.number_id, is_coexistence: valor },
+    });
+    setSalvandoCoex(null);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || "Não foi possível salvar");
+      return;
+    }
+    setItens((prev) => prev.map((c) => (c.number_id === item.number_id ? { ...c, is_coexistence: valor } : c)));
+    toast.success(valor ? "Marcado como coexistência" : "Coexistência desmarcada");
+  };
+
   const desconectar = async (item: Item) => {
     const { error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
       body: { action: "disconnect", number_id: item.number_id },
@@ -237,6 +258,16 @@ export default function MinhasConexoes() {
                           Funil: {c.pipeline_name}
                         </span>
                       )}
+                      <label className="mt-1.5 flex w-fit cursor-pointer items-center gap-2 text-[12.5px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary"
+                          checked={c.is_coexistence === true}
+                          disabled={salvandoCoex === c.number_id}
+                          onChange={(e) => alternarCoexistencia(c, e.target.checked)}
+                        />
+                        Também uso este número no celular
+                      </label>
                     </span>
                     <span
                       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold ${
