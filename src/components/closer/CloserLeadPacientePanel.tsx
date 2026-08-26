@@ -300,7 +300,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       if (valor <= 0) { toast.error("Informe um valor válido"); return; }
       if (!form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return; }
       setSalvando(true);
-      const { error } = await (supabase as any).from("closer_pgamentos").insert({
+      const { error } = await (supabase as any).from("closer_pagamentos").insert({
         paciente_id: alvoPagamento.id,
         valor,
         clinica_id: form.clinica_id || null,
@@ -310,6 +310,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
         data_pagamento: form.data_pagamento,
       });
       setSalvando(false);
+
       if (error) { toast.error(`Não foi possível lançar: ${error.message}`); return; }
       toast.success("Pagamento lançado");
       setFormAberto(false);
