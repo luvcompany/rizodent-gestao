@@ -272,6 +272,25 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     void carregar();
   };
 
+  const ultimos8 = (tel: string) => String(tel || "").replace(/\D/g, "").slice(-8);
+
+  const lancarPagamentoEm = async (pacienteId: string) => {
+    const valor = centavosParaValor(form.valor);
+    if (valor <= 0) return true; // nada a lançar
+    if (!form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return false; }
+    const { error } = await (supabase as any).from("closer_pagamentos").insert({
+      paciente_id: pacienteId,
+      valor,
+      clinica_id: form.clinica_id || null,
+      forma_pagamento: form.forma_pagamento || null,
+      especialidade: form.especialidade || null,
+      tipo: form.tipo || null,
+      data_pagamento: form.data_pagamento,
+    });
+    if (error) { toast.error(`Não foi possível lançar: ${error.message}`); return false; }
+    return true;
+  };
+
   /** Vincula (e opcionalmente lança o pagamento) numa transação só. */
   const salvar = async () => {
     const nome = form.nome.trim() || lead.name?.trim() || "";
@@ -281,7 +300,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
       if (valor <= 0) { toast.error("Informe um valor válido"); return; }
       if (!form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return; }
       setSalvando(true);
-      const { error } = await (supabase as any).from("closer_pagamentos").insert({
+      const { error } = await (supabase as any).from("closer_pgamentos").insert({
         paciente_id: alvoPagamento.id,
         valor,
         clinica_id: form.clinica_id || null,
@@ -301,6 +320,47 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     if (!nome) { toast.error("Informe o nome do paciente"); return; }
     if (form.valor.trim() && valor <= 0) { toast.error("Informe um valor válido"); return; }
     if (valor > 0 && !form.clinica_id) { toast.error("Escolha a clínica do pagamento"); return; }
+
+    const telChave = ultimos8(form.telefone);
+    if (telChave) {
+      const { data: candidatos } = await (supabase as any)
+        .from("closer_pacientes")
+        .select("id, nome, telefone, lead_id")
+        .ilike("telefone", `%${telChave}%`)
+        .limit(5);
+
+      const existente = ((candidatos as Paciente[]) || []).find((p) => ultimos8(p.telefone) === telChave);
+
+      if (existente) {
+        if (!existente.lead_id || existente.lead_id === lead.id) {
+          setSalvando(true);
+          const { error } = await (supabase as any)
+            .from("closer_pacientes")
+            .update({ lead_id: lead.id, updated_at: new Date().toISOString() })
+            .eq("id", existente.id);
+          if (error) {
+            setSalvando(false);
+            toast.error(
+              error.code === "23505"
+                ? "Este paciente já está vinculado a outra conversa."
+                : `Não foi possível vincular: ${error.message}`,
+            );
+            return;
+          }
+          const ok = await lancarPagamentoEm(existente.id);
+          setSalvando(false);
+          if (!ok) return;
+          toast.success("Paciente já existia — vinculei este lead a ele");
+          setFormAberto(false);
+          setForm(formVazio());
+          void carregar();
+          return;
+        }
+
+        toast.error("Já existe um paciente com esse telefone vinculado a outra conversa.");
+        return;
+      }
+    }
 
     setSalvando(true);
     const { error } = await (supabase as any).rpc("closer_vincular_paciente", {
@@ -323,6 +383,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
     setForm(formVazio());
     void carregar();
   };
+
 
   const desvincular = async (p: Paciente) => {
     const { error } = await (supabase as any)
