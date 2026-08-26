@@ -121,10 +121,14 @@ Deno.serve(async (req) => {
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      // Só número ATIVO: o closer pode ter override de um número morto (o ID
+      // antigo, de antes da coexistência), e cair nele devolve 400 da Meta.
       const alvo = typeof body.phone_number_id === "string" && body.phone_number_id
         ? (await supabase.from("whatsapp_numbers").select("id").eq("phone_number_id", body.phone_number_id)
-            .eq("tenant_id", callerTenantId).in("id", numeros).limit(1)).data?.[0]?.id
-        : numeros[0];
+            .eq("tenant_id", callerTenantId).eq("is_active", true).in("id", numeros).limit(1)).data?.[0]?.id
+        : (await supabase.from("whatsapp_numbers").select("id")
+            .eq("tenant_id", callerTenantId).eq("is_active", true).in("id", numeros)
+            .order("created_at", { ascending: true }).limit(1)).data?.[0]?.id;
       if (!alvo) {
         return new Response(
           JSON.stringify({ error: "Número informado não pertence ao seu usuário." }),
@@ -149,7 +153,7 @@ Deno.serve(async (req) => {
       const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
         global: { headers: { Authorization: authHeader } },
       });
-      const { data: podeVer } = await userClient.rpc("can_access_whatsapp_number", { p_number_id: numId });
+      const { data: podeVer } = await userClient.rpc("can_access_whatsapp_number", { _number_id: numId });
       if (podeVer !== true) {
         return new Response(
           JSON.stringify({ error: "Sem acesso a este número de WhatsApp." }),
@@ -293,7 +297,10 @@ Deno.serve(async (req) => {
     // que é o que permite criar TEMPLATE com cabeçalho de vídeo/imagem/documento.
     // Template é o único formato que entrega FORA da janela de 24h.
     if (action === "upload_media") {
-      if (!isPrivileged) {
+      // Closer/recepção também criam modelo com vídeo ou imagem — a mídia sobe
+      // na WABA do número DELES, que o escopo acima já resolveu. Sem isto, só
+      // conseguiriam modelo de texto.
+      if (!isPrivileged && !escopoRestrito) {
         return new Response(JSON.stringify({ error: "Sem permissão." }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });

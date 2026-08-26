@@ -16,6 +16,30 @@ import { useAuth } from "@/contexts/AuthContext";
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
 
+/**
+ * As edge functions devolvem o motivo no CORPO da resposta ("WhatsApp não
+ * configurado…", "Sem acesso a este número…"). O supabase-js só entrega
+ * "Edge Function returned a non-2xx status code" em error.message, então sem
+ * ler o corpo o usuário vê "não funciona" e ninguém sabe por quê.
+ */
+async function motivoDoErro(error: any, data: any): Promise<string> {
+  const doCorpo = (data as any)?.error;
+  if (typeof doCorpo === "string" && doCorpo) return doCorpo;
+  try {
+    const resp = (error as any)?.context;
+    if (resp && typeof resp.json === "function") {
+      const j = await resp.json();
+      if (j?.error) return String(j.error);
+    }
+    if (resp && typeof resp.text === "function") {
+      const t = await resp.text();
+      if (t) return t.slice(0, 300);
+    }
+  } catch { /* fica com a mensagem genérica */ }
+  return error?.message || String(error);
+}
+
+
 const TEMPLATE_VARIABLES: { index: number; label: string; sample: string; hint: string }[] = [
   { index: 1, label: "Nome do lead", sample: "Maria Silva", hint: "lead.name (fallback: cliente)" },
   { index: 2, label: "Data e hora do agendamento", sample: "20/05/2026 às 14:00", hint: "próximo agendamento (fallback: data a confirmar)" },
@@ -178,13 +202,13 @@ export default function CrmModelos() {
       const body: Record<string, unknown> = { action: "list" };
       if (selectedIntegration) body.integration_key = selectedIntegration;
       const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
-      if (error) throw error;
+      if (error || (data as any)?.error) throw new Error(await motivoDoErro(error, data));
       const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
       if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
       setLastSyncAt(new Date());
       if (!silent) toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
     } catch (e: any) {
-      if (!silent) toast.error("Erro ao sincronizar: " + (e?.message || String(e)));
+      if (!silent) toast.error(`Erro ao sincronizar: ${e?.message || String(e)}`);
     } finally {
       setSyncing(false);
     }
