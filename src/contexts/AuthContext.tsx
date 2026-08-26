@@ -63,7 +63,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = async (userId: string, force = false) => {
     const last = lastProfileFetchRef.current;
     if (!force && last?.userId === userId && Date.now() - last.at < 30_000) {
-      setRoleResolved(true);
+      // Chamada repetida logo em seguida — no boot, getSession e
+      // onAuthStateChange disparam quase juntos. Aqui NÃO se pode anunciar o
+      // papel como resolvido: se a primeira busca ainda está no ar, o papel
+      // neste instante é nulo, e os guards de rota concluiriam que o usuário
+      // não é do perfil da tela e o mandariam para a home de outro perfil.
+      // Quem anuncia é o `finally` da busca em andamento, com o papel real.
       return;
     }
     lastProfileFetchRef.current = { userId, at: Date.now() };

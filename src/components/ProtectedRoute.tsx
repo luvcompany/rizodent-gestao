@@ -128,7 +128,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   // As telas de /crm/closer são o universo do closer: pacientes e faturamento
   // dele, que por decisão do produto não se misturam com os da clínica. A RLS
   // já devolve vazio para os demais perfis; aqui o acesso nem chega a abrir.
+  // `userRole &&` é o que impede a expulsão por papel desconhecido: esta é a
+  // única regra que decide por NEGAÇÃO, então um papel ainda nulo — instante em
+  // que a busca do perfil não voltou — casaria com "não é closer" e jogaria o
+  // próprio closer para fora da casa dele. Sem papel, ninguém é redirecionado.
   if (
+    userRole &&
     location.pathname.startsWith("/crm/closer") &&
     userRole !== "closer" &&
     userRole !== "gerente" &&
