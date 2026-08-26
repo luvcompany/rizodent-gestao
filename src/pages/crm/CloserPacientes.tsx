@@ -503,13 +503,15 @@ export default function CloserPacientes() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setNovoAberto(false)}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => { setNovoAberto(false); setEditandoPaciente(null); }}>Cancelar</Button>
             <Button onClick={salvarPaciente} disabled={salvando}>
-              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />} Vincular
+              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+              {editandoPaciente ? "Salvar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Lançar pagamento */}
       <Dialog
