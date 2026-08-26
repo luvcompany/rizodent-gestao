@@ -5151,6 +5151,10 @@ export type Database = {
           minutes_ago: number
         }[]
       }
+      dono_restrito_do_numero: {
+        Args: { _number_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
         Returns: string
