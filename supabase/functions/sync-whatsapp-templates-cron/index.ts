@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
         // Upsert por meta_template_id (unique constraint garante ausência de duplicatas)
         const { data: existingRows } = await supabase
           .from("crm_whatsapp_templates")
-          .select("id")
+          .select("id, owner_role")
           .eq("meta_template_id", t.id)
           .eq("tenant_id", intg.tenant_id)
           .eq("waba_id", wabaId)
@@ -144,6 +144,12 @@ Deno.serve(async (req) => {
             currentHeader.includes("/storage/v1/object/sign/")
           ) {
             delete finalPayload.header_content;
+          }
+          // Repara o modelo que ficou sem dono (some da tela de quem é dono do
+          // número, e nenhuma sincronização posterior consertava). Só em número
+          // próprio: no legado, owner_role NULL quer dizer "modelo geral".
+          if (whatsappNumberId && ownerRole && !existing.owner_role) {
+            finalPayload.owner_role = ownerRole;
           }
           await supabase
             .from("crm_whatsapp_templates")

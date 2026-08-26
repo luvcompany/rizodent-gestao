@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
       for (const tmpl of templates) {
         const { data: existingRows } = await supabase
           .from("crm_whatsapp_templates")
-          .select("id")
+          .select("id, owner_role, whatsapp_number_id")
           .eq("meta_template_id", tmpl.meta_template_id)
           .eq("tenant_id", callerTenantId)
           .eq("waba_id", WABA_ID)
@@ -255,19 +255,29 @@ Deno.serve(async (req) => {
         const existing = existingRows && existingRows[0];
 
         if (existing) {
+          const patch: Record<string, unknown> = {
+            name: tmpl.name,
+            status: tmpl.status,
+            category: tmpl.category,
+            header_type: tmpl.header_type,
+            header_content: tmpl.header_content,
+            body_text: tmpl.body_text,
+            footer_text: tmpl.footer_text,
+            buttons: tmpl.buttons,
+            updated_at: new Date().toISOString(),
+          };
+          // Repara o registro órfão: sem isto, um modelo gravado sem dono ficava
+          // invisível para o dono do número PARA SEMPRE — sincronizar de novo
+          // atualizava o texto e o status, e nunca o carimbo.
+          // Só vale para número próprio: no mundo legado, owner_role NULL
+          // significa "modelo geral" e carimbá-lo o esconderia dos demais papéis.
+          if (escopoNumberId) {
+            if (!existing.owner_role && ownerRoleTemplate) patch.owner_role = ownerRoleTemplate;
+            if (!existing.whatsapp_number_id) patch.whatsapp_number_id = escopoNumberId;
+          }
           await supabase
             .from("crm_whatsapp_templates")
-            .update({
-              name: tmpl.name,
-              status: tmpl.status,
-              category: tmpl.category,
-              header_type: tmpl.header_type,
-              header_content: tmpl.header_content,
-              body_text: tmpl.body_text,
-              footer_text: tmpl.footer_text,
-              buttons: tmpl.buttons,
-              updated_at: new Date().toISOString(),
-            })
+            .update(patch)
             .eq("id", existing.id);
         } else {
           await supabase.from("crm_whatsapp_templates").insert({
