@@ -71,8 +71,10 @@ export default function CloserPacientes() {
   const [busca, setBusca] = useState("");
 
   const [novoAberto, setNovoAberto] = useState(false);
+  const [editandoPaciente, setEditandoPaciente] = useState<Paciente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState({ nome: "", telefone: "", cidade: "", observacoes: "" });
+
 
   const [pagamentoPara, setPagamentoPara] = useState<Paciente | null>(null);
   /** Pagamento em edição — corrigir preenchimento sem precisar apagar e relançar. */
