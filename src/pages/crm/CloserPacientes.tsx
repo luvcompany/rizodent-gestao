@@ -71,8 +71,10 @@ export default function CloserPacientes() {
   const [busca, setBusca] = useState("");
 
   const [novoAberto, setNovoAberto] = useState(false);
+  const [editandoPaciente, setEditandoPaciente] = useState<Paciente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState({ nome: "", telefone: "", cidade: "", observacoes: "" });
+
 
   const [pagamentoPara, setPagamentoPara] = useState<Paciente | null>(null);
   /** Pagamento em edição — corrigir preenchimento sem precisar apagar e relançar. */
@@ -156,28 +158,90 @@ export default function CloserPacientes() {
     [pagamentos],
   );
 
+  const ultimos8 = (tel: string) => String(tel || "").replace(/\D/g, "").slice(-8);
+
   const salvarPaciente = async () => {
     if (!form.nome.trim()) {
       toast.error("Informe o nome do paciente");
       return;
     }
+
+    const telefoneDigitado = form.telefone.trim();
+    const chave = ultimos8(telefoneDigitado);
+
+    if (!editandoPaciente && chave) {
+      const duplicata = pacientes.find(
+        (p) => ultimos8(p.telefone) === chave && p.id !== editandoPaciente?.id,
+      );
+      if (duplicata) {
+        toast.error(`Já existe um paciente com esse telefone: ${duplicata.nome}. Edite o existente.`);
+        return;
+      }
+    }
+
     setSalvando(true);
-    const { error } = await (supabase as any).from("closer_pacientes").insert({
-      nome: form.nome.trim(),
-      telefone: form.telefone.trim() || null,
-      cidade: form.cidade.trim() || null,
-      observacoes: form.observacoes.trim() || null,
-    });
+
+    let error;
+    if (editandoPaciente) {
+      ({ error } = await (supabase as any)
+        .from("closer_pacientes")
+        .update({
+          nome: form.nome.trim(),
+          telefone: telefoneDigitado || null,
+          cidade: form.cidade.trim() || null,
+          observacoes: form.observacoes.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", editandoPaciente.id));
+    } else {
+      ({ error } = await (supabase as any).from("closer_pacientes").insert({
+        nome: form.nome.trim(),
+        telefone: telefoneDigitado || null,
+        cidade: form.cidade.trim() || null,
+        observacoes: form.observacoes.trim() || null,
+      }));
+    }
+
     setSalvando(false);
     if (error) {
       toast.error(`Não foi possível salvar: ${error.message}`);
       return;
     }
-    toast.success("Paciente vinculado");
+    toast.success(editandoPaciente ? "Paciente atualizado" : "Paciente vinculado");
     setForm({ nome: "", telefone: "", cidade: "", observacoes: "" });
     setNovoAberto(false);
+    setEditandoPaciente(null);
     void carregar();
   };
+
+  const abrirEdicaoPaciente = (p: Paciente) => {
+    setEditandoPaciente(p);
+    setForm({
+      nome: p.nome,
+      telefone: p.telefone || "",
+      cidade: p.cidade || "",
+      observacoes: p.observacoes || "",
+    });
+    setNovoAberto(true);
+  };
+
+  const excluirPaciente = async (p: Paciente) => {
+    const lista = pagamentosPorPaciente.get(p.id) || [];
+    const totalPago = lista.reduce((s, x) => s + Number(x.valor), 0);
+    const mensagem = lista.length > 0
+      ? `Excluir ${p.nome}? Os ${lista.length} pagamentos lançados nele (${brl(totalPago)}) também serão apagados.`
+      : `Excluir ${p.nome}?`;
+    const ok = window.confirm(mensagem);
+    if (!ok) return;
+    const { error } = await (supabase as any).from("closer_pacientes").delete().eq("id", p.id);
+    if (error) {
+      toast.error(`Não foi possível excluir: ${error.message}`);
+      return;
+    }
+    toast.success("Paciente excluído");
+    void carregar();
+  };
+
 
   const salvarPagamento = async () => {
     if (!pagamentoPara) return;
@@ -336,7 +400,26 @@ export default function CloserPacientes() {
                     <Button size="sm" variant="outline" onClick={() => setPagamentoPara(p)}>
                       <Plus size={14} className="mr-1" /> Pagamento
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => abrirEdicaoPaciente(p)}
+                      title="Editar paciente"
+                      aria-label="Editar paciente"
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => excluirPaciente(p)}
+                      title="Excluir paciente"
+                      aria-label="Excluir paciente"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
+
                 </div>
 
                 {lista.length > 0 && (
@@ -381,15 +464,18 @@ export default function CloserPacientes() {
         </ul>
       )}
 
-      {/* Vincular paciente */}
-      <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
+      {/* Vincular / Editar paciente */}
+      <Dialog open={novoAberto} onOpenChange={(o) => { setNovoAberto(o); if (!o) setEditandoPaciente(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Vincular paciente</DialogTitle>
+            <DialogTitle>{editandoPaciente ? "Editar paciente" : "Vincular paciente"}</DialogTitle>
             <DialogDescription>
-              O paciente fica ligado a você e entra no seu faturamento quando você lançar o pagamento.
+              {editandoPaciente
+                ? "Atualize os dados do paciente."
+                : "O paciente fica ligado a você e entra no seu faturamento quando você lançar o pagamento."}
             </DialogDescription>
           </DialogHeader>
+
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="nome">Nome</Label>
@@ -417,13 +503,15 @@ export default function CloserPacientes() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setNovoAberto(false)}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => { setNovoAberto(false); setEditandoPaciente(null); }}>Cancelar</Button>
             <Button onClick={salvarPaciente} disabled={salvando}>
-              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />} Vincular
+              {salvando && <Loader2 size={16} className="mr-1.5 animate-spin" />}
+              {editandoPaciente ? "Salvar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Lançar pagamento */}
       <Dialog
