@@ -76,11 +76,10 @@ const SOURCE_OPTIONS_INSTAGRAM = [
 
 export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Props) {
   const { user, userRole } = useAuth();
-  // Espelha a permissão do banco (migração 20260826180000_quem_apaga_lead):
-  // apagar lead é do crc e do closer, cada um no próprio mundo, além de
-  // gerente e superadmin. Recepção e pós-venda não apagam — e para elas o
-  // botão nem aparece, em vez de oferecer algo que o banco vai recusar.
-  const podeExcluir = ["crc", "closer", "gerente", "superadmin"].includes(userRole ?? "");
+  // Decisão do dono (31/08, migração direitos_basicos_todo_papel): excluir
+  // lead é direito básico de todo papel, cada um dentro do próprio mundo — o
+  // banco continua limitando O QUE cada perfil alcança, não mais SE pode.
+  const podeExcluir = true;
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);

@@ -1108,15 +1108,20 @@ export default function CrmCalendario() {
                   <Button variant="outline" size="sm" className="w-full" disabled={apptBusy} onClick={() => handleApptReopen(appt)}>Reabrir</Button>
                 )}
 
-                {isManager ? (
-                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(appt.id); setSelectedAppointment(null); }}>
-                    <Trash2 size={14} className="mr-1" /> Excluir agendamento
-                  </Button>
-                ) : isOpen ? (
+                {/* Excluir é direito de todo papel para agendamento ABERTO
+                    (decisão de 31/08); com desfecho registrado, só gerência —
+                    o banco protege a régua com um gatilho, e aqui o botão
+                    acompanha para não oferecer o que será recusado. */}
+                {isOpen && (
                   <Button variant="destructive" size="sm" className="w-full" onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
                     Cancelar agendamento
                   </Button>
-                ) : null}
+                )}
+                {(isManager || isOpen) && (
+                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(appt.id); setSelectedAppointment(null); }}>
+                    <Trash2 size={14} className="mr-1" /> Excluir agendamento
+                  </Button>
+                )}
               </div>
             );
           })()}

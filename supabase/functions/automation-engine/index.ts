@@ -939,7 +939,38 @@ Deno.serve(async (req) => {
           // UM worker consegue inserir essa combinação. Se dois cron ticks
           // rodam em paralelo, o segundo recebe 23505 e pula. Isso elimina
           // a race condition que estava causando envio duplicado.
-          const { error: claimErr } = await supabase
+          // RETRY de claim FALHO: se uma passada anterior reservou o slot mas o
+          // envio quebrou (a falha fica gravada na linha, ver abaixo), tenta de
+          // novo a cada minuto enquanto a janela do lembrete estiver aberta.
+          // Sem isto, o lembrete de 31/08 (dois agendamentos das 10h) morreu na
+          // primeira falha e ninguém ficou sabendo — o claim dizia "sent".
+          const { data: claimFalho } = await supabase
+            .from("crm_automation_queue")
+            .select("id")
+            .eq("automation_id", auto.id)
+            .eq("appointment_id", appt.id)
+            .eq("status", "failed")
+            .maybeSingle();
+          if (claimFalho) {
+            const tentativa = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+            await supabase
+              .from("crm_automation_queue")
+              .update(
+                tentativa.ok
+                  ? { status: "sent", error_message: null, updated_at: new Date().toISOString() }
+                  : { error_message: tentativa.erro, updated_at: new Date().toISOString() },
+              )
+              .eq("id", claimFalho.id);
+            if (tentativa.ok) {
+              console.log(`[BEFORE_SCHEDULED] RETRY ok for appt ${appt.id}`);
+              results.before_scheduled++;
+            } else {
+              console.error(`[BEFORE_SCHEDULED] RETRY failed for appt ${appt.id}: ${tentativa.erro}`);
+            }
+            continue;
+          }
+
+          const { data: claimRow, error: claimErr } = await supabase
             .from("crm_automation_queue")
             .insert({
               automation_id: auto.id,
@@ -950,7 +981,9 @@ Deno.serve(async (req) => {
               status: "sent",
               layer_index: 0,
               appointment_id: appt.id,
-            });
+            })
+            .select("id")
+            .single();
 
           if (claimErr) {
             if ((claimErr as any).code === "23505") {
@@ -963,7 +996,18 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[BEFORE_SCHEDULED] FIRING for lead ${lead.id}, appt ${appt.id} (claim ok)`);
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          const envio = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          if (!envio.ok) {
+            // A falha fica NA LINHA da fila (o log da function evapora em ~10
+            // minutos): status "failed" + o erro. A próxima passada do cron
+            // encontra o claim falho acima e tenta de novo dentro da janela.
+            console.error(`[BEFORE_SCHEDULED] send failed for appt ${appt.id}: ${envio.erro}`);
+            await supabase
+              .from("crm_automation_queue")
+              .update({ status: "failed", error_message: envio.erro, updated_at: new Date().toISOString() })
+              .eq("id", (claimRow as any).id);
+            continue;
+          }
           results.before_scheduled++;
         }
       }
@@ -999,7 +1043,7 @@ Deno.serve(async (req) => {
           if (!withinWindow) continue;
 
           // CLAIM ATÔMICO via UNIQUE partial (automation_id, task_id)
-          const { error: claimErr } = await supabase
+          const { data: claimTarefa, error: claimErr } = await supabase
             .from("crm_automation_queue")
             .insert({
               automation_id: auto.id,
@@ -1010,7 +1054,9 @@ Deno.serve(async (req) => {
               status: "sent",
               layer_index: 0,
               task_id: task.id,
-            });
+            })
+            .select("id")
+            .single();
 
           if (claimErr) {
             if ((claimErr as any).code === "23505") {
@@ -1021,7 +1067,16 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          const envioTarefa = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          if (!envioTarefa.ok) {
+            // Falha persistida na linha — o log da function evapora em ~10 min.
+            console.error(`[BEFORE_SCHEDULED] send failed for task ${task.id}: ${envioTarefa.erro}`);
+            await supabase
+              .from("crm_automation_queue")
+              .update({ status: "failed", error_message: envioTarefa.erro, updated_at: new Date().toISOString() })
+              .eq("id", (claimTarefa as any).id);
+            continue;
+          }
           results.before_scheduled++;
         }
       }
@@ -1107,7 +1162,7 @@ async function sendAction(
   // Automação de origem: gravada na execução do bot para que o gate de
   // time_window avalie SÓ ela (e não qualquer automação com o mesmo bot).
   automationId?: string | null,
-) {
+): Promise<{ ok: true } | { ok: false; erro: string }> {
 
   try {
     // Tenant do LEAD: qualquer id vindo de action_config (template, bot, etapa)
@@ -1325,6 +1380,10 @@ async function sendAction(
       }
     }
   } catch (e: any) {
+    // O erro também VOLTA ao chamador: quem tem claim na fila grava a falha na
+    // linha (o console some com a retenção de ~10 min de log) e retenta.
     console.error(`[AUTOMATION-ENGINE] sendAction error (${actionType}):`, e.message);
+    return { ok: false, erro: String(e?.message || e).substring(0, 500) };
   }
+  return { ok: true };
 }
