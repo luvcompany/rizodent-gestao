@@ -3004,6 +3004,63 @@ export type Database = {
         }
         Relationships: []
       }
+      dontus_conferencia: {
+        Row: {
+          appointment_id: string | null
+          casamento: string | null
+          dia: string
+          executado_em: string
+          id: string
+          is_rescheduled: boolean | null
+          lead_id: string | null
+          nome_crm: string | null
+          nome_dontus: string | null
+          origem: string
+          status_crm: string | null
+          status_dontus: string | null
+          telefone_crm: string | null
+          telefone_dontus: string | null
+          tenant_id: string
+          unidade_dontus: string | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          casamento?: string | null
+          dia: string
+          executado_em?: string
+          id?: string
+          is_rescheduled?: boolean | null
+          lead_id?: string | null
+          nome_crm?: string | null
+          nome_dontus?: string | null
+          origem: string
+          status_crm?: string | null
+          status_dontus?: string | null
+          telefone_crm?: string | null
+          telefone_dontus?: string | null
+          tenant_id: string
+          unidade_dontus?: string | null
+        }
+        Update: {
+          appointment_id?: string | null
+          casamento?: string | null
+          dia?: string
+          executado_em?: string
+          id?: string
+          is_rescheduled?: boolean | null
+          lead_id?: string | null
+          nome_crm?: string | null
+          nome_dontus?: string | null
+          origem?: string
+          status_crm?: string | null
+          status_dontus?: string | null
+          telefone_crm?: string | null
+          telefone_dontus?: string | null
+          tenant_id?: string
+          unidade_dontus?: string | null
+        }
+        Relationships: []
+      }
       dontus_credenciais: {
         Row: {
           access_token: string | null
