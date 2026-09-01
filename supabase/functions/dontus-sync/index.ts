@@ -2011,6 +2011,7 @@ async function syncComparecimento(
     const u = (unidades[uni] ||= {
       unidade: uni, compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
       rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0, aguardando_reagendamento: 0,
+      possivel_comparecimento_nome_divergente: 0,
     });
     u[key]++;
   };
@@ -2149,6 +2150,18 @@ async function syncComparecimento(
     } else {
       // Sem sinal de comparecimento no Dontus → regra por TEMPO.
       if (!dont) bump(unidade, "sem_dontus");
+      // TRAVA anti-falta-indevida (auditoria de 01/09, os "20 comparecimentos
+      // sumidos"): se HÁ um Atendido no Dontus no MESMO telefone e MESMO dia,
+      // mas o nome não bateu (apelido, cadastro no nome do cônjuge), carimbar
+      // falta por tempo apagaria um comparecimento real. Fica pendente para a
+      // SDR decidir — falta de verdade não tem Atendido nenhum no telefone.
+      const atendidoNoMesmoTelefone = !dont && cand.some(
+        (c) => DONTUS_STATUS_TARGET[c.idStatus] === "not_contracted",
+      );
+      if (atendidoNoMesmoTelefone) {
+        bump(unidade, "possivel_comparecimento_nome_divergente");
+        continue;
+      }
       if (lead.stage_id && aguardandoStageIds.has(lead.stage_id)) {
         bump(unidade, "aguardando_reagendamento");
         continue;
@@ -2198,8 +2211,11 @@ async function syncComparecimento(
     }
 
     if (!dryRun) {
+      // Fonte GRANULAR: "dontus-sync" seco não dizia se a falta veio do
+      // próprio Dontus (confiável) ou da regra por tempo (inferência) — e a
+      // reconciliação de agosto ficou impossível por isso. O sufixo é o bucket.
       const { error: upErr } = await admin.from("crm_appointments")
-        .update({ status: statusNovo, outcome_source: "dontus-sync", updated_at: new Date().toISOString() })
+        .update({ status: statusNovo, outcome_source: `dontus-sync:${bucket}`, updated_at: new Date().toISOString() })
         .eq("id", appt.id)
         .eq("status", "confirmed"); // trava: só age em pendente
       if (upErr) errors.push({ appointment_id: appt.id, error: upErr.message });
@@ -2216,9 +2232,12 @@ async function syncComparecimento(
     ainda_pendentes: t.ainda_pendentes + u.ainda_pendentes,
     sem_dontus: t.sem_dontus + u.sem_dontus,
     aguardando_reagendamento: t.aguardando_reagendamento + u.aguardando_reagendamento,
+    possivel_comparecimento_nome_divergente:
+      t.possivel_comparecimento_nome_divergente + u.possivel_comparecimento_nome_divergente,
   }), {
     compareceu: 0, no_show_por_tempo: 0, no_show_por_dontus: 0,
     rescheduled: 0, ainda_pendentes: 0, sem_dontus: 0, aguardando_reagendamento: 0,
+    possivel_comparecimento_nome_divergente: 0,
   });
 
   return {

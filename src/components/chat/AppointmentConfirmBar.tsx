@@ -78,10 +78,16 @@ function bahiaHourLabel(iso: string | null): string {
 function terminalSourceLabel(t: TerminalAppointment): string {
   const hora = bahiaHourLabel(t.outcome_at);
   const sufixo = hora ? ` às ${hora}` : "";
-  if (t.outcome_source && AUTO_SOURCES.includes(t.outcome_source)) {
+  const fonte = t.outcome_source || "";
+  // Fontes granulares (dontus-sync:<motivo>, desde 01/09): dizem se o desfecho
+  // veio do próprio Dontus ou só da regra por tempo — importa para confiar.
+  if (fonte === "dontus-sync:compareceu") return `confirmada pelo Dontus (atendido)${sufixo}`;
+  if (fonte === "dontus-sync:no_show_por_dontus") return `confirmada pelo Dontus (faltou)${sufixo}`;
+  if (fonte === "dontus-sync:no_show_por_tempo") return `definida automaticamente (sem confirmação no Dontus)${sufixo}`;
+  if (fonte && AUTO_SOURCES.some((s) => fonte === s || fonte.startsWith(`${s}:`))) {
     return `definida automaticamente (sem confirmação no Dontus)${sufixo}`;
   }
-  if (t.outcome_source === "ui") return `definida manualmente${sufixo}`;
+  if (fonte === "ui") return `definida manualmente${sufixo}`;
   return hora ? `desfecho registrado${sufixo}` : "";
 }
 
