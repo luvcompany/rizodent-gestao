@@ -1991,6 +1991,174 @@ async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boo
 
 type DontusAg = { idStatus: number; descricao: string; nome: string; clinica: string; consumida?: boolean };
 
+// ─── Modo CONFERÊNCIA: cruzamento CRClin × Dontus, linha a linha ─────────────
+// Pedido do dono (01/09/2026): "faça o cruzamento real com o Dontus — tanto o
+// agendamento, quanto o reagendamento, quanto o comparecimento". Este modo é
+// SÓ LEITURA nos dois sistemas: não muda status de nada. Ele apaga e regrava o
+// retrato do intervalo em `dontus_conferencia`, com nome e telefone dos dois
+// lados, para a divergência ser conferível a olho — não um total que não bate.
+const DONTUS_STATUS_NOME: Record<number, string> = {
+  1: "agendado", 3: "cancelado", 4: "confirmado",
+  5: "faltou", 6: "atendido", 7: "remarcado",
+};
+
+async function conferenciaDontus(
+  admin: any,
+  teamToken: string,
+  from: string,
+  to: string,
+  clinicas: number[],
+): Promise<any> {
+  type EntradaDontus = {
+    idStatus: number; nome: string; clinica: string; dia: string;
+    telefone: string; consumida?: boolean;
+  };
+
+  // 1) Lado CRClin: TODAS as consultas do intervalo (qualquer status), com o
+  // telefone do lead. `lead_name` já vive na própria consulta.
+  const consultas: any[] = [];
+  {
+    let fromIdx = 0;
+    const PAGE = 1000;
+    for (;;) {
+      const { data, error } = await admin.from("crm_appointments")
+        .select("id, lead_id, scheduled_date, scheduled_time, status, is_rescheduled, lead_name")
+        .eq("tenant_id", RIZODENT_TENANT_ID)
+        .gte("scheduled_date", from)
+        .lte("scheduled_date", to)
+        .order("id")
+        .range(fromIdx, fromIdx + PAGE - 1);
+      if (error) throw new Error(`crm_appointments: ${error.message}`);
+      consultas.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+      fromIdx += PAGE;
+    }
+  }
+  const leadIds = [...new Set(consultas.map((a) => a.lead_id).filter(Boolean))];
+  const telefoneDoLead = new Map<string, string>();
+  const nomeDoLead = new Map<string, string>();
+  for (const bloco of chunkArr(leadIds, 200)) {
+    const { data } = await admin.from("crm_leads").select("id, name, phone").in("id", bloco);
+    for (const l of (data || [])) {
+      if (l.phone) telefoneDoLead.set(l.id, l.phone);
+      if (l.name) nomeDoLead.set(l.id, l.name);
+    }
+  }
+
+  // 2) Lado Dontus: agendamentos do intervalo em todas as unidades.
+  const porChave = new Map<string, EntradaDontus[]>();
+  const todasDontus: EntradaDontus[] = [];
+  const errosDontus: any[] = [];
+  for (const idClinica of clinicas) {
+    const clinicaNome = CLINICA_MAP[idClinica]?.nome ?? `idClinica ${idClinica}`;
+    try {
+      let cursor = from;
+      while (cursor <= to) {
+        const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), to);
+        const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
+          input: { contexto: { idDontus: DONTUS_ID, idClinica }, dataInicio: cursor, dataFim: wFim },
+        });
+        for (const ag of (Array.isArray(rows) ? rows : [])) {
+          const dia = String(ag?.dataAgendamento || "").slice(0, 10);
+          if (!dia) continue;
+          const tels = agTelefones(ag);
+          const entrada: EntradaDontus = {
+            idStatus: Number(ag?.idStatus),
+            nome: String(ag?.paciente || "").trim(),
+            clinica: clinicaNome,
+            dia,
+            telefone: tels[0] || "",
+          };
+          todasDontus.push(entrada);
+          for (const tel of tels) {
+            const tail = tailPhone(tel);
+            if (!tail) continue;
+            const key = `${tail}|${dia}`;
+            const arr = porChave.get(key) || [];
+            arr.push(entrada);
+            porChave.set(key, arr);
+          }
+        }
+        cursor = addDays(wFim, 1);
+      }
+    } catch (e: any) {
+      errosDontus.push({ id_clinica_dontus: idClinica, error: e?.message ?? String(e) });
+    }
+  }
+
+  // 3) Casamento: telefone+dia com nome compatível; senão só telefone (nome
+  // divergente); senão a consulta fica 'so_crm'. Cada entrada do Dontus casa
+  // UMA vez — sobras viram 'so_dontus'.
+  const linhas: any[] = [];
+  for (const appt of consultas) {
+    const nomeCrm = appt.lead_name || nomeDoLead.get(appt.lead_id) || null;
+    const telCrm = telefoneDoLead.get(appt.lead_id) || null;
+    const tail = tailPhone(telCrm);
+    const cands = (tail ? porChave.get(`${tail}|${appt.scheduled_date}`) || [] : [])
+      .filter((c) => !c.consumida);
+    const porNome = cands.find((c) => namesCompatible(nomeCrm, c.nome)) || null;
+    const escolhida = porNome || cands[0] || null;
+    if (escolhida) escolhida.consumida = true;
+    linhas.push({
+      tenant_id: RIZODENT_TENANT_ID,
+      dia: appt.scheduled_date,
+      origem: escolhida ? "ambos" : "so_crm",
+      casamento: escolhida ? (porNome ? "telefone_nome" : "telefone_nome_divergente") : null,
+      lead_id: appt.lead_id,
+      appointment_id: appt.id,
+      nome_crm: nomeCrm,
+      telefone_crm: telCrm,
+      status_crm: appt.status,
+      is_rescheduled: !!appt.is_rescheduled,
+      nome_dontus: escolhida?.nome ?? null,
+      telefone_dontus: escolhida?.telefone ?? null,
+      status_dontus: escolhida ? (DONTUS_STATUS_NOME[escolhida.idStatus] ?? String(escolhida.idStatus)) : null,
+      unidade_dontus: escolhida?.clinica ?? null,
+    });
+  }
+  for (const d of todasDontus) {
+    if (d.consumida) continue;
+    linhas.push({
+      tenant_id: RIZODENT_TENANT_ID,
+      dia: d.dia,
+      origem: "so_dontus",
+      casamento: null,
+      nome_dontus: d.nome,
+      telefone_dontus: d.telefone,
+      status_dontus: DONTUS_STATUS_NOME[d.idStatus] ?? String(d.idStatus),
+      unidade_dontus: d.clinica,
+      is_rescheduled: false,
+    });
+  }
+
+  // 4) Regrava o retrato do intervalo.
+  const { error: delErr } = await admin.from("dontus_conferencia")
+    .delete().eq("tenant_id", RIZODENT_TENANT_ID).gte("dia", from).lte("dia", to);
+  if (delErr) throw new Error(`limpeza: ${delErr.message}`);
+  for (const bloco of chunkArr(linhas, 300)) {
+    const { error: insErr } = await admin.from("dontus_conferencia").insert(bloco);
+    if (insErr) throw new Error(`gravação: ${insErr.message}`);
+  }
+
+  const conta = (f: (r: any) => boolean) => linhas.filter(f).length;
+  return {
+    modo: "conferencia",
+    periodo: { from, to },
+    linhas_gravadas: linhas.length,
+    crm: {
+      consultas: consultas.length,
+      casadas_nome: conta((r) => r.casamento === "telefone_nome"),
+      casadas_nome_divergente: conta((r) => r.casamento === "telefone_nome_divergente"),
+      sem_par_no_dontus: conta((r) => r.origem === "so_crm"),
+    },
+    dontus: {
+      agendamentos: todasDontus.length,
+      sem_par_no_crm: conta((r) => r.origem === "so_dontus"),
+    },
+    erros_dontus: errosDontus,
+  };
+}
+
 async function syncComparecimento(
   admin: any,
   teamToken: string,
@@ -2465,6 +2633,20 @@ Deno.serve(async (req) => {
   const clinicas: number[] = Array.isArray(body.clinicas) && body.clinicas.length
     ? body.clinicas.map((n: any) => Number(n)).filter((n) => CLINICA_MAP[n])
     : [2, 3, 4, 5];
+
+  // Conferência CRClin × Dontus: só leitura, grava o retrato em
+  // dontus_conferencia (nome+telefone dos dois lados, linha a linha).
+  if (String(body.mode || "") === "conferencia") {
+    const to = String(body.to || todayBahia());
+    const from = String(body.from || addDays(to, -30));
+    const clinicasConf: number[] = Array.isArray(body.clinicas) && body.clinicas.length
+      ? body.clinicas.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n))
+      : [2, 3, 4, 5, 6];
+    const out = await conferenciaDontus(admin, teamToken, from, to, clinicasConf);
+    return new Response(JSON.stringify(out, null, 2), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // Passada NOVA e independente: comparecimento (não roda o sync de pagamentos).
   if (String(body.mode || "") === "comparecimento") {
