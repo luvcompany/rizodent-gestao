@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Mic, Paperclip, Trash2, Square, Pause, Play, X, Loader2 } from "lucide-react";
-import { NATIVE_OPUS_MIME, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
+import { NATIVE_OPUS_MIME, abrirMicrofone, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
 import AudioPlayer from "./AudioPlayer";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -63,7 +63,9 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
     try {
       // Em paralelo com o microfone, não depois dele.
       if (podeGravarOpusNativo()) void preloadRemuxer();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Abertura com prazo e erros traduzidos — em máquina fraca o getUserMedia
+      // cru podia nunca responder (mesma blindagem do gravador do chat).
+      const stream = await abrirMicrofone({ audio: true });
       streamRef.current = stream;
       recordingDiscardedRef.current = false;
       setRecordingPaused(false);
@@ -78,7 +80,11 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
         precisaRemuxRef.current = true;
       } else {
         precisaRemuxRef.current = false;
-        const OpusMediaRecorder = (await import("opus-media-recorder")).default;
+        const OpusMediaRecorder = await Promise.race([
+          import("opus-media-recorder").then((m) => m.default),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+        ]);
+        if (!OpusMediaRecorder) throw new Error("O gravador demorou a carregar (conexão lenta?). Tente de novo.");
         const workerOptions = {
           OggOpusEncoderWasmPath: "/OggOpusEncoder.wasm",
           WebMOpusEncoderWasmPath: "/WebMOpusEncoder.wasm",
@@ -136,8 +142,8 @@ export default function FollowUpDisparoInput({ index, disparo, onChange, onRemov
       timerRef.current = setInterval(() => {
         if (mediaRecorderRef.current?.state === "recording") setRecordingTime(t => t + 1);
       }, 1000);
-    } catch {
-      toast.error("Não foi possível acessar o microfone");
+    } catch (err: any) {
+      toast.error(err?.message || "Não foi possível acessar o microfone");
     }
   };
 

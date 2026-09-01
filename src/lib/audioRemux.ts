@@ -32,6 +32,50 @@ export function podeGravarOpusNativo(): boolean {
   return supportsMime(NATIVE_OPUS_MIME);
 }
 
+/**
+ * Abre o microfone com prazo e erros traduzidos. Em máquinas fracas (ou com o
+ * microfone preso por outro programa) o getUserMedia pode simplesmente nunca
+ * responder — e o gravador ficava em "Preparando…" para sempre, sem nem o
+ * cancelar funcionar. Aqui a espera tem teto, e cada recusa vira uma frase que
+ * diz o que fazer, não um "NotReadableError" cru.
+ */
+export async function abrirMicrofone(
+  constraints: MediaStreamConstraints = {
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  },
+  timeoutMs = 10_000,
+): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Este navegador não permite gravar áudio. Use uma versão atual do Chrome.");
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      navigator.mediaDevices.getUserMedia(constraints),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("O microfone demorou demais para responder. Feche outros programas que usam o microfone e tente de novo.")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } catch (err: any) {
+    const nome = err?.name || "";
+    if (nome === "NotAllowedError" || nome === "SecurityError") {
+      throw new Error("Permissão do microfone negada. Clique no cadeado ao lado do endereço e libere o microfone para este site.");
+    }
+    if (nome === "NotFoundError" || nome === "OverconstrainedError") {
+      throw new Error("Nenhum microfone foi encontrado neste computador.");
+    }
+    if (nome === "NotReadableError" || nome === "AbortError") {
+      throw new Error("O microfone está em uso por outro programa. Feche chamadas ou outros aplicativos de áudio e tente de novo.");
+    }
+    throw err instanceof Error ? err : new Error("Não foi possível acessar o microfone.");
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 let mediabunnyPromise: Promise<typeof import("mediabunny") | null> | null = null;
 
 /**

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { NATIVE_OPUS_MIME, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
+import { NATIVE_OPUS_MIME, abrirMicrofone, podeGravarOpusNativo, preloadRemuxer, remuxWebmParaOgg } from "@/lib/audioRemux";
 import { Loader2, Mic, Pause, Play, Send, Square, X } from "lucide-react";
 
 type AudioRecorderComposerProps = {
@@ -25,8 +25,14 @@ type RecorderMode = "idle" | "preparing" | "recording" | "preview" | "sending";
 
 const BAR_COUNT = 48;
 const MIN_LEVEL = 0.06;
-const LIVE_SAMPLE_MS = 60;
+// 100 ms (não 60): em máquina fraca, redesenhar 48 barras a 16x por segundo
+// disputava CPU com o próprio encoder. A 10x por segundo o visual não muda.
+const LIVE_SAMPLE_MS = 100;
 const MAX_WAVEFORM_SAMPLES = 300;
+// Teto do "Preparando…": se em 12 s a captura não começou (microfone mudo,
+// encoder que não carregou), a gravação é desfeita com o motivo na tela —
+// antes ficava presa nesse estado para sempre, com o cancelar inerte.
+const PREPARO_MAX_MS = 12_000;
 
 let opusModulePromise: Promise<any> | null = null;
 let opusWarmStarted = false;
@@ -117,6 +123,8 @@ export default function AudioRecorderComposer({
   const currentDraftUrlRef = useRef<string | null>(null);
   const discardRecordingRef = useRef(false);
   const pausedRef = useRef(false);
+  // Cão de guarda do arranque (ver PREPARO_MAX_MS).
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setManagedDraftUrl = useCallback((url: string | null) => {
     if (currentDraftUrlRef.current?.startsWith("blob:")) {
@@ -144,8 +152,13 @@ export default function AudioRecorderComposer({
     }
   }, [clearSampler]);
 
+  const clearWatchdog = useCallback(() => {
+    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+  }, []);
+
   const resetToIdle = useCallback(() => {
     clearTimer();
+    clearWatchdog();
     stopAudioProcessing();
 
     if (streamRef.current) {
@@ -173,7 +186,7 @@ export default function AudioRecorderComposer({
     setPreviewProgress(0);
     setPreviewDuration(0);
     setMode("idle");
-  }, [clearTimer, setManagedDraftUrl, stopAudioProcessing]);
+  }, [clearTimer, clearWatchdog, setManagedDraftUrl, stopAudioProcessing]);
 
   const startMeter = useCallback(() => {
     clearSampler();
@@ -292,10 +305,27 @@ export default function AudioRecorderComposer({
     captureStartedRef.current = false;
     precisaRemuxRef.current = false;
 
+    // Cão de guarda: nada abaixo pode prender o "Preparando…" para sempre.
+    // Se a captura não começar no prazo, desfaz tudo e explica.
+    clearWatchdog();
+    watchdogRef.current = setTimeout(() => {
+      if (captureStartedRef.current || discardRecordingRef.current) return;
+      try { mediaRecorderRef.current?.stop?.(); } catch { /* já vamos resetar */ }
+      resetToIdle();
+      toast.error("A gravação não conseguiu começar. Feche outros programas que usam o microfone e tente de novo.");
+    }, PREPARO_MAX_MS);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      const stream = await abrirMicrofone();
+
+      // O usuário pode ter clicado no X enquanto o microfone abria — antes
+      // esse clique não fazia nada (não havia gravador para parar) e, pior, a
+      // gravação começava depois do "cancelamento".
+      if (discardRecordingRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        resetToIdle();
+        return;
+      }
       streamRef.current = stream;
 
       // Create recorder
@@ -324,8 +354,13 @@ export default function AudioRecorderComposer({
       } else if (nativeOgg) {
         recorder = new MediaRecorder(stream, { mimeType: "audio/ogg;codecs=opus" });
       } else {
-        const OpusMediaRecorder = await preloadOpusRecorder();
-        if (!OpusMediaRecorder) throw new Error("Erro ao carregar gravador de áudio");
+        // O download do polyfill (~270 KB + WASM) também tem teto: em conexão
+        // lenta ele podia pendurar o preparo indefinidamente.
+        const OpusMediaRecorder = await Promise.race([
+          preloadOpusRecorder(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+        ]);
+        if (!OpusMediaRecorder) throw new Error("O gravador demorou a carregar (conexão lenta?). Tente de novo.");
         recorder = new OpusMediaRecorder(
           stream,
           { mimeType: "audio/ogg;codecs=opus" },
@@ -342,9 +377,14 @@ export default function AudioRecorderComposer({
       recorder.ondataavailable = (e: any) => {
         if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      recorder.onerror = () => { toast.error("Erro ao gravar áudio"); resetToIdle(); };
+      recorder.onerror = (e: any) => {
+        const detalhe = e?.error?.message || e?.error?.name;
+        toast.error(detalhe ? `Erro ao gravar áudio: ${detalhe}` : "Erro ao gravar áudio");
+        resetToIdle();
+      };
       recorder.onstart = () => {
         if (discardRecordingRef.current) return;
+        clearWatchdog();
         captureStartedRef.current = true;
         startMeter();
         setMode("recording");
@@ -392,7 +432,7 @@ export default function AudioRecorderComposer({
       resetToIdle();
       toast.error(err?.message || "Não foi possível acessar o microfone");
     }
-  }, [disabled, finalizeDraft, mode, preferredMimeTypes, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing]);
+  }, [aquecerCodificador, clearWatchdog, disabled, finalizeDraft, gravacaoNativa, mode, preferredMimeTypes, resetToIdle, startMeter, startRecordingTimer, clearTimer, stopAudioProcessing]);
 
   const togglePauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -411,15 +451,22 @@ export default function AudioRecorderComposer({
   const stopRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
     if (!rec) return;
-    try { rec.requestData?.(); } catch {}
-    rec.stop();
-  }, []);
+    try { rec.requestData?.(); } catch { /* nem todo gravador implementa */ }
+    // Um gravador em estado inválido (máquina travada no meio) lançava aqui e
+    // deixava a UI presa em "gravando" sem gravador por trás.
+    try { rec.stop(); } catch { resetToIdle(); }
+  }, [resetToIdle]);
 
   const discardCurrentAudio = useCallback(() => {
     if (mode === "preview") { resetToIdle(); return; }
     if (mode === "preparing" || mode === "recording") {
       discardRecordingRef.current = true;
-      try { mediaRecorderRef.current?.stop(); } catch { resetToIdle(); }
+      // Sem gravador ainda (microfone abrindo): não há o que parar — o reset é
+      // direto. Antes o `?.stop()` virava um não-fazer-nada silencioso e o X
+      // parecia quebrado justamente quando o preparo travava.
+      const rec = mediaRecorderRef.current;
+      if (!rec) { resetToIdle(); return; }
+      try { rec.stop(); } catch { resetToIdle(); }
       return;
     }
     resetToIdle();
