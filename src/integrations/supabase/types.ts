@@ -1224,6 +1224,7 @@ export type Database = {
           confirmed_at: string | null
           confirmed_by: string | null
           created_at: string
+          credito_origem: string | null
           id: string
           is_rescheduled: boolean
           lead_cidade: string | null
@@ -1235,6 +1236,7 @@ export type Database = {
           outcome_source: string | null
           owner_role: Database["public"]["Enums"]["app_role"] | null
           rescheduled_from_id: string | null
+          responsavel_credito_id: string | null
           scheduled_date: string
           scheduled_time: string
           status: string
@@ -1247,6 +1249,7 @@ export type Database = {
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
+          credito_origem?: string | null
           id?: string
           is_rescheduled?: boolean
           lead_cidade?: string | null
@@ -1258,6 +1261,7 @@ export type Database = {
           outcome_source?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           rescheduled_from_id?: string | null
+          responsavel_credito_id?: string | null
           scheduled_date: string
           scheduled_time: string
           status?: string
@@ -1270,6 +1274,7 @@ export type Database = {
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
+          credito_origem?: string | null
           id?: string
           is_rescheduled?: boolean
           lead_cidade?: string | null
@@ -1281,6 +1286,7 @@ export type Database = {
           outcome_source?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
           rescheduled_from_id?: string | null
+          responsavel_credito_id?: string | null
           scheduled_date?: string
           scheduled_time?: string
           status?: string
@@ -2059,6 +2065,66 @@ export type Database = {
           },
         ]
       }
+      crm_lead_atribuicoes: {
+        Row: {
+          criado_em: string
+          criado_por: string | null
+          de_user_id: string | null
+          fase: string
+          id: string
+          lead_id: string | null
+          lead_nome: string | null
+          lead_telefone: string | null
+          motivo: string | null
+          para_user_id: string | null
+          run_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          criado_em?: string
+          criado_por?: string | null
+          de_user_id?: string | null
+          fase: string
+          id?: string
+          lead_id?: string | null
+          lead_nome?: string | null
+          lead_telefone?: string | null
+          motivo?: string | null
+          para_user_id?: string | null
+          run_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          criado_em?: string
+          criado_por?: string | null
+          de_user_id?: string | null
+          fase?: string
+          id?: string
+          lead_id?: string | null
+          lead_nome?: string | null
+          lead_telefone?: string | null
+          motivo?: string | null
+          para_user_id?: string | null
+          run_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_lead_atribuicoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_lead_atribuicoes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       crm_lead_custom_values: {
         Row: {
           field_id: string
@@ -2293,8 +2359,11 @@ export type Database = {
           blocked_by: string | null
           cidade: string | null
           comment_only: boolean
+          conversa_fechada_em: string | null
+          conversa_fechada_por: string | null
           created_at: string
           descricao_anuncio: string | null
+          distribuido_em: string | null
           first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
@@ -2340,8 +2409,11 @@ export type Database = {
           blocked_by?: string | null
           cidade?: string | null
           comment_only?: boolean
+          conversa_fechada_em?: string | null
+          conversa_fechada_por?: string | null
           created_at?: string
           descricao_anuncio?: string | null
+          distribuido_em?: string | null
           first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
@@ -2387,8 +2459,11 @@ export type Database = {
           blocked_by?: string | null
           cidade?: string | null
           comment_only?: boolean
+          conversa_fechada_em?: string | null
+          conversa_fechada_por?: string | null
           created_at?: string
           descricao_anuncio?: string | null
+          distribuido_em?: string | null
           first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
@@ -2552,6 +2627,93 @@ export type Database = {
           },
         ]
       }
+      crm_pesquisa_config: {
+        Row: {
+          ativa: boolean
+          atraso_min: number
+          escala: string
+          template_id: string | null
+          tenant_id: string
+          texto: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativa?: boolean
+          atraso_min?: number
+          escala?: string
+          template_id?: string | null
+          tenant_id: string
+          texto?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativa?: boolean
+          atraso_min?: number
+          escala?: string
+          template_id?: string | null
+          tenant_id?: string
+          texto?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      crm_pesquisa_respostas: {
+        Row: {
+          canal: string
+          comentario: string | null
+          enviada_em: string
+          id: string
+          lead_id: string | null
+          lead_nome: string | null
+          lead_telefone: string | null
+          nota: number | null
+          respondida_em: string | null
+          responsavel_credito_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          canal?: string
+          comentario?: string | null
+          enviada_em?: string
+          id?: string
+          lead_id?: string | null
+          lead_nome?: string | null
+          lead_telefone?: string | null
+          nota?: number | null
+          respondida_em?: string | null
+          responsavel_credito_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          canal?: string
+          comentario?: string | null
+          enviada_em?: string
+          id?: string
+          lead_id?: string | null
+          lead_nome?: string | null
+          lead_telefone?: string | null
+          nota?: number | null
+          respondida_em?: string | null
+          responsavel_credito_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_pesquisa_respostas_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_pesquisa_respostas_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       crm_pipelines: {
         Row: {
           allowed_roles: Database["public"]["Enums"]["app_role"][] | null
@@ -2599,6 +2761,39 @@ export type Database = {
           },
         ]
       }
+      crm_ponto_eventos: {
+        Row: {
+          criado_por: string | null
+          em: string
+          id: string
+          motivo: string | null
+          origem: string
+          tenant_id: string
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          criado_por?: string | null
+          em?: string
+          id?: string
+          motivo?: string | null
+          origem?: string
+          tenant_id: string
+          tipo: string
+          user_id: string
+        }
+        Update: {
+          criado_por?: string | null
+          em?: string
+          id?: string
+          motivo?: string | null
+          origem?: string
+          tenant_id?: string
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       crm_quick_replies: {
         Row: {
           content: string
@@ -2645,6 +2840,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      crm_rodizio_config: {
+        Row: {
+          auto_encerrar: string
+          corte_ate: string
+          hora_corte: string
+          modo: string
+          pausa_alerta_min: number
+          ponteiro_user_id: string | null
+          preferir_em_expediente: boolean
+          realocar_sem_resposta_min: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_encerrar?: string
+          corte_ate?: string
+          hora_corte?: string
+          modo?: string
+          pausa_alerta_min?: number
+          ponteiro_user_id?: string | null
+          preferir_em_expediente?: boolean
+          realocar_sem_resposta_min?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_encerrar?: string
+          corte_ate?: string
+          hora_corte?: string
+          modo?: string
+          pausa_alerta_min?: number
+          ponteiro_user_id?: string | null
+          preferir_em_expediente?: boolean
+          realocar_sem_resposta_min?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      crm_rodizio_membros: {
+        Row: {
+          ativo: boolean
+          criado_em: string
+          peso: number
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          criado_em?: string
+          peso?: number
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean
+          criado_em?: string
+          peso?: number
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       crm_stages: {
         Row: {
@@ -5254,8 +5512,11 @@ export type Database = {
           blocked_by: string | null
           cidade: string | null
           comment_only: boolean
+          conversa_fechada_em: string | null
+          conversa_fechada_por: string | null
           created_at: string
           descricao_anuncio: string | null
+          distribuido_em: string | null
           first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
@@ -5642,6 +5903,7 @@ export type Database = {
         | "posvenda"
         | "recepcao"
         | "closer"
+        | "sdr"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -5657,12 +5919,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5686,11 +5948,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5711,11 +5973,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5736,11 +5998,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5753,11 +6015,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5777,6 +6039,7 @@ export const Constants = {
         "posvenda",
         "recepcao",
         "closer",
+        "sdr",
       ],
     },
   },
