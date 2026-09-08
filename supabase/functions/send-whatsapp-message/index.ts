@@ -985,6 +985,8 @@ Deno.serve(async (req) => {
         status: "failed",
         error_reason: friendlyError,
         reply_to_message_id: reply_to_message_id || null,
+        // A tentativa humana também conta como "respondeu" (mesma regra do envio ok).
+        sender_id: caller.userId ?? null,
         ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
       }).select().single();
 
@@ -1006,6 +1008,10 @@ Deno.serve(async (req) => {
       status: initialStatus,
       whatsapp_message_id: sentWamid,
       reply_to_message_id: reply_to_message_id || null,
+      // Quem mandou: usuário logado (SDR/CRC) ou ninguém (bot, automação,
+      // cron). É o que separa "respondido por humano" de "respondido pelo
+      // bot" — base da regra "1 hora sem resposta do SDR" e dos relatórios.
+      sender_id: caller.userId ?? null,
       ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
     }).select().single();
 

@@ -390,8 +390,13 @@ async function appointments(tenantId: string, method: string, p: URLSearchParams
     return json({ data });
   }
   if (method === "POST") {
+    // O crédito do agendamento (responsavel_credito_id) é carimbado pelo banco
+    // com a dona do lead; a API roda com service_role e o gatilho honraria o
+    // valor que viesse no body — por isso ele é descartado aqui.
+    const { responsavel_credito_id: _rc, credito_origem: _co, ...corpo } =
+      (body || {}) as Record<string, unknown>;
     const { data, error } = await admin.from("crm_appointments")
-      .insert({ ...body, tenant_id: tenantId }).select().single();
+      .insert({ ...corpo, tenant_id: tenantId }).select().single();
     if (error) return json({ error: error.message }, 400);
     return json(data, 201);
   }
@@ -407,6 +412,8 @@ async function appointments(tenantId: string, method: string, p: URLSearchParams
       outcome_at: _oa, outcome_by: _ob, outcome_source: _os,
       confirmed_at: _cfa, confirmed_by: _cfb,
       rescheduled_from_id: _rfi, is_rescheduled: _isr,
+      // crédito do agendamento (migração 20260901220100): carimbo do banco
+      responsavel_credito_id: _rci, credito_origem: _cro,
       lead_id: bodyLeadId,
       ...safe
     } = (body || {}) as Record<string, unknown>;

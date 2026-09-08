@@ -1,0 +1,11 @@
+-- Rodízio de SDRs — Fase 0, parte 1: o papel.
+--
+-- Papel "SDR": atendente do número principal que só enxerga os leads de que é
+-- DONA (crm_leads.assigned_to). Nenhum papel existente serve: crc é o admin da
+-- clínica (vê e edita tudo), closer/recepção são isolados por número e não
+-- alcançam o número principal. Papel novo é o que deixa cada regra nova
+-- inerte para quem já existe — e o desligar trivial (tirar o papel).
+--
+-- ADD VALUE fica em migração própria: o valor novo não pode ser usado na
+-- mesma transação (mesmo padrão de recepcao e closer). Nunca pode ser removido.
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'sdr';
