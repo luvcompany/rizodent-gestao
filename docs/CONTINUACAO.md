@@ -12,7 +12,7 @@ Regras que valem acima de qualquer item: nunca mexer em `whatsapp-webhook`,
 desfechos de agendamento em lote sem autorização literal do dono; publicar são
 3 passos (migration, redeploy de function, publish do site) e conferir depois.
 
-Última atualização: 2026-09-08 12:30 UTC, pela sessão local do Claude Code.
+Última atualização: 2026-09-08 20:05 UTC, pela rotina na nuvem.
 
 ---
 
@@ -50,12 +50,16 @@ relatar isso ao dono, sem publicar.
 
 ## Item 3 — Conferir carimbo de autor nas mensagens humanas
 
-- status: pendente
+- status: concluído em 2026-09-08 20:05 UTC (rotina na nuvem)
 - autorizado: sim
 - como fazer: `SELECT count(*) FILTER (WHERE sender_id IS NOT NULL) AS com_autor, count(*) AS total FROM messages WHERE direction='outbound' AND type IN ('text','audio','image','document','video') AND status <> 'system' AND created_at > '2026-09-08 02:24:00+00'`. Se `total` > 0 e `com_autor` = 0, marcar este item como `bloqueado: sender_id não está sendo carimbado — send-whatsapp-message precisa de novo redeploy a partir do main` e NÃO tentar corrigir. Se `com_autor` > 0, marcar concluído com os números. Se `total` = 0, deixar pendente (ainda não houve envio humano).
 
+Conferido em 2026-09-08 20:05 UTC: 431 mensagens outbound (text/audio/image/document/video, status <> 'system') desde 2026-09-08 02:24 UTC, sendo 390 com sender_id preenchido (90,5%). O carimbo de autor está funcionando. As 41 sem sender_id (18 text/read, 8 audio/played, 7 text/delivered, 4 text/sent, 3 audio/delivered, 1 audio/sent) ocorreram entre 08:00 e 19:00 UTC e não têm autor humano — compatível com envios automáticos; não foi feita nenhuma correção.
+
 ## Item 4 — Conferir carimbo de crédito no primeiro agendamento real
 
-- status: pendente
+- status: concluído em 2026-09-08 20:05 UTC (rotina na nuvem)
 - autorizado: sim
 - como fazer: `SELECT credito_origem, count(*) FROM crm_appointments WHERE created_at > '2026-09-08 00:00:00+00' GROUP BY 1`. Se houver linhas com `credito_origem` diferente de `backfill_fase0` (esperado: `dona_do_lead_na_criacao`, `herdado_remarcacao`, `sem_dona_na_criacao` ou `informado_pelo_servidor`), marcar concluído com a distribuição. Se todas as linhas novas estiverem NULL, marcar `bloqueado: gatilho trg_zz_carimba_credito_agendamento não carimbou` sem corrigir. Se não houver linhas, deixar pendente.
+
+Conferido em 2026-09-08 20:05 UTC: 18 agendamentos criados desde 2026-09-08 00:00 UTC, todos com credito_origem carimbado — 17 'dona_do_lead_na_criacao' e 1 'herdado_remarcacao'. Nenhuma linha nova com NULL nem com 'backfill_fase0'. O gatilho trg_zz_carimba_credito_agendamento está funcionando.

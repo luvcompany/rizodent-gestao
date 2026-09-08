@@ -2852,6 +2852,7 @@ export type Database = {
         Row: {
           auto_encerrar: string
           corte_ate: string
+          gestor_user_id: string | null
           hora_corte: string
           modo: string
           pausa_alerta_min: number
@@ -2864,6 +2865,7 @@ export type Database = {
         Insert: {
           auto_encerrar?: string
           corte_ate?: string
+          gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
           pausa_alerta_min?: number
@@ -2876,6 +2878,7 @@ export type Database = {
         Update: {
           auto_encerrar?: string
           corte_ate?: string
+          gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
           pausa_alerta_min?: number
@@ -5247,10 +5250,6 @@ export type Database = {
         Returns: string
       }
       api4com_dial_enabled: { Args: never; Returns: boolean }
-      apply_migration_chunk: {
-        Args: { chunk_num: number; sql_text: string }
-        Returns: undefined
-      }
       assert_tenant_do_chamador: {
         Args: { _tenant: string }
         Returns: undefined
@@ -5492,6 +5491,28 @@ export type Database = {
         }
         Returns: string
       }
+      equipe_alvo_sdr: { Args: { p_user_id: string }; Returns: string }
+      equipe_bloquear: {
+        Args: { p_bloquear: boolean; p_user_id: string }
+        Returns: undefined
+      }
+      equipe_listar: {
+        Args: never
+        Returns: {
+          bloqueado: boolean
+          criado_em: string
+          email: string
+          leads_hoje: number
+          no_rodizio: boolean
+          nome: string
+          ultimo_login: string
+          user_id: string
+        }[]
+      }
+      equipe_rodizio: {
+        Args: { p_ativo: boolean; p_user_id: string }
+        Returns: undefined
+      }
       funil_do_papel_do_usuario: {
         Args: { _pipeline_id: string }
         Returns: boolean
@@ -5633,6 +5654,7 @@ export type Database = {
           waba_id: string
         }[]
       }
+      is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
@@ -5670,6 +5692,13 @@ export type Database = {
         Returns: boolean
       }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
+      posvenda_padrao_do_tenant: {
+        Args: never
+        Returns: {
+          id: string
+          nome: string
+        }[]
+      }
       recalculate_all_lead_scores:
         | { Args: never; Returns: undefined }
         | { Args: { p_batch_size?: number }; Returns: number }
@@ -5833,6 +5862,7 @@ export type Database = {
           ticket_por_pagamento: number
         }[]
       }
+      sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
