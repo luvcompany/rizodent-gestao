@@ -18,14 +18,14 @@ desfechos de agendamento em lote sem autorização literal do dono; publicar sã
 
 ## Item 1 — Varredura de leads presos em Agendado/Reagendado
 
-- status: em andamento na sessão local (não executar)
-- autorizado: não
+- status: concluído em 2026-09-08 13:20 UTC (sessão local)
+- autorizado: sim
 
-Migration `supabase/migrations/20260908140000_varredura_agendado_sem_agendamento.sql`
-(função `varre_agendado_sem_agendamento` + cron 06:00 UTC). A sessão local
-aplica, faz o dry-run e a primeira execução real. Se este item ainda estiver
-"em andamento" depois de 2026-09-09 00:00 UTC, a sessão local caiu: então trocar
-`autorizado` para `sim` NÃO é permitido a esta rotina — o dono decide.
+Migration `20260908140000_varredura_agendado_sem_agendamento.sql` aplicada
+(cron job 35, 06:00 UTC). Primeira execução real: 62 leads movidos, 1 sem
+etapa destino no funil (GIDENALDA, funil com "Agendado " sem "Não contratado").
+Correções da folha das SDRs (6 faltas → comparecimento + CHAIANE 24/08)
+também aplicadas, `outcome_source = 'folha-sdr'`.
 
 ## Item 2 — Fase 1 do rodízio de SDRs (papel `sdr` + aba Equipe)
 
