@@ -65,8 +65,17 @@ Deno.serve(async (req) => {
           break; // stop early to honor the gateway limit
         }
         if (!resp.ok) {
-          stats.failed++;
           const t = await resp.text();
+          // O gateway devolve o 429 embrulhado num 500 ("Rate limit exceeded ...
+          // Retry after Nms"): tratar como limite, senão o lote inteiro vira
+          // erro e o próximo tick repete a mesma rajada.
+          if (/rate limit/i.test(t)) {
+            stats.rate_limited++;
+            rateLimited = true;
+            console.warn(`[transcribe-cron] msg ${item.id}: limite do gateway — aguarda o próximo tick`);
+            break;
+          }
+          stats.failed++;
           console.error(`[transcribe-cron] msg ${item.id} failed (${resp.status}): ${t.substring(0, 200)}`);
         } else {
           stats.ok++;
@@ -102,8 +111,13 @@ Deno.serve(async (req) => {
               break;
             }
             if (!resp.ok) {
-              stats.api4com_failed++;
               const t = await resp.text();
+              if (/rate limit/i.test(t)) {
+                stats.rate_limited++;
+                console.warn(`[transcribe-cron] api4com ${item.id}: limite do gateway — aguarda o próximo tick`);
+                break;
+              }
+              stats.api4com_failed++;
               console.error(`[transcribe-cron] api4com ${item.id} failed (${resp.status}): ${t.substring(0, 200)}`);
             } else {
               stats.api4com_ok++;

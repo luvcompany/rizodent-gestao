@@ -2,6 +2,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
 import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
+// Segue até 3 redirecionamentos revalidando CADA destino na allowlist. A
+// Api4Com passou a responder as gravações com redirect e `redirect: "error"`
+// derrubava todo download — ligações sem transcrição desde 19/08/2026.
+async function fetchSeguindoRedirectPermitido(url: string): Promise<Response> {
+  let atual = url;
+  for (let salto = 0; salto < 4; salto++) {
+    const r = await fetch(atual, { redirect: "manual", signal: AbortSignal.timeout(20000) });
+    if (![301, 302, 303, 307, 308].includes(r.status)) return r;
+    const destino = r.headers.get("location");
+    if (!destino) return r;
+    const guard = assertAllowedMediaUrl(new URL(destino, atual).toString());
+    if (!guard.ok) throw new Error(`redirect para fora da allowlist: ${guard.error}`);
+    atual = guard.url;
+  }
+  throw new Error("redirecionamentos demais ao baixar a mídia");
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -271,7 +288,7 @@ Deno.serve(async (req) => {
       // SSRF de segunda ordem: mediaUrl vem do banco. Só hosts allowlistados.
       const guard = assertAllowedMediaUrl(mediaUrl);
       if (!guard.ok) return json({ error: `media_url bloqueada: ${guard.error}` }, 400);
-      const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(20000) });
+      const r = await fetchSeguindoRedirectPermitido(guard.url);
       if (!r.ok) return json({ error: "Falha ao baixar áudio externo" }, 500);
       audioBytes = new Uint8Array(await r.arrayBuffer());
       mime = r.headers.get("content-type") || mime;
@@ -306,7 +323,7 @@ Deno.serve(async (req) => {
         }
         const guard = assertAllowedMediaUrl(url);
         if (!guard.ok) { console.warn("[transcribe] track bloqueada:", guard.error); return null; }
-        const r = await fetch(guard.url, { redirect: "error", signal: AbortSignal.timeout(20000) });
+        const r = await fetchSeguindoRedirectPermitido(guard.url);
         if (!r.ok) return null;
         return { bytes: new Uint8Array(await r.arrayBuffer()), mime: r.headers.get("content-type") || "audio/webm" };
       } catch { return null; }

@@ -40,22 +40,8 @@ export async function moveLeadToStageInCurrentPipeline(
     throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
   }
 
-  const { data: openEntry } = await supabase
-    .from("crm_lead_stage_history")
-    .select("id")
-    .eq("lead_id", leadId)
-    .eq("stage_id", lead.stage_id)
-    .is("exited_at", null)
-    .maybeSingle();
-  if (openEntry) {
-    await supabase.from("crm_lead_stage_history").update({ exited_at: nowIso }).eq("id", openEntry.id);
-  }
-  await supabase.from("crm_lead_stage_history").insert({
-    lead_id: leadId,
-    stage_id: target.id,
-    from_stage_id: lead.stage_id,
-    entered_at: nowIso,
-  } as any);
+  // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history (a
+  // dupla escrita front+gatilho duplicou 18.685 passagens até 08/09/2026).
 
   return target.id;
 }
@@ -100,22 +86,7 @@ export async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<
     throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
   }
 
-  const { data: openEntry } = await supabase
-    .from("crm_lead_stage_history")
-    .select("id")
-    .eq("lead_id", leadId)
-    .eq("stage_id", lead.stage_id)
-    .is("exited_at", null)
-    .maybeSingle();
-  if (openEntry) {
-    await supabase.from("crm_lead_stage_history").update({ exited_at: nowIso }).eq("id", openEntry.id);
-  }
-  await supabase.from("crm_lead_stage_history").insert({
-    lead_id: leadId,
-    stage_id: firstStage.id,
-    from_stage_id: lead.stage_id,
-    entered_at: nowIso,
-  } as any);
+  // Histórico de etapa é escrito só pelo gatilho sync_lead_stage_history.
 
   return firstStage.id;
 }
@@ -180,22 +151,8 @@ export async function moveLeadToStageCrossPipeline(
     throw new Error("Seu perfil não tem permissão para mover este lead de etapa.");
   }
 
-  const { data: openEntry } = await supabase
-    .from("crm_lead_stage_history")
-    .select("id")
-    .eq("lead_id", leadId)
-    .eq("stage_id", lead.stage_id)
-    .is("exited_at", null)
-    .maybeSingle();
-  if (openEntry) {
-    await supabase.from("crm_lead_stage_history").update({ exited_at: nowIso }).eq("id", openEntry.id);
-  }
-  await supabase.from("crm_lead_stage_history").insert({
-    lead_id: leadId,
-    stage_id: target.id,
-    from_stage_id: lead.stage_id,
-    entered_at: nowIso,
-  } as any);
+  // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history (a
+  // dupla escrita front+gatilho duplicou 18.685 passagens até 08/09/2026).
 
   return target.id;
 }

@@ -31,6 +31,8 @@ function hostAllowed(host: string, supabaseHost: string): boolean {
   if (supabaseHost && h === supabaseHost) return true;
   if (META_HOSTS.has(h)) return true;
   if (API4COM_HOSTS.has(h)) return true;
+  // listener.api4com.com responde 302 para o servidor de arquivos (fs7.api4com.com etc.).
+  if (/^fs\d*\.api4com\.com$/.test(h)) return true;
   if (h === "whatsapp.net" || h.endsWith(".whatsapp.net")) return true;
   if (/^scontent([.-][a-z0-9-]+)*\.fbcdn\.net$/.test(h)) return true;
   return false;

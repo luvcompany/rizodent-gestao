@@ -488,27 +488,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       return leadData.stage_id;
     }
 
-    const { data: openEntry } = await supabase
-      .from("crm_lead_stage_history")
-      .select("id")
-      .eq("lead_id", leadId)
-      .eq("stage_id", currentStageId)
-      .is("exited_at", null)
-      .maybeSingle();
-
-    if (openEntry) {
-      await supabase
-        .from("crm_lead_stage_history")
-        .update({ exited_at: nowIso })
-        .eq("id", openEntry.id);
-    }
-
-    await supabase.from("crm_lead_stage_history").insert({
-      lead_id: leadId,
-      stage_id: scheduledStage.id,
-      from_stage_id: currentStageId,
-      entered_at: nowIso,
-    } as any);
+    // Histórico de etapa é escrito só pelo gatilho sync_lead_stage_history.
 
     const sysContent = crossPipeline && targetPipelineName
       ? `📋 Etapa alterada: ${currentStage?.name || "Etapa anterior"} → ${targetPipelineName} • ${scheduledStage.name}`

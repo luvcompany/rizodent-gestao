@@ -103,18 +103,7 @@ export async function executeAction(
           updated_at: new Date().toISOString(),
         }).eq("id", leadId);
 
-        // Close previous stage history
-        if (currentStageId) {
-          await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
-            .eq("lead_id", leadId).eq("stage_id", currentStageId).is("exited_at", null);
-        }
-        // Insert new stage history
-        await supabase.from("crm_lead_stage_history").insert({
-          lead_id: leadId,
-          stage_id: config.target_stage_id as string,
-          from_stage_id: currentStageId || null,
-          entered_at: new Date().toISOString(),
-        });
+        // Histórico de etapa é escrito só pelo gatilho sync_lead_stage_history.
 
         // System message
         const { data: stageNames } = await supabase.from("crm_stages").select("id, name")

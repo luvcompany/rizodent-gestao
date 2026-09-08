@@ -1174,6 +1174,12 @@ async function sendAction(
 
     switch (actionType) {
       case "send_template":
+        // Lead sem telefone: antes o envio era pulado em silêncio e o claim
+        // ficava "sent" — o lembrete sumia sem rastro (caso NAIR, 04/09).
+        // Agora vira falha registrada na fila.
+        if (config.template_id && !phone) {
+          return { ok: false, erro: "lead sem telefone — lembrete não enviado" };
+        }
         if (config.template_id && phone) {
           // Fail-closed: sem tenant no lead, não resolve template nenhum.
           const tplOk = leadTenant

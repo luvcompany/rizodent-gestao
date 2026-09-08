@@ -423,26 +423,8 @@ export function useChatConversation(leadId: string | null | undefined) {
       return;
     }
 
-    // Close previous stage history entry
-    const { data: openEntry } = await supabase
-      .from("crm_lead_stage_history")
-      .select("id")
-      .eq("lead_id", leadId)
-      .eq("stage_id", currentStageId)
-      .is("exited_at", null)
-      .maybeSingle();
-
-    if (openEntry) {
-      await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
-    }
-
-    // Insert new stage history entry (with from_stage_id)
-    await supabase.from("crm_lead_stage_history").insert({
-      lead_id: leadId,
-      stage_id: newStageId,
-      from_stage_id: currentStageId,
-      entered_at: new Date().toISOString(),
-    } as any);
+    // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history
+    // (front + gatilho gravavam a mesma passagem duas vezes).
 
     // Insert system message
     const fromName = stages.find(s => s.id === currentStageId)?.name || "?";

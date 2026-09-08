@@ -163,7 +163,7 @@ export const prefetchCrmCalendarioData = async (userId: string | null | undefine
     let leadsData: any[] = [];
     if (allLeadIds.length) {
       const { data: rpcData, error: rpcError } = await supabase.rpc("get_leads_for_calendar", { _lead_ids: allLeadIds });
-      if (!rpcError && rpcData) leadsData = rpcData;
+      if (!rpcError && rpcData && rpcData.length > 0) leadsData = rpcData;
       else {
         const { data } = await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds);
         leadsData = data || [];
@@ -283,7 +283,9 @@ export default function CrmCalendario() {
     let leadsData: any[] = [];
     if (allLeadIds.length) {
       const { data: rpcData, error: rpcError } = await supabase.rpc("get_leads_for_calendar", { _lead_ids: allLeadIds });
-      if (!rpcError && rpcData) {
+      // `[]` é verdadeiro em JS: a função devolve lista vazia para quem não
+      // alcança os leads (closer/recepção) e o nome virava "Lead" na tela.
+      if (!rpcError && rpcData && rpcData.length > 0) {
         leadsData = rpcData;
       } else {
         const { data } = await supabase.from("crm_leads").select("id, name, cidade").in("id", allLeadIds);
