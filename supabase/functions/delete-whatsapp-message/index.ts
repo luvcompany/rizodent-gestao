@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertMessageInTenant, denyForSdr } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +19,16 @@ Deno.serve(async (req) => {
     if (!caller.ok) {
       return new Response(JSON.stringify({ error: caller.error }), {
         status: caller.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rodízio de SDRs: apagar mensagem está fora do perfil (RESTRICTIVE
+    // sdr_sem_delete_messages); esta function roda com service role, então a
+    // RLS não a alcança — o bloqueio tem de ser aqui.
+    const perfil = denyForSdr(caller, "Apagar mensagem não faz parte do perfil SDR");
+    if (!perfil.ok) {
+      return new Response(JSON.stringify({ error: perfil.error }), {
+        status: perfil.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

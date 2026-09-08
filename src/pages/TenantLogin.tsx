@@ -66,6 +66,7 @@ const TenantLogin = () => {
         if (roleName === "posvenda") target = "/crm";
         else if (roleName === "recepcao") target = "/crm/recepcao";
         else if (roleName === "closer") target = "/crm/closer";
+        else if (roleName === "sdr") target = "/crm/sdr";
       }
       // If arrived from an OAuth consent flow (or any protected page), honor ?next=.
       const nextParam = new URLSearchParams(window.location.search).get("next");
@@ -114,6 +115,7 @@ const TenantLogin = () => {
         if (roleName === "posvenda") target = "/crm";
         else if (roleName === "recepcao") target = "/crm/recepcao";
         else if (roleName === "closer") target = "/crm/closer";
+        else if (roleName === "sdr") target = "/crm/sdr";
           }
           if (target === "/dashboard") await dashboardWarmup;
           navigate(target);

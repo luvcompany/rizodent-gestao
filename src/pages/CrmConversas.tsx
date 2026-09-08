@@ -1431,7 +1431,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
+                {/* Telefonia fora do perfil SDR (decisão da Fase 1): api4com_calls,
+                    api4com_config e api4com_extensions estão bloqueadas para ela e
+                    /crm/ligacoes fora das rotas dela — originar a ligação e não ver
+                    registro, gravação nem transcrição seria pior que não ligar.
+                    A tranca de verdade está em api4com-dial (403). */}
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && userRole !== "sdr" && (
                   <Api4ComDialButton leadId={selectedLead.id} phone={selectedLead.phone} />
                 )}
                 {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && podeLigarPorWhatsapp((selectedLead as any).whatsapp_number_id) && (
@@ -1453,7 +1458,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </TooltipContent>
                   </Tooltip>
                 )}
-                <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
+                {/* SDR: IA fora do perfil — ai-conversation-assist devolve 403 e
+                    ai_conversation_analysis está bloqueada. Sem isto, o botão ✨
+                    ficava permanente e só produzia erro sem motivo (mesmo cerco já
+                    feito no AiSuggestionStrip). */}
+                {userRole !== "sdr" && (
+                  <LeadAiAssistPanel leadId={selectedLead.id} leadName={selectedLead.name} />
+                )}
                 <Button variant="ghost" size="icon" className="h-8 w-8" title={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} aria-label={rightPanelVisible ? "Ocultar detalhes" : "Mostrar detalhes"} onClick={() => isCrmMobile ? setMobileShowDetails(true) : setRightPanelVisible(!rightPanelVisible)}>
                   {(isCrmMobile ? false : rightPanelVisible) ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </Button>
@@ -1566,7 +1577,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
               )}
 
-              {getLeadChannel(selectedLead) !== "instagram" && (
+              {/* SDR: IA fora do perfil (generate-reply-suggestion devolve 403) — sem faixa de sugestões. */}
+              {getLeadChannel(selectedLead) !== "instagram" && userRole !== "sdr" && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} />
               )}
               <ChatInput
@@ -1668,19 +1680,27 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <UserRoundCog size={12} className="inline mr-1" />
                       Responsável
                     </label>
-                    <Select
-                      value={selectedLead.assigned_to || "unassigned"}
-                      onValueChange={(val) => handleTransferLead(val)}
-                    >
-                      <SelectTrigger className="bg-secondary border-border text-sm h-9">
-                        <SelectValue placeholder="Selecionar responsável" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profiles.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {userRole === "sdr" ? (
+                      // SDR não transfere lead (RLS + gatilho + transfer-lead 403):
+                      // só leitura, para não oferecer um seletor que sempre falha.
+                      <div className="flex h-9 items-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+                        {profiles.find((p) => p.id === selectedLead.assigned_to)?.nome || "Sem responsável"}
+                      </div>
+                    ) : (
+                      <Select
+                        value={selectedLead.assigned_to || "unassigned"}
+                        onValueChange={(val) => handleTransferLead(val)}
+                      >
+                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                          <SelectValue placeholder="Selecionar responsável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {profiles.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
 
                   <SendToPosvendaButton
@@ -1727,7 +1747,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
                 {userRole === "closer" ? (
                   <CloserLeadPacientePanel lead={selectedLead as any} />
-                ) : (
+                ) : userRole === "sdr" ? null : (
+                  // SDR: pacientes/pagamentos estão fora do perfil (RLS devolve
+                  // vazio e o "criar paciente" falharia) — o painel não é montado.
+                  // A recepção continua como sempre.
                   <LeadBudgetPanel
                     lead={selectedLead as any}
                     onLeadUpdated={(updates) => {
@@ -1870,10 +1893,12 @@ function useChannelUnreadCount(channel: "whatsapp" | "instagram") {
 export default function CrmConversas() {
   const whatsappUnread = useChannelUnreadCount("whatsapp");
   const instagramUnread = useChannelUnreadCount("instagram");
-  // Recepção e closer atendem só WhatsApp — os hooks acima ficam incondicionais
-  // (regra de hooks); apenas a aba deixa de ser renderizada.
+  // Recepção, closer e SDR atendem só WhatsApp — os hooks acima ficam
+  // incondicionais (regra de hooks); apenas a aba deixa de ser renderizada.
+  // (SDR: ig_accounts/instagram_* bloqueadas no banco e o funil Instagram não
+  // recebe override — a aba ficaria sempre vazia.)
   const { userRole } = useAuth();
-  const hideInstagram = userRole === "recepcao" || userRole === "closer";
+  const hideInstagram = userRole === "recepcao" || userRole === "closer" || userRole === "sdr";
 
   return (
     <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>

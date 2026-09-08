@@ -37,19 +37,61 @@ Deno.serve(async (req) => {
     const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
     if (!leadCheck.ok) return json({ error: leadCheck.error }, leadCheck.status);
 
-    const [{ data: lead }, { data: roleRow }] = await Promise.all([
-      supabase.from("crm_leads").select("id, name, assigned_to, tenant_id, pipeline_id, stage_id, whatsapp_number_id").eq("id", leadId).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle(),
+    const [{ data: lead }, { data: roleRows }] = await Promise.all([
+      supabase.from("crm_leads").select("id, name, phone, assigned_to, tenant_id, pipeline_id, stage_id, whatsapp_number_id").eq("id", leadId).maybeSingle(),
+      supabase.from("user_roles").select("role").eq("user_id", user.id),
     ]);
 
     if (!lead) return json({ error: "Lead not found" }, 404);
+
+    // Papéis do CHAMADOR. A leitura virou lista (antes era um maybeSingle) para
+    // reconhecer 'sdr' — mas quem DECIDE privilégio continua sendo
+    // `callerRoleRow`, que reproduz exatamente o maybeSingle antigo (1 papel = a
+    // linha; 0 ou 2+ papéis = null, porque o maybeSingle devolvia PGRST116).
+    // Sem isso, um usuário com 2 papéis que hoje NÃO é privilegiado passaria a
+    // ser — alargamento silencioso de uma checagem de permissão dentro do
+    // próprio diff. (Hoje ninguém tem 2 papéis em produção; a regra da fase é
+    // que nenhum papel existente passe a poder mais.)
+    const callerRolesArr = ((roleRows || []) as any[]).map((r) => String(r.role));
+    const callerRoles = new Set<string>(callerRolesArr);
+    const callerRoleRow = callerRolesArr.length === 1 ? { role: callerRolesArr[0] } : null;
+    const isSuperadmin = ctx.isSuperadmin || callerRoleRow?.role === "superadmin";
+    const isPrivileged = callerRoleRow?.role === "crc" || callerRoleRow?.role === "gerente" || callerRoleRow?.role === "posvenda" || isSuperadmin;
+
+    // Papéis do NOVO responsável, lidos em lista (antes era um maybeSingle mais
+    // abaixo). A lista é o que permite reconhecer 'sdr'/'posvenda' mesmo em
+    // usuário com mais de um papel; `targetRoleRow` reproduz exatamente o
+    // resultado do maybeSingle antigo (1 papel = a linha; 0 ou 2+ = null), para
+    // os ramos posvenda/crc adiante continuarem se comportando como hoje.
+    const { data: targetRoleRows } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", newUserId);
+    const targetRoles = ((targetRoleRows || []) as any[]).map((r) => String(r.role));
+    const targetIsSdr = targetRoles.includes("sdr");
+    const targetIsPosvenda = targetRoles.includes("posvenda");
+    const targetRoleRow = targetRoles.length === 1 ? { role: targetRoles[0] } : null;
+
+    // Rodízio de SDRs (Fase 1): a SDR não transfere lead — nem "puxa" lead sem
+    // dona, nem repassa o dela para uma colega. Esta function roda com service
+    // role (auth.uid() NULL), então a RESTRICTIVE sdr_escopo_crm_leads_update e
+    // o gatilho trg_sdr_nao_transfere_lead não a alcançam: o bloqueio tem de
+    // ser aqui. Mesma mensagem do gatilho.
+    // EXCEÇÃO (decisão do dono): ela PODE encaminhar o lead DELA para a
+    // pós-venda — é o caminho do lead fechado. Qualquer outro destino, ou lead
+    // que não é dela, continua 403.
+    if (!isPrivileged && callerRoles.has("sdr")) {
+      const donaDoLead = (lead as any).assigned_to === user.id;
+      if (!donaDoLead || !targetIsPosvenda) {
+        return json({ error: "SDR não transfere lead" }, 403);
+      }
+    }
 
     // Visibilidade por número (papel recepcao).
     const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, ctx, leadId);
     if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
 
     const requesterTenant = ctx.tenantId;
-    const isSuperadmin = ctx.isSuperadmin || roleRow?.role === "superadmin";
     if (!isSuperadmin) {
       const { data: targetProfile } = await supabase
         .from("profiles").select("tenant_id").eq("id", newUserId).maybeSingle();
@@ -58,7 +100,30 @@ Deno.serve(async (req) => {
       }
     }
 
-    const isPrivileged = roleRow?.role === "crc" || roleRow?.role === "gerente" || roleRow?.role === "posvenda" || isSuperadmin;
+    // Alvo SDR: o mundo dela é o número principal — whatsapp_number_id NULL
+    // (mundo legado, caso Rizodent hoje) ou a linha is_default do cliente, o
+    // mesmo critério de concede_numeros_ao_novo_usuario. Lead carimbado com o
+    // número de um closer/recepção ficaria atribuído a ela e INVISÍVEL (a RLS
+    // por número negaria a leitura): recusa clara em vez de sumiço silencioso.
+    if (targetIsSdr) {
+      const numeroDoLead = (lead as any).whatsapp_number_id ?? null;
+      if (numeroDoLead) {
+        const { data: numero } = await supabase
+          .from("whatsapp_numbers")
+          .select("id, is_default, is_active")
+          .eq("id", numeroDoLead)
+          .eq("tenant_id", (lead as any).tenant_id)
+          .maybeSingle();
+        if (!(numero as any)?.is_default || !(numero as any)?.is_active) {
+          return json({
+            error: "Este lead é de outro número de WhatsApp; a SDR só atende o número principal da clínica.",
+          }, 400);
+        }
+      }
+    }
+
+    // Demais papéis (closer/recepção): comportamento de sempre — o próprio lead
+    // ou lead sem dona no mundo deles.
     const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
@@ -71,18 +136,19 @@ Deno.serve(async (req) => {
     const newUserName = profiles?.find((p) => p.id === newUserId)?.nome || "Responsável";
 
     // If target user is posvenda, auto-move lead to first stage of a pipeline accessible to posvenda
+    const agora = new Date().toISOString();
     const updatePayload: Record<string, unknown> = {
       assigned_to: newUserId,
-      updated_at: new Date().toISOString(),
+      updated_at: agora,
+      // Rodízio: distribuido_em é "quando o rodízio (ou o gestor) entregou o
+      // lead à dona" e alimenta o "leads de hoje" da aba Equipe — por isso só
+      // é carimbado quando o NOVO responsável é SDR. Transferência para
+      // crc/gerente/pós-venda/closer/recepção grava o payload de sempre, sem
+      // tocar na coluna.
+      ...(targetIsSdr ? { distribuido_em: agora } : {}),
     };
     let movedPipelineName: string | null = null;
     let movedStageName: string | null = null;
-
-    const { data: targetRoleRow } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", newUserId)
-      .maybeSingle();
 
     if (targetRoleRow?.role === "posvenda") {
       // Hard rule: only leads in a "Contratado" stage can be sent to Pós-venda.
@@ -227,6 +293,23 @@ Deno.serve(async (req) => {
       .eq("id", leadId);
 
     if (updateError) return json({ error: updateError.message }, 500);
+
+    // Livro de atribuições (Fase 0): toda transferência manual fica registrada
+    // com origem/destino e quem fez — é o que o rodízio audita depois.
+    if ((lead as any).tenant_id) {
+      const { error: livroErr } = await supabase.from("crm_lead_atribuicoes").insert({
+        tenant_id: (lead as any).tenant_id,
+        lead_id: leadId,
+        lead_nome: (lead as any).name ?? null,
+        lead_telefone: (lead as any).phone ?? null,
+        de_user_id: oldUserId ?? null,
+        para_user_id: newUserId,
+        fase: "manual",
+        motivo: "transferência manual (transfer-lead)",
+        criado_por: user.id,
+      });
+      if (livroErr) console.warn(`[transfer-lead] livro de atribuições não gravado: ${livroErr.message}`);
+    }
 
     const transferMsg = movedPipelineName && movedStageName
       ? `🔄 Lead transferido: ${oldUserName} → ${newUserName}\n📂 Movido para: ${movedPipelineName} • ${movedStageName}`

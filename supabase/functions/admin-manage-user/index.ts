@@ -13,6 +13,24 @@ const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, h
 const TENANT_ROLES = new Set<string>(SHARED_TENANT_ROLES);
 const BAN_FOREVER = "876000h"; // ~100 anos
 
+// Rodízio de SDRs (Fase 1): além do superadmin, o GESTOR DA EQUIPE do tenant
+// usa esta porta — e só para isto. Gestor é o que o BANCO diz que é gestor:
+// is_gestor_equipe() = superadmin OU crm_rodizio_config.gestor_user_id do
+// tenant atual. NÃO existe ramo por papel ali de propósito: se bastasse "ser
+// gerente", todo gerente de todo cliente passaria a criar conta no Auth e a
+// trocar senha de terceiro — poder novo para um papel existente, o que a Fase 1
+// proíbe. Quem gere a equipe é NOMEADO pelo superadmin, um a um.
+// Ações liberadas ao gestor:
+//   • create          → papel obrigatoriamente 'sdr', tenant SEMPRE o do gestor
+//                       (o tenant_id do corpo é ignorado);
+//   • reset_password  → alvo do tenant do gestor cujo ÚNICO papel é 'sdr'.
+// Bloquear/desbloquear e ligar/desligar no rodízio são RPCs (equipe_bloquear,
+// equipe_rodizio). set_role / set_email / delete / block / unblock continuam
+// exclusivos do superadmin. Um crc que não seja o gestor (ex.: o usuário do
+// Meta App Review) recebe 403 como sempre recebeu.
+const GESTOR_ROLE = "sdr";
+const GESTOR_ACTIONS = new Set<string>(["create", "reset_password"]);
+
 async function ensureProfile(admin: any, user: any, tenantId: string, nome?: string, cargo?: string | null, mustChangePassword = true) {
   const { error } = await admin
     .from("profiles")
@@ -43,12 +61,34 @@ Deno.serve(async (req) => {
 
     const admin = createClient(URL, SR);
     const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", userId).eq("role", "superadmin").maybeSingle();
-    if (!roleRow) return json({ error: "Forbidden" }, 403);
+    const isSuperadmin = !!roleRow;
+
+    // Quem não é superadmin só passa se o BANCO disser que é gestor da equipe —
+    // checado com o JWT do próprio usuário (fonte única de verdade com as RPCs).
+    let gestorTenant: string | null = null;
+    if (!isSuperadmin) {
+      const { data: isGestor, error: gestorErr } = await userClient.rpc("is_gestor_equipe");
+      if (gestorErr || isGestor !== true) return json({ error: "Forbidden" }, 403);
+      const { data: callerProfile } = await admin.from("profiles").select("tenant_id, is_blocked").eq("id", userId).maybeSingle();
+      if (!callerProfile?.tenant_id || callerProfile.is_blocked) return json({ error: "Forbidden" }, 403);
+      gestorTenant = callerProfile.tenant_id;
+    }
+    const isGestor = !isSuperadmin;
+    const logContext = isGestor ? "tenant" : "admin";
 
     const { action, tenant_id, user_id, email, password, nome, role } = await req.json();
 
+    if (isGestor && !GESTOR_ACTIONS.has(action)) {
+      return json({ error: "Ação reservada ao painel administrativo." }, 403);
+    }
+
     if (action === "create") {
-      if (!tenant_id || !email || !password) return json({ error: "missing fields" }, 400);
+      // Gestor: o tenant é SEMPRE o dele e o papel só pode ser 'sdr'.
+      const effTenant = isGestor ? gestorTenant : tenant_id;
+      if (!effTenant || !email || !password) return json({ error: "missing fields" }, 400);
+      if (isGestor && role !== GESTOR_ROLE) {
+        return json({ error: "O gestor da equipe só cria usuárias com papel SDR." }, 400);
+      }
       // NUNCA rebaixar em silêncio: antes, papel desconhecido virava "crc" —
       // criando um ADMIN da clínica quando se pediu "recepcao", sem erro algum.
       const roleCheck = assertTenantRole(role ?? "crc");
@@ -56,17 +96,24 @@ Deno.serve(async (req) => {
       const wantRole = roleCheck.role;
       const { data: created, error } = await admin.auth.admin.createUser({
         email, password, email_confirm: true,
-        user_metadata: { nome: nome || email, tenant_id, must_change_password: true },
+        user_metadata: { nome: nome || email, tenant_id: effTenant, must_change_password: true },
       });
       if (error) return json({ error: error.message }, 400);
 
-      const profErr = await ensureProfile(admin, created.user, tenant_id, nome || email, null, true);
+      const profErr = await ensureProfile(admin, created.user, effTenant, nome || email, null, true);
       if (profErr) return json({ error: `Falha ao criar perfil: ${profErr.message}` }, 500);
 
+      // O insert em user_roles dispara no banco: concede_numeros_ao_novo_usuario
+      // (sdr → só o número principal) e sdr_prepara_novo_membro (membro do
+      // rodízio INATIVO + overrides dos funis gerais do tenant).
       const { error: roleErr } = await admin
         .from("user_roles")
-        .upsert({ user_id: created.user.id, role: wantRole, tenant_id }, { onConflict: "user_id,role" });
+        .upsert({ user_id: created.user.id, role: wantRole, tenant_id: effTenant }, { onConflict: "user_id,role" });
       if (roleErr) return json({ error: `Falha ao atribuir papel: ${roleErr.message}` }, 500);
+
+      if (isGestor) {
+        await admin.from("access_logs").insert({ user_id: userId, tenant_id: effTenant, context: logContext, event: "sdr_create", metadata: { target: created.user.id, email } });
+      }
 
       return json({ user_id: created.user.id, role: wantRole });
     }
@@ -90,6 +137,16 @@ Deno.serve(async (req) => {
       return json({ error: "Este usuário é administrador da plataforma e não pode ser alterado aqui." }, 403);
     }
 
+    // Gestor: alvo do MESMO tenant e cujo único papel é 'sdr' — nunca outro
+    // crc, gerente, closer, recepção ou pós-venda.
+    if (isGestor) {
+      if (!targetTenant || targetTenant !== gestorTenant) return json({ error: "Forbidden" }, 403);
+      const roles = (targetRoles || []).map((r: any) => r.role);
+      if (roles.length === 0 || roles.some((r: string) => r !== GESTOR_ROLE)) {
+        return json({ error: "O gestor da equipe só altera usuárias com papel SDR." }, 403);
+      }
+    }
+
     if (action === "block") {
       // Revoga a sessão de verdade (ban no auth) + marca no perfil.
       try { await admin.auth.admin.updateUserById(user_id, { ban_duration: BAN_FOREVER }); } catch (_) { /* ignore */ }
@@ -108,13 +165,32 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.updateUserById(user_id, { password });
       if (error) return json({ error: error.message }, 400);
       await admin.from("profiles").update({ must_change_password: true }).eq("id", user_id);
-      await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_reset_password", metadata: { target: user_id } });
+      await admin.from("access_logs").insert({
+        user_id: userId, tenant_id: targetTenant, context: logContext,
+        event: isGestor ? "sdr_reset_password" : "user_reset_password",
+        metadata: { target: user_id },
+      });
       return json({ ok: true });
     }
     if (action === "set_role") {
       const setRoleCheck = assertTenantRole(role);
       if (!setRoleCheck.ok) return json({ error: setRoleCheck.error }, 400);
       if (!targetTenant) return json({ error: "Usuário sem tenant." }, 400);
+      // Papel 'sdr' já é exatamente este: nada a fazer. Evita o DELETE+INSERT
+      // que dispararia os gatilhos de saída/entrada à toa e tiraria a SDR do
+      // rodízio (crm_rodizio_membros.ativo).
+      //
+      // O atalho é CERCADO ao papel novo de propósito, espelhando o retorno
+      // antecipado de tenant_set_user_role na migration 20260908150000: para
+      // crc, gerente, pós-venda, recepção e closer o comportamento de produção
+      // é o DELETE+INSERT SEMPRE — inclusive o efeito colateral de que
+      // reaplicar o papel re-dispara concede_numeros_ao_novo_usuario e recompõe
+      // overrides de número revogados, e o registro user_set_role em
+      // access_logs. Generalizar o atalho mudaria o contrato desses papéis.
+      const papeisAtuais = (targetRoles || []).map((r: any) => r.role).filter((r: string) => TENANT_ROLES.has(r));
+      if (setRoleCheck.role === "sdr" && papeisAtuais.length === 1 && papeisAtuais[0] === "sdr") {
+        return json({ ok: true, role: setRoleCheck.role, unchanged: true });
+      }
       // Um usuário tem um papel: remove os antigos e define o novo.
       // IMPORTANTE: apaga só papéis de tenant — nunca `superadmin`.
       await admin

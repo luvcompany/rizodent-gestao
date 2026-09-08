@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { toLocalDateISO } from "@/lib/utils";
-import { NavLink, useNavigate, Outlet } from "react-router-dom";
+import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity, Phone, Users,
+  Activity, Phone, Users, ListChecks,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGestorEquipe } from "@/hooks/useGestorEquipe";
 import { useTheme } from "@/hooks/useTheme";
 import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +24,9 @@ type NavItem = {
   label: string;
   end?: boolean;
   badgeKey?: string;
+  /** Query string do destino (ex.: "?view=tarefas"). Dois itens podem apontar
+   *  para o mesmo caminho com queries diferentes; só o da query atual acende. */
+  search?: string;
 };
 
 type NavGroup = {
@@ -37,7 +41,29 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
   return "children" in entry;
 }
 
-const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
+const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): SidebarEntry[] => {
+  // SDR do rodízio: base da recepção, isolada por "leads dela" (não por número).
+  // Sem Transmissão/Conexões/Pacientes/Relatórios; com Calendário e Tarefas
+  // porque agenda e faz follow-up dos próprios leads. Bots/modelos/respostas
+  // são os do mundo do CRC (compartilhados). Guard espelho: ProtectedRoute (SDR_PREFIXES).
+  if (role === "sdr") {
+    return [
+      { to: "/crm/sdr", icon: Home, label: "Início", end: true },
+      { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
+      { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
+      { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
+      { to: "/crm/calendario", search: "?view=tarefas", icon: ListChecks, label: "Tarefas", badgeKey: "tasks" },
+      {
+        label: "Ferramentas",
+        icon: Bot,
+        children: [
+          { to: "/crm/bots", icon: Bot, label: "Bots" },
+          { to: "/crm/modelos", icon: FileText, label: "Modelos" },
+          { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
+        ],
+      },
+    ];
+  }
   // Closer: espelho da recepção (mesma tela de Início, sem Instagram), com Conexões —
   // cada closer conecta o próprio número de WhatsApp.
   // O guard correspondente fica em ProtectedRoute (CLOSER_PREFIXES).
@@ -109,7 +135,13 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
     
     { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
     { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
-    
+  );
+  // Equipe (SDRs do rodízio): só para quem o servidor confirma como gestor
+  // (is_gestor_equipe). Papel não basta — o usuário do Meta App Review é crc.
+  if (isGestorEquipe) {
+    items.push({ to: "/crm/equipe", icon: Users, label: "Equipe" });
+  }
+  items.push(
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
     { to: "/crm/configuracoes", icon: Settings, label: "Configurações" },
   );
@@ -120,7 +152,9 @@ const buildCrmNavItems = (role: string | null): SidebarEntry[] => {
 
 const CrmLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userRole, signOut, profile, user, refreshProfile } = useAuth();
+  const { isGestor: isGestorEquipe } = useGestorEquipe();
   const { tenant } = useTenant();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -140,7 +174,18 @@ const CrmLayout = () => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas"]));
   const unreadFetchSeq = useRef(0);
   const unreadRefreshTimer = useRef<number | null>(null);
-  const crmNavItems = buildCrmNavItems(userRole);
+  const crmNavItems = buildCrmNavItems(userRole, isGestorEquipe);
+
+  /** NavLink acende por caminho; itens que só diferem na query (Calendário ×
+   *  Tarefas) precisam desempatar pela query atual. */
+  const itemAtivo = (item: NavItem, isActive: boolean) => {
+    if (!isActive) return false;
+    if (item.search) return location.search === item.search;
+    const irmaoComQueryAtiva = crmNavItems.some(
+      (e) => !isGroup(e) && e !== item && e.to === item.to && !!e.search && location.search === e.search,
+    );
+    return !irmaoComQueryAtiva;
+  };
 
   const toggleGroup = (label: string) => {
     setExpandedGroups(prev => {
@@ -197,13 +242,13 @@ const CrmLayout = () => {
 
   const renderNavItem = (item: NavItem) => (
     <NavLink
-      key={item.to}
-      to={item.to}
+      key={item.to + (item.search ?? "")}
+      to={item.to + (item.search ?? "")}
       end={item.end}
       onClick={() => setSidebarOpen(false)}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-          isActive
+          itemAtivo(item, isActive)
             ? "gradient-orange text-primary-foreground shadow-orange"
             : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`
@@ -314,7 +359,7 @@ const CrmLayout = () => {
             <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
             <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
           </div>
-          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && (
+          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"

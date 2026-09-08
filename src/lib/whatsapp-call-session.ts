@@ -4,6 +4,7 @@
 // - Solicita mic, gera SDP answer
 // - Chama edge function `whatsapp-call-signaling` para forward do answer
 import { supabase } from "@/integrations/supabase/client";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
@@ -241,7 +242,8 @@ export class WhatsappCallSession {
     });
     if (error) {
       this.cleanup();
-      throw new Error(`Signaling error: ${error.message}`);
+      // Motivo real do 4xx vem no corpo (error.context), não em error.message.
+      throw new Error(await motivoDoServidor(data, error, "Falha ao sinalizar a chamada."));
     }
     if ((data as any)?.ok === false) {
       this.cleanup();
@@ -291,7 +293,7 @@ export class WhatsappCallSession {
         lead_id: params.leadId ?? null,
       },
     });
-    if (error) { this.cleanup(); throw new Error(`Signaling error: ${error.message}`); }
+    if (error) { this.cleanup(); throw new Error(await motivoDoServidor(data, error, "Falha ao iniciar a chamada.")); }
     if ((data as any)?.ok === false) {
       this.cleanup();
       const err: any = new Error((data as any).user_message || (data as any).code || "call error");

@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, denyForSdr } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -165,7 +165,12 @@ Deno.serve(async (req: Request) => {
   const caller = await resolveCaller(req, supabase);
   if (!caller.ok) return jsonResponse({ error: caller.error }, caller.status);
 
-
+  // Rodízio de SDRs (Fase 1): Instagram está fora do perfil da SDR
+  // (ig_accounts/instagram_* em sdr_sem_acesso; o front esconde a aba). Esta
+  // function envia com service role, então o gate é aqui. assertLeadInTenant
+  // abaixo ainda exige lead dela para qualquer caminho que passe por lead_id.
+  const perfil = denyForSdr(caller, "Instagram não faz parte do perfil SDR");
+  if (!perfil.ok) return jsonResponse({ error: perfil.error }, perfil.status);
 
   let body: Body;
   try {

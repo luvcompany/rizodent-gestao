@@ -9,7 +9,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Search, Bot, MoreHorizontal, Pencil, Copy, Archive, Trash2, Users } from "lucide-react";
+import { Plus, Search, Bot, MoreHorizontal, Pencil, Copy, Archive, Trash2, Users, Eye } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -21,6 +21,10 @@ export default function CrmBots() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
   const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  // A SDR vive no mundo do crc: vê os bots dele, mas não escreve (policies
+  // sdr_sem_insert/update/delete em `bots`). Sem esconder, todo botão de
+  // escrita seria um clique que só devolve erro de permissão.
+  const canWriteBots = userRole !== "sdr";
   const [bots, setBots] = useState<BotType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -103,9 +107,11 @@ export default function CrmBots() {
           <h1 className="text-2xl font-bold text-foreground">Construtor de Bots</h1>
           <p className="text-sm text-muted-foreground">Crie fluxos de automação de conversas</p>
         </div>
-        <Button onClick={handleCreate} className="gap-2">
-          <Plus size={16} /> Novo Bot
-        </Button>
+        {canWriteBots && (
+          <Button onClick={handleCreate} className="gap-2">
+            <Plus size={16} /> Novo Bot
+          </Button>
+        )}
       </div>
 
       <div className="relative max-w-sm">
@@ -124,9 +130,11 @@ export default function CrmBots() {
         <div className="text-center py-16">
           <Bot size={48} className="mx-auto text-muted-foreground/40 mb-4" />
           <p className="text-muted-foreground">Nenhum bot encontrado</p>
-          <Button variant="outline" onClick={handleCreate} className="mt-4 gap-2">
-            <Plus size={16} /> Criar primeiro bot
-          </Button>
+          {canWriteBots && (
+            <Button variant="outline" onClick={handleCreate} className="mt-4 gap-2">
+              <Plus size={16} /> Criar primeiro bot
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -155,23 +163,35 @@ export default function CrmBots() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    {/* Para a SDR o editor é só leitura: salvar e publicar gravam
+                        em `bots`, e a RESTRICTIVE sdr_sem_update_bots recusa —
+                        seria de novo "botão que só devolve erro". O rótulo diz o
+                        que a tela realmente faz para cada papel. */}
                     <DropdownMenuItem onClick={() => navigate(`/crm/bots/${bot.id}`)}>
-                      <Pencil size={14} className="mr-2" /> Editar
+                      {canWriteBots
+                        ? <><Pencil size={14} className="mr-2" /> Editar</>
+                        : <><Eye size={14} className="mr-2" /> Ver fluxo</>}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDuplicate(bot)}>
-                      <Copy size={14} className="mr-2" /> Duplicar
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleArchive(bot.id)}>
-                      <Archive size={14} className="mr-2" /> Arquivar
-                    </DropdownMenuItem>
+                    {canWriteBots && (
+                      <>
+                        <DropdownMenuItem onClick={() => handleDuplicate(bot)}>
+                          <Copy size={14} className="mr-2" /> Duplicar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleArchive(bot.id)}>
+                          <Archive size={14} className="mr-2" /> Arquivar
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     {canShare && (
                       <DropdownMenuItem onClick={() => setShareTarget(bot)}>
                         <Users size={14} className="mr-2" /> Compartilhar com papel
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(bot.id)}>
-                      <Trash2 size={14} className="mr-2" /> Excluir
-                    </DropdownMenuItem>
+                    {canWriteBots && (
+                      <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(bot.id)}>
+                        <Trash2 size={14} className="mr-2" /> Excluir
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
-import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, denyForSdr } from "../_shared/authz.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,6 +77,12 @@ Deno.serve(async (req) => {
       const ctx = await resolveCaller(req, supabase);
       if (!ctx.ok) {
         return new Response(JSON.stringify({ error: ctx.error }), { status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      // Rodízio de SDRs: ai_good_examples está em sdr_sem_acesso (módulo de IA
+      // fora do perfil); service role ignora a RLS, então o gate é aqui.
+      const perfil = denyForSdr(ctx, "Exemplos de IA não fazem parte do perfil SDR");
+      if (!perfil.ok) {
+        return new Response(JSON.stringify({ error: perfil.error }), { status: perfil.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (!ctx.isServiceRole) {
         const check = await assertLeadInTenant(supabase, lead_id, ctx);

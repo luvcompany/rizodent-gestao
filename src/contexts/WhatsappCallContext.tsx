@@ -7,6 +7,7 @@ import { MinimizedIncomingCall } from "@/components/whatsapp-calls/MinimizedInco
 import { ActiveWhatsappCallBar } from "@/components/whatsapp-calls/ActiveWhatsappCallBar";
 import { toast } from "sonner";
 import { playIncomingRingtone, playOutgoingDialTone } from "@/lib/call-tones";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 export interface WhatsappCallRow {
   id: string;
@@ -116,6 +117,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
   // Números conectados em coexistência: a Cloud API não faz chamadas neles.
   const [numerosCoexistencia, setNumerosCoexistencia] = useState<Set<string>>(() => new Set());
+  // A SDR do rodízio NÃO atende nem faz chamadas de WhatsApp pelo CRM nesta
+  // fase (decisão fechada na revisão da Fase 1): whatsapp_calls e
+  // whatsapp_call_permissions estão bloqueadas para ela no banco (molde
+  // closer/recepção) e whatsapp-call-signaling devolve 403. Ligar a UI aqui
+  // deixaria o canal realtime mudo e o claim da chamada devolvendo 0 linhas.
   const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin";
   useEffect(() => {
     if (!user || !tenantId) return;
@@ -423,7 +429,10 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const { data, error } = await supabase.functions.invoke("whatsapp-call-signaling", {
         body: { action: "request_permission", to_phone: toPhone, lead_id: params.leadId ?? null, phone_number_id: params.phoneNumberId },
       });
-      if (error) throw new Error(error.message);
+      // O motivo real vem no CORPO do 4xx (error.context), não em error.message
+      // — sem ler o corpo, "não faz parte do perfil" viraria o genérico
+      // "Edge Function returned a non-2xx status code".
+      if (error) throw new Error(await motivoDoServidor(data, error, "Não foi possível enviar o pedido de permissão."));
       if ((data as any)?.ok === false) {
         toast.error((data as any).user_message || "Não foi possível enviar o pedido de permissão.");
         return;
@@ -577,10 +586,17 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [user?.id, tenantId]);
 
+  // Regra de PAPEL mora aqui, não nas telas: `legacyVisible` (acima) só filtra
+  // chamada RECEBIDA, então enquanto isto só olhava coexistência a SDR via os
+  // dois botões de ligar — e cada clique pedia o microfone e terminava em
+  // "Edge Function returned a non-2xx status code" (whatsapp-call-signaling
+  // devolve 403 para o papel dela). Com a regra no contexto, nenhuma tela
+  // precisa lembrar: CrmConversa e CrmConversas já perguntam por aqui.
   const podeLigarPorWhatsapp = useCallback(
     (whatsappNumberId?: string | null) =>
-      !whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId)),
-    [numerosCoexistencia],
+      userRole !== "sdr" &&
+      (!whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId))),
+    [numerosCoexistencia, userRole],
   );
 
   const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp]);

@@ -12,8 +12,14 @@ import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/cr
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function CrmRespostasRapidas() {
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   const canShare = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  // A SDR lê o acervo do crc, mas as policies sdr_escopo_crm_quick_replies_*
+  // só deixam editar/apagar o que ela mesma criou (created_by = auth.uid()).
+  // Esconder as ações nos itens dos outros evita o clique que sempre falha;
+  // para os demais papéis nada muda.
+  const podeEditarItem = (r: { created_by?: string | null }) =>
+    userRole !== "sdr" || (!!user?.id && r.created_by === user.id);
   const [replies, setReplies] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -37,7 +43,14 @@ export default function CrmRespostasRapidas() {
       if (error) return toast.error("Erro ao atualizar: " + error.message);
       if (!data || data.length === 0) return toast.error("Seu perfil não tem permissão para editar esta resposta.");
     } else {
-      const { error } = await supabase.from("crm_quick_replies").insert({ title, content });
+      // `created_by` não tem default no banco nem gatilho que o preencha (só
+      // tenant_id e owner_role têm). Sem mandar daqui a coluna nasce NULL — e
+      // a policy sdr_escopo_crm_quick_replies_insert exige created_by =
+      // auth.uid(), então a SDR nem conseguiria criar, e o que ela criasse
+      // apareceria como "de outra pessoa" na regra de edição acima. Para os
+      // demais papéis nada muda: as policies "Staff can insert/update/delete"
+      // não olham created_by (é só o carimbo de autoria).
+      const { error } = await supabase.from("crm_quick_replies").insert({ title, content, created_by: user?.id ?? null });
       if (error) return toast.error("Erro ao criar: " + error.message);
     }
     setOpen(false); setEditing(null); setTitle(""); setContent("");
@@ -81,11 +94,15 @@ export default function CrmRespostasRapidas() {
               <TableCell><OwnerRoleBadge ownerRole={(r.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setTitle(r.title); setContent(r.content); setOpen(true); }}><Edit size={14} /></Button>
+                  {podeEditarItem(r) && (
+                    <Button size="icon" variant="ghost" title="Editar" onClick={() => { setEditing(r); setTitle(r.title); setContent(r.content); setOpen(true); }}><Edit size={14} /></Button>
+                  )}
                   {canShare && (
                     <Button size="icon" variant="ghost" title="Compartilhar com papel" onClick={() => setShareTarget(r)}><Users size={14} /></Button>
                   )}
-                  <Button size="icon" variant="ghost" onClick={() => remove(r.id)}><Trash2 size={14} /></Button>
+                  {podeEditarItem(r) && (
+                    <Button size="icon" variant="ghost" title="Remover" onClick={() => remove(r.id)}><Trash2 size={14} /></Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>

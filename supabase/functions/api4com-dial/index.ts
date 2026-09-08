@@ -45,11 +45,25 @@ Deno.serve(async (req) => {
     const leadId = body.lead_id as string | undefined;
     let phone = "";
 
+    // Papéis do chamador.
+    const { data: roleRows } = await admin.from("user_roles").select("role").eq("user_id", uid);
+    const roles = (roleRows || []).map((r: any) => String(r.role));
+
+    // Rodízio de SDRs (Fase 1) — DECISÃO: telefonia NÃO faz parte do perfil da
+    // SDR, do mesmo jeito que a chamada de WhatsApp (whatsapp-call-signaling
+    // devolve 403). Coerente com o resto da fase: api4com_calls, api4com_config
+    // e api4com_extensions estão no bloqueio total (migration 3.8) e
+    // /crm/ligacoes está fora da allowlist de rotas dela — ela originaria a
+    // ligação e depois não veria o registro, a gravação nem a transcrição.
+    // O front esconde o botão (CrmConversas.tsx); aqui é a tranca de verdade.
+    if (roles.includes("sdr") && !roles.includes("superadmin")) {
+      return json({ error: "Ligações não fazem parte do perfil SDR." }, 403);
+    }
+
     // Discagem avulsa (sem lead) só para papéis privilegiados: evita usar a
     // telefonia do tenant como discador arbitrário.
     if (!leadId) {
-      const { data: roles } = await admin.from("user_roles").select("role").eq("user_id", uid);
-      const privileged = (roles || []).some((r: any) => ["crc", "gerente", "superadmin"].includes(r.role));
+      const privileged = roles.some((r: string) => ["crc", "gerente", "superadmin"].includes(r));
       if (!privileged) return json({ error: "Informe o lead para discar." }, 400);
       phone = String(body.phone || "");
     }
@@ -67,9 +81,13 @@ Deno.serve(async (req) => {
         .select("id, phone, whatsapp_number_id")
         .eq("id", leadId).eq("tenant_id", tenantId).maybeSingle();
       if (!lead) return json({ error: "Lead não encontrado nesta clínica." }, 404);
-      // Visibilidade por número (papel recepcao).
+      // Visibilidade por número (papel recepcao). `isSuperadmin: false` é o
+      // valor de produção e fica como está: mudá-lo daria ao superadmin um
+      // atalho que ele não tinha nesta porta. `roles` só evita que
+      // assertNumberAccess releia user_roles — mesmos valores, zero mudança de
+      // comportamento para qualquer papel.
       const numberCheck = await assertNumberAccess(req, (lead as any).whatsapp_number_id ?? null, {
-        ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false,
+        ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false, roles,
       } as any, leadId);
       if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
       // Telefone SEMPRE do lead: body.phone não pode redirecionar a ligação.

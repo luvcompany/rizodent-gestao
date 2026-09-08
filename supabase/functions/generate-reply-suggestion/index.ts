@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal } from "../_shared/internalAuth.ts";
-import { resolveCaller, assertLeadInTenant, assertMessageInTenant, assertNumberAccess } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, assertMessageInTenant, assertNumberAccess, denyForSdr } from "../_shared/authz.ts";
 import { localParts, resolveTz } from "../_shared/tz.ts";
 import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
@@ -250,6 +250,13 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: ctx.error }), { status: ctx.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (!ctx.isServiceRole) {
+        // Rodízio de SDRs (Fase 1): o módulo de IA (ai_assistant_config, análise,
+        // exemplos) está fora do perfil da SDR — mesma lista da recepção. Esta
+        // function lê a conversa inteira com service role, então o gate é aqui.
+        const perfil = denyForSdr(ctx, "Sugestões de IA não fazem parte do perfil SDR");
+        if (!perfil.ok) {
+          return new Response(JSON.stringify({ error: perfil.error }), { status: perfil.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
         const leadCheck = await assertLeadInTenant(supabase, leadId, ctx);
         if (!leadCheck.ok) {
           return new Response(JSON.stringify({ error: leadCheck.error }), { status: leadCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });

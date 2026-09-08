@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { resolveCaller, assertLeadInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, denyForSdr } from "../_shared/authz.ts";
 import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 const corsHeaders = {
@@ -117,6 +117,17 @@ Deno.serve(async (req) => {
     if (!caller.ok) {
       return new Response(JSON.stringify({ error: caller.error }), {
         status: caller.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rodízio de SDRs: o módulo de IA (ai_conversation_analysis, config) está
+    // na lista sdr_sem_acesso — a SDR não vê resumo/sugestões da conversa por
+    // aqui. Service role ignora a RLS, então o gate fica na function.
+    const perfil = denyForSdr(caller, "O assistente de IA não faz parte do perfil SDR");
+    if (!perfil.ok) {
+      return new Response(JSON.stringify({ error: perfil.error }), {
+        status: perfil.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

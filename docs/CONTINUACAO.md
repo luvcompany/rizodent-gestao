@@ -33,11 +33,14 @@ também aplicadas, `outcome_source = 'folha-sdr'`.
 - autorizado: não
 
 Em construção pela sessão local (migration
-`supabase/migrations/20260908130000_sdr_fase1_papel_e_equipe.sql`, front
-`src/pages/CrmEquipe.tsx`, papéis em `src/lib/roles.ts`). Quando a sessão local
-terminar, ela mesma publica e atualiza este item. Se aparecer no GitHub um
-commit com esses arquivos e este item continuar "em andamento" por mais de 12
-horas, a rotina deve apenas relatar isso ao dono, sem publicar.
+`supabase/migrations/20260908150000_sdr_fase1_papel_e_equipe.sql`, front
+`src/pages/CrmEquipe.tsx` e `src/hooks/useGestorEquipe.ts`, papéis em
+`src/lib/roles.ts`, mais 15 edge functions que dependem de
+`_shared/authz.ts`). O roteiro de publicação em 4 passos está em
+`docs/PUBLICAR-PENDENTE.md`. Quando a sessão local terminar, ela mesma publica
+e atualiza este item. Se aparecer no GitHub um commit com esses arquivos e este
+item continuar "em andamento" por mais de 12 horas, a rotina deve apenas
+relatar isso ao dono, sem publicar.
 
 ## Item 3 — Conferir carimbo de autor nas mensagens humanas
 

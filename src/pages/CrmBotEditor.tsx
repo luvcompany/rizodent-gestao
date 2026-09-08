@@ -19,6 +19,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,12 @@ const edgeTypes = { deletable: DeletableEdge };
 function BotEditorInner() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // A SDR abre o editor pelo item "Ver fluxo" (CrmBots): ela lê os bots do
+  // mundo do crc, mas a RESTRICTIVE sdr_sem_update_bots recusa a gravação —
+  // salvar só devolveria "Seu perfil não tem permissão para editar este bot".
+  // Aqui o botão some e o Ctrl+S não faz nada; o fluxo continua navegável.
+  const { userRole } = useAuth();
+  const podeSalvarBot = userRole !== "sdr";
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const updateNodeInternals = useUpdateNodeInternals();
@@ -283,6 +290,12 @@ function BotEditorInner() {
   );
 
   const handleSave = useCallback(async () => {
+    // Sem poder salvar (SDR), o Ctrl+S não pode ficar mudo: ela mexeria no
+    // fluxo do CRC e perderia o trabalho ao sair sem nenhum aviso.
+    if (!podeSalvarBot) {
+      toast.info("Os bots pertencem ao CRC. Aqui você só consegue ver o fluxo.");
+      return;
+    }
     if (!id || !isDirty) return;
     setSaving(true);
 
@@ -433,9 +446,15 @@ function BotEditorInner() {
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={redo} title="Refazer (Ctrl+Y)">
             <Redo2 size={16} />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !isDirty} className={`gap-1.5 ${!isDirty ? 'opacity-50' : ''}`}>
-            <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
-          </Button>
+          {podeSalvarBot ? (
+            <Button variant="outline" size="sm" onClick={handleSave} disabled={saving || !isDirty} className={`gap-1.5 ${!isDirty ? 'opacity-50' : ''}`}>
+              <Save size={14} /> {saving ? "Salvando..." : "Salvar"}
+            </Button>
+          ) : (
+            <span className="text-xs text-muted-foreground px-2 py-1 rounded-md border border-border bg-secondary/40">
+              Somente leitura
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={() => { setSimulatorOpen(!simulatorOpen); setSelectedNode(null); }} className="gap-1.5">
             <Smartphone size={14} /> Pré-visualizar bot
           </Button>
@@ -463,12 +482,18 @@ function BotEditorInner() {
             onDragOver={onDragOver}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
+            /* Quem não pode salvar (SDR) enxerga o fluxo, mas não move nada:
+               canvas inerte em vez de um editor que perde o trabalho. */
+            nodesDraggable={podeSalvarBot}
+            nodesConnectable={podeSalvarBot}
+            elementsSelectable={podeSalvarBot}
+            edgesReconnectable={podeSalvarBot}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
             snapToGrid
             snapGrid={[16, 16]}
-            deleteKeyCode="Delete"
+            deleteKeyCode={podeSalvarBot ? "Delete" : null}
             className="bot-editor-canvas"
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="hsl(var(--muted-foreground) / 0.15)" />
@@ -501,7 +526,7 @@ function BotEditorInner() {
           />
         )}
 
-        {selectedNode && !simulatorOpen && (
+        {selectedNode && !simulatorOpen && podeSalvarBot && (
           <NodePropertiesPanel
             node={selectedNode}
             allNodes={nodes}

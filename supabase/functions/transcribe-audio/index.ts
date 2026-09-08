@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { resolveCaller, assertMessageInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertMessageInTenant, denyForSdr } from "../_shared/authz.ts";
 import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 // Segue até 3 redirecionamentos revalidando CADA destino na allowlist. A
@@ -197,6 +197,12 @@ Deno.serve(async (req) => {
 
     const caller = await resolveCaller(req, admin);
     if (!caller.ok) return json({ error: caller.error }, caller.status);
+
+    // Rodízio de SDRs (Fase 1): transcrição por IA está fora do perfil da SDR
+    // (mesma lista da recepção); roda com service role, então o gate é aqui.
+    // (assertMessageInTenant abaixo também exige lead dela — cinto e suspensório.)
+    const perfil = denyForSdr(caller, "Transcrição por IA não faz parte do perfil SDR");
+    if (!perfil.ok) return json({ error: perfil.error }, perfil.status);
 
     const body = await req.json().catch(() => ({}));
     const messageId = body.message_id as string | undefined;

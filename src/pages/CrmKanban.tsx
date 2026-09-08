@@ -221,9 +221,15 @@ const NewLeadDialog = memo(function NewLeadDialog({
       if (existing && existing.length > 0) {
         const dup = existing[0] as any;
         const owner = profiles.find(p => p.id === dup.assigned_to);
+        // SDR (rodízio): lead de outra dona volta MASCARADO do banco (só
+        // lead_id; nome/dona/funil/etapa NULL) — a tela diz "já cadastrado"
+        // sem expor de quem é.
+        const mascarado = userRole === "sdr" && !dup.lead_name;
         setDuplicateInfo({
-          existingLeadId: dup.lead_id, existingLeadName: dup.lead_name,
-          ownerName: owner?.nome || "Sem responsável", ownerId: dup.assigned_to, phone: normalizedPhone,
+          existingLeadId: dup.lead_id,
+          existingLeadName: dup.lead_name || (mascarado ? "Lead de outra pessoa da equipe" : "Lead sem nome"),
+          ownerName: owner?.nome || (mascarado ? "Outra pessoa" : "Sem responsável"),
+          ownerId: dup.assigned_to, phone: normalizedPhone,
           pipelineName: dup.pipeline_name || "", stageName: dup.stage_name || "",
         });
         return;
@@ -377,14 +383,19 @@ const NewLeadDialog = memo(function NewLeadDialog({
                   Escolha o que deseja fazer com este lead:
                 </p>
                 <div className="grid grid-cols-1 gap-2">
-                  <Button
-                    className="w-full justify-start"
-                    onClick={handleMoveExisting}
-                    disabled={transferring}
-                  >
-                    <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
-                    Mover lead existente para esta etapa
-                  </Button>
+                  {/* SDR: lead que não é dela não pode ser movido (RLS) nem
+                      transferido (transfer-lead devolve 403) — sem oferecer
+                      botões que sempre falham. */}
+                  {!(userRole === "sdr" && duplicateInfo.ownerId !== userId) && (
+                    <Button
+                      className="w-full justify-start"
+                      onClick={handleMoveExisting}
+                      disabled={transferring}
+                    >
+                      <RefreshCw size={14} className={`mr-2 ${transferring ? "animate-spin" : ""}`} />
+                      Mover lead existente para esta etapa
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     className="w-full justify-start"
@@ -403,9 +414,14 @@ const NewLeadDialog = memo(function NewLeadDialog({
                     Cancelar
                   </Button>
                 </div>
-                {duplicateInfo.ownerId !== userId && (
+                {duplicateInfo.ownerId !== userId && userRole !== "sdr" && (
                   <p className="text-xs text-muted-foreground pt-2 border-t">
                     💡 Se preferir, você também pode <button onClick={handleTransfer} disabled={transferring} className="text-primary underline hover:no-underline">transferir o lead atual para você</button> sem mover de etapa.
+                  </p>
+                )}
+                {duplicateInfo.ownerId !== userId && userRole === "sdr" && (
+                  <p className="text-xs text-muted-foreground pt-2 border-t">
+                    Esse lead já está com outra pessoa da equipe. Peça ao CRC para transferi-lo para você, se for o caso.
                   </p>
                 )}
               </div>

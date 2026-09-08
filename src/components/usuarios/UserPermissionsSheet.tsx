@@ -10,14 +10,20 @@ import { Loader2, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "superadmin";
+type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "sdr" | "superadmin";
 
 type Pipeline = {
   id: string;
   name: string;
   color: string | null;
   allowed_roles: Role[] | null;
+  is_posvenda?: boolean | null;
+  is_instagram?: boolean | null;
 };
+
+/** Funil "geral" do tenant: allowed_roles NULL, não pós-venda, não Instagram —
+ *  o mesmo critério do gatilho sdr_prepara_novo_membro no banco. */
+const funilGeral = (p: Pipeline) => !p.allowed_roles && !p.is_posvenda && !p.is_instagram;
 
 type WhatsappNumber = {
   id: string;
@@ -98,7 +104,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
       // ao tenant, então sem o filtro viriam funis/números de TODOS os clientes.
       const scoped = <T,>(q: T): T => (tenantId ? (q as any).eq("tenant_id", tenantId) : q);
       const [{ data: pls }, { data: ovs }, { data: was }, { data: tmc }, { data: igs }] = await Promise.all([
-        scoped(supabase.from("crm_pipelines").select("id,name,color,allowed_roles")).order("name"),
+        scoped(supabase.from("crm_pipelines").select("id,name,color,allowed_roles,is_posvenda,is_instagram")).order("name"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
         scoped(supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active")).order("display_name"),
         scoped(supabase
@@ -134,19 +140,27 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   }, [open, userId, tenantId]);
 
   const isSuper = userRole === "crc" || userRole === "superadmin";
+  // SDR (rodízio): can_access_pipeline NÃO libera funil com allowed_roles NULL
+  // para ela — o acesso real vem dos overrides granted=true que o gatilho
+  // sdr_prepara_novo_membro grava para os funis gerais. Aqui o "padrão" é
+  // esse conjunto, e um "padrão" dela nunca pode virar "sem override" (isso a
+  // deixaria sem funil nenhum) — ver toggle/resetAll/isOverridden.
+  const isSdr = userRole === "sdr";
 
   const defaultForPipeline = (p: Pipeline) => {
     if (!userRole) return false;
     if (isSuper || userRole === "gerente") return true;
+    if (isSdr) return funilGeral(p);
     // recepcao/closer são deny-by-default (espelha can_access_pipeline: NULL não libera)
     if (userRole === "recepcao" || userRole === "closer") return p.allowed_roles?.includes(userRole) ?? false;
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
 
   // WA numbers / IG accounts: default "liberado para todos do tenant" — EXCETO
-  // recepcao/closer, que espelham o deny-by-default de can_access_whatsapp_number /
-  // can_access_instagram_account (só vê com override granted=true).
-  const defaultForChannel = () => userRole !== "recepcao" && userRole !== "closer";
+  // recepcao/closer/sdr, que espelham o deny-by-default de can_access_whatsapp_number /
+  // can_access_instagram_account (só vê com override granted=true; a SDR nasce
+  // só com o número principal, concedido pela aba Equipe).
+  const defaultForChannel = () => userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr";
 
   const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
 
@@ -162,6 +176,13 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
 
   const isOverridden = (scope: string, id: string) => {
     const key = `${scope}:${id}`;
+    // SDR/funil: o override granted=true dos funis gerais É o padrão dela —
+    // "personalizado" só quando o valor efetivo difere do padrão.
+    if (isSdr && scope === "pipeline") {
+      const p = pipelines.find(x => x.id === id);
+      const fallback = p ? defaultForPipeline(p) : false;
+      return currentValue(scope, id, fallback) !== fallback;
+    }
     if (key in dirty) return dirty[key] !== null;
     return key in overrides;
   };
@@ -170,6 +191,12 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     const key = `${scope}:${id}`;
     setDirty(d => {
       const copy = { ...d };
+      // SDR/funil: nunca "apagar o override" — sem override ela não vê o
+      // funil (NULL não libera). O valor é sempre gravado explicitamente.
+      if (isSdr && scope === "pipeline") {
+        if (overrides[key] === next) delete copy[key]; else copy[key] = next;
+        return copy;
+      }
       // If the desired value matches the natural default AND there's no stored override, clear dirty
       const hasStored = key in overrides;
       if (next === fallback && !hasStored) {
@@ -187,6 +214,15 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   const resetAll = () => {
     const d: Record<string, boolean | null> = {};
     Object.keys(overrides).forEach(k => { d[k] = null; });
+    if (isSdr) {
+      // "Padrão" da SDR = recriar os overrides do gatilho (funis gerais com
+      // granted=true). Apagar tudo a deixaria sem funil nenhum.
+      pipelines.forEach(p => {
+        const k = `pipeline:${p.id}`;
+        if (!funilGeral(p)) return;
+        if (overrides[k] === true) delete d[k]; else d[k] = true;
+      });
+    }
     setDirty(d);
   };
 
@@ -263,6 +299,13 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
               </TabsList>
 
               <TabsContent value="pipelines" className="space-y-2 pt-4">
+                {isSdr && (
+                  <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    SDR: o padrão são os funis gerais da clínica (sem pós-venda e sem Instagram). O acesso
+                    dela é gravado como permissão explícita por funil — "Voltar tudo ao padrão" recria essas
+                    permissões em vez de apagá-las.
+                  </p>
+                )}
                 {pipelines.length === 0 && (
                   <p className="text-sm text-muted-foreground">Nenhum funil cadastrado.</p>
                 )}
@@ -389,7 +432,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                 variant="ghost"
                 size="sm"
                 onClick={resetAll}
-                disabled={Object.keys(overrides).length === 0 && dirtyCount === 0}
+                disabled={!isSdr && Object.keys(overrides).length === 0 && dirtyCount === 0}
               >
                 <RotateCcw size={14} className="mr-1" /> Voltar tudo ao padrão
               </Button>

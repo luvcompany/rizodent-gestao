@@ -25,6 +25,11 @@ import {
  * Isolamento: rota e componentes exclusivos do papel `recepcao`. Nenhuma tela
  * compartilhada com os outros perfis é alterada, e as consultas são filtradas
  * pelo banco (a recepção só alcança o número da sua unidade).
+ *
+ * Reuso: o closer (/crm/closer) e a SDR do rodízio (/crm/sdr) montam ESTA
+ * mesma tela — o banco decide o que cada uma vê (closer: seu número; SDR: os
+ * leads de que é dona). Só os atalhos mudam por papel, porque o menu da SDR
+ * não tem Transmissão (o que ela não alcança não vira atalho).
  */
 
 type Fila = {
@@ -215,6 +220,9 @@ export default function RecepcaoHome() {
 
   const semConfirmar = consultas.filter((c) => c.status !== "confirmed").length;
   const primeiroNome = (profile?.nome ?? "").trim().split(/\s+/)[0] ?? "";
+  // A SDR não tem Transmissão no escopo dela (ProtectedRoute/CrmLayout): o
+  // atalho e o "Enviar lembrete" a levariam para uma rota que a devolve ao Início.
+  const temTransmissao = userRole !== "sdr";
 
   return (
     <div className="h-full overflow-y-auto">
@@ -424,9 +432,11 @@ export default function RecepcaoHome() {
               {semConfirmar > 0 && (
                 <div className="border-t border-border px-[18px] py-3.5 text-[13px] text-muted-foreground">
                   {semConfirmar === 1 ? "Uma pessoa ainda não confirmou." : `${semConfirmar} pessoas ainda não confirmaram.`}
-                  <Link to="/crm/campanhas" className="mt-0.5 block font-semibold text-primary hover:underline">
-                    Enviar lembrete
-                  </Link>
+                  {temTransmissao && (
+                    <Link to="/crm/campanhas" className="mt-0.5 block font-semibold text-primary hover:underline">
+                      Enviar lembrete
+                    </Link>
+                  )}
                 </div>
               )}
             </section>
@@ -436,7 +446,11 @@ export default function RecepcaoHome() {
                 <h2 className="text-base font-bold tracking-tight text-foreground">Atalhos rápidos</h2>
               </div>
               <div className="grid grid-cols-4 gap-2 px-3 pb-4">
-                <Atalho to="/crm/campanhas" icone={<Send size={19} />} tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" rotulo="Transmissão" />
+                {temTransmissao ? (
+                  <Atalho to="/crm/campanhas" icone={<Send size={19} />} tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" rotulo="Transmissão" />
+                ) : (
+                  <Atalho to="/crm/calendario" icone={<CalendarDays size={19} />} tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" rotulo="Calendário" />
+                )}
                 <Atalho to="/crm/modelos" icone={<FileText size={19} />} tom="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400" rotulo="Modelos" />
                 <Atalho to="/crm/respostas-rapidas" icone={<Zap size={19} />} tom="bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" rotulo="Respostas" />
                 <Atalho to="/crm/bots" icone={<Bot size={19} />} tom="bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" rotulo="Bots" />

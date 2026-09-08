@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ArrowRightLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 type Stage = { id: string; name: string; pipeline_id: string };
 
@@ -27,6 +29,7 @@ export default function SendToPosvendaButton({
   stages,
   onTransferred,
 }: Props) {
+  const { userRole } = useAuth();
   const [posvendaUser, setPosvendaUser] = useState<{ id: string; nome: string } | null>(null);
   const [posvendaPipelineIds, setPosvendaPipelineIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -50,6 +53,34 @@ export default function SendToPosvendaButton({
           .limit(1);
         if (profs && profs.length) pickedUser = profs[0] as any;
       }
+      // Consulta acima volta VAZIA para quem não é crc/gerente: as únicas
+      // policies de SELECT em user_roles são "Users can view own roles"
+      // (auth.uid() = user_id) e "Tenant admins view roles in tenant". Para a
+      // SDR isso significava `posvendaUser = null` e, logo abaixo,
+      // `if (!posvendaUser) return null` — o botão não existia, e encaminhar o
+      // lead fechado para a pós-venda é o ÚNICO caminho de saída do lead dela
+      // (o transfer-lead abre essa exceção de propósito).
+      // Cai então na RPC posvenda_padrao_do_tenant (SECURITY DEFINER; só id e
+      // nome das pós-vendas ativas do tenant atual), mesmo molde de
+      // closer_clinicas_do_tenant.
+      // SÓ para a SDR: closer e recepção também voltam vazio da consulta acima
+      // (a RLS de user_roles esconde as linhas das colegas) e HOJE não veem
+      // este botão. Chamar a RPC para todo papel faria o botão APARECER para
+      // eles — papel existente passando a poder mais, o que esta fase proíbe —
+      // e ainda entregaria a eles quem é a pós-venda do cliente. A própria RPC
+      // tem a mesma guarda no banco (migration 20260908150000, bloco 4.13).
+      if (!pickedUser && userRole === "sdr") {
+        try {
+          // RPC da Fase 1 ainda não está em types.ts (gerado pelo Lovable).
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: viaRpc } = await (supabase as any).rpc("posvenda_padrao_do_tenant");
+          if (Array.isArray(viaRpc) && viaRpc.length) {
+            pickedUser = { id: viaRpc[0].id, nome: viaRpc[0].nome };
+          }
+        } catch {
+          /* RPC ausente (banco sem a Fase 1) → segue sem botão, como antes */
+        }
+      }
       // Pós-venda pipelines (for current tenant via RLS)
       const { data: pipelines } = await supabase
         .from("crm_pipelines")
@@ -60,7 +91,10 @@ export default function SendToPosvendaButton({
       setPosvendaPipelineIds(new Set((pipelines || []).map((p: any) => p.id)));
     })();
     return () => { cancelled = true; };
-  }, []);
+    // userRole entra nas dependências porque o papel chega depois do primeiro
+    // render (AuthContext resolve em outra rodada): sem isso o fallback da SDR
+    // nunca rodaria e o botão sumiria justamente para quem ele existe.
+  }, [userRole]);
 
   const currentStage = stages.find((s) => s.id === stageId);
   const isContractedStage = currentStage
@@ -84,7 +118,7 @@ export default function SendToPosvendaButton({
         body: { leadId, newUserId: posvendaUser.id },
       });
       if (error || (data as any)?.error) {
-        toast.error("Erro ao enviar para Pós-venda");
+        toast.error(await motivoDoServidor(data, error, "Erro ao enviar para Pós-venda"));
         return;
       }
       toast.success(`Lead enviado para ${posvendaUser.nome} (Pós-venda)`);

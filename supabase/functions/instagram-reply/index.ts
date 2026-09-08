@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { resolveCaller } from '../_shared/authz.ts'
+import { resolveCaller, denyForSdr } from '../_shared/authz.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,6 +73,17 @@ Deno.serve(async (req: Request) => {
   if (!caller.ok) {
     return new Response(JSON.stringify({ error: caller.error }), {
       status: caller.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Rodízio de SDRs (Fase 1): Instagram está fora do perfil da SDR
+  // (ig_accounts/instagram_* em sdr_sem_acesso; o front esconde a aba). Esta
+  // function responde DM/comentário com service role, então o gate é aqui —
+  // igual instagram-send-message.
+  const perfil = denyForSdr(caller, 'Instagram não faz parte do perfil SDR')
+  if (!perfil.ok) {
+    return new Response(JSON.stringify({ error: perfil.error }), {
+      status: perfil.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 

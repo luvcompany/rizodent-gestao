@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Loader2, FileText, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 interface Props {
   messageId?: string;
@@ -11,17 +13,26 @@ interface Props {
 }
 
 export default function AudioTranscriptionToggle({ messageId, callId, api4comCallId, initialTranscription }: Props) {
+  const { userRole } = useAuth();
   const [text, setText] = useState<string | null>(initialTranscription || null);
   const [open, setOpen] = useState(!!initialTranscription);
   const [loading, setLoading] = useState(false);
 
   if (!messageId && !callId && !api4comCallId) return null;
 
+  // SDR: `transcribe-audio` devolve 403 ("Transcrição por IA não faz parte do
+  // perfil SDR"), e ela lida com áudio o tempo todo — seria o botão que mais
+  // encontraria quebrado. Some o botão QUE SÓ FALHA; a transcrição que já
+  // existe continua legível (mostrar/ocultar não chama function nenhuma).
+  if (userRole === "sdr" && !text) return null;
+  const podeTranscrever = userRole !== "sdr";
+
   const handleClick = async () => {
     if (text) {
       setOpen((v) => !v);
       return;
     }
+    if (!podeTranscrever) return;
     setLoading(true);
     try {
       const body: Record<string, string> = {};
@@ -29,7 +40,8 @@ export default function AudioTranscriptionToggle({ messageId, callId, api4comCal
       else if (callId) body.call_id = callId;
       else if (messageId) body.message_id = messageId;
       const { data, error } = await supabase.functions.invoke("transcribe-audio", { body });
-      if (error) throw error;
+      // Motivo real do 4xx vem no corpo (error.context), não em error.message.
+      if (error) throw new Error(await motivoDoServidor(data, error, "Erro ao transcrever áudio"));
       if ((data as any)?.error) throw new Error((data as any).error);
       const t = (data as any)?.transcription as string;
       setText(t);

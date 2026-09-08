@@ -5,7 +5,7 @@
 // "recepcao" descobrimos o custo disso: ele aparecia numa tela e não na outra,
 // e a função de criação caía silenciosamente em "crc". Papel novo entra AQUI.
 
-export type AppRole = "crc" | "gerente" | "posvenda" | "recepcao" | "closer" | "superadmin" | "crc_legacy";
+export type AppRole = "crc" | "gerente" | "posvenda" | "recepcao" | "closer" | "sdr" | "superadmin" | "crc_legacy";
 
 /** Papéis que um cliente (tenant) pode ter no dia a dia. */
 export const TENANT_ROLES: { value: AppRole; label: string }[] = [
@@ -14,6 +14,9 @@ export const TENANT_ROLES: { value: AppRole; label: string }[] = [
   { value: "posvenda", label: "Pós-venda" },
   { value: "recepcao", label: "Recepção" },
   { value: "closer", label: "Closer" },
+  // SDR do rodízio: isolada por "leads dela" (crm_leads.assigned_to), não por
+  // número — opera o número principal do cliente (mundo do CRC).
+  { value: "sdr", label: "SDR" },
 ];
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -29,6 +32,7 @@ export const ROLE_BADGE_CLASS: Record<string, string> = {
   posvenda: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   recepcao: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   closer: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  sdr: "bg-teal-500/20 text-teal-400 border-teal-500/30",
   superadmin: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 

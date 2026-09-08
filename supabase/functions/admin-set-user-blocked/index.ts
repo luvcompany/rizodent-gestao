@@ -75,6 +75,28 @@ Deno.serve(async (req) => {
       if (!callerProfile?.tenant_id || callerProfile.tenant_id !== targetProfile.tenant_id) {
         return json({ error: "Usuário de outro cliente" }, 403);
       }
+      // Rodízio de SDRs (Fase 1): a SDR é membro da equipe do gestor, e quem
+      // tira uma SDR do ar é só quem o BANCO reconhece como gestor
+      // (is_gestor_equipe: superadmin ou o crm_rodizio_config.gestor_user_id
+      // NOMEADO) — mesma fonte de verdade das RPCs da aba Equipe, checada com o
+      // JWT do próprio chamador.
+      //
+      // O gate vale APENAS quando o ALVO tem papel 'sdr'. Para todos os outros
+      // alvos nada muda: o crc do mesmo cliente continua bloqueando e
+      // desbloqueando como sempre — de propósito, porque tirar essa rota dele
+      // seria "papel existente podendo menos", o que a Fase 1 proíbe.
+      // RESIDUAL CONHECIDO: por isso o usuário do Meta App Review (crc) segue
+      // podendo bloquear usuários NÃO-SDR do tenant por esta function; fechar
+      // essa porta é assunto da fase de isolamento do crc.
+      // Ordem de publicação não é crítica: sem a Fase 1 no banco não existe
+      // alvo com papel 'sdr' e este ramo nem chega a ser alcançado.
+      const targetIsSdr = (targetRoles || []).some((r: any) => r.role === "sdr");
+      if (targetIsSdr) {
+        const { data: isGestor, error: gestorErr } = await userClient.rpc("is_gestor_equipe");
+        if (gestorErr || isGestor !== true) {
+          return json({ error: "Só o gestor da equipe pode bloquear ou desbloquear uma SDR." }, 403);
+        }
+      }
     }
 
     // Apply: profile + auth ban

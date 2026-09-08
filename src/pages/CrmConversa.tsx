@@ -576,7 +576,8 @@ export default function CrmConversa() {
                 </Button>
               </div>
             )}
-            {getLeadChannel(lead) !== "instagram" && (
+            {/* SDR: IA fora do perfil (generate-reply-suggestion devolve 403) — sem faixa de sugestões. */}
+            {getLeadChannel(lead) !== "instagram" && userRole !== "sdr" && (
               <AiSuggestionStrip leadId={id} leadPhone={lead.phone} />
             )}
             <ChatInput
@@ -614,7 +615,10 @@ export default function CrmConversa() {
               <h2 className="font-bold text-foreground">{lead.name}</h2>
               <p className="text-sm text-muted-foreground">{lead.phone || "Sem telefone"}</p>
             </div>
-            <LeadAiAssistPanel leadId={lead.id} leadName={lead.name} />
+            {/* SDR: IA fora do perfil — ai-conversation-assist devolve 403 e
+                ai_conversation_analysis está bloqueada (mesmo cerco do
+                AiSuggestionStrip acima). */}
+            {userRole !== "sdr" && <LeadAiAssistPanel leadId={lead.id} leadName={lead.name} />}
           </div>
 
           <LeadEditPanel
@@ -641,19 +645,27 @@ export default function CrmConversa() {
               <UserRoundCog size={12} className="inline mr-1" />
               Responsável
             </label>
-            <Select
-              value={lead.assigned_to || "unassigned"}
-              onValueChange={(val) => handleTransferLead(val)}
-            >
-              <SelectTrigger className="bg-secondary border-border text-sm h-9">
-                <SelectValue placeholder="Selecionar responsável" />
-              </SelectTrigger>
-              <SelectContent>
-                {profiles.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {userRole === "sdr" ? (
+              // SDR não transfere lead (RLS + gatilho + transfer-lead 403):
+              // só leitura, para não oferecer um seletor que sempre falha.
+              <div className="flex h-9 items-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
+                {profiles.find((p) => p.id === lead.assigned_to)?.nome || "Sem responsável"}
+              </div>
+            ) : (
+              <Select
+                value={lead.assigned_to || "unassigned"}
+                onValueChange={(val) => handleTransferLead(val)}
+              >
+                <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                  <SelectValue placeholder="Selecionar responsável" />
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <SendToPosvendaButton
@@ -690,10 +702,12 @@ export default function CrmConversa() {
           onUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } as Lead : prev)}
         />
 
-        {/* Budget Panel */}
+        {/* Budget Panel — SDR: pacientes/pagamentos fora do perfil (RLS devolve
+            vazio e "criar paciente" falharia); o painel não é montado. A
+            recepção continua como sempre. */}
         {userRole === "closer" ? (
           <CloserLeadPacientePanel lead={lead as any} />
-        ) : (
+        ) : userRole === "sdr" ? null : (
           <LeadBudgetPanel
             lead={lead as any}
             onLeadUpdated={(updates) => setLead((prev) => prev ? { ...prev, ...updates } : prev)}

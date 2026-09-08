@@ -6,10 +6,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export type OwnerRole = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "superadmin" | null;
+export type OwnerRole = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "sdr" | "superadmin" | null;
 
 export const ROLE_LABEL: Record<string, string> = {
-  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 export const ROLE_BADGE_COLOR: Record<string, string> = {
   gerente: "bg-blue-900/30 text-blue-400",
@@ -17,6 +17,7 @@ export const ROLE_BADGE_COLOR: Record<string, string> = {
   posvenda: "bg-green-900/30 text-green-400",
   recepcao: "bg-amber-900/30 text-amber-400",
   closer: "bg-amber-900/30 text-amber-400",
+  sdr: "bg-teal-900/30 text-teal-400",
   superadmin: "bg-red-900/30 text-red-400",
 };
 
@@ -42,7 +43,7 @@ export function OwnerRoleBadge({ ownerRole }: { ownerRole: OwnerRole }) {
   );
 }
 
-const SHAREABLE_ROLES: Array<Exclude<OwnerRole, null | "superadmin">> = ["crc", "posvenda", "gerente", "recepcao", "closer"];
+const SHAREABLE_ROLES: Array<Exclude<OwnerRole, null | "superadmin">> = ["crc", "posvenda", "gerente", "recepcao", "closer", "sdr"];
 
 export default function ShareRoleDialog({ open, onOpenChange, table, rowId, currentOwnerRole, currentSharedRoles, itemLabel = "item", onSaved }: Props) {
   const initialSelected = (): Set<string> => {

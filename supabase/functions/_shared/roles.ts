@@ -6,7 +6,10 @@
 // nenhum erro visível. Papel novo entra AQUI e em src/lib/roles.ts.
 
 /** Papéis atribuíveis a usuários de um cliente (superadmin é da plataforma). */
-export const TENANT_ROLES = ["crc", "gerente", "posvenda", "recepcao", "closer"] as const;
+// "sdr" (rodízio de SDRs, Fase 1): sem ela aqui, admin-manage-user recusa criar/
+// promover uma SDR (erro 400, nunca rebaixamento) e set_role deixaria a linha
+// 'sdr' órfã em user_roles ao trocar o papel.
+export const TENANT_ROLES = ["crc", "gerente", "posvenda", "recepcao", "closer", "sdr"] as const;
 export type TenantRole = (typeof TENANT_ROLES)[number];
 
 const TENANT_ROLE_SET = new Set<string>(TENANT_ROLES);

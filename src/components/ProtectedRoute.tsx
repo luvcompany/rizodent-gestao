@@ -38,6 +38,25 @@ const CLOSER_PREFIXES = [
 ];
 const CLOSER_ROTAS_EXATAS = ["/crm"];
 
+// SDR (rodízio): mesma base da recepção, mas o eixo de isolamento é "leads
+// dela" (crm_leads.assigned_to) e não o número — ela opera o número principal
+// do cliente. Por isso não tem Conexões (não conecta número próprio) nem
+// Transmissão; tem Calendário/Tarefas porque agenda e faz follow-up dos
+// próprios leads. Bots/modelos/respostas são os do mundo do CRC
+// (compartilhados). Automações ficam FORA nesta fase: não há item de menu e a
+// SDR não escreve nas regras — a tela só ofereceria botões que falham.
+// O menu espelho fica em CrmLayout (role === "sdr").
+const SDR_PREFIXES = [
+  "/crm/sdr",
+  "/crm/conversas",
+  "/crm/conversa",
+  "/crm/calendario",
+  "/crm/modelos",
+  "/crm/respostas-rapidas",
+  "/crm/bots",
+];
+const SDR_ROTAS_EXATAS = ["/crm"];
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading, profile, signOut, user, userRole, roleResolved } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
@@ -123,6 +142,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       CLOSER_ROTAS_EXATAS.includes(path) ||
       CLOSER_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
     if (!allowed) return <Navigate to="/crm/closer" replace />;
+  }
+
+  // SDR: regra AFIRMATIVA (só age quando o papel É sdr) — nunca decide por
+  // negação, então um papel ainda nulo não expulsa ninguém. Home: "/crm/sdr".
+  if (userRole === "sdr") {
+    const path = location.pathname;
+    const allowed =
+      path === "/change-password" ||
+      SDR_ROTAS_EXATAS.includes(path) ||
+      SDR_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+    if (!allowed) return <Navigate to="/crm/sdr" replace />;
   }
 
   // As telas de /crm/closer são o universo do closer: pacientes e faturamento

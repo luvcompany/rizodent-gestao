@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveCaller, assertLeadInTenant, assertNumberAccess, assertMessageInTenant } from "../_shared/authz.ts";
+import { resolveCaller, assertLeadInTenant, assertNumberAccess, assertMessageInTenant, assertLeadOwnership } from "../_shared/authz.ts";
 import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 
 // Teto de mídia aceito pela Meta (16 MB no maior tipo).
@@ -308,6 +308,19 @@ Deno.serve(async (req) => {
       console.warn(`[send-whatsapp-message] tenant guard: ${tenantCheck.error} lead=${lead_id} user=${caller.userId ?? "service"}`);
       return new Response(JSON.stringify({ error: tenantCheck.error }), {
         status: tenantCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Rodízio de SDRs (Fase 1): a SDR só envia para lead DELA (eixo
+    // crm_leads.assigned_to). Esta function grava a mensagem com service role,
+    // então a RESTRICTIVE sdr_escopo_messages_insert não a alcança — a checagem
+    // é feita aqui, no início, com o JWT dela (RPC sdr_pode_ver_lead). Para os
+    // demais papéis é inerte.
+    const ownerCheck = await assertLeadOwnership(req, lead_id, caller);
+    if (!ownerCheck.ok) {
+      console.warn(`[send-whatsapp-message] sdr guard: ${ownerCheck.error} lead=${lead_id} user=${caller.userId ?? "service"}`);
+      return new Response(JSON.stringify({ error: ownerCheck.error }), {
+        status: ownerCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 

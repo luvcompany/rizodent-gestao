@@ -43,11 +43,45 @@ Deno.serve(async (req) => {
     // A transmissão precisa ser do cliente de quem chamou.
     if (callerUserId) {
       const { data: prof } = await supabase.from("profiles").select("tenant_id").eq("id", callerUserId).maybeSingle();
-      const { data: superRow } = await supabase.from("user_roles").select("role")
-        .eq("user_id", callerUserId).eq("role", "superadmin").maybeSingle();
-      if (!superRow && (bc as any).tenant_id !== prof?.tenant_id) {
+      // Papéis do chamador (antes só se perguntava por "superadmin"): a lista
+      // completa é o que sustenta as duas checagens novas abaixo.
+      const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", callerUserId);
+      const papeis = ((roleRows || []) as any[]).map((r) => String(r.role));
+      const isSuper = papeis.includes("superadmin");
+      if (!isSuper && (bc as any).tenant_id !== prof?.tenant_id) {
         console.warn(`[broadcast-engine] bloqueado: usuário ${callerUserId} tentou disparar broadcast de outro cliente (${(bc as any).tenant_id})`);
         return new Response(JSON.stringify({ error: "Transmissão de outro cliente" }), { status: 403, headers: corsHeaders });
+      }
+
+      // Rodízio de SDRs (Fase 1): transmissão está fora do perfil da SDR. Esta
+      // function dispara com service role para TODOS os destinatários pendentes
+      // — inclusive leads de outras donas —, então a RESTRICTIVE
+      // sdr_escopo_crm_leads_* não a alcança e o bloqueio tem de ser aqui.
+      // Mesmo molde de denyForSdr (_shared/authz.ts), em checagem local porque
+      // esta function não importa o módulo de authz.
+      if (!isSuper && papeis.includes("sdr")) {
+        console.warn(`[broadcast-engine] bloqueado: SDR ${callerUserId} tentou disparar a transmissão ${broadcast_id}`);
+        return new Response(JSON.stringify({ error: "Transmissão não faz parte do perfil SDR" }), { status: 403, headers: corsHeaders });
+      }
+
+      // Disparar é de quem administra a clínica ou do dono da transmissão.
+      // Antes, QUALQUER usuário autenticado do cliente disparava a transmissão
+      // de qualquer colega, só por conhecer o id. `created_by` não é preenchido
+      // pelo app (a tela de Transmissão não grava a coluna); quando ela está
+      // vazia vale o MESMO critério de visibilidade da RLS ("Broadcasts visible
+      // by role": owner_role nulo, papel do dono ou shared_roles) — assim
+      // closer, recepção e pós-venda seguem disparando exatamente o que já
+      // enxergam na tela, sem ganhar nem perder alcance.
+      const ehAdminDaClinica = isSuper || papeis.includes("crc") || papeis.includes("gerente");
+      const criadoPorMim = !!(bc as any).created_by && (bc as any).created_by === callerUserId;
+      const ownerRole = (bc as any).owner_role ?? null;
+      const compartilhadoComigo = Array.isArray((bc as any).shared_roles)
+        && ((bc as any).shared_roles as any[]).some((r) => papeis.includes(String(r)));
+      const visivelParaMim = !(bc as any).created_by
+        && (!ownerRole || papeis.includes(String(ownerRole)) || compartilhadoComigo);
+      if (!ehAdminDaClinica && !criadoPorMim && !visivelParaMim) {
+        console.warn(`[broadcast-engine] bloqueado: usuário ${callerUserId} não é dono da transmissão ${broadcast_id}`);
+        return new Response(JSON.stringify({ error: "Só o dono da transmissão (ou um administrador) pode dispará-la" }), { status: 403, headers: corsHeaders });
       }
     }
 

@@ -46,6 +46,7 @@ const CloserPacientes = lazyWithPreload(() => import("./pages/crm/CloserPaciente
 const RecepcaoConexoes = lazyWithPreload(() => import("./pages/recepcao/RecepcaoConexoes"));
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
 const CrmLigacoes = lazyWithPreload(() => import("./pages/CrmLigacoes"));
+const CrmEquipe = lazyWithPreload(() => import("./pages/CrmEquipe"));
 
 const CrmBots = lazyWithPreload(() => import("./pages/CrmBots"));
 const CrmBotEditor = lazyWithPreload(() => import("./pages/CrmBotEditor"));
@@ -262,6 +263,10 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               {/* Closer usa a MESMA tela inicial da recepção (componente compartilhado). */}
               <Route path="/crm/closer" element={withRouteSuspense(<RecepcaoHome />)} />
               <Route path="/crm/closer/pacientes" element={withRouteSuspense(<CloserPacientes />)} />
+              {/* SDR do rodízio: MESMA tela-base da recepção (a RLS limita aos leads dela). */}
+              <Route path="/crm/sdr" element={withRouteSuspense(<RecepcaoHome />)} />
+              {/* Gestão das SDRs — a página se fecha sozinha se is_gestor_equipe() for false. */}
+              <Route path="/crm/equipe" element={withRouteSuspense(<CrmEquipe />)} />
               <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />

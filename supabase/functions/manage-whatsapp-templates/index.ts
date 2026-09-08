@@ -77,8 +77,13 @@ Deno.serve(async (req) => {
     const rolesSet = new Set((callerRoles || []).map((r: any) => r.role));
     // 'closer' faltava aqui: template criado por closer ficava com owner_role null
     // e (pela RLS de owner_role) invisível para o próprio closer.
-    const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao", "closer"];
-    const callerPrimaryRole = rolePriority.find((r) => rolesSet.has(r)) || null;
+    // 'sdr' (rodízio, Fase 1): sem ela o modelo da SDR nascia "geral" (owner_role
+    // NULL). A SDR vive no mundo do CRC — o item dela nasce com owner_role='crc',
+    // espelho de set_owner_role_from_user no banco (o insert aqui é service
+    // role e não passa pelo gatilho).
+    const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao", "closer", "sdr"];
+    const callerPrimaryRoleRaw = rolePriority.find((r) => rolesSet.has(r)) || null;
+    const callerPrimaryRole = callerPrimaryRoleRaw === "sdr" ? "crc" : callerPrimaryRoleRaw;
 
     // Any authenticated tenant user can list/create/delete their own templates.
     // Only admin/gerente/superadmin can hit destructive Meta actions like global delete.
@@ -88,6 +93,18 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { action } = body;
+
+    // Sincronizar com a Meta (action "list") não é da SDR: a sincronização
+    // apaga da tabela local todo modelo daquela WABA que não existe mais na
+    // Meta — inclusive os 15 da pós-venda e os 17 sem dono, que ela nem
+    // enxerga. Como ela não é closer/recepção, cairia no escopo legado (a WABA
+    // principal da clínica) e o estrago seria silencioso.
+    if (action === "list" && rolesSet.has("sdr") && !isPrivileged) {
+      return new Response(
+        JSON.stringify({ error: "Sincronizar modelos com a Meta não faz parte do perfil SDR" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // As telas mandam `integration_key` (whatsapp_<pnid> / whatsapp_es_<pnid>).
     // Ignorá-la fazia o seletor de conexão virar decoração — e, num cliente novo,

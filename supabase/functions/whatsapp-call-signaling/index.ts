@@ -155,6 +155,21 @@ Deno.serve(async (req) => {
     }
     tenantId = profile.tenant_id;
 
+    // Rodízio de SDRs (Fase 1): chamadas de WhatsApp ficam fora do perfil da
+    // SDR — whatsapp_calls e whatsapp_call_permissions estão em sdr_sem_acesso
+    // (molde closer/recepção) e o front não mostra a UI de chamada para ela.
+    // Esta function roda com service role, então o gate tem de ser aqui.
+    {
+      const { data: callerRoles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+      const roles = (callerRoles || []).map((r: any) => String(r.role));
+      if (roles.includes("sdr") && !roles.includes("superadmin")) {
+        return new Response(JSON.stringify({ error: "Chamadas de WhatsApp não fazem parte do perfil SDR" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // lead_id vinha do corpo sem validação: confirma que o lead é do mesmo cliente.
     let bodyLead: { tenant_id?: string | null; whatsapp_number_id?: string | null } | null = null;
     if ((action === "connect" || action === "request_permission") && body.lead_id) {

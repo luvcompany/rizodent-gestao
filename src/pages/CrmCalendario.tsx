@@ -17,7 +17,7 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Textarea } from "@/components/ui/textarea";
@@ -205,7 +205,14 @@ export default function CrmCalendario() {
   const [profiles, setProfiles] = useState<Profile[]>(() => (_sameUserModuleCache && calendarCache.profiles) || _lsInit?.profiles || []);
   const [appointments, setAppointments] = useState<Appointment[]>(() => (_sameUserModuleCache && calendarCache.appointments) || []);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [mainView, setMainView] = useState<MainView>("agendamentos");
+  // `?view=tarefas` abre direto na aba de tarefas — é o item "Tarefas" do menu
+  // da SDR (mesma tela, sem duplicar página). Sem o parâmetro, agendamentos.
+  const [searchParams] = useSearchParams();
+  const viewParam = searchParams.get("view");
+  const [mainView, setMainView] = useState<MainView>(viewParam === "tarefas" ? "tarefas" : "agendamentos");
+  useEffect(() => {
+    setMainView(viewParam === "tarefas" ? "tarefas" : "agendamentos");
+  }, [viewParam]);
   const [taskView, setTaskView] = useState<TaskViewMode>("events");
   const [filterUser, setFilterUser] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -451,8 +458,15 @@ export default function CrmCalendario() {
     const isPrivileged = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
     return tasks.filter((t) => {
       if (!isPrivileged && userRole) {
-        // Show only tasks owned by the user's role or assigned to them
-        const matchesRole = t.owner_role === userRole;
+        // Show only tasks owned by the user's role or assigned to them.
+        // A SDR mora no mundo do crc: a tarefa que ela cria nasce com
+        // owner_role = 'crc' (gatilho set_owner_role_from_user, que mapeia
+        // sdr → crc) e com assigned_to = null (o TaskPanel não escolhe
+        // responsável). Sem esta linha, a tarefa que ela acabou de criar — e a
+        // que o CRC criou sobre um lead dela — sumia da aba "Tarefas".
+        // É seguro: a RESTRICTIVE sdr_escopo_crm_tasks já limita o que o banco
+        // devolve às tarefas de leads dela.
+        const matchesRole = t.owner_role === userRole || (userRole === "sdr" && t.owner_role === "crc");
         const matchesAssignee = t.assigned_to === user?.id;
         if (!matchesRole && !matchesAssignee) return false;
       }

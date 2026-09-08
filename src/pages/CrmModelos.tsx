@@ -56,15 +56,20 @@ type WhatsAppTemplate = {
   created_at: string; updated_at: string;
   owner_role?: OwnerRole;
   shared_roles?: string[] | null;
+  // Quem criou o modelo — é o que amarra editar/excluir da SDR ao item dela.
+  created_by_user_id?: string | null;
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", superadmin: "Superadmin",
+  gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
   gerente: "bg-blue-900/30 text-blue-400",
   crc: "bg-purple-900/30 text-purple-400",
   posvenda: "bg-green-900/30 text-green-400",
+  recepcao: "bg-amber-900/30 text-amber-400",
+  closer: "bg-amber-900/30 text-amber-400",
+  sdr: "bg-teal-900/30 text-teal-400",
   superadmin: "bg-red-900/30 text-red-400",
 };
 
@@ -143,8 +148,24 @@ function TemplateMediaHeader({
 }
 
 export default function CrmModelos() {
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   const canShare = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin" || userRole === "closer";
+  // A SDR vive no mundo do crc: vê o acervo dele inteiro, mas só EDITA e APAGA
+  // o que ela criou (RESTRICTIVE sdr_escopo_crm_whatsapp_templates_update /
+  // _delete). Sem isto, os botões apareciam em todo modelo do CRC e só
+  // devolviam erro — no Excluir, ainda depois de chamar a Meta ("Erro ao
+  // deletar na Meta. Removendo apenas localmente." antes de "Seu perfil não tem
+  // permissão"). Molde de `podeEditarItem` em CrmRespostasRapidas.
+  // Duplicar continua liberado de propósito: a cópia é um item NOVO criado por
+  // ela (owner_role 'crc' + created_by_user_id = ela), que a policy de INSERT
+  // aceita — é como ela parte de um modelo do acervo para fazer o dela.
+  const podeEditarItem = (t: { created_by_user_id?: string | null }) =>
+    userRole !== "sdr" || (!!user?.id && t.created_by_user_id === user.id);
+  // owner_role de item novo: o do usuário, EXCETO sdr — o item dela nasce no
+  // mundo crc, o mesmo mapeamento que o gatilho set_owner_role_from_user e a
+  // function manage-whatsapp-templates fazem. Mandar 'sdr' explicitamente
+  // impedia o gatilho de agir e a policy de INSERT recusava a gravação.
+  const ownerRoleParaGravar = (papel: string | null) => (papel === "sdr" ? "crc" : papel);
 
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -445,7 +466,7 @@ export default function CrmModelos() {
       body_text: t.body_text, footer_text: t.footer_text, buttons: t.buttons as any,
       status: "PENDING",
       created_by_user_id: user?.id || null,
-      owner_role: ownerRole as any,
+      owner_role: ownerRoleParaGravar(ownerRole) as any,
     }]);
     if (error) toast.error("Erro ao duplicar: " + error.message); else { toast.success("Duplicado"); fetchTemplates(); }
   };
@@ -596,7 +617,7 @@ export default function CrmModelos() {
         buttons: form.buttons.length > 0 ? form.buttons : null,
         status: "DRAFT",
         created_by_user_id: user?.id || null,
-        owner_role: ownerRole as any,
+        owner_role: ownerRoleParaGravar(ownerRole) as any,
         updated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from("crm_whatsapp_templates").insert([payload]);
@@ -701,10 +722,14 @@ export default function CrmModelos() {
               Última sinc: {lastSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
-          <Button size="sm" variant="outline" onClick={() => handleSync(false)} disabled={syncing}>
-            <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar com Meta"}
-          </Button>
+          {/* Sincronizar apaga localmente o que sumiu da Meta, inclusive modelos
+              que a SDR não enxerga — a função recusa e o botão não aparece. */}
+          {userRole !== "sdr" && (
+            <Button size="sm" variant="outline" onClick={() => handleSync(false)} disabled={syncing}>
+              <RefreshCw size={14} className={`mr-1 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sincronizando..." : "Sincronizar com Meta"}
+            </Button>
+          )}
           <Button size="sm" onClick={() => { resetForm(); setModalOpen(true); }}>
             <Plus size={14} className="mr-1" /> Novo Modelo
           </Button>
@@ -758,12 +783,16 @@ export default function CrmModelos() {
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => openEdit(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Pencil size={14} className="text-muted-foreground" /></button>
+                    {podeEditarItem(t) && (
+                      <button onClick={() => openEdit(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Pencil size={14} className="text-muted-foreground" /></button>
+                    )}
                     <button onClick={() => handleDuplicate(t)} className="p-1 hover:bg-secondary rounded transition-colors"><Copy size={14} className="text-muted-foreground" /></button>
                     {canShare && (
                       <button onClick={() => openShare(t)} title="Compartilhar com papel" className="p-1 hover:bg-secondary rounded transition-colors"><Users size={14} className="text-muted-foreground" /></button>
                     )}
-                    <button onClick={() => setDeleteId(t.id)} className="p-1 hover:bg-destructive/20 rounded transition-colors"><Trash2 size={14} className="text-destructive" /></button>
+                    {podeEditarItem(t) && (
+                      <button onClick={() => setDeleteId(t.id)} className="p-1 hover:bg-destructive/20 rounded transition-colors"><Trash2 size={14} className="text-destructive" /></button>
+                    )}
                   </div>
                 </div>
               </div>

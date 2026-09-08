@@ -224,6 +224,15 @@ export type AppointmentTemplateOption = {
 // genérica: lê clinicas.appointment_template_name do tenant (nada hardcoded).
 // - options: todos os modelos de agendamento configurados no tenant (para o seletor).
 // - resolved: o modelo cuja unidade/cidade bate com a cidade do lead (ou null).
+//
+// LIMITE CONHECIDO (registrado na revisão da Fase 1): quem chega aqui é sempre
+// o ScheduleSuggestionCard, e esse cartão só é montado dentro do
+// AiSuggestionStrip — que a Fase 1 esconde para a SDR (IA fora do perfil dela).
+// A barra que a SDR de fato usa para agendar (AppointmentConfirmBar) NÃO resolve
+// nem envia modelo de confirmação, para papel nenhum. Chegou a existir aqui um
+// fallback por RPC "para a SDR" que nenhuma tela alcançava: foi removido em vez
+// de ficar como código morto. Dar o modelo de confirmação à SDR é trabalho de
+// produto (levar a resolução para o AppointmentConfirmBar), não de RLS.
 export async function resolveAppointmentTemplate(
   tenantId: string | null | undefined,
   cidade: string | null | undefined,
