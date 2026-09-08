@@ -146,24 +146,3 @@ DROP TRIGGER IF EXISTS crm_leads_stage_history_trg ON public.crm_leads;
 CREATE TRIGGER crm_leads_stage_history_trg
   AFTER INSERT OR UPDATE OF stage_id ON public.crm_leads
   FOR EACH ROW EXECUTE FUNCTION public.sync_lead_stage_history();
-
--- Limpeza do passado: de duas linhas iguais (mesmo lead, mesma etapa, menos
--- de 5 s entre elas) fica a primeira. Depois, cada linha fecha na entrada da
--- seguinte, para nenhum lead ter duas etapas "abertas".
-WITH ordenado AS (
-  SELECT id, entered_at,
-         lag(entered_at) OVER (PARTITION BY lead_id, stage_id ORDER BY entered_at, id) AS anterior
-  FROM public.crm_lead_stage_history
-)
-DELETE FROM public.crm_lead_stage_history h
- USING ordenado o
- WHERE h.id = o.id AND o.anterior IS NOT NULL AND o.entered_at - o.anterior < interval '5 seconds';
-
-WITH seq AS (
-  SELECT id, lead(entered_at) OVER (PARTITION BY lead_id ORDER BY entered_at, id) AS prox
-  FROM public.crm_lead_stage_history
-)
-UPDATE public.crm_lead_stage_history h
-   SET exited_at = s.prox
-  FROM seq s
- WHERE h.id = s.id AND s.prox IS NOT NULL AND (h.exited_at IS NULL OR h.exited_at > s.prox);
