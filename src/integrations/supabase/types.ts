@@ -1449,6 +1449,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "crm_automation_queue_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "crm_appointments"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "crm_automation_queue_automation_id_fkey"
             columns: ["automation_id"]
             isOneToOne: false
