@@ -17,7 +17,14 @@ do site) e o merge no GitHub não aplica nenhum deles.
 
 ---
 
-## Fase 1 do rodízio de SDRs — publicar nesta ordem
+## Fase 1 do rodízio de SDRs — passos 1 a 3 APLICADOS em 08/09/2026 19:52 UTC
+
+Migration aplicada (77 policies `sdr_`, 6 gatilhos, gestor = rizodentvca2), as
+15 edge functions redeployadas e o site publicado (`index-BTbpHfAe.js`). As 512
+policies antigas continuam com o hash de antes: nenhum papel atual mudou.
+**Falta o passo 4** — o dono criar as 3 SDRs na aba Equipe.
+
+### Roteiro original (mantido para referência)
 
 ### Passo 1 — migration
 

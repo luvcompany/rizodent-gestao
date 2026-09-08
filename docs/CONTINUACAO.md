@@ -29,8 +29,14 @@ também aplicadas, `outcome_source = 'folha-sdr'`.
 
 ## Item 2 — Fase 1 do rodízio de SDRs (papel `sdr` + aba Equipe)
 
-- status: em andamento na sessão local (não executar)
-- autorizado: não
+- status: concluído em 2026-09-08 19:52 UTC (migration, 15 functions e site no ar)
+- autorizado: sim
+
+Conferido depois de aplicar: 77 policies `sdr_` (73 restritivas em 56 tabelas),
+6 gatilhos `trg_sdr_`, `gestor_user_id` = rizodentvca2. As 512 policies antigas
+seguem com o mesmo hash `c28b7f00…` de antes. Conversas por papel intactas:
+CRC 9.012, pós-venda 316, closer 37. Falta só o dono criar as 3 SDRs na aba
+Equipe (passo 4 de `docs/PUBLICAR-PENDENTE.md`).
 
 Em construção pela sessão local (migration
 `supabase/migrations/20260908150000_sdr_fase1_papel_e_equipe.sql`, front
