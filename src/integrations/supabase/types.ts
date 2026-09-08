@@ -5650,6 +5650,7 @@ export type Database = {
           similarity: number
         }[]
       }
+      normaliza_nome_etapa: { Args: { p_nome: string }; Returns: string }
       notify_dashboard_event: {
         Args: { p_cidade: string; p_source: string; p_tipo: string }
         Returns: undefined
@@ -5894,6 +5895,20 @@ export type Database = {
       user_override: {
         Args: { _resource_id: string; _scope: string; _user_id: string }
         Returns: boolean
+      }
+      varre_agendado_sem_agendamento: {
+        Args: { p_dry_run?: boolean }
+        Returns: {
+          de_etapa: string
+          entrou_em: string
+          lead_id: string
+          lead_nome: string
+          motivo: string
+          movido: boolean
+          para_etapa: string
+          pipeline_id: string
+          ultimo_desfecho: string
+        }[]
       }
       verify_internal_secret: {
         Args: { _name: string; _token: string }
