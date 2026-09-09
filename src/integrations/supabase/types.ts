@@ -1760,6 +1760,7 @@ export type Database = {
       }
       crm_entregas_gestor: {
         Row: {
+          appointment_id: string | null
           criado_em: string
           de_user_id: string
           entregar_em: string
@@ -1769,6 +1770,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          appointment_id?: string | null
           criado_em?: string
           de_user_id: string
           entregar_em: string
@@ -1778,6 +1780,7 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          appointment_id?: string | null
           criado_em?: string
           de_user_id?: string
           entregar_em?: string
@@ -6287,7 +6290,12 @@ export type Database = {
         }[]
       }
       sdr_agenda_entrega_ao_gestor: {
-        Args: { p_lead_id: string; p_mensagem: string; p_motivo: string }
+        Args: {
+          p_appointment_id?: string
+          p_lead_id: string
+          p_mensagem: string
+          p_motivo: string
+        }
         Returns: string
       }
       sdr_destinos_transferencia: {
