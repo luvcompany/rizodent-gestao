@@ -5755,6 +5755,10 @@ export type Database = {
       is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      lead_transferir_autorizado: {
+        Args: { p_lead_id: string; p_payload: Json }
+        Returns: number
+      }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
