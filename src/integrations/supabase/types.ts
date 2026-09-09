@@ -2951,6 +2951,7 @@ export type Database = {
           pipeline_id: string
           position: number
           tenant_id: string | null
+          visivel_para_sdr: boolean
         }
         Insert: {
           color?: string
@@ -2962,6 +2963,7 @@ export type Database = {
           pipeline_id: string
           position?: number
           tenant_id?: string | null
+          visivel_para_sdr?: boolean
         }
         Update: {
           color?: string
@@ -2973,6 +2975,7 @@ export type Database = {
           pipeline_id?: string
           position?: number
           tenant_id?: string | null
+          visivel_para_sdr?: boolean
         }
         Relationships: [
           {
@@ -6212,6 +6215,10 @@ export type Database = {
           papel: string
           user_id: string
         }[]
+      }
+      sdr_entrega_lead_ao_gestor: {
+        Args: { p_lead_id: string; p_mensagem: string; p_motivo: string }
+        Returns: boolean
       }
       sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
