@@ -203,7 +203,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           outcome === "no_show"
             ? "Lead movido para Não compareceu"
             : userRole === "sdr"
-            ? "Comparecimento registrado no seu crédito — o lead passou para o administrador"
+            ? "Comparecimento registrado no seu crédito — o lead continua com você por enquanto e depois passa para o administrador"
             : outcome === "contracted"
             ? "Lead movido para Contratado"
             : "Lead movido para etapa Não contratado",

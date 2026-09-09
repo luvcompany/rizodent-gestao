@@ -26,4 +26,23 @@ log — nunca quebra o fluxo.
 qualquer etapa (`entrada_todas_etapas`). A regra acima protege quem já tem
 dona SDR.
 
-Migration: `supabase/migrations/20260909180000_propriedade_do_lead.sql`.
+**Fim do ciclo da SDR (comparecimento).** Consulta com desfecho de
+comparecimento (contratou ou não) ou lead movido para etapa do administrador
+(Contratado, Não contratado, Compareceu…) encerra o ciclo da SDR, mas a
+entrega ao administrador só acontece depois de uma **carência** (aba Equipe →
+painel do rodízio, padrão 24 h; 0 = na hora). Até lá o lead continua dela:
+ela vê, responde, liga e marca. O crédito do agendamento fica com ela em
+qualquer caso (`responsavel_credito_id`, imutável) — o relatório de
+comparecimentos conta por crédito, seja quem for que marcou (SDR, CRC ou o
+Dontus). Se alguém transferir o lead durante a carência, a entrega agendada
+cai. Migration `20260909210000_entrega_ao_gestor_com_carencia.sql`
+(tabela `crm_entregas_gestor`, cron `sdr-entrega-ao-gestor`).
+
+**SDR excluída.** A conta só é apagada depois de a RPC
+`equipe_redistribuir_leads` mover TODOS os leads dela pelo caminho
+autorizado: lead com ciclo encerrado → administrador; os demais → revezam
+entre as outras SDRs do rodízio (motor ligado) ou voltam ao administrador
+para entrar de novo no rodízio quando escreverem. Tudo no livro (fase
+`manual`). Migration `20260909220000_equipe_editar_excluir.sql`.
+
+Migration da regra: `supabase/migrations/20260909180000_propriedade_do_lead.sql`.

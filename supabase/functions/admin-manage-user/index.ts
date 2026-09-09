@@ -23,13 +23,21 @@ const BAN_FOREVER = "876000h"; // ~100 anos
 // Ações liberadas ao gestor:
 //   • create          → papel obrigatoriamente 'sdr', tenant SEMPRE o do gestor
 //                       (o tenant_id do corpo é ignorado);
-//   • reset_password  → alvo do tenant do gestor cujo ÚNICO papel é 'sdr'.
-// Bloquear/desbloquear e ligar/desligar no rodízio são RPCs (equipe_bloquear,
-// equipe_rodizio). set_role / set_email / delete / block / unblock continuam
-// exclusivos do superadmin. Um crc que não seja o gestor (ex.: o usuário do
-// Meta App Review) recebe 403 como sempre recebeu.
+//   • reset_password  → alvo do tenant do gestor cujo ÚNICO papel é 'sdr';
+//   • set_email       → idem (09/09: "trocar de SDR é só trocar nome e e-mail");
+//                       derruba as sessões da conta (equipe_encerrar_sessoes);
+//   • delete          → idem; ANTES de apagar, redistribui os leads dela pela
+//                       RPC equipe_redistribuir_leads (caminho autorizado da
+//                       regra de propriedade — um UPDATE direto seria
+//                       preservado em silêncio pelo gatilho). Falhou a
+//                       redistribuição → nada é apagado.
+// Nome é RPC (equipe_editar_nome). Bloquear/desbloquear e ligar/desligar no
+// rodízio são RPCs (equipe_bloquear, equipe_rodizio). set_role / block /
+// unblock continuam exclusivos do superadmin. Um crc que não seja o gestor
+// (ex.: o usuário do Meta App Review) recebe 403 como sempre recebeu.
 const GESTOR_ROLE = "sdr";
-const GESTOR_ACTIONS = new Set<string>(["create", "reset_password"]);
+const GESTOR_ACTIONS = new Set<string>(["create", "reset_password", "set_email", "delete"]);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function ensureProfile(admin: any, user: any, tenantId: string, nome?: string, cargo?: string | null, mustChangePassword = true) {
   const { error } = await admin
@@ -76,7 +84,8 @@ Deno.serve(async (req) => {
     const isGestor = !isSuperadmin;
     const logContext = isGestor ? "tenant" : "admin";
 
-    const { action, tenant_id, user_id, email, password, nome, role } = await req.json();
+    const { action, tenant_id, user_id, email, password, nome, role, destino } = await req.json();
+    const callerEmail = typeof claimsData.claims.email === "string" ? claimsData.claims.email : null;
 
     if (isGestor && !GESTOR_ACTIONS.has(action)) {
       return json({ error: "Ação reservada ao painel administrativo." }, 403);
@@ -203,22 +212,58 @@ Deno.serve(async (req) => {
       await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_set_role", metadata: { target: user_id, role } });
       return json({ ok: true, role: setRoleCheck.role });
     }
+    // Alvo cujo único papel é 'sdr' (para o superadmin também): é o caso em que
+    // as RPCs da equipe (sessões, redistribuição) se aplicam.
+    const alvoRoles = (targetRoles || []).map((r: any) => r.role);
+    const alvoSoSdr = alvoRoles.length > 0 && alvoRoles.every((r: string) => r === GESTOR_ROLE);
+
     if (action === "set_email") {
-      if (!email) return json({ error: "email required" }, 400);
-      const { error } = await admin.auth.admin.updateUserById(user_id, { email, email_confirm: true });
-      if (error) return json({ error: error.message }, 400);
-      await admin.from("profiles").update({ email }).eq("id", user_id);
-      await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_set_email", metadata: { target: user_id, email } });
-      return json({ ok: true });
+      const novoEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+      if (!novoEmail || !EMAIL_RE.test(novoEmail)) return json({ error: "Informe um e-mail válido." }, 400);
+      const { error } = await admin.auth.admin.updateUserById(user_id, { email: novoEmail, email_confirm: true });
+      if (error) {
+        const dup = /already|exists|registered/i.test(error.message);
+        return json({ error: dup ? "Já existe uma conta com este e-mail." : error.message }, 400);
+      }
+      await admin.from("profiles").update({ email: novoEmail }).eq("id", user_id);
+      // Trocou a pessoa por trás do login: a anterior não continua logada.
+      let sessoes: number | null = null;
+      if (alvoSoSdr) {
+        const { data: n, error: sErr } = await admin.rpc("equipe_encerrar_sessoes", { p_user_id: user_id });
+        if (!sErr && typeof n === "number") sessoes = n;
+      }
+      await admin.from("access_logs").insert({
+        user_id: userId, tenant_id: targetTenant, context: logContext,
+        event: isGestor ? "sdr_set_email" : "user_set_email",
+        metadata: { target: user_id, email: novoEmail, sessoes_encerradas: sessoes },
+      });
+      return json({ ok: true, sessoes_encerradas: sessoes });
     }
     if (action === "delete") {
-      // Solta os leads atribuídos a este usuário antes de removê-lo (evita órfãos).
-      try { await admin.from("crm_leads").update({ assigned_to: null }).eq("assigned_to", user_id); } catch (_) { /* ignore */ }
+      let redistribuicao: any = null;
+      if (alvoSoSdr) {
+        // SDR: os leads dela têm dona protegida (trg_zz_propriedade_lead) — só
+        // a RPC autorizada os move. Falhou → não apaga nada.
+        const dest = typeof destino === "string" && ["auto", "rodizio", "gestor"].includes(destino) ? destino : "auto";
+        const { data, error: rErr } = await admin.rpc("equipe_redistribuir_leads", {
+          p_user_id: user_id, p_destino: dest,
+          p_motivo: `conta excluída${callerEmail ? ` por ${callerEmail}` : ""}`,
+        });
+        if (rErr) return json({ error: `Não foi possível redistribuir os leads dela (nada foi apagado): ${rErr.message}` }, 400);
+        redistribuicao = data ?? null;
+      } else {
+        // Outros papéis: solta os leads antes de remover (evita órfãos).
+        try { await admin.from("crm_leads").update({ assigned_to: null }).eq("assigned_to", user_id); } catch (_) { /* ignore */ }
+      }
       await admin.from("user_roles").delete().eq("user_id", user_id);
       const { error } = await admin.auth.admin.deleteUser(user_id);
       if (error) return json({ error: error.message }, 400);
-      await admin.from("access_logs").insert({ user_id: userId, tenant_id: targetTenant, context: "admin", event: "user_delete", metadata: { target: user_id } });
-      return json({ ok: true });
+      await admin.from("access_logs").insert({
+        user_id: userId, tenant_id: targetTenant, context: logContext,
+        event: isGestor ? "sdr_delete" : "user_delete",
+        metadata: { target: user_id, redistribuicao },
+      });
+      return json({ ok: true, redistribuicao });
     }
     return json({ error: "unknown action" }, 400);
   } catch (e: any) {

@@ -32,6 +32,8 @@ interface Estado {
   modo: Modo; modo_alterado_em: string | null; em_expediente: boolean; dia_util: boolean;
   agora_local: string; fuso: string; reservas_pendentes: number; reservas_aviso: string | null;
   realocar_sem_resposta_min: number; hora_corte: string; corte_ate: string; equipe: MembroEstado[];
+  /** Carência (min) entre o comparecimento e a entrega do lead ao administrador; 0 = na hora. */
+  entrega_gestor_apos_min?: number; entregas_pendentes?: number;
 }
 interface LinhaDistribuicao {
   lead_id: string; lead_nome: string | null; lead_telefone: string | null; etapa: string | null;
@@ -65,6 +67,8 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const [previa, setPrevia] = useState<LinhaDistribuicao[] | null>(null);
   const [minutos, setMinutos] = useState<string>("");
   const [salvandoMin, setSalvandoMin] = useState(false);
+  const [carenciaH, setCarenciaH] = useState<string>("");
+  const [salvandoCarencia, setSalvandoCarencia] = useState(false);
   const [distribuindo, setDistribuindo] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -73,8 +77,10 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     setCarregando(false);
     if (error) { setErro(mensagemDeErroRpc(error, "Não foi possível ler o estado do rodízio.", TEXTO_AUSENTE)); return; }
     setErro(null);
-    setEstado(data as Estado);
-    setMinutos(String((data as Estado).realocar_sem_resposta_min ?? ""));
+    const e = data as Estado;
+    setEstado(e);
+    setMinutos(String(e.realocar_sem_resposta_min ?? ""));
+    setCarenciaH(typeof e.entrega_gestor_apos_min === "number" ? String(Math.round(e.entrega_gestor_apos_min / 60)) : "");
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
@@ -127,6 +133,19 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     setSalvandoMin(false);
     if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar o tempo.", TEXTO_AUSENTE)); return; }
     toast.success(n === 0 ? "Realocação por silêncio desligada." : `Realocação após ${n} min sem resposta humana.`);
+    await carregar();
+  };
+
+  const salvarCarencia = async () => {
+    const h = Number(carenciaH);
+    if (!Number.isInteger(h) || h < 0 || h > 168) { toast.error("Informe entre 0 (na hora) e 168 horas (7 dias)."); return; }
+    setSalvandoCarencia(true);
+    const { error } = await rpc("rodizio_definir_carencia_entrega", { p_min: h * 60 });
+    setSalvandoCarencia(false);
+    if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar a carência.", TEXTO_AUSENTE)); return; }
+    toast.success(h === 0
+      ? "Depois do comparecimento o lead passa para o administrador na hora."
+      : `Depois do comparecimento o lead fica ${h} h com a SDR antes de passar para o administrador.`);
     await carregar();
   };
 
@@ -220,6 +239,29 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
           {salvandoMin ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
         </Button>
       </div>
+
+      {typeof estado.entrega_gestor_apos_min === "number" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+          <span className="text-muted-foreground">Depois do comparecimento, o lead fica com a SDR por</span>
+          <input
+            type="number" min={0} max={168} value={carenciaH} onChange={(e) => setCarenciaH(e.target.value)}
+            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            aria-label="Horas de carência antes de passar ao administrador"
+          />
+          <span className="text-muted-foreground">h antes de passar para o administrador (0 = na hora)</span>
+          <Button
+            size="sm" variant="outline" onClick={salvarCarencia}
+            disabled={salvandoCarencia || String(Math.round(estado.entrega_gestor_apos_min / 60)) === carenciaH}
+          >
+            {salvandoCarencia ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
+          </Button>
+          {(estado.entregas_pendentes ?? 0) > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {estado.entregas_pendentes} lead{estado.entregas_pendentes === 1 ? "" : "s"} na carência agora.
+            </span>
+          )}
+        </div>
+      )}
 
       {modo !== "desligado" && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">

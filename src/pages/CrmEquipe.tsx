@@ -17,8 +17,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Info, KeyRound, Loader2, Plus, RefreshCw, UserCheck, UserX, Users } from "lucide-react";
+import { Info, KeyRound, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, UserX, Users } from "lucide-react";
 
 /**
  * Equipe — gestão das SDRs do rodízio pelo gestor do cliente.
@@ -48,6 +49,14 @@ import { Info, KeyRound, Loader2, Plus, RefreshCw, UserCheck, UserX, Users } fro
  * apagada do estado no mesmo instante. Nunca aparece em toast, log ou lista.
  * A usuária troca a senha no primeiro login (must_change_password).
  *
+ * Editar / excluir (decisão do dono, 09/09): "trocar de SDR é só trocar nome
+ * e e-mail" — o diálogo Editar salva nome (RPC equipe_editar_nome), e-mail
+ * (admin-manage-user set_email, que derruba as sessões da conta) e,
+ * opcionalmente, uma senha temporária nova. Excluir apaga a conta pela mesma
+ * function (delete), que ANTES redistribui os leads dela pela RPC
+ * equipe_redistribuir_leads (rodízio ligado → revezam entre as outras SDRs;
+ * senão → administrador); a prévia vem de equipe_excluir_previa.
+ *
  * Rodízio: a distribuição automática ainda está DESLIGADA (crm_rodizio_config
  * .modo = 'desligado'); o interruptor só define quem vai participar quando
  * ela for ligada (Fase 2). A página avisa isso.
@@ -67,8 +76,18 @@ type Membro = {
 const MIN_SENHA = 8;
 
 type RespostaRpc = { data: unknown; error: unknown };
-/** Corpo devolvido por admin-manage-user (create/reset_password). */
-type RespostaFuncao = { error?: string; user_id?: string; role?: string } | null | undefined;
+/** Resultado de equipe_redistribuir_leads (devolvido por admin-manage-user no delete). */
+type Redistribuicao = { leads: number; para_rodizio: number; para_gestor: number; reservas_refeitas: number; destinos: Record<string, number> };
+/** Corpo devolvido por admin-manage-user (create/reset_password/set_email/delete). */
+type RespostaFuncao = {
+  error?: string; user_id?: string; role?: string; sessoes_encerradas?: number | null; redistribuicao?: Redistribuicao | null;
+} | null | undefined;
+/** equipe_excluir_previa: o que acontece com os leads dela se for excluída. */
+type Previa = {
+  email: string; leads: number; leads_ciclo_fechado: number; reservas: number; agendamentos_credito: number;
+  modo: string; elegiveis: string[]; n_elegiveis: number; destino_auto: "rodizio" | "gestor"; gestor_nome: string | null;
+};
+type Destino = "auto" | "rodizio" | "gestor";
 type ErroLike = {
   code?: string;
   message?: string;
@@ -124,6 +143,14 @@ export default function CrmEquipe() {
   const [senhaNova, setSenhaNova] = useState("");
   const [redefinindo, setRedefinindo] = useState(false);
   const [bloqueioDe, setBloqueioDe] = useState<Membro | null>(null);
+  const [edicaoDe, setEdicaoDe] = useState<Membro | null>(null);
+  const [edicao, setEdicao] = useState({ nome: "", email: "", senha: "" });
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [exclusaoDe, setExclusaoDe] = useState<Membro | null>(null);
+  const [previa, setPrevia] = useState<Previa | null>(null);
+  const [previaErro, setPreviaErro] = useState<string | null>(null);
+  const [destino, setDestino] = useState<Destino>("auto");
+  const [excluindo, setExcluindo] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -254,6 +281,109 @@ export default function CrmEquipe() {
     );
   };
 
+  // -------------------------------------------------------------- editar
+  const abrirEdicao = (m: Membro) => {
+    setEdicao({ nome: m.nome ?? "", email: m.email ?? "", senha: "" });
+    setEdicaoDe(m);
+  };
+
+  const salvarEdicao = async () => {
+    if (!edicaoDe) return;
+    const nome = edicao.nome.trim();
+    const email = edicao.email.trim().toLowerCase();
+    const senha = edicao.senha;
+    if (!nome) return toast.error("Informe o nome.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast.error("Informe um e-mail válido.");
+    if (senha && senha.length < MIN_SENHA) return toast.error(`A nova senha precisa ter ao menos ${MIN_SENHA} caracteres.`);
+    const mudouNome = nome !== (edicaoDe.nome ?? "").trim();
+    const mudouEmail = email !== (edicaoDe.email ?? "").trim().toLowerCase();
+    if (!mudouNome && !mudouEmail && !senha) { setEdicaoDe(null); return; }
+
+    setSalvandoEdicao(true);
+    // Mesmo cuidado do criarSdr: a senha sai do estado antes da chamada.
+    setEdicao((e) => ({ ...e, senha: "" }));
+    const feitos: string[] = [];
+    try {
+      if (mudouNome) {
+        const { error } = await rpc("equipe_editar_nome", { p_user_id: edicaoDe.user_id, p_nome: nome });
+        if (error) { toast.error(mensagemDe(error, "Não foi possível mudar o nome.")); return; }
+        feitos.push("nome");
+      }
+      if (mudouEmail) {
+        const { data, error: fnErr } = await supabase.functions.invoke<RespostaFuncao>("admin-manage-user", {
+          body: { action: "set_email", user_id: edicaoDe.user_id, email },
+        });
+        if (fnErr || data?.error) {
+          const motivo = await erroDaFuncao(data, fnErr, "Não foi possível mudar o e-mail.");
+          toast.error(feitos.length ? `Nome salvo, mas o e-mail não: ${motivo}` : motivo);
+          await carregar();
+          return;
+        }
+        feitos.push("e-mail");
+      }
+      if (senha) {
+        const { data, error: fnErr } = await supabase.functions.invoke<RespostaFuncao>("admin-manage-user", {
+          body: { action: "reset_password", user_id: edicaoDe.user_id, password: senha },
+        });
+        if (fnErr || data?.error) {
+          const motivo = await erroDaFuncao(data, fnErr, "Não foi possível redefinir a senha.");
+          toast.error(`${feitos.length ? `${feitos.join(" e ")} salvo(s), mas a senha não: ` : ""}${motivo} Digite a senha de novo.`);
+          await carregar();
+          return;
+        }
+        feitos.push("senha");
+      }
+      toast.success(
+        `${nome}: ${feitos.join(", ")} ${feitos.length > 1 ? "atualizados" : "atualizado"}.` +
+        (mudouEmail ? " Quem estava logada nessa conta foi desconectada." : "") +
+        (senha ? " Ela troca a senha no próximo acesso." : ""),
+      );
+      setEdicaoDe(null);
+      await carregar();
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  };
+
+  // ------------------------------------------------------------- excluir
+  const abrirExclusao = async (m: Membro) => {
+    setPrevia(null);
+    setPreviaErro(null);
+    setDestino("auto");
+    setExclusaoDe(m);
+    const { data, error } = await rpc("equipe_excluir_previa", { p_user_id: m.user_id });
+    if (error) {
+      setPreviaErro(mensagemDe(error, "Não foi possível calcular o que acontece com os leads dela."));
+      return;
+    }
+    setPrevia(data as Previa);
+  };
+
+  const excluir = async () => {
+    if (!exclusaoDe) return;
+    setExcluindo(true);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke<RespostaFuncao>("admin-manage-user", {
+        body: { action: "delete", user_id: exclusaoDe.user_id, destino },
+      });
+      if (fnErr || data?.error) {
+        toast.error(await erroDaFuncao(data, fnErr, "Não foi possível excluir a SDR."));
+        return;
+      }
+      const r = data?.redistribuicao;
+      const partes: string[] = [];
+      if (r) {
+        if (r.para_rodizio > 0) partes.push(`${r.para_rodizio} para outras SDRs`);
+        if (r.para_gestor > 0) partes.push(`${r.para_gestor} para o administrador`);
+      }
+      toast.success(`${exclusaoDe.nome} excluída.${partes.length ? ` Leads: ${partes.join(" e ")}.` : " Ela não tinha leads."}`);
+      setExclusaoDe(null);
+      await carregar();
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   // --------------------------------------------------------------- gate
   // Só `false` vindo do banco fecha a rota. Erro de rede/5xx na RPC NÃO é
   // "não é gestor": fica em carregando com "Tentar de novo" (nunca expulsar
@@ -367,6 +497,9 @@ export default function CrmEquipe() {
                         <TableCell className="text-muted-foreground">{fmtData(m.ultimo_login)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" variant="ghost" title="Editar nome, e-mail ou senha" disabled={emAcao} onClick={() => abrirEdicao(m)}>
+                              <Pencil size={14} />
+                            </Button>
                             <Button
                               size="sm" variant="ghost" title="Redefinir senha" disabled={emAcao}
                               onClick={() => { setSenhaNova(""); setSenhaDe(m); }}
@@ -382,6 +515,12 @@ export default function CrmEquipe() {
                                 {emAcao ? <Loader2 size={14} className="animate-spin" /> : <UserX size={14} />}
                               </Button>
                             )}
+                            <Button
+                              size="sm" variant="ghost" title="Excluir a conta" disabled={emAcao}
+                              className="text-destructive hover:text-destructive" onClick={() => abrirExclusao(m)}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -396,7 +535,9 @@ export default function CrmEquipe() {
         <p className="text-xs text-muted-foreground">
           Bloquear tira a SDR do sistema na hora (e do rodízio). Tirar do rodízio só interrompe a
           entrega de leads novos quando a distribuição automática estiver ligada — os que já são
-          dela continuam com ela.
+          dela continuam com ela. Para colocar outra pessoa no lugar de uma SDR, use Editar e troque
+          nome, e-mail e senha: os leads e o histórico continuam na mesma conta. Excluir apaga a
+          conta e redistribui os leads dela.
         </p>
       </div>
 
@@ -471,6 +612,121 @@ export default function CrmEquipe() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ------------------------------------------------------------- Editar */}
+      <Dialog open={!!edicaoDe} onOpenChange={(v) => { if (!salvandoEdicao && !v) { setEdicaoDe(null); setEdicao({ nome: "", email: "", senha: "" }); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar SDR</DialogTitle>
+            <DialogDescription>
+              Para colocar outra pessoa no lugar, troque o nome e o e-mail (e dê uma senha nova):
+              os leads e o histórico continuam nesta conta. Ao trocar o e-mail, quem estiver logada
+              nessa conta é desconectada.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" autoComplete="off" onSubmit={(e) => { e.preventDefault(); salvarEdicao(); }}>
+            <div className="space-y-1">
+              <Label htmlFor="sdr-edit-nome">Nome</Label>
+              <Input id="sdr-edit-nome" value={edicao.nome} onChange={(e) => setEdicao({ ...edicao, nome: e.target.value })} autoComplete="off" autoFocus />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="sdr-edit-email">E-mail</Label>
+              <Input id="sdr-edit-email" type="email" value={edicao.email} onChange={(e) => setEdicao({ ...edicao, email: e.target.value })} autoComplete="off" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="sdr-edit-senha">Nova senha temporária (opcional)</Label>
+              <Input
+                id="sdr-edit-senha" type="password" value={edicao.senha}
+                onChange={(e) => setEdicao({ ...edicao, senha: e.target.value })}
+                placeholder={`Deixe em branco para manter · mínimo ${MIN_SENHA} caracteres`} autoComplete="new-password"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Passe a senha por um canal seguro. Ela não fica salva aqui e a pessoa troca no próximo acesso.
+              </p>
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="ghost" onClick={() => setEdicaoDe(null)} disabled={salvandoEdicao}>Cancelar</Button>
+              <Button type="submit" disabled={salvandoEdicao}>
+                {salvandoEdicao ? <><Loader2 size={14} className="mr-1 animate-spin" /> Salvando...</> : "Salvar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ------------------------------------------------------------ Excluir */}
+      <AlertDialog open={!!exclusaoDe} onOpenChange={(v) => { if (!excluindo && !v) setExclusaoDe(null); }}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {exclusaoDe?.nome}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Isso apaga a conta {exclusaoDe?.email ? `(${exclusaoDe.email}) ` : ""}de vez. O histórico dela
+                  (relatórios, crédito de {previa ? previa.agendamentos_credito : "…"} consulta{previa?.agendamentos_credito === 1 ? "" : "s"},
+                  livro de atribuições) fica, mas sem o nome. <strong>Para trocar de pessoa, prefira Editar</strong> (nome,
+                  e-mail e senha).
+                </p>
+                {previaErro ? (
+                  <p className="text-destructive">{previaErro}</p>
+                ) : !previa ? (
+                  <p className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Conferindo os leads dela...</p>
+                ) : previa.leads === 0 && previa.reservas === 0 ? (
+                  <p>Ela não tem leads nem reservas: nada precisa ser redistribuído.</p>
+                ) : (
+                  <>
+                    <p>
+                      Ela tem <strong>{previa.leads}</strong> lead{previa.leads === 1 ? "" : "s"}
+                      {previa.leads_ciclo_fechado > 0 && ` (${previa.leads_ciclo_fechado} com o ciclo já encerrado, que vão direto para o administrador)`}
+                      {previa.reservas > 0 && ` e ${previa.reservas} reserva${previa.reservas === 1 ? "" : "s"} pendente${previa.reservas === 1 ? "" : "s"}`}.
+                      Para onde vão os demais?
+                    </p>
+                    <RadioGroup value={destino} onValueChange={(v) => setDestino(v as Destino)} className="gap-2">
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-2">
+                        <RadioGroupItem value="auto" className="mt-0.5" />
+                        <span>
+                          <span className="font-medium text-foreground">Automático</span>{" "}
+                          <span className="text-xs">
+                            {previa.destino_auto === "rodizio"
+                              ? `— rodízio ligado: revezam entre ${previa.elegiveis.join(", ")}.`
+                              : `— rodízio ${previa.modo === "ligado" ? "sem outra SDR elegível" : previa.modo}: voltam para o administrador${previa.gestor_nome ? ` (${previa.gestor_nome})` : ""} e entram no rodízio quando escreverem.`}
+                          </span>
+                        </span>
+                      </label>
+                      <label className={`flex items-start gap-2 rounded-lg border border-border p-2 ${previa.n_elegiveis === 0 ? "opacity-50" : "cursor-pointer"}`}>
+                        <RadioGroupItem value="rodizio" className="mt-0.5" disabled={previa.n_elegiveis === 0} />
+                        <span>
+                          <span className="font-medium text-foreground">Entre as outras SDRs do rodízio</span>{" "}
+                          <span className="text-xs">
+                            {previa.n_elegiveis === 0 ? "— nenhuma SDR ativa no rodízio agora." : `— ${previa.elegiveis.join(", ")}, revezando, mesmo com o motor ${previa.modo}.`}
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-2">
+                        <RadioGroupItem value="gestor" className="mt-0.5" />
+                        <span>
+                          <span className="font-medium text-foreground">Para o administrador</span>{" "}
+                          <span className="text-xs">— todos voltam para {previa.gestor_nome ?? "o administrador"} e entram no rodízio quando escreverem.</span>
+                        </span>
+                      </label>
+                    </RadioGroup>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={excluindo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={excluindo || (!previa && !previaErro)}
+              onClick={(e) => { e.preventDefault(); excluir(); }}
+            >
+              {excluindo ? <><Loader2 size={14} className="mr-1 animate-spin" /> Excluindo...</> : "Excluir e redistribuir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ----------------------------------------------------------- Bloquear */}
       <AlertDialog open={!!bloqueioDe} onOpenChange={(v) => !v && setBloqueioDe(null)}>

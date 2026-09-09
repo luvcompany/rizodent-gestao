@@ -12,7 +12,7 @@ Regras que valem acima de qualquer item: nunca mexer em `whatsapp-webhook`,
 desfechos de agendamento em lote sem autorização literal do dono; publicar são
 3 passos (migration, redeploy de function, publish do site) e conferir depois.
 
-Última atualização: 2026-09-09 11:40 UTC, pela sessão local.
+Última atualização: 2026-09-10 (madrugada, UTC), pela sessão local.
 
 ---
 
@@ -105,3 +105,23 @@ recebido; depois `rodizio_definir_modo('ligado')`. A distribuição inicial dos
 leads sem resposta é `rodizio_distribuir_sem_resposta_agora(true)` (dry-run)
 e depois `(false)`. Desligar = `rodizio_definir_modo('desligado')` (cancela
 reservas sem mover ninguém).
+
+## Item 8 — Editar/excluir SDR pelo gestor + carência antes de entregar ao administrador
+
+- status: em publicação pela sessão local (migrations `20260909210000_entrega_ao_gestor_com_carencia.sql`
+  e `20260909220000_equipe_editar_excluir.sql`, redeploy de `admin-manage-user`, site)
+- autorizado: sim (a sessão local publica e atualiza este item; a rotina só relata)
+
+Decisões do dono (09/09, noite): (a) o gestor edita nome/e-mail da SDR e
+redefine a senha no mesmo diálogo — trocar de pessoa é só isso, a conta e o
+histórico ficam; (b) excluir SDR redistribui os leads dela automaticamente
+(rodízio ligado → outras SDRs; senão → administrador) antes de apagar a
+conta; (c) depois do comparecimento o lead fica com a SDR por uma carência
+(padrão 24 h, ajustável no painel do rodízio) antes de passar ao
+administrador — cron `sdr-entrega-ao-gestor`.
+
+Conferir depois de publicado: `SELECT entrega_gestor_apos_min FROM
+crm_rodizio_config` = 1440; `cron.job` tem `sdr-entrega-ao-gestor`; as 5
+funções `equipe_*` novas existem; `crm_entregas_gestor` sem policy para
+authenticated. Nunca executar `equipe_redistribuir_leads` de verdade sem o
+dono mandar (o ensaio com RAISE no fim, descrito na migration, é seguro).
