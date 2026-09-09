@@ -5643,6 +5643,12 @@ export type Database = {
         Args: { p_bloquear: boolean; p_user_id: string }
         Returns: undefined
       }
+      equipe_editar_nome: {
+        Args: { p_nome: string; p_user_id: string }
+        Returns: undefined
+      }
+      equipe_encerrar_sessoes: { Args: { p_user_id: string }; Returns: number }
+      equipe_excluir_previa: { Args: { p_user_id: string }; Returns: Json }
       equipe_listar: {
         Args: never
         Returns: {
@@ -5656,10 +5662,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      equipe_redistribuir_leads: {
+        Args: { p_destino?: string; p_motivo?: string; p_user_id: string }
+        Returns: Json
+      }
       equipe_rodizio: {
         Args: { p_ativo: boolean; p_user_id: string }
         Returns: undefined
       }
+      equipe_sdr_exclusiva: { Args: { p_user_id: string }; Returns: string }
       funil_do_papel_do_usuario: {
         Args: { _pipeline_id: string }
         Returns: boolean
