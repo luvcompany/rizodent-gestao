@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGestorEquipe } from "@/hooks/useGestorEquipe";
+import RodizioPainel from "@/components/sdr/RodizioPainel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -299,16 +300,7 @@ export default function CrmEquipe() {
           </div>
         </header>
 
-        {/* Fase 1: o rodízio ainda não distribui nada — evita o gestor achar
-            que ligar o interruptor entrega leads na hora. */}
-        <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-          <Info size={16} className="mt-0.5 shrink-0" />
-          <p>
-            A distribuição automática de leads ainda está <strong>desligada</strong>. O interruptor
-            "Rodízio" só define quem vai participar quando ela for ligada — por enquanto, ligar ou
-            desligar não muda a entrega de leads. Leads continuam sendo atribuídos à mão pelo CRC.
-          </p>
-        </div>
+        <RodizioPainel aoMudar={carregar} />
 
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {erroLista ? (
