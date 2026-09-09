@@ -6013,6 +6013,23 @@ export type Database = {
           completed_orphans: number
         }[]
       }
+      relatorio_funis: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          agendamentos: number
+          compareceram: number
+          contratados: number
+          contratados_etapa: number
+          faltas: number
+          leads_novos: number
+          leads_total: number
+          nome: string
+          pagantes: number
+          pipeline_id: string
+          posicao: number
+          receita: number
+        }[]
+      }
       relatorio_sdr: {
         Args: { p_ate: string; p_de: string }
         Returns: {
