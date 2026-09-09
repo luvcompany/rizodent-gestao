@@ -201,3 +201,23 @@ pacientes ligados por `crm_lead_pacientes`, vínculo principal, sem orto
 recorrente e sem "não marketing"). Aba em Relatórios → Comparar funis
 (`src/components/relatorios/CompararFunisTab.tsx`): ordenação por conversão /
 receita, cartões de melhor conversão e maior receita, barras comparativas.
+
+## Item 12 — Expediente encerra sozinho + reset final da Bia + teste real em 10/09
+
+- status: concluído em 2026-09-09 ~22:00 UTC (migration `20260910003000_expediente_encerra_sozinho.sql`, site `index-CXgZeNmy.js`)
+- autorizado: sim
+
+`ponto_vigia` (cron 5 min) encerra a sessão aberta antes da saída de hoje da SDR
+(horário dela ou comercial) quando passa da saída + 1 min, salvo adiamento
+(`crm_rodizio_membros.encerramento_adiado_ate`); sessão aberta depois da saída
+(hora extra) fica para a regra das 23:59. Cartão da SDR: `ponto_fim_expediente`
+diz a hora; ao chegar, aviso com 15 s → "Encerrar agora" ou "Continuar por mais
+5 min" (`ponto_adiar_encerramento`), que reaparece ao fim dos 5 min. PEGADINHA:
+o agente do Lovable aplicou `ponto_vigia` com `r.user_id` na lista de colunas
+do INSERT (texto mangled) — recriei a função direto pelo query_database; ao
+aplicar migration grande pelo agente, conferir a definição no banco depois.
+Reset da Bia (22:00 UTC): 1 lead devolvido (Vitor Santos → administrador, etapa
+Relacionamento), 2 consultas de teste apagadas, 1 consulta real (RUBENILSON
+11/09) mantida sem o crédito dela, livro/ponto/pesquisa/mensagens de sistema
+limpos. O dono vai testar de verdade em 10/09: cadastrar horários das SDRs na
+aba Equipe (Editar) e ligar o rodízio no painel.
