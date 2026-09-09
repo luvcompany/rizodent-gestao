@@ -5200,6 +5200,7 @@ export type Database = {
       }
     }
     Functions: {
+      __aplica_migration_sdr: { Args: { p_sql: string }; Returns: undefined }
       admin_all_tenants_usage: {
         Args: never
         Returns: {
