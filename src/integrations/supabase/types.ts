@@ -6133,6 +6133,10 @@ export type Database = {
       }
       rodizio_processar_novos: { Args: never; Returns: number }
       rodizio_realocar_sem_resposta: { Args: never; Returns: number }
+      rodizio_solta_reservas: {
+        Args: { p_motivo: string; p_user_id: string }
+        Returns: number
+      }
       rodizio_tz: { Args: { p_tenant: string }; Returns: string }
       rpt_classify_origem: {
         Args: { p_ad_id: string; p_nome_anuncio: string; p_source: string }
@@ -6299,6 +6303,10 @@ export type Database = {
         Returns: boolean
       }
       sdr_entregas_pendentes: { Args: never; Returns: number }
+      sdr_marcar_comparecimento: {
+        Args: { p_appointment_id: string }
+        Returns: Json
+      }
       sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
