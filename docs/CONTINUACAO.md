@@ -188,3 +188,16 @@ desligar TAMBÉM as automações por tempo (no_response) das etapas de destino o
 mover para etapa sem automação. Os funis vazios (Arraiá, Indicação, Não
 contratados, Não Compareceu) sumiram em seguida — provavelmente apagados pelo
 dono na tela.
+
+## Item 11 — Aba "Comparar funis" nos Relatórios
+
+- status: concluído em 2026-09-09 ~21:10 UTC (migration `20260910002000_relatorio_funis.sql`, site)
+- autorizado: sim
+
+RPC `relatorio_funis(p_de, p_ate)` (gestão): por funil, base (leads hoje), novos
+no período, agendamentos/compareceram/faltas/contratados por data agendada,
+leads na etapa Contratado, receita e pagantes (pagamentos no período de
+pacientes ligados por `crm_lead_pacientes`, vínculo principal, sem orto
+recorrente e sem "não marketing"). Aba em Relatórios → Comparar funis
+(`src/components/relatorios/CompararFunisTab.tsx`): ordenação por conversão /
+receita, cartões de melhor conversão e maior receita, barras comparativas.
