@@ -108,9 +108,19 @@ reservas sem mover ninguém).
 
 ## Item 8 — Editar/excluir SDR pelo gestor + carência antes de entregar ao administrador
 
-- status: em publicação pela sessão local (migrations `20260909210000_entrega_ao_gestor_com_carencia.sql`
-  e `20260909220000_equipe_editar_excluir.sql`, redeploy de `admin-manage-user`, site)
-- autorizado: sim (a sessão local publica e atualiza este item; a rotina só relata)
+- status: concluído em 2026-09-09 16:10 UTC (migrations `20260909210000` e `20260909220000`
+  aplicadas, `admin-manage-user` republicada pelo agente do Lovable, site `index-CbXHq__g.js` no ar)
+- autorizado: sim
+
+Conferido: `entrega_gestor_apos_min` = 1440; cron `sdr-entrega-ao-gestor` a cada 5 min;
+8 funções novas presentes; `crm_entregas_gestor` sem policy para authenticated;
+`equipe_excluir_previa` como gestor devolve a prévia certa (Bia: 1 lead, modo
+desligado, elegíveis Júlia/Fabíola → destino automático = administrador); ensaio
+de `equipe_redistribuir_leads` (com RAISE no fim) moveu 1 lead ao administrador e
+foi desfeito sem rastro. Como SDR (sessão da Bia) a function responde 403 a
+create/set_email — isolamento mantido. O caminho completo do gestor pela tela
+(Editar / Excluir) ainda não foi exercitado por falta de sessão do gestor aberta;
+o dono testa na aba Equipe.
 
 Decisões do dono (09/09, noite): (a) o gestor edita nome/e-mail da SDR e
 redefine a senha no mesmo diálogo — trocar de pessoa é só isso, a conta e o
