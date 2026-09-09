@@ -1350,7 +1350,9 @@ Deno.serve(async (req) => {
                     pipeline_id: pipelineId,
                     stage_id: stage.id,
                     tenant_id: tenantId,
-                    source: referral ? "facebook_ad" : "whatsapp",
+                    source: referral
+                      ? "facebook_ad"
+                      : (detectarOrigemPorTexto(content) || "whatsapp"),
                     // Marca já como janela aberta — o lead nasce por causa de uma
                     // mensagem inbound que acabou de chegar. Sem isso, automações
                     // on_create disparadas antes do insert da mensagem veem
