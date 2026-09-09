@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -94,6 +95,7 @@ const SidePanelFallback = () => (
 
 export default function CrmConversa() {
   const { user, userRole } = useAuth();
+  const destinosSdr = useDestinosTransferenciaSdr(userRole === "sdr");
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -658,11 +660,28 @@ export default function CrmConversa() {
               Responsável
             </label>
             {userRole === "sdr" ? (
-              // SDR não transfere lead (RLS + gatilho + transfer-lead 403):
-              // só leitura, para não oferecer um seletor que sempre falha.
-              <div className="flex h-9 items-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
-                {profiles.find((p) => p.id === lead.assigned_to)?.nome || "Sem responsável"}
-              </div>
+              // SDR transfere só o lead DELA e só para SDR / administrador / pós-venda
+              // (RPC sdr_destinos_transferencia; a função transfer-lead revalida).
+              <Select
+                value={lead.assigned_to || "unassigned"}
+                onValueChange={(val) => handleTransferLead(val)}
+              >
+                <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                  <SelectValue placeholder="Selecionar responsável" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lead.assigned_to && !destinosSdr.some((d) => d.user_id === lead.assigned_to) && (
+                    <SelectItem value={lead.assigned_to}>
+                      {profiles.find((p) => p.id === lead.assigned_to)?.nome || "Responsável atual"}
+                    </SelectItem>
+                  )}
+                  {destinosSdr.map((d) => (
+                    <SelectItem key={d.user_id} value={d.user_id}>
+                      {d.nome}{d.papel === "gestor" ? " · Administrador" : d.papel === "posvenda" ? " · Pós-venda" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <Select
                 value={lead.assigned_to || "unassigned"}

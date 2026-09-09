@@ -80,10 +80,26 @@ Deno.serve(async (req) => {
     // EXCEÇÃO (decisão do dono): ela PODE encaminhar o lead DELA para a
     // pós-venda — é o caminho do lead fechado. Qualquer outro destino, ou lead
     // que não é dela, continua 403.
+    // Decisão do dono (09/09/2026): a SDR PODE transferir o lead DELA para outra
+    // SDR, para o gestor da equipe ou para a pós-venda — mas de forma alguma
+    // "rouba" lead: se o lead não é dela (outra dona ou sem dona), 403. Closer e
+    // recepção nunca são destino (o lead sumiria do número principal).
     if (!isPrivileged && callerRoles.has("sdr")) {
       const donaDoLead = (lead as any).assigned_to === user.id;
-      if (!donaDoLead || !targetIsPosvenda) {
-        return json({ error: "SDR não transfere lead" }, 403);
+      if (!donaDoLead) {
+        return json({ error: "Você só pode transferir leads que são seus." }, 403);
+      }
+      const { data: cfg } = await supabase
+        .from("crm_rodizio_config").select("gestor_user_id").eq("tenant_id", (lead as any).tenant_id).maybeSingle();
+      const alvoGestor = !!(cfg as any)?.gestor_user_id && (cfg as any).gestor_user_id === newUserId;
+      const alvoSdrExclusiva = targetIsSdr && targetRoles.every((r) => r === "sdr");
+      if (!alvoGestor && !alvoSdrExclusiva && !targetIsPosvenda) {
+        return json({ error: "Destino inválido: transfira para outra SDR, para o administrador ou para a pós-venda." }, 400);
+      }
+      const { data: alvoPerfil } = await supabase
+        .from("profiles").select("is_blocked").eq("id", newUserId).maybeSingle();
+      if ((alvoPerfil as any)?.is_blocked) {
+        return json({ error: "Esta pessoa está bloqueada e não pode receber leads." }, 400);
       }
     }
 

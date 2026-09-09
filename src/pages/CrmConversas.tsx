@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -272,6 +273,7 @@ interface ConversationsViewProps {
 
 function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user, userRole } = useAuth();
+  const destinosSdr = useDestinosTransferenciaSdr(userRole === "sdr");
   const { tenant } = useTenant();
   const cacheKey = tenant.id && user?.id ? `${tenant.id}:${user.id}` : null;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1704,11 +1706,28 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       Responsável
                     </label>
                     {userRole === "sdr" ? (
-                      // SDR não transfere lead (RLS + gatilho + transfer-lead 403):
-                      // só leitura, para não oferecer um seletor que sempre falha.
-                      <div className="flex h-9 items-center rounded-md border border-border bg-secondary px-3 text-sm text-foreground">
-                        {profiles.find((p) => p.id === selectedLead.assigned_to)?.nome || "Sem responsável"}
-                      </div>
+                      // SDR transfere só o lead DELA e só para SDR / administrador / pós-venda
+                      // (RPC sdr_destinos_transferencia; a função transfer-lead revalida).
+                      <Select
+                        value={selectedLead.assigned_to || "unassigned"}
+                        onValueChange={(val) => handleTransferLead(val)}
+                      >
+                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                          <SelectValue placeholder="Selecionar responsável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedLead.assigned_to && !destinosSdr.some((d) => d.user_id === selectedLead.assigned_to) && (
+                            <SelectItem value={selectedLead.assigned_to}>
+                              {profiles.find((p) => p.id === selectedLead.assigned_to)?.nome || "Responsável atual"}
+                            </SelectItem>
+                          )}
+                          {destinosSdr.map((d) => (
+                            <SelectItem key={d.user_id} value={d.user_id}>
+                              {d.nome}{d.papel === "gestor" ? " · Administrador" : d.papel === "posvenda" ? " · Pós-venda" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : (
                       <Select
                         value={selectedLead.assigned_to || "unassigned"}
