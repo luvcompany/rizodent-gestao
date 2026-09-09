@@ -246,7 +246,9 @@ export default function RecepcaoHome() {
                 O sino não é repetido: o cabeçalho do CRM, logo acima, já traz o
                 sino de verdade — e dois deles disputariam o mesmo canal de
                 tempo real, o que derrubava a tela inteira. */}
-            {userRole !== "closer" && (
+            {/* SDR não lê a tabela de conexões (RLS): o chip diria "desconectado"
+                mesmo com tudo ligado — some para ela. */}
+            {userRole !== "closer" && userRole !== "sdr" && (
               <span className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium shadow-sm sm:flex">
                 <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${conectado === false ? "bg-red-500" : "bg-emerald-500"}`} />
                 {conectado === false ? "WhatsApp desconectado" : "WhatsApp conectado"}
@@ -340,7 +342,7 @@ export default function RecepcaoHome() {
                     return (
                       <li key={l.id} className={i > 0 ? "border-t border-border" : ""}>
                         <button
-                          onClick={() => navigate(`/crm/conversa/${l.id}`)}
+                          onClick={() => navigate(`/crm/conversas?lead=${l.id}`)}
                           className="relative grid w-full grid-cols-[42px_1fr_auto] items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted/60"
                         >
                           {atrasada && (

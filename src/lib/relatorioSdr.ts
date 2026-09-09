@@ -190,3 +190,34 @@ export function fmtInt(n: number): string {
 export function taxaComparecimento(l: Pick<LinhaRelatorioSdr, "compareceram" | "faltas">): string {
   return fmtPct(l.compareceram, l.compareceram + l.faltas);
 }
+
+
+/** Ligações por SDR (RPC relatorio_sdr_ligacoes): SDR vê só a si; gestor vê todas. */
+export type LigacoesSdr = {
+  user_id: string;
+  ligacoes_feitas: number;
+  ligacoes_atendidas: number;
+  duracao_media_seg: number;
+  telefonia_feitas: number;
+  whatsapp_feitas: number;
+};
+
+export async function buscarLigacoesSdr(de: string, ate: string, userId?: string | null): Promise<LigacoesSdr[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("relatorio_sdr_ligacoes", {
+    p_de: de, p_ate: ate, p_user_id: userId ?? null,
+  });
+  if (error) {
+    if (rpcAusente(error)) return [];
+    throw new Error(mensagemDeErroRpc(error, "Não foi possível carregar as ligações."));
+  }
+  const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    user_id: String(r.user_id),
+    ligacoes_feitas: num(r.ligacoes_feitas),
+    ligacoes_atendidas: num(r.ligacoes_atendidas),
+    duracao_media_seg: num(r.duracao_media_seg),
+    telefonia_feitas: num(r.telefonia_feitas),
+    whatsapp_feitas: num(r.whatsapp_feitas),
+  }));
+}

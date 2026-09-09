@@ -5,7 +5,7 @@ import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity, Phone, Users, ListChecks,
+  Activity, Phone, Users,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGestorEquipe } from "@/hooks/useGestorEquipe";
@@ -52,7 +52,6 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
       { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
-      { to: "/crm/calendario", search: "?view=tarefas", icon: ListChecks, label: "Tarefas", badgeKey: "tasks" },
       { to: "/crm/ligacoes", icon: Phone, label: "Ligações" },
       // Só os números dela (RPC relatorio_sdr_minha) — não é a aba Relatórios do crc.
       { to: "/crm/sdr/desempenho", icon: BarChart3, label: "Meu desempenho" },

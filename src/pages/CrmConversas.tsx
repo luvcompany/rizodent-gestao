@@ -289,6 +289,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  // ?lead=<id> (fila de atendimento da home): abre o lead já selecionado na lista.
+  useEffect(() => {
+    const leadDaUrl = searchParams.get("lead");
+    if (leadDaUrl) setSelectedLeadId(leadDaUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
   const isCrmMobile = useIsCrmMobile();
