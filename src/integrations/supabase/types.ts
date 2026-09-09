@@ -5929,6 +5929,17 @@ export type Database = {
           user_id: string
         }[]
       }
+      relatorio_sdr_ligacoes: {
+        Args: { p_ate: string; p_de: string; p_user_id?: string }
+        Returns: {
+          duracao_media_seg: number
+          ligacoes_atendidas: number
+          ligacoes_feitas: number
+          telefonia_feitas: number
+          user_id: string
+          whatsapp_feitas: number
+        }[]
+      }
       relatorio_sdr_minha: {
         Args: { p_ate: string; p_de: string }
         Returns: {
