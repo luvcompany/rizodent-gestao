@@ -1758,6 +1758,51 @@ export type Database = {
           },
         ]
       }
+      crm_entregas_gestor: {
+        Row: {
+          criado_em: string
+          de_user_id: string
+          entregar_em: string
+          lead_id: string
+          mensagem: string | null
+          motivo: string | null
+          tenant_id: string
+        }
+        Insert: {
+          criado_em?: string
+          de_user_id: string
+          entregar_em: string
+          lead_id: string
+          mensagem?: string | null
+          motivo?: string | null
+          tenant_id: string
+        }
+        Update: {
+          criado_em?: string
+          de_user_id?: string
+          entregar_em?: string
+          lead_id?: string
+          mensagem?: string | null
+          motivo?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_entregas_gestor_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_entregas_gestor_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       crm_followup_configs: {
         Row: {
           created_at: string
@@ -2859,6 +2904,7 @@ export type Database = {
           auto_encerrar: string
           corte_ate: string
           entrada_todas_etapas: boolean
+          entrega_gestor_apos_min: number
           etapas_entrada: string[] | null
           funil_id: string | null
           gestor_user_id: string | null
@@ -2876,6 +2922,7 @@ export type Database = {
           auto_encerrar?: string
           corte_ate?: string
           entrada_todas_etapas?: boolean
+          entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
           funil_id?: string | null
           gestor_user_id?: string | null
@@ -2893,6 +2940,7 @@ export type Database = {
           auto_encerrar?: string
           corte_ate?: string
           entrada_todas_etapas?: boolean
+          entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
           funil_id?: string | null
           gestor_user_id?: string | null
@@ -5973,6 +6021,10 @@ export type Database = {
         Returns: number
       }
       rodizio_corte_9h: { Args: never; Returns: number }
+      rodizio_definir_carencia_entrega: {
+        Args: { p_min: number }
+        Returns: Json
+      }
       rodizio_definir_modo: { Args: { p_modo: string }; Returns: Json }
       rodizio_definir_tempo_realocacao: {
         Args: { p_min: number }
@@ -6219,6 +6271,10 @@ export type Database = {
           ticket_por_pagamento: number
         }[]
       }
+      sdr_agenda_entrega_ao_gestor: {
+        Args: { p_lead_id: string; p_mensagem: string; p_motivo: string }
+        Returns: string
+      }
       sdr_destinos_transferencia: {
         Args: never
         Returns: {
@@ -6231,6 +6287,7 @@ export type Database = {
         Args: { p_lead_id: string; p_mensagem: string; p_motivo: string }
         Returns: boolean
       }
+      sdr_entregas_pendentes: { Args: never; Returns: number }
       sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
