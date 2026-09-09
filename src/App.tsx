@@ -47,6 +47,12 @@ const RecepcaoConexoes = lazyWithPreload(() => import("./pages/recepcao/Recepcao
 const CrmCalendario = lazyWithPreload(() => import("./pages/CrmCalendario"));
 const CrmLigacoes = lazyWithPreload(() => import("./pages/CrmLigacoes"));
 const CrmEquipe = lazyWithPreload(() => import("./pages/CrmEquipe"));
+// Rodízio de SDRs — Fases 2 e 5: telas do gestor (relatório, pesquisa de
+// satisfação) e "Meu desempenho" da SDR. As páginas repetem o gate por dentro
+// (is_gestor_equipe / RPC só da própria SDR); o menu fica em CrmLayout.
+const CrmRelatorioSdr = lazyWithPreload(() => import("./pages/CrmRelatorioSdr"));
+const CrmPesquisaConfig = lazyWithPreload(() => import("./pages/CrmPesquisaConfig"));
+const SdrMeuDesempenho = lazyWithPreload(() => import("./pages/SdrMeuDesempenho"));
 
 const CrmBots = lazyWithPreload(() => import("./pages/CrmBots"));
 const CrmBotEditor = lazyWithPreload(() => import("./pages/CrmBotEditor"));
@@ -265,8 +271,12 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/closer/pacientes" element={withRouteSuspense(<CloserPacientes />)} />
               {/* SDR do rodízio: MESMA tela-base da recepção (a RLS limita aos leads dela). */}
               <Route path="/crm/sdr" element={withRouteSuspense(<RecepcaoHome />)} />
+              {/* Só os números dela (relatorio_sdr_minha); fica sob /crm/sdr, prefixo liberado no ProtectedRoute. */}
+              <Route path="/crm/sdr/desempenho" element={withRouteSuspense(<SdrMeuDesempenho />)} />
               {/* Gestão das SDRs — a página se fecha sozinha se is_gestor_equipe() for false. */}
               <Route path="/crm/equipe" element={withRouteSuspense(<CrmEquipe />)} />
+              <Route path="/crm/equipe/relatorio-sdr" element={withRouteSuspense(<CrmRelatorioSdr />)} />
+              <Route path="/crm/equipe/pesquisa" element={withRouteSuspense(<CrmPesquisaConfig />)} />
               <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />

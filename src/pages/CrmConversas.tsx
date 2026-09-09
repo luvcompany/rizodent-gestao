@@ -26,6 +26,7 @@ import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
 import ChatAccountSeparator from "@/components/chat/ChatAccountSeparator";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
+import FecharConversaButton, { ConversaFechadaBadge, FecharConversaMenuItem } from "@/components/chat/FecharConversaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
 import { parseCallPermissionReply, formatCallPermissionReply, formatCallPermissionPreview } from "@/lib/callPermissionReply";
@@ -82,6 +83,9 @@ type LeadConversation = {
   servico_interesse?: string | null;
   instagram_username?: string | null;
   instagram_profile_pic_url?: string | null;
+  /** Fase 2 do rodízio: "Fechar conversa" (NULL = aberta). A RPC da lista não
+   *  devolve a coluna; ela é hidratada ao selecionar o lead. */
+  conversa_fechada_em?: string | null;
 };
 
 type PipelineWithRoles = { id: string; name: string; allowed_roles: string[] | null; is_instagram?: boolean | null };
@@ -158,7 +162,7 @@ const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao rec
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked, whatsapp_number_id";
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked, whatsapp_number_id, conversa_fechada_em";
 // Colunas completas p/ o lead selecionado (inclui notes/value).
 const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
 
@@ -379,6 +383,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     setSelectedLead(lead);
     // On mobile: opening a lead should land on the chat view, not the details panel.
     setMobileShowDetails(false);
+  }, []);
+
+  /** "Fechar conversa" (Fase 2): reflete a coluna na lista e no lead aberto. */
+  const atualizarFechada = useCallback((leadId: string, quando: string | null) => {
+    setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, conversa_fechada_em: quando } : l)));
+    setSelectedLead((prev) => (prev && prev.id === leadId ? { ...prev, conversa_fechada_em: quando } : prev));
   }, []);
 
   // ===== Bot Active Execution State =====
@@ -684,11 +694,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     const lead = leads.find((l) => l.id === selectedLeadId) || null;
     setSelectedLead(lead);
     // Hidrata campos pesados ausentes na lista (notes/value) sob demanda.
-    if (lead && ((lead as any).notes === undefined || (lead as any).value === undefined)) {
+    if (lead && ((lead as any).notes === undefined || (lead as any).value === undefined || lead.conversa_fechada_em === undefined)) {
       let cancelled = false;
       supabase
         .from("crm_leads")
-        .select("id, notes, value")
+        .select("id, notes, value, conversa_fechada_em")
         .eq("id", selectedLeadId)
         .maybeSingle()
         .then(({ data }) => {
@@ -1288,6 +1298,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                               </DropdownMenuItem>
                             )}
                             {isInbound && <DropdownMenuSeparator />}
+                            <FecharConversaMenuItem
+                              leadId={lead.id}
+                              fechadaEm={lead.conversa_fechada_em}
+                              onChange={(quando) => atualizarFechada(lead.id, quando)}
+                            />
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
                               onClick={async (e) => {
@@ -1402,6 +1417,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         {currentStage.name}
                       </span>
                     )}
+                    <ConversaFechadaBadge fechadaEm={selectedLead.conversa_fechada_em} />
                   </div>
                 </div>
                 {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
@@ -1458,6 +1474,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </TooltipContent>
                   </Tooltip>
                 )}
+                {/* Fechar/reabrir conversa (Fase 2 do rodízio): dona do lead ou
+                    gestão; some para os demais papéis e o banco repete a checagem. */}
+                <FecharConversaButton
+                  leadId={selectedLead.id}
+                  fechadaEm={selectedLead.conversa_fechada_em}
+                  onChange={(quando) => atualizarFechada(selectedLead.id, quando)}
+                />
                 {/* SDR: IA fora do perfil — ai-conversation-assist devolve 403 e
                     ai_conversation_analysis está bloqueada. Sem isto, o botão ✨
                     ficava permanente e só produzia erro sem motivo (mesmo cerco já

@@ -30,6 +30,7 @@ import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
 import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
+import FecharConversaButton, { ConversaFechadaBadge } from "@/components/chat/FecharConversaButton";
 import { ArrowLeft, FileText, Tag, Search, Bot, Square, Play, Loader2, UserRoundCog, Ban, Copy, Check, Phone, BellRing } from "lucide-react";
 import { getLeadChannel } from "@/lib/leadChannel";
 import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
@@ -60,6 +61,9 @@ type Lead = {
   nome_anuncio?: string | null;
   cidade?: string | null;
   servico_interesse?: string | null;
+  /** Fase 2 do rodízio: "Fechar conversa" (NULL = aberta). */
+  conversa_fechada_em?: string | null;
+  conversa_fechada_por?: string | null;
 };
 
 // Global profiles cache shared with CrmConversas
@@ -163,7 +167,7 @@ export default function CrmConversa() {
         }
         return await supabase
           .from("crm_leads")
-          .select("id, name, phone, instagram_user_id, active_channel, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name")
+          .select("id, name, phone, instagram_user_id, active_channel, stage_id, pipeline_id, tags, source, value, notes, created_at, updated_at, assigned_to, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, cidade, servico_interesse, ad_account_id, ad_account_name, conversa_fechada_em, conversa_fechada_por")
           .eq("id", id)
           .single();
       });
@@ -366,6 +370,7 @@ export default function CrmConversa() {
                   {currentStage.name}
                 </span>
               )}
+              <ConversaFechadaBadge fechadaEm={lead.conversa_fechada_em} />
             </div>
           </div>
           {/* Ações do lead — ícone compacto + tooltip (ícone+nome no hover) p/ não estourar o header em telas/painéis estreitos */}
@@ -414,6 +419,13 @@ export default function CrmConversa() {
               </TooltipContent>
             </Tooltip>
           )}
+          {/* Fechar/reabrir conversa (Fase 2 do rodízio): dona do lead ou gestão;
+              o componente some para os demais papéis e o banco repete a checagem. */}
+          <FecharConversaButton
+            leadId={lead.id}
+            fechadaEm={lead.conversa_fechada_em}
+            onChange={(quando) => setLead((prev) => (prev ? { ...prev, conversa_fechada_em: quando } : prev))}
+          />
           <AlertDialog>
             <Tooltip delayDuration={200}>
               <TooltipTrigger asChild>

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
+import SdrExpediente from "@/components/sdr/SdrExpediente";
 
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
@@ -264,6 +265,10 @@ export default function RecepcaoHome() {
 
         {/* Faturamento do closer — só para ele; a recepção não lança pagamentos. */}
         {userRole === "closer" && <CloserMetricas />}
+
+        {/* Ponto de expediente da SDR (Fase 2 do rodízio) — só para ela: a
+            recepção e o closer não batem ponto aqui. */}
+        {userRole === "sdr" && <SdrExpediente />}
 
         {/* indicadores */}
         <section className="grid grid-cols-1 gap-3.5 md:grid-cols-3">

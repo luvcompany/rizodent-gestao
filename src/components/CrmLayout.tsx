@@ -53,6 +53,8 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
       { to: "/crm/calendario", search: "?view=tarefas", icon: ListChecks, label: "Tarefas", badgeKey: "tasks" },
+      // Só os números dela (RPC relatorio_sdr_minha) — não é a aba Relatórios do crc.
+      { to: "/crm/sdr/desempenho", icon: BarChart3, label: "Meu desempenho" },
       {
         label: "Ferramentas",
         icon: Bot,
@@ -138,8 +140,18 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
   );
   // Equipe (SDRs do rodízio): só para quem o servidor confirma como gestor
   // (is_gestor_equipe). Papel não basta — o usuário do Meta App Review é crc.
+  // Grupo com as três telas do gestor: cadastro das SDRs, relatório do rodízio
+  // e pesquisa de satisfação (cada página repete o gate por dentro).
   if (isGestorEquipe) {
-    items.push({ to: "/crm/equipe", icon: Users, label: "Equipe" });
+    items.push({
+      label: "Equipe",
+      icon: Users,
+      children: [
+        { to: "/crm/equipe", icon: Users, label: "SDRs", end: true },
+        { to: "/crm/equipe/relatorio-sdr", icon: BarChart3, label: "Relatório das SDRs" },
+        { to: "/crm/equipe/pesquisa", icon: Heart, label: "Pesquisa de satisfação" },
+      ],
+    });
   }
   items.push(
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
@@ -171,7 +183,7 @@ const CrmLayout = () => {
   const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
   const [unreadCount, setUnreadCount] = useState(0);
   const [todayTaskCount, setTodayTaskCount] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas"]));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas", "Equipe"]));
   const unreadFetchSeq = useRef(0);
   const unreadRefreshTimer = useRef<number | null>(null);
   const crmNavItems = buildCrmNavItems(userRole, isGestorEquipe);
@@ -290,6 +302,7 @@ const CrmLayout = () => {
               <NavLink
                 key={child.to}
                 to={child.to}
+                end={child.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
