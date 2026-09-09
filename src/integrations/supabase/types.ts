@@ -2393,6 +2393,8 @@ export type Database = {
           phone: string | null
           pipeline_id: string
           position: number
+          rodizio_reservado_em: string | null
+          rodizio_reservado_para: string | null
           score: number
           servico_interesse: string | null
           source: string | null
@@ -2443,6 +2445,8 @@ export type Database = {
           phone?: string | null
           pipeline_id: string
           position?: number
+          rodizio_reservado_em?: string | null
+          rodizio_reservado_para?: string | null
           score?: number
           servico_interesse?: string | null
           source?: string | null
@@ -2493,6 +2497,8 @@ export type Database = {
           phone?: string | null
           pipeline_id?: string
           position?: number
+          rodizio_reservado_em?: string | null
+          rodizio_reservado_para?: string | null
           score?: number
           servico_interesse?: string | null
           source?: string | null
@@ -2852,9 +2858,12 @@ export type Database = {
         Row: {
           auto_encerrar: string
           corte_ate: string
+          etapas_entrada: string[] | null
+          funil_id: string | null
           gestor_user_id: string | null
           hora_corte: string
           modo: string
+          modo_alterado_em: string | null
           pausa_alerta_min: number
           ponteiro_user_id: string | null
           preferir_em_expediente: boolean
@@ -2865,9 +2874,12 @@ export type Database = {
         Insert: {
           auto_encerrar?: string
           corte_ate?: string
+          etapas_entrada?: string[] | null
+          funil_id?: string | null
           gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
+          modo_alterado_em?: string | null
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
@@ -2878,9 +2890,12 @@ export type Database = {
         Update: {
           auto_encerrar?: string
           corte_ate?: string
+          etapas_entrada?: string[] | null
+          funil_id?: string | null
           gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
+          modo_alterado_em?: string | null
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
@@ -2888,7 +2903,15 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "crm_rodizio_config_funil_id_fkey"
+            columns: ["funil_id"]
+            isOneToOne: false
+            referencedRelation: "crm_pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_rodizio_membros: {
         Row: {
@@ -5200,7 +5223,6 @@ export type Database = {
       }
     }
     Functions: {
-      __aplica_migration_sdr: { Args: { p_sql: string }; Returns: undefined }
       admin_all_tenants_usage: {
         Args: never
         Returns: {
@@ -5336,6 +5358,76 @@ export type Database = {
         }
         Returns: string
       }
+      conversa_fechar: {
+        Args: { p_enviar_pesquisa?: boolean; p_lead_id: string }
+        Returns: Json
+      }
+      conversa_lead_alcancavel: {
+        Args: { p_lead_id: string }
+        Returns: {
+          active_channel: string | null
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_id: string | null
+          assigned_to: string | null
+          automation_paused: boolean | null
+          blocked_at: string | null
+          blocked_by: string | null
+          cidade: string | null
+          comment_only: boolean
+          conversa_fechada_em: string | null
+          conversa_fechada_por: string | null
+          created_at: string
+          descricao_anuncio: string | null
+          distribuido_em: string | null
+          first_inbound_at: string | null
+          follow_up_count: number | null
+          has_task: boolean
+          id: string
+          ig_account_uuid: string | null
+          imagem_origem: string | null
+          instagram_profile_pic_url: string | null
+          instagram_user_id: string | null
+          instagram_username: string | null
+          is_blocked: boolean
+          last_inbound_at: string | null
+          last_message: string | null
+          last_message_at: string | null
+          last_outbound_at: string | null
+          link_anuncio: string | null
+          name: string
+          nome_anuncio: string | null
+          notes: string | null
+          paciente_id: string | null
+          phone: string | null
+          pipeline_id: string
+          position: number
+          rodizio_reservado_em: string | null
+          rodizio_reservado_para: string | null
+          score: number
+          servico_interesse: string | null
+          source: string | null
+          stage_id: string
+          tags: string[] | null
+          task_overdue: boolean
+          tenant_id: string | null
+          titulo_anuncio: string | null
+          updated_at: string
+          value: number | null
+          whatsapp_number_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "crm_leads"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      conversa_lead_visivel: {
+        Args: { p_lead: Database["public"]["Tables"]["crm_leads"]["Row"] }
+        Returns: boolean
+      }
+      conversa_reabrir: { Args: { p_lead_id: string }; Returns: Json }
       crm_cleanup_contratado_sem_pagamento: {
         Args: { p_tenant_id: string }
         Returns: {
@@ -5572,6 +5664,8 @@ export type Database = {
           phone: string | null
           pipeline_id: string
           position: number
+          rodizio_reservado_em: string | null
+          rodizio_reservado_para: string | null
           score: number
           servico_interesse: string | null
           source: string | null
@@ -5692,6 +5786,60 @@ export type Database = {
         Args: { p_paciente_id: string; p_recorrencia_orto: boolean }
         Returns: boolean
       }
+      pesquisa_config_ler: { Args: never; Returns: Json }
+      pesquisa_config_salvar: {
+        Args: { p_ativa: boolean; p_escala: string; p_texto: string }
+        Returns: Json
+      }
+      pesquisa_envio_falhou: {
+        Args: { p_resposta_id: string }
+        Returns: boolean
+      }
+      ponto_abrir: { Args: never; Returns: Json }
+      ponto_encerrar: { Args: never; Returns: Json }
+      ponto_exige_sdr: { Args: never; Returns: undefined }
+      ponto_fuso_do_tenant: { Args: { p_tenant: string }; Returns: string }
+      ponto_leads_desde: {
+        Args: { p_desde: string; p_tenant: string; p_user: string }
+        Returns: number
+      }
+      ponto_meu_estado: { Args: never; Returns: Json }
+      ponto_pausar: { Args: { p_motivo: string }; Returns: Json }
+      ponto_relatorio: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          abriu_em: string
+          dia: string
+          encerrado_auto: boolean
+          encerrou_em: string
+          estado: string
+          minutos_pausa: number
+          minutos_trabalhados: number
+          nome: string
+          pausas: number
+          user_id: string
+        }[]
+      }
+      ponto_retomar: { Args: never; Returns: Json }
+      ponto_sessoes: {
+        Args: { p_ate: string; p_de: string; p_tenant: string; p_user: string }
+        Returns: {
+          abriu_em: string
+          encerrado_auto: boolean
+          encerrou_em: string
+          estado: string
+          minutos_pausa: number
+          minutos_trabalhados: number
+          motivo_pausa: string
+          pausa_desde: string
+          pausas: number
+          segundos_pausa: number
+          segundos_trabalhados: number
+          ultimo_evento_em: string
+          ultimo_evento_id: string
+        }[]
+      }
+      ponto_vigia: { Args: never; Returns: Json }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
       posvenda_padrao_do_tenant: {
         Args: never
@@ -5713,8 +5861,191 @@ export type Database = {
           completed_orphans: number
         }[]
       }
+      relatorio_sdr: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          agend_cancelados: number
+          agendamentos: number
+          bloqueada: boolean
+          compareceram: number
+          contratados: number
+          conversas_fechadas: number
+          email: string
+          faltas: number
+          is_total: boolean
+          leads_recebidos: number
+          leads_respondidos: number
+          minutos_expediente: number
+          minutos_pausa: number
+          no_rodizio: boolean
+          nome: string
+          pesquisa_nota_media: number
+          pesquisa_respostas: number
+          resp_amostra: number
+          resp_media_seg: number
+          resp_mediana_seg: number
+          user_id: string
+        }[]
+      }
+      relatorio_sdr_calc: {
+        Args: {
+          p_ate: string
+          p_de: string
+          p_tenant: string
+          p_total: boolean
+          p_user: string
+        }
+        Returns: {
+          agend_cancelados: number
+          agendamentos: number
+          bloqueada: boolean
+          compareceram: number
+          contratados: number
+          conversas_fechadas: number
+          email: string
+          faltas: number
+          is_total: boolean
+          leads_recebidos: number
+          leads_respondidos: number
+          minutos_expediente: number
+          minutos_pausa: number
+          no_rodizio: boolean
+          nome: string
+          pesquisa_nota_media: number
+          pesquisa_respostas: number
+          resp_amostra: number
+          resp_media_seg: number
+          resp_mediana_seg: number
+          user_id: string
+        }[]
+      }
+      relatorio_sdr_minha: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          agend_cancelados: number
+          agendamentos: number
+          bloqueada: boolean
+          compareceram: number
+          contratados: number
+          conversas_fechadas: number
+          email: string
+          faltas: number
+          is_total: boolean
+          leads_recebidos: number
+          leads_respondidos: number
+          minutos_expediente: number
+          minutos_pausa: number
+          no_rodizio: boolean
+          nome: string
+          pesquisa_nota_media: number
+          pesquisa_respostas: number
+          resp_amostra: number
+          resp_media_seg: number
+          resp_mediana_seg: number
+          user_id: string
+        }[]
+      }
       restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
       rizodent_infer_cidade: { Args: { p_texto: string }; Returns: string }
+      rodizio_aplicar_lote_ao_abrir: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
+      rodizio_corte_9h: { Args: never; Returns: number }
+      rodizio_definir_modo: { Args: { p_modo: string }; Returns: Json }
+      rodizio_dia_util: {
+        Args: { p_data: string; p_tenant: string }
+        Returns: boolean
+      }
+      rodizio_distribuir_sem_resposta_agora: {
+        Args: { p_dry_run?: boolean; p_tenant?: string }
+        Returns: {
+          acao: string
+          etapa: string
+          lead_id: string
+          lead_nome: string
+          lead_telefone: string
+          para_nome: string
+          para_user_id: string
+          ultima_mensagem_em: string
+        }[]
+      }
+      rodizio_em_expediente: {
+        Args: { p_quando?: string; p_tenant: string }
+        Returns: boolean
+      }
+      rodizio_escolher: {
+        Args: { p_cargas: number[]; p_ids: string[]; p_ponteiro: string }
+        Returns: string
+      }
+      rodizio_estado: { Args: never; Returns: Json }
+      rodizio_etapas_entrada: { Args: { p_tenant: string }; Returns: string[] }
+      rodizio_feriado: {
+        Args: { p_data: string; p_tenant: string }
+        Returns: boolean
+      }
+      rodizio_fonte_excluida: { Args: { p_source: string }; Returns: boolean }
+      rodizio_funil: { Args: { p_tenant: string }; Returns: string }
+      rodizio_lead_na_fila: {
+        Args: {
+          p_admin: string
+          p_etapas: string[]
+          p_funil: string
+          p_lead: Database["public"]["Tables"]["crm_leads"]["Row"]
+          p_numero: string
+        }
+        Returns: boolean
+      }
+      rodizio_livro: {
+        Args: {
+          p_de: string
+          p_fase: string
+          p_lead: Database["public"]["Tables"]["crm_leads"]["Row"]
+          p_motivo: string
+          p_para: string
+          p_run: string
+        }
+        Returns: undefined
+      }
+      rodizio_msg_humana: {
+        Args: { m: Database["public"]["Tables"]["messages"]["Row"] }
+        Returns: boolean
+      }
+      rodizio_msg_sistema: {
+        Args: { p_lead_id: string; p_tenant: string; p_texto: string }
+        Returns: undefined
+      }
+      rodizio_nome: { Args: { p_user: string }; Returns: string }
+      rodizio_notifica: {
+        Args: {
+          p_corpo: string
+          p_dedupe?: string
+          p_lead_id: string
+          p_titulo: string
+          p_user: string
+        }
+        Returns: undefined
+      }
+      rodizio_numero_principal: { Args: { p_tenant: string }; Returns: string }
+      rodizio_pool: {
+        Args: { p_tenant: string }
+        Returns: {
+          aberta: boolean
+          carga: number
+          estado: string
+          nome: string
+          ordem: number
+          presente: boolean
+          user_id: string
+        }[]
+      }
+      rodizio_processar_lead: {
+        Args: { p_lead_id: string; p_origem: string; p_run?: string }
+        Returns: string
+      }
+      rodizio_processar_novos: { Args: never; Returns: number }
+      rodizio_realocar_sem_resposta: { Args: never; Returns: number }
+      rodizio_tz: { Args: { p_tenant: string }; Returns: string }
       rpt_classify_origem: {
         Args: { p_ad_id: string; p_nome_anuncio: string; p_source: string }
         Returns: string
