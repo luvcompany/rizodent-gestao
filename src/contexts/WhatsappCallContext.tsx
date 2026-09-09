@@ -122,7 +122,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // whatsapp_call_permissions estão bloqueadas para ela no banco (molde
   // closer/recepção) e whatsapp-call-signaling devolve 403. Ligar a UI aqui
   // deixaria o canal realtime mudo e o claim da chamada devolvendo 0 linhas.
-  const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin";
+  const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin" || userRole === "sdr";
   useEffect(() => {
     if (!user || !tenantId) return;
     let cancelled = false;
@@ -593,10 +593,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // devolve 403 para o papel dela). Com a regra no contexto, nenhuma tela
   // precisa lembrar: CrmConversa e CrmConversas já perguntam por aqui.
   const podeLigarPorWhatsapp = useCallback(
+    // SDR liga (decisão do dono, 09/09): a RLS de whatsapp_calls e a function
+    // limitam aos leads dela, então aqui só vale a regra de coexistência.
     (whatsappNumberId?: string | null) =>
-      userRole !== "sdr" &&
-      (!whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId))),
-    [numerosCoexistencia, userRole],
+      !whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId)),
+    [numerosCoexistencia],
   );
 
   const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp]);

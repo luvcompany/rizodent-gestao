@@ -51,6 +51,7 @@ const SDR_PREFIXES = [
   "/crm/conversas",
   "/crm/conversa",
   "/crm/calendario",
+  "/crm/ligacoes",
   "/crm/modelos",
   "/crm/respostas-rapidas",
   "/crm/bots",

@@ -63,6 +63,8 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const [alvo, setAlvo] = useState<Modo | null>(null);
   const [mudando, setMudando] = useState(false);
   const [previa, setPrevia] = useState<LinhaDistribuicao[] | null>(null);
+  const [minutos, setMinutos] = useState<string>("");
+  const [salvandoMin, setSalvandoMin] = useState(false);
   const [distribuindo, setDistribuindo] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -72,6 +74,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     if (error) { setErro(mensagemDeErroRpc(error, "Não foi possível ler o estado do rodízio.", TEXTO_AUSENTE)); return; }
     setErro(null);
     setEstado(data as Estado);
+    setMinutos(String((data as Estado).realocar_sem_resposta_min ?? ""));
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
@@ -114,6 +117,17 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     toast.success(`${movidos} lead${movidos === 1 ? "" : "s"} sem resposta distribuído${movidos === 1 ? "" : "s"}.`);
     await carregar();
     aoMudar?.();
+  };
+
+  const salvarMinutos = async () => {
+    const n = Number(minutos);
+    if (!Number.isInteger(n) || n < 0 || n > 240) { toast.error("Informe um tempo entre 0 (desligado) e 240 minutos."); return; }
+    setSalvandoMin(true);
+    const { error } = await rpc("rodizio_definir_tempo_realocacao", { p_min: n });
+    setSalvandoMin(false);
+    if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar o tempo.", TEXTO_AUSENTE)); return; }
+    toast.success(n === 0 ? "Realocação por silêncio desligada." : `Realocação após ${n} min sem resposta humana.`);
+    await carregar();
   };
 
   if (erro) {
@@ -193,6 +207,19 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
           </Table>
         </div>
       )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+        <span className="text-muted-foreground">Realocar lead sem resposta humana após</span>
+        <input
+          type="number" min={0} max={240} value={minutos} onChange={(e) => setMinutos(e.target.value)}
+          className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+          aria-label="Minutos sem resposta"
+        />
+        <span className="text-muted-foreground">min (0 desliga)</span>
+        <Button size="sm" variant="outline" onClick={salvarMinutos} disabled={salvandoMin || String(estado.realocar_sem_resposta_min) === minutos}>
+          {salvandoMin ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
+        </Button>
+      </div>
 
       {modo !== "desligado" && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">

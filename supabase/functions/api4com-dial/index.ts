@@ -4,7 +4,7 @@
 // desligar, o webhook chega em tempo real já com o lead exato (metadata.leadId).
 // O token da conta fica no servidor — nunca vai ao frontend.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { assertNumberAccess } from "../_shared/authz.ts";
+import { assertNumberAccess, assertLeadOwnership } from "../_shared/authz.ts";
 
 const API4COM_BASE = "https://api.api4com.com/api/v1";
 const corsHeaders = {
@@ -49,16 +49,11 @@ Deno.serve(async (req) => {
     const { data: roleRows } = await admin.from("user_roles").select("role").eq("user_id", uid);
     const roles = (roleRows || []).map((r: any) => String(r.role));
 
-    // Rodízio de SDRs (Fase 1) — DECISÃO: telefonia NÃO faz parte do perfil da
-    // SDR, do mesmo jeito que a chamada de WhatsApp (whatsapp-call-signaling
-    // devolve 403). Coerente com o resto da fase: api4com_calls, api4com_config
-    // e api4com_extensions estão no bloqueio total (migration 3.8) e
-    // /crm/ligacoes está fora da allowlist de rotas dela — ela originaria a
-    // ligação e depois não veria o registro, a gravação nem a transcrição.
-    // O front esconde o botão (CrmConversas.tsx); aqui é a tranca de verdade.
-    if (roles.includes("sdr") && !roles.includes("superadmin")) {
-      return json({ error: "Ligações não fazem parte do perfil SDR." }, 403);
-    }
+    // Rodízio de SDRs — decisão do dono (09/09/2026): a SDR LIGA, mas só para
+    // lead que é dela. Sem lead (discagem avulsa) ela não passa: o bloco abaixo
+    // já exige papel privilegiado. A posse do lead é conferida mais adiante
+    // (assertLeadOwnership, mesma régua da RLS), depois de carregar o lead.
+    const chamadorSdr = roles.includes("sdr") && !roles.includes("superadmin");
 
     // Discagem avulsa (sem lead) só para papéis privilegiados: evita usar a
     // telefonia do tenant como discador arbitrário.
@@ -72,7 +67,12 @@ Deno.serve(async (req) => {
     const { data: cfg } = await admin.from("api4com_config")
       .select("api_token, ramal, connected_at").eq("tenant_id", tenantId).maybeSingle();
     if (!cfg?.api_token || !cfg?.connected_at) return json({ error: "Telefonia não conectada. Conecte em Integrações." }, 400);
-    if (!cfg?.ramal) return json({ error: "Ramal não configurado. Defina o ramal em Integrações → Telefonia." }, 400);
+    // Ramal: o do próprio usuário (api4com_extensions), se cadastrado; senão o
+    // ramal padrão do cliente. Assim cada SDR pode ter o seu telefone.
+    const { data: ext } = await admin.from("api4com_extensions")
+      .select("ramal").eq("tenant_id", tenantId).eq("user_id", uid).maybeSingle();
+    const ramal = (ext as any)?.ramal || cfg?.ramal;
+    if (!ramal) return json({ error: "Ramal não configurado. Defina o ramal em Integrações → Telefonia." }, 400);
 
     // Resolve o telefone do lead (valida que o lead é do tenant).
     if (leadId) {
@@ -90,6 +90,12 @@ Deno.serve(async (req) => {
         ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false, roles,
       } as any, leadId);
       if (!numberCheck.ok) return json({ error: numberCheck.error }, numberCheck.status);
+      if (chamadorSdr) {
+        const dona = await assertLeadOwnership(req, leadId, {
+          ok: true, userId: uid, tenantId, isServiceRole: false, isSuperadmin: false, roles,
+        } as any);
+        if (!dona.ok) return json({ error: "Você só pode ligar para leads que são seus." }, 403);
+      }
       // Telefone SEMPRE do lead: body.phone não pode redirecionar a ligação.
       phone = lead.phone || "";
       if (!phone) return json({ error: "Lead sem telefone cadastrado." }, 400);
@@ -102,7 +108,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: cfg.api_token },
       body: JSON.stringify({
-        extension: String(cfg.ramal),
+        extension: String(ramal),
         phone: e164,
         metadata: { leadId: leadId ?? null, tenantId, userId: uid, source: "crclin" },
       }),

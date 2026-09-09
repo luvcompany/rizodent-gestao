@@ -53,6 +53,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
       { to: "/crm/calendario", search: "?view=tarefas", icon: ListChecks, label: "Tarefas", badgeKey: "tasks" },
+      { to: "/crm/ligacoes", icon: Phone, label: "Ligações" },
       // Só os números dela (RPC relatorio_sdr_minha) — não é a aba Relatórios do crc.
       { to: "/crm/sdr/desempenho", icon: BarChart3, label: "Meu desempenho" },
       {

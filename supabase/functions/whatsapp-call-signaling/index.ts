@@ -155,18 +155,27 @@ Deno.serve(async (req) => {
     }
     tenantId = profile.tenant_id;
 
-    // Rodízio de SDRs (Fase 1): chamadas de WhatsApp ficam fora do perfil da
-    // SDR — whatsapp_calls e whatsapp_call_permissions estão em sdr_sem_acesso
-    // (molde closer/recepção) e o front não mostra a UI de chamada para ela.
-    // Esta function roda com service role, então o gate tem de ser aqui.
+    // Rodízio de SDRs — decisão do dono (09/09/2026): a SDR faz e atende
+    // chamada de WhatsApp, mas só de lead que é dela. Esta function roda com
+    // service role, então a posse é conferida aqui (mesma régua da RLS).
+    let chamadorSdr = false;
     {
       const { data: callerRoles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
       const roles = (callerRoles || []).map((r: any) => String(r.role));
-      if (roles.includes("sdr") && !roles.includes("superadmin")) {
-        return new Response(JSON.stringify({ error: "Chamadas de WhatsApp não fazem parte do perfil SDR" }), {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      chamadorSdr = roles.includes("sdr") && !roles.includes("superadmin");
+      if (chamadorSdr && (action === "connect" || action === "request_permission")) {
+        if (!body.lead_id) {
+          return new Response(JSON.stringify({ error: "Informe o lead para ligar." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const { data: dona } = await supabase
+          .from("crm_leads").select("assigned_to").eq("id", body.lead_id).maybeSingle();
+        if (!dona || (dona as any).assigned_to !== userId) {
+          return new Response(JSON.stringify({ error: "Você só pode ligar para leads que são seus." }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
     }
 

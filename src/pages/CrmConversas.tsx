@@ -1449,12 +1449,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {/* Telefonia fora do perfil SDR (decisão da Fase 1): api4com_calls,
-                    api4com_config e api4com_extensions estão bloqueadas para ela e
-                    /crm/ligacoes fora das rotas dela — originar a ligação e não ver
-                    registro, gravação nem transcrição seria pior que não ligar.
-                    A tranca de verdade está em api4com-dial (403). */}
-                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && userRole !== "sdr" && (
+                {/* SDR liga (decisão do dono, 09/09): api4com-dial só aceita lead dela. */}
+                {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && (
                   <Api4ComDialButton leadId={selectedLead.id} phone={selectedLead.phone} />
                 )}
                 {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && podeLigarPorWhatsapp((selectedLead as any).whatsapp_number_id) && (
