@@ -16,6 +16,7 @@ import {
   applyAppointmentOutcome,
   moveLeadToStageInCurrentPipeline,
   moveLeadToNaoContratadosPipeline,
+  applySdrComparecimento,
 } from "@/lib/appointmentOutcome";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -221,6 +222,24 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
   };
 
+  /** "Compareceu" da SDR: RPC no servidor (ver applySdrComparecimento). */
+  const doSdrComparecimento = async (apptId: string) => {
+    setOutcomeSaving(apptId);
+    try {
+      const r = await applySdrComparecimento(apptId);
+      if (!r.ok) {
+        toast.error("Este agendamento já recebeu desfecho — recarregando");
+      } else {
+        toast.success("Comparecimento registrado no seu crédito — o lead continua com você por enquanto e depois passa para o administrador");
+      }
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } catch (e) {
+      toastDbError(e, "Erro ao registrar comparecimento");
+    } finally {
+      setOutcomeSaving(null);
+    }
+  };
+
   /**
    * Ações do card de consulta terminal: mexem SÓ na etapa do lead.
    * Não dão UPDATE na consulta — o trigger `stamp_appointment_update` proíbe
@@ -249,12 +268,14 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
         lead_id: leadId, direction: "outbound", type: "system", content: label, status: "system",
       });
 
-      const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
-      if (lead) {
+      // Só as automações da etapa NOVA; sem movimento, nada roda (senão as
+      // mensagens de entrada da etapa atual iriam de novo ao paciente).
+      if (movedStageId) {
+        const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
         executeStageAutomations({
           leadId,
-          stageId: movedStageId || lead.stage_id,
-          leadPhone: lead.phone,
+          stageId: movedStageId,
+          leadPhone: lead?.phone ?? "",
           triggerTypes: ["on_enter"],
         }).catch((e) => console.error("[TerminalCard] Automation error:", e));
       }
@@ -843,7 +864,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     // SDR não decide contrato (decisão do dono, 09/09): "Compareceu" fecha o
                     // ciclo dela e o lead passa para o administrador, que marca o resultado.
                     onClick={() => guardEarly(appt, () => userRole === "sdr"
-                      ? doOutcome(appt.id, "not_contracted")
+                      ? doSdrComparecimento(appt.id)
                       : setOutcomeStep((prev) => ({ ...prev, [appt.id]: "compareceu" })))}
                   >
                     <CheckCircle2 size={12} /> Compareceu
@@ -963,25 +984,28 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                   <XCircle size={12} /> Não compareceu
                 </Button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  size="sm"
-                  className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
-                  disabled={terminalBusy}
-                  onClick={() => moveLeadOnly("contracted")}
-                >
-                  <Handshake size={12} /> Contratado
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs"
-                  disabled={terminalBusy}
-                  onClick={() => moveLeadOnly("not_contracted")}
-                >
-                  Não contratado
-                </Button>
-              </div>
+              {/* Contrato não é decisão da SDR (o ciclo dela termina no comparecimento). */}
+              {userRole !== "sdr" && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    disabled={terminalBusy}
+                    onClick={() => moveLeadOnly("contracted")}
+                  >
+                    <Handshake size={12} /> Contratado
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    disabled={terminalBusy}
+                    onClick={() => moveLeadOnly("not_contracted")}
+                  >
+                    Não contratado
+                  </Button>
+                </div>
+              )}
               {isManager && (
                 <Button
                   size="sm"

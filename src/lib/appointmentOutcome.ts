@@ -25,7 +25,11 @@ export async function moveLeadToStageInCurrentPipeline(
     .order("position");
 
   const target = (stages || []).find((s) => matcher(norm(s.name)));
-  if (!target || target.id === lead.stage_id) return lead.stage_id;
+  // Sem etapa destino (não existe no funil, ou o papel não a enxerga — a SDR
+  // não vê Contratado/Não contratado) ou já nela: NÃO houve movimento. Antes
+  // devolvia a etapa atual e o chamador anunciava "movido" e rodava de novo as
+  // automações de entrada da etapa em que o lead já estava.
+  if (!target || target.id === lead.stage_id) return null;
 
   const nowIso = new Date().toISOString();
   // RLS barrada não devolve erro — devolve 0 linhas. Sem o throw, o chamador
@@ -73,7 +77,7 @@ export async function moveLeadToNaoContratadosPipeline(leadId: string): Promise<
     .eq("pipeline_id", targetPipeline.id)
     .order("position");
   const firstStage = stages?.[0];
-  if (!firstStage) return lead.stage_id;
+  if (!firstStage) return null; // sem etapa: não houve movimento
 
   const nowIso = new Date().toISOString();
   const { data: movedRows, error: moveErr } = await supabase
@@ -135,7 +139,7 @@ export async function moveLeadToStageCrossPipeline(
   }
 
   if (!target) return null;
-  if (target.id === lead.stage_id) return lead.stage_id;
+  if (target.id === lead.stage_id) return null; // já estava lá: não houve movimento
 
   const nowIso = new Date().toISOString();
   const crossPipeline = target.pipeline_id !== lead.pipeline_id;
@@ -195,13 +199,17 @@ export async function applyAppointmentOutcome(args: {
     label = "🤝 Marcado como Contratado";
   } else if (outcome === "not_contracted") {
     movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao contrat"));
-    label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+    label = movedStageId
+      ? "❌ Marcado como Não contratou — movido para etapa Não contratado"
+      : "❌ Marcado como Não contratou";
   } else if (outcome === "rescheduled") {
     movedStageId = await moveLeadToStageCrossPipeline(
       leadId,
       (n) => n.includes("compareceu") && n.includes("agendou"),
     );
-    label = "📅 Compareceu e agendou — movido para etapa Compareceu e agendou";
+    label = movedStageId
+      ? "📅 Compareceu e agendou — movido para etapa Compareceu e agendou"
+      : "📅 Compareceu e agendou";
   }
 
   await supabase.from("messages").insert({
@@ -212,15 +220,44 @@ export async function applyAppointmentOutcome(args: {
     status: "system",
   });
 
-  const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
-  if (lead) {
+  // Automações de entrada SÓ da etapa para a qual o lead acabou de ir. Sem
+  // troca de etapa, rodar as da etapa ATUAL reenviaria ao paciente as
+  // mensagens de entrada dela (achado da bateria de testes de 09/09).
+  if (movedStageId) {
+    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
     executeStageAutomations({
       leadId,
-      stageId: movedStageId || lead.stage_id,
-      leadPhone: lead.phone,
+      stageId: movedStageId,
+      leadPhone: lead?.phone ?? "",
       triggerTypes: ["on_enter"],
     }).catch((e) => console.error("[AppointmentOutcome] Automation error:", e));
   }
 
   return true;
+}
+
+/**
+ * "Compareceu" da SDR (Fase 5 / decisão de 09/09): tudo no servidor, pela RPC
+ * sdr_marcar_comparecimento — a SDR não enxerga a etapa destino (RLS), então o
+ * caminho do front (applyAppointmentOutcome) não conseguia mover a etapa e
+ * ainda rodava as automações da etapa antiga. A RPC marca a consulta como
+ * not_contracted (= compareceu; contrato é dado do administrador/Dontus), move
+ * o lead para a etapa "Compareceu" e devolve a etapa nova para as automações
+ * de entrada dela. A entrega ao administrador vem pelos gatilhos (carência).
+ */
+export async function applySdrComparecimento(appointmentId: string): Promise<{ ok: boolean; motivo?: string }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("sdr_marcar_comparecimento", { p_appointment_id: appointmentId });
+  if (error) throw error;
+  const r = (data ?? {}) as { ok?: boolean; motivo?: string; lead_id?: string; stage_id?: string | null; phone?: string | null };
+  if (!r.ok) return { ok: false, motivo: r.motivo };
+  if (r.stage_id && r.lead_id) {
+    executeStageAutomations({
+      leadId: r.lead_id,
+      stageId: r.stage_id,
+      leadPhone: r.phone ?? "",
+      triggerTypes: ["on_enter"],
+    }).catch((e) => console.error("[SdrComparecimento] Automation error:", e));
+  }
+  return { ok: true };
 }

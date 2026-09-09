@@ -306,7 +306,10 @@ export default function CrmEquipe() {
     try {
       if (mudouNome) {
         const { error } = await rpc("equipe_editar_nome", { p_user_id: edicaoDe.user_id, p_nome: nome });
-        if (error) { toast.error(mensagemDe(error, "Não foi possível mudar o nome.")); return; }
+        if (error) {
+          toast.error(`${mensagemDe(error, "Não foi possível mudar o nome.")}${senha ? " A senha nova não foi aplicada; digite de novo." : ""}`);
+          return;
+        }
         feitos.push("nome");
       }
       if (mudouEmail) {
@@ -315,7 +318,7 @@ export default function CrmEquipe() {
         });
         if (fnErr || data?.error) {
           const motivo = await erroDaFuncao(data, fnErr, "Não foi possível mudar o e-mail.");
-          toast.error(feitos.length ? `Nome salvo, mas o e-mail não: ${motivo}` : motivo);
+          toast.error(`${feitos.length ? `Nome salvo, mas o e-mail não: ${motivo}` : motivo}${senha ? " A senha nova não foi aplicada; digite de novo." : ""}`);
           await carregar();
           return;
         }

@@ -796,13 +796,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
     toast.success(`Lead transferido para ${newUserName}`);
 
-    // Remove from list after 10s since it's no longer assigned to current user
+    // Só a SDR perde o lead de vista ao transferir (a visibilidade dela é por
+    // dona). Gestor/CRC continuam vendo tudo: a conversa fica na lista.
     const capturedLeadId = selectedLeadId;
-    const removeTimeout = window.setTimeout(() => {
+    const removeTimeout = userRole === "sdr" ? window.setTimeout(() => {
       setLeads(prev => prev.filter(l => l.id !== capturedLeadId));
       setSelectedLeadId(prev => prev === capturedLeadId ? null : prev);
       setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
-    }, 10000);
+    }, 10000) : 0;
 
     // Call edge function — it handles automatic pipeline/stage restoration
     const { data, error } = await supabase.functions.invoke("transfer-lead", {
