@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
+import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
