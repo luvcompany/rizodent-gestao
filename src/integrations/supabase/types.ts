@@ -2813,6 +2813,7 @@ export type Database = {
           is_instagram: boolean
           is_posvenda: boolean
           name: string
+          position: number | null
           tenant_id: string | null
         }
         Insert: {
@@ -2825,6 +2826,7 @@ export type Database = {
           is_instagram?: boolean
           is_posvenda?: boolean
           name: string
+          position?: number | null
           tenant_id?: string | null
         }
         Update: {
@@ -2837,6 +2839,7 @@ export type Database = {
           is_instagram?: boolean
           is_posvenda?: boolean
           name?: string
+          position?: number | null
           tenant_id?: string | null
         }
         Relationships: [
@@ -2933,6 +2936,7 @@ export type Database = {
         Row: {
           auto_encerrar: string
           corte_ate: string
+          corte_tolerancia_min: number
           entrada_todas_etapas: boolean
           entrega_gestor_apos_min: number
           etapas_entrada: string[] | null
@@ -2951,6 +2955,7 @@ export type Database = {
         Insert: {
           auto_encerrar?: string
           corte_ate?: string
+          corte_tolerancia_min?: number
           entrada_todas_etapas?: boolean
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
@@ -2969,6 +2974,7 @@ export type Database = {
         Update: {
           auto_encerrar?: string
           corte_ate?: string
+          corte_tolerancia_min?: number
           entrada_todas_etapas?: boolean
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
@@ -2996,23 +3002,41 @@ export type Database = {
       }
       crm_rodizio_membros: {
         Row: {
+          almoco_fim: string | null
+          almoco_inicio: string | null
           ativo: boolean
           criado_em: string
+          hora_entrada: string | null
+          hora_saida: string | null
           peso: number
+          sabado_entrada: string | null
+          sabado_saida: string | null
           tenant_id: string
           user_id: string
         }
         Insert: {
+          almoco_fim?: string | null
+          almoco_inicio?: string | null
           ativo?: boolean
           criado_em?: string
+          hora_entrada?: string | null
+          hora_saida?: string | null
           peso?: number
+          sabado_entrada?: string | null
+          sabado_saida?: string | null
           tenant_id: string
           user_id: string
         }
         Update: {
+          almoco_fim?: string | null
+          almoco_inicio?: string | null
           ativo?: boolean
           criado_em?: string
+          hora_entrada?: string | null
+          hora_saida?: string | null
           peso?: number
+          sabado_entrada?: string | null
+          sabado_saida?: string | null
           tenant_id?: string
           user_id?: string
         }
@@ -5673,12 +5697,36 @@ export type Database = {
         Args: { p_bloquear: boolean; p_user_id: string }
         Returns: undefined
       }
+      equipe_definir_horario: {
+        Args: {
+          p_almoco_fim: string
+          p_almoco_inicio: string
+          p_entrada: string
+          p_sabado_entrada: string
+          p_sabado_saida: string
+          p_saida: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       equipe_editar_nome: {
         Args: { p_nome: string; p_user_id: string }
         Returns: undefined
       }
       equipe_encerrar_sessoes: { Args: { p_user_id: string }; Returns: number }
       equipe_excluir_previa: { Args: { p_user_id: string }; Returns: Json }
+      equipe_horarios: {
+        Args: never
+        Returns: {
+          almoco_fim: string
+          almoco_inicio: string
+          hora_entrada: string
+          hora_saida: string
+          sabado_entrada: string
+          sabado_saida: string
+          user_id: string
+        }[]
+      }
       equipe_listar: {
         Args: never
         Returns: {
@@ -5894,6 +5942,11 @@ export type Database = {
         Args: { p_resposta_id: string }
         Returns: boolean
       }
+      pipeline_clonar_etapas_padrao: {
+        Args: { p_pipeline_id: string }
+        Returns: number
+      }
+      pipelines_definir_ordem: { Args: { p_ids: string[] }; Returns: number }
       ponto_abrir: { Args: never; Returns: Json }
       ponto_encerrar: { Args: never; Returns: Json }
       ponto_exige_sdr: { Args: never; Returns: undefined }
@@ -6055,6 +6108,17 @@ export type Database = {
           user_id: string
         }[]
       }
+      relatorio_sdr_reagendamentos: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          faltas_apos_reagendar: number
+          is_total: boolean
+          leads_2_faltas: number
+          nome: string
+          reagendamentos: number
+          user_id: string
+        }[]
+      }
       restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
       rizodent_infer_cidade: { Args: { p_texto: string }; Returns: string }
       rodizio_aplicar_lote_ao_abrir: {
@@ -6068,6 +6132,10 @@ export type Database = {
       }
       rodizio_definir_modo: { Args: { p_modo: string }; Returns: Json }
       rodizio_definir_tempo_realocacao: {
+        Args: { p_min: number }
+        Returns: Json
+      }
+      rodizio_definir_tolerancia_corte: {
         Args: { p_min: number }
         Returns: Json
       }
@@ -6104,6 +6172,10 @@ export type Database = {
       }
       rodizio_fonte_excluida: { Args: { p_source: string }; Returns: boolean }
       rodizio_funil: { Args: { p_tenant: string }; Returns: string }
+      rodizio_horario_dia: {
+        Args: { p_data: string; p_tenant: string; p_user: string }
+        Returns: Record<string, unknown>
+      }
       rodizio_lead_na_fila: {
         Args: {
           p_admin: string
@@ -6343,6 +6415,10 @@ export type Database = {
         Returns: Json
       }
       sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
+      sdr_pos_entrega_etapa: {
+        Args: { p_appointment_id: string; p_lead_id: string }
+        Returns: boolean
+      }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
