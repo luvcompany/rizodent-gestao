@@ -12,7 +12,7 @@ Regras que valem acima de qualquer item: nunca mexer em `whatsapp-webhook`,
 desfechos de agendamento em lote sem autorização literal do dono; publicar são
 3 passos (migration, redeploy de function, publish do site) e conferir depois.
 
-Última atualização: 2026-09-08 20:05 UTC, pela rotina na nuvem.
+Última atualização: 2026-09-09 03:25 UTC, pela sessão local.
 
 ---
 
@@ -63,3 +63,30 @@ Conferido em 2026-09-08 20:05 UTC: 431 mensagens outbound (text/audio/image/docu
 - como fazer: `SELECT credito_origem, count(*) FROM crm_appointments WHERE created_at > '2026-09-08 00:00:00+00' GROUP BY 1`. Se houver linhas com `credito_origem` diferente de `backfill_fase0` (esperado: `dona_do_lead_na_criacao`, `herdado_remarcacao`, `sem_dona_na_criacao` ou `informado_pelo_servidor`), marcar concluído com a distribuição. Se todas as linhas novas estiverem NULL, marcar `bloqueado: gatilho trg_zz_carimba_credito_agendamento não carimbou` sem corrigir. Se não houver linhas, deixar pendente.
 
 Conferido em 2026-09-08 20:05 UTC: 18 agendamentos criados desde 2026-09-08 00:00 UTC, todos com credito_origem carimbado — 17 'dona_do_lead_na_criacao' e 1 'herdado_remarcacao'. Nenhuma linha nova com NULL nem com 'backfill_fase0'. O gatilho trg_zz_carimba_credito_agendamento está funcionando.
+
+## Item 5 — Fases 2 a 5 do rodízio (ponto, motor, fechar conversa, pesquisa, relatórios)
+
+- status: concluído em 2026-09-09 03:16 UTC (3 migrations aplicadas + site publicado)
+- autorizado: sim
+
+Migrations `20260909100000_sdr_fase3_motor_rodizio.sql`,
+`20260909100100_sdr_fase2_ponto_e_conversa.sql` e
+`20260909100200_sdr_fase5_relatorios.sql` aplicadas; site `index-I6nzPqb7.js`.
+Conferido: `crm_rodizio_config.modo = 'desligado'`, 29 funções `rodizio_*`, 11
+`ponto_*`, 3 `relatorio_sdr*`, crons `rodizio-processar-novos`,
+`rodizio-corte-9h`, `rodizio-realocacao`, `ponto-vigia`; 0 leads com SDR, livro
+intacto; 512 policies antigas com o mesmo hash (a única policy nova sem prefixo
+`sdr_` é `notif_dedupe_so_servidor`, RESTRICTIVE, só o servidor grava
+`dedupe_key`).
+
+## Item 6 — Ligar o rodízio em modo sombra
+
+- status: pendente
+- autorizado: não (só o dono liga; a rotina NUNCA muda `crm_rodizio_config.modo`)
+
+Quando o dono mandar: o gestor (rizodentvca2) chama `rodizio_definir_modo('sombra')`;
+5 dias úteis + 1 sábado só anotando no livro (fase `sombra`) quem teria
+recebido; depois `rodizio_definir_modo('ligado')`. A distribuição inicial dos
+leads sem resposta é `rodizio_distribuir_sem_resposta_agora(true)` (dry-run)
+e depois `(false)`. Desligar = `rodizio_definir_modo('desligado')` (cancela
+reservas sem mover ninguém).
