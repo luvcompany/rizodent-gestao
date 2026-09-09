@@ -3006,6 +3006,7 @@ export type Database = {
           almoco_inicio: string | null
           ativo: boolean
           criado_em: string
+          encerramento_adiado_ate: string | null
           hora_entrada: string | null
           hora_saida: string | null
           peso: number
@@ -3019,6 +3020,7 @@ export type Database = {
           almoco_inicio?: string | null
           ativo?: boolean
           criado_em?: string
+          encerramento_adiado_ate?: string | null
           hora_entrada?: string | null
           hora_saida?: string | null
           peso?: number
@@ -3032,6 +3034,7 @@ export type Database = {
           almoco_inicio?: string | null
           ativo?: boolean
           criado_em?: string
+          encerramento_adiado_ate?: string | null
           hora_entrada?: string | null
           hora_saida?: string | null
           peso?: number
@@ -5948,8 +5951,10 @@ export type Database = {
       }
       pipelines_definir_ordem: { Args: { p_ids: string[] }; Returns: number }
       ponto_abrir: { Args: never; Returns: Json }
+      ponto_adiar_encerramento: { Args: { p_min?: number }; Returns: Json }
       ponto_encerrar: { Args: never; Returns: Json }
       ponto_exige_sdr: { Args: never; Returns: undefined }
+      ponto_fim_expediente: { Args: never; Returns: Json }
       ponto_fuso_do_tenant: { Args: { p_tenant: string }; Returns: string }
       ponto_leads_desde: {
         Args: { p_desde: string; p_tenant: string; p_user: string }
