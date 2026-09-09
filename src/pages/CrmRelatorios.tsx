@@ -148,7 +148,7 @@ export default function CrmRelatorios() {
 
   // Carregar pipelines (mantido para a aba "Origem & Conversão")
   useEffect(() => {
-    supabase.from("crm_pipelines").select("id, name").order("created_at").then(({ data }) => {
+    supabase.from("crm_pipelines").select("id, name").order("position", { ascending: true, nullsFirst: false }).order("created_at").then(({ data }) => {
       const list = (data || []) as Pipeline[];
       setPipelines(list);
       // Abre em "Todos os funis" por padrão (bate com a Visão Geral, que conta

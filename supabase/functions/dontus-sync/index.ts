@@ -2391,6 +2391,47 @@ async function syncComparecimento(
     }
   }
 
+  // 4) PROMOÇÃO (pedido do dono, 09/09/2026): consulta já fechada como
+  // "compareceu sem contratar" cujo lead recebeu pagamento que conta depois
+  // (a SDR marcou o comparecimento antes deste sync, ou o paciente fechou dias
+  // depois) sobe para 'contracted' e o lead vai para Contratado. Só sobe,
+  // nunca rebaixa; janela de 45 dias por data agendada.
+  let promovidos = 0;
+  const promocoes: any[] = [];
+  const { data: semContrato, error: scErr } = await admin.from("crm_appointments")
+    .select("id, lead_id, scheduled_date")
+    .eq("tenant_id", RIZODENT_TENANT_ID)
+    .eq("status", "not_contracted")
+    .gte("scheduled_date", addDays(fim, -45))
+    .lte("scheduled_date", fim);
+  if (scErr) errors.push({ passo: "promocao", error: scErr.message });
+  for (const a of (semContrato || []).filter((x: any) => x.lead_id)) {
+    try {
+      if (!(await leadTemPagamentoQueConta(admin, a.lead_id))) continue;
+      if (promocoes.length < 25) promocoes.push({ appointment_id: a.id, lead_id: a.lead_id, data: a.scheduled_date });
+      if (dryRun) { promovidos++; continue; }
+      const { data: up, error: upErr } = await admin.from("crm_appointments")
+        .update({ status: "contracted", outcome_source: "dontus-sync:promovido", updated_at: new Date().toISOString() })
+        .eq("id", a.id)
+        .eq("status", "not_contracted")
+        .select("id");
+      if (upErr) { errors.push({ appointment_id: a.id, error: upErr.message }); continue; }
+      if (!up || up.length === 0) continue;
+      promovidos++;
+      const { data: lead } = await admin.from("crm_leads")
+        .select("id, pipeline_id, tenant_id").eq("id", a.lead_id).maybeSingle();
+      if (lead) {
+        await moveLeadStageServer(
+          admin, lead,
+          (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
+          "🤝 Pagamento encontrado no Dontus — consulta promovida para Contratado",
+        ).catch((e: any) => errors.push({ appointment_id: a.id, error: String(e?.message ?? e) }));
+      }
+    } catch (e: any) {
+      errors.push({ appointment_id: a.id, error: String(e?.message ?? e) });
+    }
+  }
+
   const por_unidade = Object.values(unidades);
   const totais = por_unidade.reduce((t: any, u: any) => ({
     compareceu: t.compareceu + u.compareceu,
@@ -2415,6 +2456,8 @@ async function syncComparecimento(
     periodo: { from: ini, to: fim },
     pendentes_analisados: pend.length,
     atualizados: dryRun ? 0 : gravados,
+    promovidos_para_contratado: promovidos,
+    promocoes,
     por_unidade,
     totais,
     amostra,

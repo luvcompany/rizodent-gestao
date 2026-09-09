@@ -704,7 +704,7 @@ export default function CrmKanban() {
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
     const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("position", { ascending: true, nullsFirst: false }).order("created_at"),
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", targetPipelineId).order("position")

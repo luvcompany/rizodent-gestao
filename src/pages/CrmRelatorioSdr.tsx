@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { asDateParam } from "@/lib/reportKit";
 import {
-  buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, taxaComparecimento,
+  buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento,
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import { AlertTriangle, BarChart3, Info, Loader2, RefreshCw, Users } from "lucide-react";
@@ -86,6 +86,24 @@ const COLUNAS: Coluna[] = [
     render: (l) => fmtInt(l.faltas),
   },
   {
+    chave: "reagendamentos",
+    titulo: "Reagendamentos",
+    dica: "Consultas remarcadas (ligadas à consulta anterior), por data agendada, no crédito dela.",
+    render: (l) => (typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"),
+  },
+  {
+    chave: "faltas_reag",
+    titulo: "Reagendou e faltou",
+    dica: "Faltas em consulta que já era reagendamento: o lead remarcou e faltou de novo.",
+    render: (l) => (typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"),
+  },
+  {
+    chave: "leads_2_faltas",
+    titulo: "Leads com 2+ faltas",
+    dica: "Leads do crédito dela com duas ou mais faltas até o fim do período.",
+    render: (l) => (typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"),
+  },
+  {
     chave: "contratados",
     titulo: "Contratados",
     dica: "Consultas do crédito dela que fecharam tratamento.",
@@ -134,8 +152,8 @@ export default function CrmRelatorioSdr() {
     if (!de || !ate) return;
     setEstado({ status: "loading" });
     try {
-      const linhas = await buscarRelatorioSdr("relatorio_sdr", de, ate);
-      setEstado({ status: "ok", data: linhas });
+      const [linhas, extras] = await Promise.all([buscarRelatorioSdr("relatorio_sdr", de, ate), buscarReagendamentosSdr(de, ate)]);
+      setEstado({ status: "ok", data: juntarReagendamentos(linhas, extras) });
     } catch (e) {
       setEstado({ status: "error", message: e instanceof Error ? e.message : "Não foi possível carregar o relatório." });
     }

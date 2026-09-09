@@ -75,6 +75,21 @@ type Membro = {
 
 const MIN_SENHA = 8;
 
+/** Horário de trabalho da SDR (RPCs equipe_horarios / equipe_definir_horario). */
+type Horario = {
+  hora_entrada: string | null; hora_saida: string | null; almoco_inicio: string | null; almoco_fim: string | null;
+  sabado_entrada: string | null; sabado_saida: string | null;
+};
+const hhmm = (t: string | null | undefined): string => (t ? String(t).slice(0, 5) : "");
+const resumoHorario = (h: Horario | undefined): string => {
+  if (!h || !h.hora_entrada) return "—";
+  let s = `${hhmm(h.hora_entrada)}–${hhmm(h.hora_saida)}`;
+  if (h.almoco_inicio) s += ` · almoço ${hhmm(h.almoco_inicio)}–${hhmm(h.almoco_fim)}`;
+  s += h.sabado_entrada ? ` · sáb ${hhmm(h.sabado_entrada)}–${hhmm(h.sabado_saida)}` : " · sem sábado";
+  return s;
+};
+const EDICAO_VAZIA = { nome: "", email: "", senha: "", entrada: "", saida: "", almocoIni: "", almocoFim: "", sabEntrada: "", sabSaida: "" };
+
 type RespostaRpc = { data: unknown; error: unknown };
 /** Resultado de equipe_redistribuir_leads (devolvido por admin-manage-user no delete). */
 type Redistribuicao = { leads: number; para_rodizio: number; para_gestor: number; reservas_refeitas: number; destinos: Record<string, number> };
@@ -144,7 +159,8 @@ export default function CrmEquipe() {
   const [redefinindo, setRedefinindo] = useState(false);
   const [bloqueioDe, setBloqueioDe] = useState<Membro | null>(null);
   const [edicaoDe, setEdicaoDe] = useState<Membro | null>(null);
-  const [edicao, setEdicao] = useState({ nome: "", email: "", senha: "" });
+  const [edicao, setEdicao] = useState(EDICAO_VAZIA);
+  const [horarios, setHorarios] = useState<Record<string, Horario>>({});
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [exclusaoDe, setExclusaoDe] = useState<Membro | null>(null);
   const [previa, setPrevia] = useState<Previa | null>(null);
@@ -162,6 +178,13 @@ export default function CrmEquipe() {
     }
     setErroLista(null);
     setMembros(((data ?? []) as Membro[]).map((m) => ({ ...m, leads_hoje: Number(m.leads_hoje ?? 0) })));
+    // Horários (RPC nova; se ainda não existir no banco, a coluna fica "—").
+    const { data: hs, error: hErr } = await rpc("equipe_horarios");
+    if (!hErr && Array.isArray(hs)) {
+      const mapa: Record<string, Horario> = {};
+      for (const h of hs as (Horario & { user_id: string })[]) mapa[h.user_id] = h;
+      setHorarios(mapa);
+    }
   }, []);
 
   useEffect(() => {
@@ -283,7 +306,13 @@ export default function CrmEquipe() {
 
   // -------------------------------------------------------------- editar
   const abrirEdicao = (m: Membro) => {
-    setEdicao({ nome: m.nome ?? "", email: m.email ?? "", senha: "" });
+    const h = horarios[m.user_id];
+    setEdicao({
+      nome: m.nome ?? "", email: m.email ?? "", senha: "",
+      entrada: hhmm(h?.hora_entrada), saida: hhmm(h?.hora_saida),
+      almocoIni: hhmm(h?.almoco_inicio), almocoFim: hhmm(h?.almoco_fim),
+      sabEntrada: hhmm(h?.sabado_entrada), sabSaida: hhmm(h?.sabado_saida),
+    });
     setEdicaoDe(m);
   };
 
@@ -297,7 +326,12 @@ export default function CrmEquipe() {
     if (senha && senha.length < MIN_SENHA) return toast.error(`A nova senha precisa ter ao menos ${MIN_SENHA} caracteres.`);
     const mudouNome = nome !== (edicaoDe.nome ?? "").trim();
     const mudouEmail = email !== (edicaoDe.email ?? "").trim().toLowerCase();
-    if (!mudouNome && !mudouEmail && !senha) { setEdicaoDe(null); return; }
+    const hAtual = horarios[edicaoDe.user_id];
+    const mudouHorario =
+      edicao.entrada !== hhmm(hAtual?.hora_entrada) || edicao.saida !== hhmm(hAtual?.hora_saida) ||
+      edicao.almocoIni !== hhmm(hAtual?.almoco_inicio) || edicao.almocoFim !== hhmm(hAtual?.almoco_fim) ||
+      edicao.sabEntrada !== hhmm(hAtual?.sabado_entrada) || edicao.sabSaida !== hhmm(hAtual?.sabado_saida);
+    if (!mudouNome && !mudouEmail && !senha && !mudouHorario) { setEdicaoDe(null); return; }
 
     setSalvandoEdicao(true);
     // Mesmo cuidado do criarSdr: a senha sai do estado antes da chamada.
@@ -335,6 +369,20 @@ export default function CrmEquipe() {
           return;
         }
         feitos.push("senha");
+      }
+      if (mudouHorario) {
+        const { error } = await rpc("equipe_definir_horario", {
+          p_user_id: edicaoDe.user_id,
+          p_entrada: edicao.entrada || null, p_saida: edicao.saida || null,
+          p_almoco_inicio: edicao.almocoIni || null, p_almoco_fim: edicao.almocoFim || null,
+          p_sabado_entrada: edicao.sabEntrada || null, p_sabado_saida: edicao.sabSaida || null,
+        });
+        if (error) {
+          toast.error(`${feitos.length ? `${feitos.join(" e ")} salvo(s), mas o horário não: ` : ""}${mensagemDe(error, "Não foi possível salvar o horário.")}`);
+          await carregar();
+          return;
+        }
+        feitos.push("horário");
       }
       toast.success(
         `${nome}: ${feitos.join(", ")} ${feitos.length > 1 ? "atualizados" : "atualizado"}.` +
@@ -468,6 +516,7 @@ export default function CrmEquipe() {
                     <TableHead>E-mail</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Rodízio</TableHead>
+                    <TableHead>Horário</TableHead>
                     <TableHead className="text-right" title="Leads atribuídos a ela hoje">Leads hoje</TableHead>
                     <TableHead>Último login</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
@@ -496,6 +545,7 @@ export default function CrmEquipe() {
                             <span className="text-xs text-muted-foreground">{m.no_rodizio && !m.bloqueado ? "Sim" : "Não"}</span>
                           </div>
                         </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground" title="Defina em Editar">{resumoHorario(horarios[m.user_id])}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums">{m.leads_hoje}</TableCell>
                         <TableCell className="text-muted-foreground">{fmtData(m.ultimo_login)}</TableCell>
                         <TableCell className="text-right">
@@ -617,7 +667,7 @@ export default function CrmEquipe() {
       </Dialog>
 
       {/* ------------------------------------------------------------- Editar */}
-      <Dialog open={!!edicaoDe} onOpenChange={(v) => { if (!salvandoEdicao && !v) { setEdicaoDe(null); setEdicao({ nome: "", email: "", senha: "" }); } }}>
+      <Dialog open={!!edicaoDe} onOpenChange={(v) => { if (!salvandoEdicao && !v) { setEdicaoDe(null); setEdicao(EDICAO_VAZIA); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Editar SDR</DialogTitle>
@@ -646,6 +696,39 @@ export default function CrmEquipe() {
               <p className="text-[11px] text-muted-foreground">
                 Passe a senha por um canal seguro. Ela não fica salva aqui e a pessoa troca no próximo acesso.
               </p>
+            </div>
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Horário de trabalho</p>
+              <p className="text-[11px] text-muted-foreground">
+                Segunda a sexta. As reservas dela passam para quem abriu o expediente se ela não abrir até a
+                entrada + tolerância do painel do rodízio. Sábado em branco = não trabalha no sábado.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-entrada" className="text-xs">Entrada</Label>
+                  <Input id="sdr-h-entrada" type="time" value={edicao.entrada} onChange={(e) => setEdicao({ ...edicao, entrada: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-saida" className="text-xs">Saída</Label>
+                  <Input id="sdr-h-saida" type="time" value={edicao.saida} onChange={(e) => setEdicao({ ...edicao, saida: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-alm1" className="text-xs">Almoço (início)</Label>
+                  <Input id="sdr-h-alm1" type="time" value={edicao.almocoIni} onChange={(e) => setEdicao({ ...edicao, almocoIni: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-alm2" className="text-xs">Almoço (fim)</Label>
+                  <Input id="sdr-h-alm2" type="time" value={edicao.almocoFim} onChange={(e) => setEdicao({ ...edicao, almocoFim: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-sab1" className="text-xs">Sábado (entrada)</Label>
+                  <Input id="sdr-h-sab1" type="time" value={edicao.sabEntrada} onChange={(e) => setEdicao({ ...edicao, sabEntrada: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sdr-h-sab2" className="text-xs">Sábado (saída)</Label>
+                  <Input id="sdr-h-sab2" type="time" value={edicao.sabSaida} onChange={(e) => setEdicao({ ...edicao, sabSaida: e.target.value })} />
+                </div>
+              </div>
             </div>
             <DialogFooter className="pt-2">
               <Button type="button" variant="ghost" onClick={() => setEdicaoDe(null)} disabled={salvandoEdicao}>Cancelar</Button>

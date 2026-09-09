@@ -24,7 +24,14 @@
 
 import { supabase } from "@/integrations/supabase/client";
 
-export type LinhaRelatorioSdr = {
+/** relatorio_sdr_reagendamentos: reagendamentos e faltas repetidas por SDR (crédito, data agendada). */
+export type ReagendamentosSdr = {
+  reagendamentos: number;
+  faltas_apos_reagendar: number;
+  leads_2_faltas: number;
+};
+
+export type LinhaRelatorioSdr = Partial<ReagendamentosSdr> & {
   user_id: string | null;
   nome: string;
   email: string | null;
@@ -142,6 +149,35 @@ export async function buscarRelatorioSdr(
   if (error) throw new Error(mensagemDeErroRpc(error, "Não foi possível carregar o relatório."));
   const linhas = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
   return linhas.map(normalizarLinha);
+}
+
+type LinhaReagendamento = ReagendamentosSdr & { user_id: string | null; is_total: boolean };
+
+/**
+ * Reagendamentos, "reagendou e faltou de novo" e leads com 2+ faltas, por SDR
+ * (o gestor recebe todas + total; a SDR recebe só a própria linha). Falha da
+ * RPC vira lista vazia — as colunas ficam "—", o relatório principal não cai.
+ */
+export async function buscarReagendamentosSdr(de: string, ate: string): Promise<LinhaReagendamento[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("relatorio_sdr_reagendamentos", { p_de: de, p_ate: ate });
+  if (error || !Array.isArray(data)) return [];
+  return (data as Record<string, unknown>[]).map((r) => ({
+    user_id: (r.user_id as string | null) ?? null,
+    is_total: r.is_total === true,
+    reagendamentos: num(r.reagendamentos),
+    faltas_apos_reagendar: num(r.faltas_apos_reagendar),
+    leads_2_faltas: num(r.leads_2_faltas),
+  }));
+}
+
+/** Junta as colunas de reagendamento às linhas do relatório (por user_id; total com total). */
+export function juntarReagendamentos(linhas: LinhaRelatorioSdr[], extras: LinhaReagendamento[]): LinhaRelatorioSdr[] {
+  if (!extras.length) return linhas;
+  return linhas.map((l) => {
+    const e = extras.find((x) => (l.is_total ? x.is_total : !x.is_total && x.user_id === l.user_id));
+    return e ? { ...l, reagendamentos: e.reagendamentos, faltas_apos_reagendar: e.faltas_apos_reagendar, leads_2_faltas: e.leads_2_faltas } : l;
+  });
 }
 
 // ---------------------------------------------------------------------------

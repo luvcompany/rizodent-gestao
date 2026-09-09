@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVertical, Copy } from "lucide-react";
+import { Plus, Trash2, Bot, Zap, GripVertical, ShieldAlert, RefreshCw, MoreVertical, Copy, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
@@ -72,6 +72,10 @@ export default function CrmAutomacoes() {
   const [deleteStageAction, setDeleteStageAction] = useState<"move" | "delete">("move");
   const [deleteStageMoveTo, setDeleteStageMoveTo] = useState<string>("");
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
+  // Ordem dos funis (crm_pipelines.position; RPC pipelines_definir_ordem, gestão)
+  const [ordemOpen, setOrdemOpen] = useState(false);
+  const [ordem, setOrdem] = useState<Pipeline[]>([]);
+  const [salvandoOrdem, setSalvandoOrdem] = useState(false);
   const [newPipelineName, setNewPipelineName] = useState("");
   const [newPipelineColor, setNewPipelineColor] = useState("#6366f1");
   const [useCustomPipelineColor, setUseCustomPipelineColor] = useState(false);
@@ -86,7 +90,7 @@ export default function CrmAutomacoes() {
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
-    const { data: pipeData } = await supabase.from("crm_pipelines").select("*").order("created_at");
+    const { data: pipeData } = await supabase.from("crm_pipelines").select("*").order("position", { ascending: true, nullsFirst: false }).order("created_at");
     const pipes = (pipeData as Pipeline[]) || [];
     setPipelines(pipes);
     const pid = pipeId || selectedPipelineId || pipes[0]?.id;
@@ -615,6 +619,9 @@ export default function CrmAutomacoes() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => { setOrdem([...pipelines]); setOrdemOpen(true); }}>
+                    <ArrowUpDown size={14} className="mr-2" /> Ordem dos funis
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={async () => {
                     const pipe = pipelines.find(p => p.id === selectedPipelineId);
                     if (!pipe) return;
@@ -1069,6 +1076,51 @@ export default function CrmAutomacoes() {
         publishedBots={publishedBots}
         onSave={handleSaveAutomation}
       />
+      <Dialog open={ordemOpen} onOpenChange={(open) => { if (!salvandoOrdem) setOrdemOpen(open); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Ordem dos funis</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground">A ordem vale para o Funil, as Conversas e os relatórios.</p>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {ordem.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm">
+                <span className="w-5 text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
+                <span className="flex-1 truncate">{p.name}</span>
+                <Button
+                  variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={i === 0} title="Subir"
+                  onClick={() => setOrdem((l) => { const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })}
+                >
+                  <ArrowUp size={14} />
+                </Button>
+                <Button
+                  variant="ghost" size="sm" className="h-7 w-7 p-0" disabled={i === ordem.length - 1} title="Descer"
+                  onClick={() => setOrdem((l) => { const n = [...l]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; return n; })}
+                >
+                  <ArrowDown size={14} />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setOrdemOpen(false)} disabled={salvandoOrdem}>Cancelar</Button>
+            <Button
+              disabled={salvandoOrdem}
+              onClick={async () => {
+                setSalvandoOrdem(true);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { error } = await (supabase as any).rpc("pipelines_definir_ordem", { p_ids: ordem.map((p) => p.id) });
+                setSalvandoOrdem(false);
+                if (error) { toast.error(`Não foi possível salvar a ordem: ${error.message}`); return; }
+                toast.success("Ordem dos funis salva");
+                setOrdemOpen(false);
+                fetchData();
+              }}
+            >
+              Salvar ordem
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={newPipelineOpen} onOpenChange={(open) => { setNewPipelineOpen(open); if (!open) setUseCustomPipelineColor(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Novo Funil</DialogTitle></DialogHeader>

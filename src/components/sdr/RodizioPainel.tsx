@@ -27,6 +27,8 @@ type Modo = "desligado" | "sombra" | "ligado";
 
 interface MembroEstado {
   user_id: string; nome: string; estado: string; aberta: boolean; carga: number; reservas: number;
+  /** Horário de hoje (da SDR ou, sem horário próprio, o comercial da clínica); null = não trabalha hoje. */
+  entrada_hoje?: string | null; saida_hoje?: string | null;
 }
 interface Estado {
   modo: Modo; modo_alterado_em: string | null; em_expediente: boolean; dia_util: boolean;
@@ -34,6 +36,8 @@ interface Estado {
   realocar_sem_resposta_min: number; hora_corte: string; corte_ate: string; equipe: MembroEstado[];
   /** Carência (min) entre o comparecimento e a entrega do lead ao administrador; 0 = na hora. */
   entrega_gestor_apos_min?: number; entregas_pendentes?: number;
+  /** Corte: reserva de quem não abriu até entrada + N min vai para quem abriu. */
+  corte_tolerancia_min?: number;
 }
 interface LinhaDistribuicao {
   lead_id: string; lead_nome: string | null; lead_telefone: string | null; etapa: string | null;
@@ -69,6 +73,8 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const [salvandoMin, setSalvandoMin] = useState(false);
   const [carenciaH, setCarenciaH] = useState<string>("");
   const [salvandoCarencia, setSalvandoCarencia] = useState(false);
+  const [tolerancia, setTolerancia] = useState<string>("");
+  const [salvandoTolerancia, setSalvandoTolerancia] = useState(false);
   const [distribuindo, setDistribuindo] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -81,6 +87,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     setEstado(e);
     setMinutos(String(e.realocar_sem_resposta_min ?? ""));
     setCarenciaH(typeof e.entrega_gestor_apos_min === "number" ? String(Math.round(e.entrega_gestor_apos_min / 60)) : "");
+    setTolerancia(typeof e.corte_tolerancia_min === "number" ? String(e.corte_tolerancia_min) : "");
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
@@ -149,6 +156,17 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     await carregar();
   };
 
+  const salvarTolerancia = async () => {
+    const n = Number(tolerancia);
+    if (!Number.isInteger(n) || n < 0 || n > 480) { toast.error("Informe entre 0 e 480 minutos."); return; }
+    setSalvandoTolerancia(true);
+    const { error } = await rpc("rodizio_definir_tolerancia_corte", { p_min: n });
+    setSalvandoTolerancia(false);
+    if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar a tolerância.", TEXTO_AUSENTE)); return; }
+    toast.success(`Reservas de quem não abrir até ${n} min depois da entrada passam para quem abriu.`);
+    await carregar();
+  };
+
   if (erro) {
     return (
       <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
@@ -169,7 +187,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const descricao: Record<Modo, string> = {
     desligado: "Nada é distribuído. Leads novos continuam com o administrador.",
     sombra: "O motor só anota, no livro de atribuições, quem teria recebido cada lead. Ninguém muda de dona.",
-    ligado: `Leads novos do funil vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Corte às ${estado.hora_corte.slice(0, 5)}, realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana.`,
+    ligado: `Leads novos do funil vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Reserva de quem não abriu até ${estado.corte_tolerancia_min ?? 60} min depois da entrada dela vai para quem abriu; realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana.`,
   };
 
   return (
@@ -209,6 +227,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
               <TableRow>
                 <TableHead>SDR</TableHead>
                 <TableHead>Expediente</TableHead>
+                <TableHead>Horário hoje</TableHead>
                 <TableHead className="text-right">Entregas no ciclo</TableHead>
                 <TableHead className="text-right">Reservados</TableHead>
               </TableRow>
@@ -218,6 +237,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
                 <TableRow key={m.user_id}>
                   <TableCell className="font-medium">{m.nome}</TableCell>
                   <TableCell>{ESTADO_PONTO[m.estado] ?? m.estado}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{m.entrada_hoje ? `${m.entrada_hoje}–${m.saida_hoje ?? ""}` : "não trabalha hoje"}</TableCell>
                   <TableCell className="text-right tabular-nums">{m.carga}</TableCell>
                   <TableCell className="text-right tabular-nums">{m.reservas}</TableCell>
                 </TableRow>
@@ -260,6 +280,24 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
               {estado.entregas_pendentes} lead{estado.entregas_pendentes === 1 ? "" : "s"} na carência agora.
             </span>
           )}
+        </div>
+      )}
+
+      {typeof estado.corte_tolerancia_min === "number" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+          <span className="text-muted-foreground">Reserva de quem não abriu o expediente passa para quem abriu</span>
+          <input
+            type="number" min={0} max={480} value={tolerancia} onChange={(e) => setTolerancia(e.target.value)}
+            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            aria-label="Minutos depois da entrada"
+          />
+          <span className="text-muted-foreground">min depois da entrada dela (horário na aba Equipe → Editar)</span>
+          <Button
+            size="sm" variant="outline" onClick={salvarTolerancia}
+            disabled={salvandoTolerancia || String(estado.corte_tolerancia_min) === tolerancia}
+          >
+            {salvandoTolerancia ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
+          </Button>
         </div>
       )}
 

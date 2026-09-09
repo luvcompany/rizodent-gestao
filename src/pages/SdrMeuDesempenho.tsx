@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { asDateParam } from "@/lib/reportKit";
 import {
-  buscarLigacoesSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, taxaComparecimento,
+  buscarLigacoesSdr, buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento,
   type EstadoRpc, type LigacoesSdr, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import { AlertTriangle, Info, Loader2, RefreshCw, TrendingUp } from "lucide-react";
@@ -39,14 +39,15 @@ export default function SdrMeuDesempenho() {
     if (!de || !ate) return;
     setEstado({ status: "loading" });
     try {
-      const [linhas, ligacoes] = await Promise.all([
+      const [linhas, ligacoes, extras] = await Promise.all([
         buscarRelatorioSdr("relatorio_sdr_minha", de, ate),
         buscarLigacoesSdr(de, ate),
+        buscarReagendamentosSdr(de, ate),
       ]);
       setEstado({
         status: "ok",
         data: {
-          l: linhas.find((x) => !x.is_total) ?? null,
+          l: juntarReagendamentos(linhas, extras).find((x) => !x.is_total) ?? null,
           lig: ligacoes.find((x) => !user?.id || x.user_id === user.id) ?? null,
         },
       });
@@ -140,6 +141,9 @@ export default function SdrMeuDesempenho() {
                 <Linha rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="por data agendada" />
                 <Linha rotulo="Compareceram" valor={fmtInt(l.compareceram)} apoio={l.compareceram + l.faltas > 0 ? taxaComparecimento(l) : undefined} />
                 <Linha rotulo="Faltas" valor={fmtInt(l.faltas)} />
+                <Linha rotulo="Reagendamentos" valor={typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"} apoio="consultas remarcadas" />
+                <Linha rotulo="Reagendou e faltou" valor={typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"} apoio="faltou de novo depois de remarcar" />
+                <Linha rotulo="Leads com 2+ faltas" valor={typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"} />
                 <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="fora da conta" />
               </Painel>
 

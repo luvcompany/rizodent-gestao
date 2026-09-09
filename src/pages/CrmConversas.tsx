@@ -248,7 +248,7 @@ export const prefetchConversasData = async (tenantId: string, userId: string): P
     const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
       fetchAllConversationLeads(tenantId),
       supabase.from("profiles").select("id, nome").eq("tenant_id", tenantId).not("id","in",HIDDEN_USER_IDS_PG),
-      supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenantId).order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenantId).order("position", { ascending: true, nullsFirst: false }).order("created_at"),
     ]);
     const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
     const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
@@ -473,7 +473,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         const [rawLeads, profilesRes, pipelinesRes] = await Promise.all([
           fetchAllConversationLeads(tenant.id),
           supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id).not("id","in",HIDDEN_USER_IDS_PG),
-          supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
+          supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("position", { ascending: true, nullsFirst: false }).order("created_at"),
         ]);
         const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
         const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
@@ -502,7 +502,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           setLoading(false);
         }),
         supabase.from("profiles").select("id, nome").eq("tenant_id", tenant.id).not("id","in",HIDDEN_USER_IDS_PG),
-        supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("created_at"),
+        supabase.from("crm_pipelines").select("id, name, allowed_roles, is_instagram").eq("tenant_id", tenant.id).order("position", { ascending: true, nullsFirst: false }).order("created_at"),
       ]);
       const profs = (profilesRes.data as { id: string; nome: string }[]) || [];
       const pipes = (pipelinesRes.data as PipelineWithRoles[]) || [];
