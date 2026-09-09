@@ -6194,6 +6194,14 @@ export type Database = {
           ticket_por_pagamento: number
         }[]
       }
+      sdr_destinos_transferencia: {
+        Args: never
+        Returns: {
+          nome: string
+          papel: string
+          user_id: string
+        }[]
+      }
       sdr_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
