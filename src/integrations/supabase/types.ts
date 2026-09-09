@@ -2858,6 +2858,7 @@ export type Database = {
         Row: {
           auto_encerrar: string
           corte_ate: string
+          entrada_todas_etapas: boolean
           etapas_entrada: string[] | null
           funil_id: string | null
           gestor_user_id: string | null
@@ -2874,6 +2875,7 @@ export type Database = {
         Insert: {
           auto_encerrar?: string
           corte_ate?: string
+          entrada_todas_etapas?: boolean
           etapas_entrada?: string[] | null
           funil_id?: string | null
           gestor_user_id?: string | null
@@ -2890,6 +2892,7 @@ export type Database = {
         Update: {
           auto_encerrar?: string
           corte_ate?: string
+          entrada_todas_etapas?: boolean
           etapas_entrada?: string[] | null
           funil_id?: string | null
           gestor_user_id?: string | null
