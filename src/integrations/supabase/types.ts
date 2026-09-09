@@ -5953,6 +5953,10 @@ export type Database = {
       }
       rodizio_corte_9h: { Args: never; Returns: number }
       rodizio_definir_modo: { Args: { p_modo: string }; Returns: Json }
+      rodizio_definir_tempo_realocacao: {
+        Args: { p_min: number }
+        Returns: Json
+      }
       rodizio_dia_util: {
         Args: { p_data: string; p_tenant: string }
         Returns: boolean
