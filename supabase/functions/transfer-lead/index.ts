@@ -303,12 +303,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: updateError } = await supabase
-      .from("crm_leads")
-      .update(updatePayload)
-      .eq("id", leadId);
+    // Regra universal de propriedade (09/09): lead de SDR só troca de dona por
+    // esta porta ou pela realocação — o gatilho trg_zz_propriedade_lead recusa
+    // qualquer outro UPDATE de assigned_to. A RPC aplica o payload com a
+    // autorização transacional; tudo que foi validado acima continua valendo.
+    const { data: linhas, error: updateError } = await supabase
+      .rpc("lead_transferir_autorizado", { p_lead_id: leadId, p_payload: updatePayload });
 
     if (updateError) return json({ error: updateError.message }, 500);
+    if (!linhas) return json({ error: "Lead not found" }, 404);
 
     // Livro de atribuições (Fase 0): toda transferência manual fica registrada
     // com origem/destino e quem fez — é o que o rodízio audita depois.
