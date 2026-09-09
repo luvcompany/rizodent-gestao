@@ -202,6 +202,8 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
         toast.success(
           outcome === "no_show"
             ? "Lead movido para Não compareceu"
+            : userRole === "sdr"
+            ? "Comparecimento registrado no seu crédito — o lead passou para o administrador"
             : outcome === "contracted"
             ? "Lead movido para Contratado"
             : "Lead movido para etapa Não contratado",
@@ -838,7 +840,11 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     size="sm"
                     className="h-8 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
                     disabled={busy}
-                    onClick={() => guardEarly(appt, () => setOutcomeStep((prev) => ({ ...prev, [appt.id]: "compareceu" })))}
+                    // SDR não decide contrato (decisão do dono, 09/09): "Compareceu" fecha o
+                    // ciclo dela e o lead passa para o administrador, que marca o resultado.
+                    onClick={() => guardEarly(appt, () => userRole === "sdr"
+                      ? doOutcome(appt.id, "not_contracted")
+                      : setOutcomeStep((prev) => ({ ...prev, [appt.id]: "compareceu" })))}
                   >
                     <CheckCircle2 size={12} /> Compareceu
                   </Button>

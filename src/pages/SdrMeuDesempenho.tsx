@@ -159,12 +159,6 @@ export default function SdrMeuDesempenho() {
                 Icone={UserCheck} cor="text-emerald-600 dark:text-emerald-400" fundo="bg-emerald-500/10"
               />
               <Cartao
-                rotulo="Contratados"
-                valor={fmtInt(l.contratados)}
-                apoio={l.compareceram > 0 ? `${fmtPct(l.contratados, l.compareceram)} dos que compareceram` : "fecharam tratamento na consulta"}
-                Icone={TrendingUp} cor="text-amber-600 dark:text-amber-400" fundo="bg-amber-500/10"
-              />
-              <Cartao
                 rotulo="Conversas fechadas"
                 valor={fmtInt(l.conversas_fechadas)}
                 apoio="encerradas por você no período"
