@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
+import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1350,7 +1351,9 @@ Deno.serve(async (req) => {
                     pipeline_id: pipelineId,
                     stage_id: stage.id,
                     tenant_id: tenantId,
-                    source: referral ? "facebook_ad" : "whatsapp",
+                    source: referral
+                      ? "facebook_ad"
+                      : (detectarOrigemPorTexto(content) || "whatsapp"),
                     // Marca já como janela aberta — o lead nasce por causa de uma
                     // mensagem inbound que acabou de chegar. Sem isso, automações
                     // on_create disparadas antes do insert da mensagem veem
