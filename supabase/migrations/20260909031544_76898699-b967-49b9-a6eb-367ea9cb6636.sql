@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.__aplica_migration_sdr(text);
