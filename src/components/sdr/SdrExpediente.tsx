@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Clock, Coffee, Loader2, LogIn, LogOut, MoreHorizontal, Pause, Play, RefreshCw, Utensils } from "lucide-react";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { AlarmClock, Clock, Coffee, Loader2, LogIn, LogOut, MoreHorizontal, Pause, Play, RefreshCw, Utensils } from "lucide-react";
 
 /**
  * Cartão de expediente da SDR (Fase 2 do rodízio) — topo da home /crm/sdr.
@@ -63,6 +66,14 @@ type PontoEstado = {
   lote_erro?: string | null;
 };
 
+/** ponto_fim_expediente: quando o expediente de hoje encerra sozinho (saída da SDR, ou adiamento). */
+type FimExpediente = {
+  servidor_agora: string;
+  saida_hoje: string | null;
+  adiado_ate: string | null;
+  encerra_em: string | null;
+};
+
 type RespostaRpc = { data: unknown; error: unknown };
 // RPCs da Fase 2 ainda não estão em types.ts (gerado pelo Lovable) — mesmo
 // padrão do resto do projeto para RPC não tipada.
@@ -101,9 +112,23 @@ export default function SdrExpediente() {
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null); // ação em curso
   const [tique, setTique] = useState(0);
+  // Encerramento automático (decisão do dono, 09/09): na saída do horário dela
+  // o servidor encerra sozinho; se ela estiver com a tela aberta, este cartão
+  // pergunta antes — 15 s para "Encerrar agora" ou "Continuar por mais 5 min".
+  const [fim, setFim] = useState<FimExpediente | null>(null);
+  const [dialogoFim, setDialogoFim] = useState(false);
+  const [contador, setContador] = useState(15);
+  const [fimTratado, setFimTratado] = useState<string | null>(null);
+  const [adiando, setAdiando] = useState(false);
   // Instante (relógio local) em que a última resposta do servidor chegou e o
   // "agora" do servidor naquele instante — o cronômetro é a diferença.
   const snapshot = useRef<{ localMs: number; servidorMs: number } | null>(null);
+
+  const carregarFim = useCallback(async () => {
+    const { data, error } = await rpc("ponto_fim_expediente");
+    if (error || !data) return; // RPC ausente ou erro: sem aviso automático, o servidor encerra do mesmo jeito
+    setFim(data as FimExpediente);
+  }, []);
 
   const aplicar = useCallback((data: unknown) => {
     const e = data as PontoEstado;
@@ -119,7 +144,10 @@ export default function SdrExpediente() {
       return;
     }
     aplicar(data);
-  }, [aplicar]);
+    const e = data as PontoEstado;
+    if (e.estado === "aberto" || e.estado === "pausado") void carregarFim();
+    else setFim(null);
+  }, [aplicar, carregarFim]);
 
   useEffect(() => {
     void carregar();
@@ -169,9 +197,49 @@ export default function SdrExpediente() {
   const pausar = (motivo: Motivo) => acao("ponto_pausar", { p_motivo: motivo }, "pausar");
   const retomar = () => acao("ponto_retomar", undefined, "retomar");
   const encerrar = async () => {
+    setDialogoFim(false);
     const r = await acao("ponto_encerrar", undefined, "encerrar o expediente");
     if (r) toast.success(`Expediente encerrado. Hoje: ${hhmm(r.segundos_trabalhados)} trabalhadas.`);
   };
+  const continuarMais5 = async () => {
+    setAdiando(true);
+    const { data, error } = await rpc("ponto_adiar_encerramento", { p_min: 5 });
+    setAdiando(false);
+    if (error) {
+      toast.error(mensagemDe(error, "Não foi possível adiar o encerramento."));
+      return;
+    }
+    setFim(data as FimExpediente);
+    setDialogoFim(false);
+    toast.success("Mais 5 minutos. Aviso de novo quando acabar.");
+  };
+
+  // Chegou a hora de encerrar (relógio do servidor): abre o aviso uma vez por horário.
+  useEffect(() => {
+    const emCursoAgora = estado?.estado === "aberto" || estado?.estado === "pausado";
+    if (!emCursoAgora || !fim?.encerra_em || !snapshot.current || dialogoFim) return;
+    if (fimTratado === fim.encerra_em) return;
+    const agoraServidorMs = snapshot.current.servidorMs + (Date.now() - snapshot.current.localMs);
+    if (agoraServidorMs >= new Date(fim.encerra_em).getTime()) {
+      setFimTratado(fim.encerra_em);
+      setContador(15);
+      setDialogoFim(true);
+    }
+  }, [tique, estado, fim, dialogoFim, fimTratado]);
+
+  // Cronômetro do aviso: 15 s sem resposta = encerra.
+  useEffect(() => {
+    if (!dialogoFim) return;
+    if (contador <= 0) { void encerrar(); return; }
+    const t = window.setTimeout(() => setContador((c) => c - 1), 1000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogoFim, contador]);
+
+  // Expediente fechou (por aqui, por outra aba ou pelo servidor): some o aviso.
+  useEffect(() => {
+    if (estado?.estado === "fechado" && dialogoFim) setDialogoFim(false);
+  }, [estado, dialogoFim]);
 
   // ---- cronômetro (relógio do servidor + tempo decorrido local)
   void tique;
@@ -307,6 +375,35 @@ export default function SdrExpediente() {
           )}
         </div>
       </div>
+      {emCurso && fim?.encerra_em && (
+        <p className="border-t border-border px-[18px] py-2 text-[11.5px] text-muted-foreground">
+          Encerra sozinho às {horaLocal(fim.encerra_em)}{fim.adiado_ate && fim.encerra_em === fim.adiado_ate ? " (adiado)" : ""}.
+        </p>
+      )}
+
+      <AlertDialog open={dialogoFim} onOpenChange={(v) => { if (!v && !adiando && ocupado !== "ponto_encerrar") setDialogoFim(false); }}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlarmClock size={18} className="text-amber-500" /> Seu expediente vai encerrar
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Chegou o fim do seu horário. Sem resposta, o expediente encerra em{" "}
+              <span className="font-mono text-base font-semibold text-foreground tabular-nums">{contador}s</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => void continuarMais5()} disabled={adiando || !!ocupado}>
+              {adiando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Play size={14} className="mr-1" />}
+              Continuar por mais 5 min
+            </Button>
+            <Button onClick={() => void encerrar()} disabled={adiando || !!ocupado}>
+              {ocupado === "ponto_encerrar" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <LogOut size={14} className="mr-1" />}
+              Encerrar agora
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
