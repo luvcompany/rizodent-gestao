@@ -135,3 +135,24 @@ crm_rodizio_config` = 1440; `cron.job` tem `sdr-entrega-ao-gestor`; as 5
 funções `equipe_*` novas existem; `crm_entregas_gestor` sem policy para
 authenticated. Nunca executar `equipe_redistribuir_leads` de verdade sem o
 dono mandar (o ensaio com RAISE no fim, descrito na migration, é seguro).
+
+## Item 9 — Bateria de testes do sistema da SDR + correções
+
+- status: concluído em 2026-09-09 18:05 UTC (migrations `20260909230000_sdr_correcoes_pos_teste.sql`
+  e `20260909240000_entrega_reconfere_consulta.sql` aplicadas; site `index-BpRIlCnt.js`)
+- autorizado: sim
+
+Ensaios no banco de produção em transações desfeitas (motor, ponto, conversa/pesquisa,
+propriedade, carência, equipe, RLS como SDR) + 2 revisores de código. Onze defeitos
+corrigidos (ver cabeçalho da migration 230000): ciclo encerrado voltava à fila
+(rodizio_limpa_reserva zerava distribuido_em e a régua aceitava etapas do
+administrador), realocação durante a carência, carência 0 recusada pelo gatilho
+da SDR, reservas presas ao bloquear/tirar do rodízio, varredura por toque em
+botão, falha/ligação não atendida contadas como resposta humana, reserva contada
+como lead recebido no relatório, entrega agendada sem reconferir o desfecho,
+pós-venda morto no seletor da SDR, "Compareceu" da SDR sem mover etapa (e
+reexecutando automações da etapa atual), lead criado à mão distribuído na hora.
+Pendentes de decisão do dono: dontus-sync não promove not_contracted→contracted
+quando o pagamento aparece depois de a SDR marcar; ramal Api4Com por SDR sem tela
+(api4com_extensions nunca é gravada); "mover para etapa atual" do Kanban falha
+para lead de SDR; varredura de telas no Chrome não rodou (aba da Bia travada).
