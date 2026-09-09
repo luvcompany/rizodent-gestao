@@ -12,7 +12,7 @@ Regras que valem acima de qualquer item: nunca mexer em `whatsapp-webhook`,
 desfechos de agendamento em lote sem autorização literal do dono; publicar são
 3 passos (migration, redeploy de function, publish do site) e conferir depois.
 
-Última atualização: 2026-09-09 03:25 UTC, pela sessão local.
+Última atualização: 2026-09-09 11:40 UTC, pela sessão local.
 
 ---
 
@@ -81,8 +81,23 @@ intacto; 512 policies antigas com o mesmo hash (a única policy nova sem prefixo
 
 ## Item 6 — Ligar o rodízio em modo sombra
 
+- status: concluído em 2026-09-09 11:38 UTC (pela aba Equipe, como rizodentvca2)
+- autorizado: sim
+
+Modo `sombra` desde 09/09 08:38 (Bahia); Júlia, Fabíola e Bia dentro do
+rodízio; 0 leads movidos. Prévia da distribuição inicial: 15 leads aguardando
+resposta, revezando entre as três. O painel do motor está na aba Equipe
+(`RodizioPainel`), com Desligar / Modo sombra / Ligar e a prévia.
+
+## Item 7 — Ligar de verdade (modo `ligado`)
+
 - status: pendente
-- autorizado: não (só o dono liga; a rotina NUNCA muda `crm_rodizio_config.modo`)
+- autorizado: não (só o dono manda; a rotina NUNCA muda `crm_rodizio_config.modo`)
+
+Depois de alguns dias de sombra, o gestor clica "Ligar" na aba Equipe e depois
+"Distribuir os leads sem resposta agora" (prévia → confirmar). Conferir no dia
+seguinte: livro `crm_lead_atribuicoes` com fases `aplicacao`/`corte_9h`,
+`leads_com_sdr` > 0, e nenhum lead com duas donas.
 
 Quando o dono mandar: o gestor (rizodentvca2) chama `rodizio_definir_modo('sombra')`;
 5 dias úteis + 1 sábado só anotando no livro (fase `sombra`) quem teria

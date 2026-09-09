@@ -49,7 +49,8 @@ const COR: Record<Modo, string> = {
   ligado: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
 };
 const ESTADO_PONTO: Record<string, string> = {
-  aberta: "Em expediente", pausada: "Em pausa", encerrada: "Encerrada", ausente: "Não abriu hoje",
+  aberta: "Em expediente", pausada: "Em pausa", encerrada: "Encerrou o expediente",
+  fechada: "Sem expediente aberto", ausente: "Não abriu hoje",
 };
 
 const fmtHora = (iso: string | null) =>
