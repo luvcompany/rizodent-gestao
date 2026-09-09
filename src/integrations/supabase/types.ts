@@ -2604,6 +2604,33 @@ export type Database = {
           },
         ]
       }
+      crm_leads_funil_backup_20260909: {
+        Row: {
+          etapa: string | null
+          funil: string | null
+          lead_id: string
+          movido_em: string
+          pipeline_id: string | null
+          stage_id: string | null
+        }
+        Insert: {
+          etapa?: string | null
+          funil?: string | null
+          lead_id: string
+          movido_em?: string
+          pipeline_id?: string | null
+          stage_id?: string | null
+        }
+        Update: {
+          etapa?: string | null
+          funil?: string | null
+          lead_id?: string
+          movido_em?: string
+          pipeline_id?: string | null
+          stage_id?: string | null
+        }
+        Relationships: []
+      }
       crm_notification_preferences: {
         Row: {
           browser_push_enabled: boolean
