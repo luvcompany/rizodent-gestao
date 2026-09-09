@@ -156,3 +156,35 @@ Pendentes de decisão do dono: dontus-sync não promove not_contracted→contrac
 quando o pagamento aparece depois de a SDR marcar; ramal Api4Com por SDR sem tela
 (api4com_extensions nunca é gravada); "mover para etapa atual" do Kanban falha
 para lead de SDR; varredura de telas no Chrome não rodou (aba da Bia travada).
+
+## Item 10 — Horário por SDR, corte relativo, funis por procedimento, ordem dos funis, reagendamentos, Dontus promove contrato
+
+- status: concluído em 2026-09-09 ~20:40 UTC (migrations `20260910000000` e `20260910001000`,
+  `dontus-sync` republicada, site `index-y-4f0fTb.js`)
+- autorizado: sim
+
+Decisões do dono (09/09, noite): horário de trabalho por SDR (entrada, saída,
+almoço, sábado) na aba Equipe → Editar; corte das reservas = entrada da SDR +
+tolerância (`crm_rodizio_config.corte_tolerancia_min`, padrão 60, no painel);
+quem não trabalha no dia tem as reservas passadas na hora; domingo/feriado nada
+se move. Funis Prótese, Implante, Zigomático, Faceta, Protocolo e Aparelho
+criados com as 15 etapas do Funil Principal; todo funil novo nasce assim
+(`trg_zz_pipeline_etapas_padrao`) e etapas do administrador nascem ocultas
+para a SDR (`trg_zz_stage_regras_padrao`). Ordem dos funis em Configuração do
+Funil → menu ⋮ → Ordem dos funis (`crm_pipelines.position`). Reagendamentos,
+"reagendou e faltou" e leads com 2+ faltas no Relatório das SDRs e em Meu
+desempenho (`relatorio_sdr_reagendamentos`). Fim da carência sem contrato →
+"Não contratado" com o administrador (`sdr_pos_entrega_etapa`); comparecimento
+marcado pelo Dontus/CRC em lead de SDR reflete no funil (Compareceu/Contratado).
+`dontus-sync` (modo comparecimento) promove consulta not_contracted → contracted
+quando acha pagamento que conta (45 dias) e move o lead para Contratado.
+
+Incidente do mesmo dia: ao mover 96 leads de Arraiá/Indicação/Não contratados
+para o Funil Principal (backup em `crm_leads_funil_backup_20260909`), a regra
+por tempo "sem resposta" de Conversando/Novo Lead moveu 68 para Follow-Up e o
+bot de entrada mandou o template follow_up_0 para 46 leads. Dono decidiu deixar
+no Follow-Up. Lição: antes de mover lote de leads para etapas com automação,
+desligar TAMBÉM as automações por tempo (no_response) das etapas de destino ou
+mover para etapa sem automação. Os funis vazios (Arraiá, Indicação, Não
+contratados, Não Compareceu) sumiram em seguida — provavelmente apagados pelo
+dono na tela.
