@@ -6453,6 +6453,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      tmp_apply_migration: { Args: { p_sql: string }; Returns: undefined }
       transfer_lead_to_whatsapp: { Args: { p_lead_id: string }; Returns: Json }
       update_whatsapp_template_sharing: {
         Args: {

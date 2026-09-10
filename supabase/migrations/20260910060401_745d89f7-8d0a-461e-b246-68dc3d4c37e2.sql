@@ -1,0 +1,1 @@
+CREATE OR REPLACE FUNCTION public.tmp_apply_migration(p_sql text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN EXECUTE p_sql; END; $$;
