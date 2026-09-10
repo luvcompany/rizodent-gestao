@@ -206,8 +206,9 @@ DECLARE
   v_de timestamptz;       -- p_de, encurtado para no máximo 30 dias (ver o teto)
   v_seg numeric := 0;
   v_abertos tstzrange[] := ARRAY[]::tstzrange[];   -- os trechos com o ponto ABERTO
-  v_tz text; v_d date; v_ultimo date; h record;
-  v_janela tstzrange;     -- o horário contratado daquele dia
+  v_tz text; v_d date; v_ultimo date;
+  v_abre time; v_fecha time;   -- a janela da CLÍNICA naquele dia (o grampo)
+  v_janela tstzrange;     -- a janela do dia, já em timestamptz
   v_trecho tstzrange; v_corte tstzrange;
 BEGIN
   IF p_tenant IS NULL OR p_user IS NULL OR p_de IS NULL OR p_ate IS NULL OR p_ate <= p_de THEN RETURN 0; END IF;
@@ -279,10 +280,39 @@ BEGIN
   v_d := (v_de AT TIME ZONE v_tz)::date;
   v_ultimo := (p_ate AT TIME ZONE v_tz)::date;
   WHILE v_d <= v_ultimo LOOP
-    SELECT * INTO h FROM public.rodizio_horario_dia(p_tenant, p_user, v_d);
-    IF h.entrada IS NOT NULL AND h.saida IS NOT NULL AND h.saida > h.entrada THEN
-      v_janela := tstzrange((v_d + h.entrada) AT TIME ZONE v_tz,
-                            (v_d + h.saida)   AT TIME ZONE v_tz, '[)');
+    -- O GRAMPO É O HORÁRIO DA CLÍNICA, não o contratado da SDR.
+    --
+    -- Primeira versão grampeava pelo horário dela (rodizio_horario_dia) e isso
+    -- descartava o trabalho de quem estava trabalhando: rodizio_horario_dia
+    -- devolve NULL no sábado para quem TEM hora_entrada e está com sabado_* em
+    -- branco, então a SDR que foi trabalhar no sábado somava 0 minuto; e a SDR
+    -- cadastrada 13:00–18:00 que cobriu a colega das 08:00 às 12:00 também
+    -- somava 0. Nos dois casos o lead dela nunca seria realocado e ela ainda
+    -- levava um aviso ao gestor dizendo que não abriu o expediente.
+    --
+    -- O grampo tem UM propósito: sessão esquecida aberta não pode fazer a noite
+    -- e o fim de semana contarem como trabalhados, sem depender de o cron
+    -- ponto-vigia ter carimbado o 'encerrar'. O horário da clínica cumpre isso
+    -- inteiro — fora dele ninguém atende ninguém — e não pune quem cobriu turno.
+    -- O desconto fino (almoço, café, saída antes do fim) continua vindo do
+    -- PONTO, que é o mecanismo principal desta função.
+    BEGIN
+      SELECT (t.business_hours -> (extract(dow FROM v_d)::int)::text ->> 0)::time,
+             (t.business_hours -> (extract(dow FROM v_d)::int)::text ->> 1)::time
+        INTO v_abre, v_fecha
+        FROM public.tenants t
+       WHERE t.id = p_tenant
+         AND jsonb_typeof(t.business_hours -> (extract(dow FROM v_d)::int)::text) = 'array'
+         AND jsonb_array_length(t.business_hours -> (extract(dow FROM v_d)::int)::text) >= 2;
+    EXCEPTION WHEN OTHERS THEN
+      -- business_hours com texto que não é hora: o dia simplesmente não conta.
+      v_abre := NULL; v_fecha := NULL;
+    END;
+    -- Feriado não conta, pela mesma régua do resto do motor.
+    IF v_abre IS NOT NULL AND v_fecha IS NOT NULL AND v_fecha > v_abre
+       AND NOT public.rodizio_feriado(p_tenant, v_d) THEN
+      v_janela := tstzrange((v_d + v_abre)  AT TIME ZONE v_tz,
+                            (v_d + v_fecha) AT TIME ZONE v_tz, '[)');
       FOREACH v_trecho IN ARRAY v_abertos LOOP
         v_corte := v_trecho * v_janela;
         IF NOT isempty(v_corte) THEN
@@ -304,6 +334,36 @@ END $fn$;
 --   GRANT EXECUTE ON FUNCTION public.rodizio_minutos_da_sdr(uuid, uuid, timestamptz, timestamptz) TO authenticated;
 REVOKE ALL ON FUNCTION public.rodizio_minutos_da_sdr(uuid, uuid, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rodizio_minutos_da_sdr(uuid, uuid, timestamptz, timestamptz) TO service_role;
+
+-- ============================================ 2b. o fechamento da clínica no dia
+-- Serve a UM propósito: o teto de ausência não pode vencer depois que a clínica
+-- fecha, porque a realocação só roda com a clínica aberta (rodizio_em_expediente).
+-- Sem esse limite, entrada tarde ou tolerância grande (a tela aceita até 480 min)
+-- fazem o prazo cair fora da janela do motor e NINGUÉM é declarado ausente nunca
+-- — o lead fica parado para sempre e ainda ocupa vaga na fila de 100 por rodada.
+-- Devolve NULL quando a clínica não abre no dia; LEAST ignora NULL, então quem
+-- chama fica só com o prazo da entrada, que é o comportamento desejado.
+CREATE OR REPLACE FUNCTION public.rodizio_fim_do_expediente(p_tenant uuid, p_data date)
+RETURNS timestamptz
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $fn$
+DECLARE v_tz text; v_dia jsonb; v_fecha time;
+BEGIN
+  IF p_tenant IS NULL OR p_data IS NULL THEN RETURN NULL; END IF;
+  SELECT t.business_hours -> (extract(dow FROM p_data)::int)::text INTO v_dia
+    FROM public.tenants t WHERE t.id = p_tenant;
+  IF v_dia IS NULL OR jsonb_typeof(v_dia) <> 'array' OR jsonb_array_length(v_dia) < 2 THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    v_fecha := (v_dia ->> 1)::time;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+  END;
+  v_tz := public.rodizio_tz(p_tenant);
+  RETURN (p_data + v_fecha) AT TIME ZONE v_tz;
+END $fn$;
+REVOKE ALL ON FUNCTION public.rodizio_fim_do_expediente(uuid, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rodizio_fim_do_expediente(uuid, date) TO service_role;
 
 -- ================================================================ 3. a realocação por silêncio passa a usar o relógio certo
 -- Corpo de 20260910011000 (seção "B + G") copiado VERBATIM — as quatro
@@ -482,9 +542,30 @@ BEGIN
         -- está dentro da tolerância da entrada; só "passou da entrada" puniria
         -- quem abriu no horário e está no almoço.
         SELECT * INTO h FROM public.rodizio_horario_dia(c.tenant_id, r.dona, v_hoje);
-        v_ausente := (h.entrada IS NULL
-                      OR now() >= ((v_hoje + h.entrada) AT TIME ZONE v_tz)
-                                  + make_interval(mins => COALESCE(cfg.corte_tolerancia_min, 60)))
+
+        -- (i) QUEM BATEU PONTO HOJE NUNCA É AUSENTE. Esta é a metade que faltava
+        -- e que produzia acusação falsa: a SDR com o sábado em branco no cadastro
+        -- (rodizio_horario_dia devolve entrada NULL para quem TEM horário próprio)
+        -- ou de turno trocado aparecia com h.entrada IS NULL, caía direto em
+        -- "ausente" e tinha os leads levados para as colegas enquanto estava
+        -- sentada atendendo — com um aviso ao gestor dizendo que ela não abriu o
+        -- expediente. É a mesma leitura de ponto que rodizio_pool já faz.
+        -- (ii) O PRAZO NÃO PODE VENCER FORA DA JANELA EM QUE O MOTOR RODA. A
+        -- função só roda com a clínica aberta; se entrada + tolerância caísse
+        -- depois do fechamento (entrada tarde, ou tolerância grande — a tela
+        -- aceita até 480 min), não existiria instante que satisfizesse as duas
+        -- coisas: ninguém seria declarado ausente NUNCA, o lead ficaria parado
+        -- para sempre e ainda ocuparia vaga na fila de 100 a cada rodada.
+        v_ausente := NOT EXISTS (SELECT 1 FROM public.crm_ponto_eventos e
+                                  WHERE e.tenant_id = c.tenant_id
+                                    AND e.user_id = r.dona
+                                    AND e.tipo IN ('abrir', 'retomar')
+                                    AND e.em >= v_ini)
+                     AND (h.entrada IS NULL
+                          OR now() >= LEAST(
+                               ((v_hoje + h.entrada) AT TIME ZONE v_tz)
+                                 + make_interval(mins => COALESCE(cfg.corte_tolerancia_min, 60)),
+                               public.rodizio_fim_do_expediente(c.tenant_id, v_hoje) - interval '5 minutes'))
                      AND public.rodizio_minutos_da_sdr(c.tenant_id, r.dona, v_ini, now()) = 0;
 
         IF v_ausente THEN
@@ -495,7 +576,17 @@ BEGIN
           -- (rodizio_notifica devolve na hora) — a realocação acontece do mesmo
           -- jeito, só o aviso se perde; é mais um motivo para a aba Equipe
           -- exigir um gestor.
-          IF NOT (r.dona = ANY (v_avisadas)) THEN
+          -- A contagem abaixo é a consulta mais cara do laço (anti-join em
+          -- messages sobre todos os leads dela). O array v_avisadas evita
+          -- repetir dentro da rodada, mas o dedupe do DIA vive dentro de
+          -- rodizio_notifica, que descarta a notificação DEPOIS de a contagem
+          -- já ter sido paga — eram onze varreduras jogadas fora por dona
+          -- ausente por dia. Testar a chave antes evita todas elas.
+          IF NOT (r.dona = ANY (v_avisadas))
+             AND NOT EXISTS (SELECT 1 FROM public.crm_notifications n
+                              WHERE n.user_id = cfg.gestor_user_id
+                                AND n.dedupe_key = 'rodizio:dona_ausente:' || c.tenant_id::text
+                                                   || ':' || r.dona::text || ':' || v_hoje::text) THEN
             v_avisadas := v_avisadas || r.dona;
             SELECT count(*) INTO v_calados
               FROM public.crm_leads x
@@ -518,12 +609,22 @@ BEGIN
                 || 'esses leads contam pelo relógio da clínica e podem ser realocados para quem está na mesa.',
               'rodizio:dona_ausente:' || c.tenant_id::text || ':' || r.dona::text || ':' || v_hoje::text);
           END IF;
-          -- Relógio da CLÍNICA, como era antes desta migration, e SEM carência
-          -- de abertura: a carência é a folga de quem chegou e encontrou fila;
-          -- quem não chegou não tem fila para vencer, e cada hora a mais aqui é
-          -- o paciente esperando calado.
-          v_fora := false;
-          v_limite := cfg.realocar_sem_resposta_min;
+          -- Relógio da CLÍNICA, como era antes desta migration. A CARÊNCIA DE
+          -- ABERTURA CONTINUA VALENDO: tirá-la aqui criava um degrau na hora da
+          -- tolerância — a SDR que chegasse 61 minutos atrasada perdia de uma
+          -- vez a fila inteira da noite, porque os leads que escreveram fora do
+          -- horário dela deixavam de ter limite + carência e passavam a ter só
+          -- o limite, na mesma rodada. O "prazo maior pela manhã" que o dono
+          -- pediu não pode sumir por atraso; quem não veio já perde o lead pelo
+          -- relógio da clínica, que é o freio desta regra.
+          v_dia_in := (r.last_inbound_at AT TIME ZONE v_tz)::date;
+          SELECT * INTO hin FROM public.rodizio_horario_dia(c.tenant_id, r.dona, v_dia_in);
+          v_fora := NOT public.rodizio_dia_util(c.tenant_id, v_dia_in)
+                    OR hin.entrada IS NULL OR hin.saida IS NULL
+                    OR r.last_inbound_at <  ((v_dia_in + hin.entrada) AT TIME ZONE v_tz)
+                    OR r.last_inbound_at >= ((v_dia_in + hin.saida)   AT TIME ZONE v_tz);
+          v_limite := cfg.realocar_sem_resposta_min
+                    + CASE WHEN v_fora THEN COALESCE(cfg.realocar_carencia_abertura_min, 60) ELSE 0 END;
           v_min := public.rodizio_minutos_uteis(c.tenant_id, GREATEST(r.last_inbound_at, r.desde), now());
           v_txt := CASE WHEN v_min >= 999999 THEN 'mais de 30 dias' ELSE v_min || ' min úteis' END
                 || ' (relógio da clínica porque a dona não abriu o expediente hoje)';
