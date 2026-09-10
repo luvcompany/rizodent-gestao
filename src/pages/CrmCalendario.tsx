@@ -22,8 +22,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { applyAppointmentOutcome, applySdrComparecimento } from "@/lib/appointmentOutcome";
-import { cancelAppointment, rescheduleAppointment, toastDbError } from "@/lib/appointmentActions";
+import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
 import { corDesfecho, desfechoEhComparecimento, ehPapelSdr, rotuloDesfecho } from "@/lib/desfechoLabel";
 
 type Task = {
@@ -407,12 +407,18 @@ export default function CrmCalendario() {
   const handleApptComparecimentoSdr = async (appt: Appointment) => {
     setApptBusy(true);
     try {
-      const r = await applySdrComparecimento(appt.id);
-      if (!r.ok) { toast.error("Este agendamento já recebeu desfecho — recarregando"); await fetchTasks(); return; }
+      // marcarComparecimentoSdr (e não applySdrComparecimento, que foi apagada):
+      // ela monta o aviso com o que o SERVIDOR respondeu. O texto fixo que estava
+      // aqui prometia "a etapa não muda agora", e desde 10/09 a RPC move o lead
+      // para "Compareceu" — que agora é etapa visível para a SDR. O card saltava
+      // de coluna na frente dela enquanto a tela garantia que nada tinha mudado.
+      const ok = await marcarComparecimentoSdr(appt.id);
+      if (!ok) { await fetchTasks(); return; }
       // Estado local com o status que o banco gravou; o rótulo/cor da tela saem
       // de rotuloDesfecho/corDesfecho, então para ela o card lê "Compareceu".
       refreshAppt(appt.id, "not_contracted");
-      toast.success("Comparecimento registrado no seu crédito — o lead continua com você e passa para o administrador ao fim da carência; a etapa não muda agora");
+      // A etapa mudou no banco: recarrega para a agenda bater com o funil.
+      await fetchTasks();
       setSelectedAppointment(null);
     } catch (e) {
       toastDbError(e, "Erro ao registrar comparecimento");

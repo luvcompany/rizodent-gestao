@@ -237,27 +237,17 @@ export async function applyAppointmentOutcome(args: {
 }
 
 /**
- * "Compareceu" da SDR (Fase 5 / decisão de 09/09): tudo no servidor, pela RPC
- * sdr_marcar_comparecimento — a SDR não enxerga a etapa destino (RLS), então o
- * caminho do front (applyAppointmentOutcome) não conseguia mover a etapa e
- * ainda rodava as automações da etapa antiga. A RPC marca a consulta como
- * not_contracted (= compareceu; contrato é dado do administrador/Dontus), move
- * o lead para a etapa "Compareceu" e devolve a etapa nova para as automações
- * de entrada dela. A entrega ao administrador vem pelos gatilhos (carência).
+ * applySdrComparecimento foi APAGADA em 10/09/2026.
+ *
+ * Ela duplicava a mensagem ao paciente: a RPC sdr_marcar_comparecimento move o
+ * lead no banco, o UPDATE de stage_id aciona trg_enqueue_stage_entry_automations
+ * e a fila envia; esta função disparava executeStageAutomations por cima, direto,
+ * sem passar pela fila — logo sem a chave de deduplicação dela. Além disso o
+ * calendário, único chamador, mostrava um aviso fixo dizendo que a etapa não
+ * mudava, o que deixou de ser verdade quando a RPC voltou a mover o lead.
+ *
+ * Use marcarComparecimentoSdr de src/lib/appointmentActions.ts: ela monta o texto
+ * com o que o servidor respondeu e não dispara automação nenhuma.
  */
-export async function applySdrComparecimento(appointmentId: string): Promise<{ ok: boolean; motivo?: string }> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase as any).rpc("sdr_marcar_comparecimento", { p_appointment_id: appointmentId });
-  if (error) throw error;
-  const r = (data ?? {}) as { ok?: boolean; motivo?: string; lead_id?: string; stage_id?: string | null; phone?: string | null };
-  if (!r.ok) return { ok: false, motivo: r.motivo };
-  if (r.stage_id && r.lead_id) {
-    executeStageAutomations({
-      leadId: r.lead_id,
-      stageId: r.stage_id,
-      leadPhone: r.phone ?? "",
-      triggerTypes: ["on_enter"],
-    }).catch((e) => console.error("[SdrComparecimento] Automation error:", e));
-  }
   return { ok: true };
 }

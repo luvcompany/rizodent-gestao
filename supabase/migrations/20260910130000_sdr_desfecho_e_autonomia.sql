@@ -332,6 +332,7 @@ DECLARE a public.crm_appointments; l public.crm_leads; v_tenant uuid;
         v_gestao boolean; v_antes text; v_novo text; n integer;
         v_alvo uuid; v_alvo_nome text; v_movido boolean := false;
         v_quem text; v_entrega text; v_dona uuid; v_removidas integer := 0;
+        v_outra uuid; v_repontadas integer := 0;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Faça login para corrigir o desfecho de uma consulta.' USING ERRCODE = '42501';
@@ -387,8 +388,42 @@ BEGIN
   -- "Não compareceu" desfaz a passagem ao administrador ANTES de mexer no
   -- desfecho: o lead é da SDR de novo, para ela reagendar.
   IF NOT p_compareceu THEN
+  -- A ENTREGA AO ADMINISTRADOR NÃO É DO LEAD, É DA CONSULTA QUE A MOTIVOU —
+  -- mas crm_entregas_gestor tem UMA linha por lead (lead_id é a chave), e
+  -- sdr_agenda_entrega_ao_gestor devolve 'ja_agendada' sem repontar quando já
+  -- existe linha. Então a linha viva costuma apontar para a PRIMEIRA consulta
+  -- comparecida. Um DELETE por lead_id, sem recorte, produzia os dois estragos
+  -- opostos que a revisão achou:
+  --   • mexendo na consulta B, matava a entrega da consulta A, que compareceu de
+  --     verdade: o lead ficava em "Compareceu", com a SDR, para sempre — o
+  --     administrador nunca recebia e a venda não era trabalhada por ninguém;
+  --   • recortando só por appointment_id, o mesmo acontecia quando a linha
+  --     apontava para a consulta que está sendo mexida e havia outra comparecida.
+  -- A regra que fecha os dois: se AINDA existe outra consulta comparecida do
+  -- lead, a entrega não morre — ela é REPONTADA para essa consulta (e criada, se
+  -- não havia nenhuma). Só quando não sobra comparecimento nenhum é que a
+  -- passagem ao administrador deixa de fazer sentido e a linha sai.
+  SELECT a2.id INTO v_outra
+    FROM public.crm_appointments a2
+   WHERE a2.lead_id = l.id AND a2.id <> a.id
+     AND a2.status IN ('contracted', 'not_contracted')
+   ORDER BY a2.scheduled_date DESC, a2.scheduled_time DESC NULLS LAST
+   LIMIT 1;
+
+  IF v_outra IS NULL THEN
     DELETE FROM public.crm_entregas_gestor WHERE lead_id = l.id;
     GET DIAGNOSTICS v_removidas = ROW_COUNT;
+  ELSE
+    UPDATE public.crm_entregas_gestor
+       SET appointment_id = v_outra
+     WHERE lead_id = l.id;
+    GET DIAGNOSTICS v_repontadas = ROW_COUNT;
+    v_removidas := 0;
+    IF v_repontadas = 0 THEN
+      PERFORM public.sdr_agenda_entrega_ao_gestor(
+        l.id, 'comparecimento em outra consulta (após ajuste da SDR)', NULL, v_outra);
+    END IF;
+  END IF;
   END IF;
 
   -- A trava de reabertura de stamp_appointment_update é aberta por UMA
@@ -505,6 +540,7 @@ DECLARE a public.crm_appointments; l public.crm_leads; v_tenant uuid;
         v_gestao boolean; v_antes text; n integer; v_motivo text;
         v_etapa_atual text; v_alvo uuid; v_alvo_nome text; v_movido boolean := false;
         v_quem text; v_removidas integer := 0; v_tem_viva boolean;
+        v_outra uuid; v_repontadas integer := 0;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Faça login para excluir um agendamento.' USING ERRCODE = '42501';
@@ -552,9 +588,43 @@ BEGIN
   v_antes := a.status;
   v_quem := public.rodizio_nome(auth.uid());
 
-  -- Some o agendamento, some a passagem ao administrador que ele motivou.
-  DELETE FROM public.crm_entregas_gestor WHERE lead_id = l.id;
-  GET DIAGNOSTICS v_removidas = ROW_COUNT;
+  -- A ENTREGA AO ADMINISTRADOR NÃO É DO LEAD, É DA CONSULTA QUE A MOTIVOU —
+  -- mas crm_entregas_gestor tem UMA linha por lead (lead_id é a chave), e
+  -- sdr_agenda_entrega_ao_gestor devolve 'ja_agendada' sem repontar quando já
+  -- existe linha. Então a linha viva costuma apontar para a PRIMEIRA consulta
+  -- comparecida. Um DELETE por lead_id, sem recorte, produzia os dois estragos
+  -- opostos que a revisão achou:
+  --   • mexendo na consulta B, matava a entrega da consulta A, que compareceu de
+  --     verdade: o lead ficava em "Compareceu", com a SDR, para sempre — o
+  --     administrador nunca recebia e a venda não era trabalhada por ninguém;
+  --   • recortando só por appointment_id, o mesmo acontecia quando a linha
+  --     apontava para a consulta que está sendo mexida e havia outra comparecida.
+  -- A regra que fecha os dois: se AINDA existe outra consulta comparecida do
+  -- lead, a entrega não morre — ela é REPONTADA para essa consulta (e criada, se
+  -- não havia nenhuma). Só quando não sobra comparecimento nenhum é que a
+  -- passagem ao administrador deixa de fazer sentido e a linha sai.
+  SELECT a2.id INTO v_outra
+    FROM public.crm_appointments a2
+   WHERE a2.lead_id = l.id AND a2.id <> a.id
+     AND a2.status IN ('contracted', 'not_contracted')
+   ORDER BY a2.scheduled_date DESC, a2.scheduled_time DESC NULLS LAST
+   LIMIT 1;
+
+  IF v_outra IS NULL THEN
+    DELETE FROM public.crm_entregas_gestor WHERE lead_id = l.id;
+    GET DIAGNOSTICS v_removidas = ROW_COUNT;
+  ELSE
+    UPDATE public.crm_entregas_gestor
+       SET appointment_id = v_outra
+     WHERE lead_id = l.id;
+    GET DIAGNOSTICS v_repontadas = ROW_COUNT;
+    v_removidas := 0;
+    IF v_repontadas = 0 THEN
+      PERFORM public.sdr_agenda_entrega_ao_gestor(
+        l.id, 'comparecimento em outra consulta (após ajuste da SDR)', NULL, v_outra);
+    END IF;
+  END IF;
+
 
   PERFORM set_config('sdr.correcao_desfecho', 'sim', true);
   UPDATE public.crm_appointments
@@ -577,10 +647,15 @@ BEGIN
   -- consulta viva (senão a etapa de agendamento está certa por causa dela).
   SELECT * INTO l FROM public.crm_leads WHERE id = a.lead_id;
   SELECT s.name INTO v_etapa_atual FROM public.crm_stages s WHERE s.id = l.stage_id;
+  -- Duas razões para NÃO mover: outra consulta viva (a etapa de agendamento está
+  -- certa por causa dela) ou outra consulta COMPARECIDA — v_outra, lida acima. O
+  -- segundo caso faltava: o lead que compareceu na consulta A e teve a consulta B
+  -- excluída era arrastado de "Compareceu" para "Conversando", ficando com etapa
+  -- que contradiz o desfecho de A e sem ciclo nenhum para fechar.
   v_tem_viva := EXISTS (SELECT 1 FROM public.crm_appointments a2
                          WHERE a2.lead_id = l.id AND a2.id <> a.id
                            AND a2.status IN ('confirmed', 'pending'));
-  IF NOT v_tem_viva
+  IF NOT v_tem_viva AND v_outra IS NULL
      AND public.normaliza_nome_etapa(v_etapa_atual) IN
          ('agendado', 'reagendado', 'reagendar', 'compareceu', 'compareceu e agendou', 'nao compareceu') THEN
     SELECT s.id, s.name INTO v_alvo, v_alvo_nome FROM public.crm_stages s

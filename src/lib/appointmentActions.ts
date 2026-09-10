@@ -399,19 +399,22 @@ export async function marcarComparecimentoSdr(appointmentId: string): Promise<bo
     return false;
   }
 
-  // Compatibilidade com a versão da RPC anterior à migration de 10/09, que
-  // devolvia stage_id quando movia a etapa e contava com o front para rodar as
-  // automações de entrada dela. A versão nova devolve NULL de propósito (quem
-  // roda é a fila do banco, uma vez só), então na janela entre publicar o site e
-  // aplicar a migration o paciente não fica sem a mensagem de entrada.
-  if (r.stage_id && r.lead_id) {
-    executeStageAutomations({
-      leadId: r.lead_id,
-      stageId: r.stage_id,
-      leadPhone: r.phone ?? "",
-      triggerTypes: ["on_enter"],
-    }).catch((e) => console.error("[SdrComparecimento] Automation error:", e));
-  }
+  // NÃO rodamos executeStageAutomations aqui, e isso é deliberado.
+  //
+  // Havia um bloco de "compatibilidade" que disparava as automações de entrada
+  // quando a RPC devolvia stage_id, para o paciente não ficar sem a mensagem na
+  // janela entre publicar o site e aplicar a migration. Ele era uma bomba: a RPC
+  // move o lead no banco, e o UPDATE de crm_leads.stage_id já aciona
+  // trg_enqueue_stage_entry_automations, que enfileira as MESMAS automações de
+  // entrada; o automation-engine envia. Com o front disparando também, o paciente
+  // recebia DUAS vezes — e o front envia direto, sem passar pela fila, então nem
+  // a chave de deduplicação da fila segurava.
+  //
+  // O jeito certo é a ordem de publicação, que neste projeto é sempre migration
+  // antes do site: com a migration aplicada, a RPC devolve stage_id NULL e nada
+  // aqui teria rodado de todo modo. E se a ordem se invertesse, o pior caso passa
+  // a ser o paciente não receber a mensagem de entrada, que é muito melhor que
+  // recebê-la duas vezes. Quem move a etapa é o banco; quem manda é a fila.
 
   // Só o que o banco disse. 'entregue' = a carência era 0 e o lead já saiu das
   // mãos dela; 'agendada' = continua com ela até o fim da carência; 'nenhuma' =
