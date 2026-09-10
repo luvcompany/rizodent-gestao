@@ -1768,6 +1768,7 @@ export type Database = {
           mensagem: string | null
           motivo: string | null
           tenant_id: string
+          tentativas: number
         }
         Insert: {
           appointment_id?: string | null
@@ -1778,6 +1779,7 @@ export type Database = {
           mensagem?: string | null
           motivo?: string | null
           tenant_id: string
+          tentativas?: number
         }
         Update: {
           appointment_id?: string | null
@@ -1788,6 +1790,7 @@ export type Database = {
           mensagem?: string | null
           motivo?: string | null
           tenant_id?: string
+          tentativas?: number
         }
         Relationships: [
           {
@@ -2941,6 +2944,7 @@ export type Database = {
           entrega_gestor_apos_min: number
           etapas_entrada: string[] | null
           funil_id: string | null
+          funis_ids: string[] | null
           gestor_user_id: string | null
           hora_corte: string
           modo: string
@@ -2960,6 +2964,7 @@ export type Database = {
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
           funil_id?: string | null
+          funis_ids?: string[] | null
           gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
@@ -2979,6 +2984,7 @@ export type Database = {
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
           funil_id?: string | null
+          funis_ids?: string[] | null
           gestor_user_id?: string | null
           hora_corte?: string
           modo?: string
@@ -5716,7 +5722,10 @@ export type Database = {
         Args: { p_nome: string; p_user_id: string }
         Returns: undefined
       }
-      equipe_encerrar_sessoes: { Args: { p_user_id: string }; Returns: number }
+      equipe_encerrar_sessoes: {
+        Args: { p_tenant?: string; p_user_id: string }
+        Returns: number
+      }
       equipe_excluir_previa: { Args: { p_user_id: string }; Returns: Json }
       equipe_horarios: {
         Args: never
@@ -5744,7 +5753,12 @@ export type Database = {
         }[]
       }
       equipe_redistribuir_leads: {
-        Args: { p_destino?: string; p_motivo?: string; p_user_id: string }
+        Args: {
+          p_destino?: string
+          p_motivo?: string
+          p_tenant?: string
+          p_user_id: string
+        }
         Returns: Json
       }
       equipe_rodizio: {
@@ -6152,6 +6166,7 @@ export type Database = {
         Args: { p_min: number }
         Returns: Json
       }
+      rodizio_definir_funis: { Args: { p_ids: string[] }; Returns: Json }
       rodizio_definir_modo: { Args: { p_modo: string }; Returns: Json }
       rodizio_definir_tempo_realocacao: {
         Args: { p_min: number }
@@ -6166,7 +6181,7 @@ export type Database = {
         Returns: boolean
       }
       rodizio_distribuir_sem_resposta_agora: {
-        Args: { p_dry_run?: boolean; p_tenant?: string }
+        Args: { p_dry_run?: boolean; p_max_por_sdr?: number; p_tenant?: string }
         Returns: {
           acao: string
           etapa: string
@@ -6177,6 +6192,10 @@ export type Database = {
           para_user_id: string
           ultima_mensagem_em: string
         }[]
+      }
+      rodizio_em_almoco: {
+        Args: { p_quando?: string; p_tenant: string; p_user: string }
+        Returns: boolean
       }
       rodizio_em_expediente: {
         Args: { p_quando?: string; p_tenant: string }
@@ -6194,6 +6213,7 @@ export type Database = {
       }
       rodizio_fonte_excluida: { Args: { p_source: string }; Returns: boolean }
       rodizio_funil: { Args: { p_tenant: string }; Returns: string }
+      rodizio_funis: { Args: { p_tenant: string }; Returns: string[] }
       rodizio_horario_dia: {
         Args: { p_data: string; p_tenant: string; p_user: string }
         Returns: Record<string, unknown>
@@ -6218,6 +6238,10 @@ export type Database = {
           p_run: string
         }
         Returns: undefined
+      }
+      rodizio_minutos_uteis: {
+        Args: { p_ate: string; p_de: string; p_tenant: string }
+        Returns: number
       }
       rodizio_msg_humana: {
         Args: { m: Database["public"]["Tables"]["messages"]["Row"] }
@@ -6428,7 +6452,12 @@ export type Database = {
         }[]
       }
       sdr_entrega_lead_ao_gestor: {
-        Args: { p_lead_id: string; p_mensagem: string; p_motivo: string }
+        Args: {
+          p_appointment_id?: string
+          p_lead_id: string
+          p_mensagem: string
+          p_motivo: string
+        }
         Returns: boolean
       }
       sdr_entregas_pendentes: { Args: never; Returns: number }
