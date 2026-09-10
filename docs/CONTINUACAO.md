@@ -396,3 +396,37 @@ O gatilho `trg_zz_pipeline_etapas_padrao` clona as ETAPAS de todo funil novo, ma
 não clona automações nem bots. Funil criado de agora em diante nasce com as
 etapas certas e sem automação. Copiar automação e bot no mesmo gatilho é o passo
 que falta para o pedido "todo funil novo já deve nascer assim" valer inteiro.
+
+### Achado colateral: o watchdog reenfileira bot sem trava de "já executou"
+
+Não é regressão da cópia, é anterior e vale para o Funil Principal. Registrado
+aqui porque apareceu ao medir o risco.
+
+`watchdog_reenqueue_missing_bots()` roda todo dia às 03:00 UTC, ou seja meia-noite
+na Bahia (cron `watchdog-reenqueue-missing-bots-daily`). Ela enfileira um
+`send_bot` para TODO lead cuja etapa tenha automação `on_enter` ou
+`on_create_or_enter` ativa com `send_bot`. As duas únicas condições são: não
+existir execução do bot em `active`/`waiting_reply` e não existir item `pending`
+na fila. Execução que já terminou em `completed` não impede nova rodada.
+
+Números medidos em 10/09/2026, só para o bot "Follow - UP":
+
+| medida | valor |
+| --- | --- |
+| execuções totais | 22.569 |
+| leads distintos | 6.112 |
+| média por lead | 3,69 |
+| leads com 1 execução | 2.071 |
+| leads com 5 ou mais | 1.975 |
+| maior repetição num único lead | 16 |
+| leads hoje na etapa exposta | 181 |
+| envios de bot enfileirados e entregues em 7 dias | 237 |
+
+Parte da repetição é legítima: o lead volta para a etapa e o ciclo recomeça. Mas
+16 execuções no mesmo lead e um terço dos leads com 5 ou mais são sinal de que a
+régua do watchdog merece revisão. Nada foi alterado — é preciso primeiro
+distinguir reentrada legítima na etapa de reenfileiramento cego, cruzando
+`bot_executions.started_at` com `crm_lead_stage_history`.
+
+Os 7 funis novos ficam sujeitos à mesma régua quando tiverem lead em
+"Follow - Up". Hoje não têm nenhum.
