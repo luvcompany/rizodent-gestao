@@ -222,7 +222,13 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
   };
 
-  /** "Compareceu" da SDR: RPC no servidor (ver applySdrComparecimento). */
+  /**
+   * "Compareceu" da SDR: RPC no servidor (ver applySdrComparecimento).
+   * A RPC não move mais a etapa — quem move é o gatilho de entrega, quando o
+   * lead passa ao administrador no fim da carência de 24 h. Então o toast fala
+   * só do que aconteceu agora (crédito da SDR + lead ainda com ela) e não
+   * promete mudança de etapa, que era a parte que a tela inventava.
+   */
   const doSdrComparecimento = async (apptId: string) => {
     setOutcomeSaving(apptId);
     try {
@@ -230,7 +236,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       if (!r.ok) {
         toast.error("Este agendamento já recebeu desfecho — recarregando");
       } else {
-        toast.success("Comparecimento registrado no seu crédito — o lead continua com você por enquanto e depois passa para o administrador");
+        toast.success("Comparecimento registrado no seu crédito — o lead continua com você e passa para o administrador ao fim da carência; a etapa não muda agora");
       }
       await Promise.all([fetchAppointments(), checkRescheduleMode()]);
     } catch (e) {
@@ -248,20 +254,33 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const moveLeadOnly = async (kind: "no_show" | "contracted" | "not_contracted") => {
     setTerminalBusy(true);
     try {
+      // O movimento de etapa pode simplesmente não acontecer: o funil não tem a
+      // etapa destino, o lead já estava nela, ou o papel não a enxerga (as
+      // funções devolvem null nesses casos). A mensagem de sistema do "Não
+      // contratou" era fixa ("— movido para etapa Não contratado") e os três
+      // toasts diziam "Lead movido" de qualquer jeito, deixando no histórico do
+      // paciente um movimento que não houve. Regra nova: o texto sai do
+      // retorno, como appointmentOutcome.ts já faz no caminho not_contracted.
       let movedStageId: string | null = null;
       let label = "";
+      let aviso = "";
       if (kind === "no_show") {
         movedStageId = await moveLeadToStageInCurrentPipeline(leadId, (n) => n.includes("nao compar"));
         label = "🚫 Marcado como Não compareceu";
+        aviso = movedStageId ? "Lead movido para Não compareceu" : "Marcado como Não compareceu — o lead segue na etapa atual";
       } else if (kind === "contracted") {
         movedStageId = await moveLeadToStageInCurrentPipeline(
           leadId,
           (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
         );
         label = "🤝 Marcado como Contratado";
+        aviso = movedStageId ? "Lead movido para Contratado" : "Marcado como Contratado — o lead segue na etapa atual";
       } else {
         movedStageId = await moveLeadToNaoContratadosPipeline(leadId);
-        label = "❌ Marcado como Não contratou — movido para etapa Não contratado";
+        label = movedStageId
+          ? "❌ Marcado como Não contratou — movido para etapa Não contratado"
+          : "❌ Marcado como Não contratou";
+        aviso = movedStageId ? "Lead movido para etapa Não contratado" : "Marcado como Não contratou — o lead segue na etapa atual";
       }
 
       await supabase.from("messages").insert({
@@ -280,11 +299,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
         }).catch((e) => console.error("[TerminalCard] Automation error:", e));
       }
 
-      toast.success(
-        kind === "no_show" ? "Lead movido para Não compareceu"
-          : kind === "contracted" ? "Lead movido para Contratado"
-          : "Lead movido para etapa Não contratado",
-      );
+      toast.success(aviso);
       await Promise.all([fetchAppointments(), checkRescheduleMode()]);
     } catch (e) {
       toastDbError(e, "Erro ao mover o lead");

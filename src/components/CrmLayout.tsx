@@ -14,6 +14,7 @@ import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import AvisoFimExpediente from "@/components/sdr/AvisoFimExpediente";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
@@ -440,6 +441,12 @@ const CrmLayout = () => {
 
         <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-6">
           <TaskReminderWatcher />
+          {/* Aviso de fim de expediente da SDR: vive AQUI, no layout, e não no
+              cartão da home. O cartão só existe em /crm/sdr, e a SDR passa o dia
+              em Conversas — o aviso não a alcançava e o expediente encerrava
+              sozinho sem perguntar. Montado uma única vez; ele mesmo se cala
+              para os outros papéis. */}
+          <AvisoFimExpediente />
           <Outlet />
         </main>
       </div>

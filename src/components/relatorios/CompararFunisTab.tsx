@@ -22,6 +22,15 @@ import { AlertTriangle, Loader2, RefreshCw, Trophy, Wallet } from "lucide-react"
  * pacientes ligados a leads do funil (mesma régua do Dontus: sem orto
  * recorrente, sem "não marketing"). Lead que trocou de funil conta no funil
  * atual — é a leitura "onde está agora", a mesma do Kanban.
+ *
+ * DUAS taxas, porque elas respondem coisas diferentes:
+ * - "Contratos ÷ novos" mistura safras de propósito (numerador = consultas do
+ *   período, de leads de qualquer época; denominador = só leads criados no
+ *   período). Serve de leitura de volume, pode passar de 100% e por isso vem
+ *   marcada quando passa — nunca é ela que elege o destaque.
+ * - "Fechamento" = contratados ÷ compareceram, os dois lados da MESMA safra de
+ *   consultas do período. É a taxa que responde "qual procedimento fecha mais",
+ *   e é ela (com amostra mínima) que decide o cartão de destaque.
  */
 
 type LinhaFunil = {
@@ -31,11 +40,17 @@ type LinhaFunil = {
   contratados_etapa: number; receita: number; pagantes: number;
 };
 
-type Ordem = "posicao" | "conversao" | "receita" | "novos" | "agendamentos";
+type Ordem = "posicao" | "conversao" | "fechamento" | "receita" | "novos" | "agendamentos";
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const razao = (n: number, d: number): number | null => (d > 0 ? n / d : null);
+
+/**
+ * Amostra mínima do cartão de destaque: com 1 ou 2 comparecimentos, 1 contrato
+ * vira 50%/100% e o cartão elegeria o funil de menos movimento da clínica.
+ */
+const MIN_COMPARECIMENTOS_DESTAQUE = 5;
 
 function Barra({ valor, max, cor }: { valor: number; max: number; cor: string }) {
   const w = max > 0 ? Math.max(2, Math.round((valor / max) * 100)) : 0;
@@ -88,7 +103,9 @@ export default function CompararFunisTab() {
       ? linhas.filter((x) => x.leads_total > 0 || x.agendamentos > 0 || x.receita > 0)
       : [...linhas];
     const conv = (x: LinhaFunil) => razao(x.contratados, x.leads_novos) ?? -1;
+    const fech = (x: LinhaFunil) => razao(x.contratados, x.compareceram) ?? -1;
     if (ordem === "conversao") l = l.sort((a, b) => conv(b) - conv(a) || b.contratados - a.contratados);
+    else if (ordem === "fechamento") l = l.sort((a, b) => fech(b) - fech(a) || b.compareceram - a.compareceram);
     else if (ordem === "receita") l = l.sort((a, b) => b.receita - a.receita);
     else if (ordem === "novos") l = l.sort((a, b) => b.leads_novos - a.leads_novos);
     else if (ordem === "agendamentos") l = l.sort((a, b) => b.agendamentos - a.agendamentos);
@@ -107,9 +124,13 @@ export default function CompararFunisTab() {
   }, [visiveis]);
 
   const maxConv = Math.max(0, ...visiveis.map((x) => razao(x.contratados, x.leads_novos) ?? 0));
+  const maxFech = Math.max(0, ...visiveis.map((x) => razao(x.contratados, x.compareceram) ?? 0));
   const maxReceita = Math.max(0, ...visiveis.map((x) => x.receita));
-  const melhorConv = visiveis.filter((x) => x.leads_novos >= 5 && x.contratados > 0)
-    .sort((a, b) => (razao(b.contratados, b.leads_novos) ?? 0) - (razao(a.contratados, a.leads_novos) ?? 0))[0];
+  // O destaque saiu de "contratados ÷ leads novos" (safras diferentes: premiava
+  // o funil que fechava lead antigo e recebia pouco lead novo, às vezes com
+  // mais de 100%) para o fechamento da MESMA safra, com amostra mínima.
+  const melhorFechamento = visiveis.filter((x) => x.compareceram >= MIN_COMPARECIMENTOS_DESTAQUE && x.contratados > 0)
+    .sort((a, b) => (razao(b.contratados, b.compareceram) ?? 0) - (razao(a.contratados, a.compareceram) ?? 0))[0];
   const maiorReceita = visiveis.filter((x) => x.receita > 0).sort((a, b) => b.receita - a.receita)[0];
 
   return (
@@ -125,7 +146,8 @@ export default function CompararFunisTab() {
             <SelectTrigger className="h-8 w-[190px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="posicao">Ordem dos funis</SelectItem>
-              <SelectItem value="conversao">Conversão</SelectItem>
+              <SelectItem value="conversao">Contratos ÷ novos</SelectItem>
+              <SelectItem value="fechamento">Fechamento</SelectItem>
               <SelectItem value="receita">Receita</SelectItem>
               <SelectItem value="novos">Leads novos</SelectItem>
               <SelectItem value="agendamentos">Agendamentos</SelectItem>
@@ -168,16 +190,21 @@ export default function CompararFunisTab() {
                 <Trophy size={18} />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Melhor conversão no período</p>
-                {melhorConv ? (
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Melhor fechamento no período</p>
+                {melhorFechamento ? (
                   <>
-                    <p className="truncate text-lg font-semibold text-foreground">{melhorConv.nome}</p>
+                    <p className="truncate text-lg font-semibold text-foreground">{melhorFechamento.nome}</p>
                     <p className="text-xs text-muted-foreground">
-                      {fmtPct(melhorConv.contratados, melhorConv.leads_novos)} · {fmtInt(melhorConv.contratados)} contrato{melhorConv.contratados === 1 ? "" : "s"} de {fmtInt(melhorConv.leads_novos)} leads novos
+                      {fmtPct(melhorFechamento.contratados, melhorFechamento.compareceram)} · {fmtInt(melhorFechamento.contratados)} contrato{melhorFechamento.contratados === 1 ? "" : "s"} em {fmtInt(melhorFechamento.compareceram)} comparecimentos
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Critério: contratados ÷ compareceram (mesma safra), com no mínimo {MIN_COMPARECIMENTOS_DESTAQUE} comparecimentos no período.
                     </p>
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum funil com pelo menos 5 leads novos e um contrato no período.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum funil com pelo menos {MIN_COMPARECIMENTOS_DESTAQUE} comparecimentos e um contrato no período — abaixo disso a taxa é ruído.
+                  </p>
                 )}
               </div>
             </Card>
@@ -213,7 +240,8 @@ export default function CompararFunisTab() {
                     <TableHead className="text-right" title="Contratou ou não contratou = compareceu">Compareceram</TableHead>
                     <TableHead className="text-right">Faltas</TableHead>
                     <TableHead className="text-right" title="Consultas com contrato no período">Contratados</TableHead>
-                    <TableHead className="min-w-[150px] text-right" title="Contratados ÷ leads novos no período">Conversão</TableHead>
+                    <TableHead className="min-w-[150px] text-right" title="Contratados ÷ compareceram, os dois do mesmo período: é a taxa que responde qual procedimento fecha mais">Fechamento</TableHead>
+                    <TableHead className="min-w-[150px] text-right" title="Contratados (consultas do período, de leads de qualquer época) ÷ leads criados no período. Safras diferentes: leitura de volume, pode passar de 100%">Contratos ÷ novos</TableHead>
                     <TableHead className="min-w-[150px] text-right" title="Pagamentos no período de pacientes ligados a leads do funil">Receita</TableHead>
                     <TableHead className="text-right" title="Receita ÷ pacientes pagantes">Ticket</TableHead>
                     <TableHead className="text-right" title="Leads hoje na etapa Contratado do funil (base histórica)">Na etapa Contratado</TableHead>
@@ -221,10 +249,15 @@ export default function CompararFunisTab() {
                 </TableHeader>
                 <TableBody>
                   {visiveis.length === 0 && (
-                    <TableRow><TableCell colSpan={11} className="py-10 text-center text-sm text-muted-foreground">Nenhum funil com dados no período.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={12} className="py-10 text-center text-sm text-muted-foreground">Nenhum funil com dados no período.</TableCell></TableRow>
                   )}
                   {visiveis.map((x) => {
                     const conv = razao(x.contratados, x.leads_novos);
+                    const fech = razao(x.contratados, x.compareceram);
+                    // Acima de 100% não é erro de conta: é a mistura de safras
+                    // (contrato de lead antigo dividido por lead novo do mês).
+                    // Marcamos em âmbar com explicação em vez de esconder.
+                    const acimaDeCem = conv !== null && conv > 1;
                     return (
                       <TableRow key={x.pipeline_id}>
                         <TableCell className="sticky left-0 z-10 bg-card font-medium text-foreground">{x.nome}</TableCell>
@@ -239,13 +272,20 @@ export default function CompararFunisTab() {
                           <div className="text-[11px] text-muted-foreground">{fmtPct(x.compareceram, x.compareceram + x.faltas)} de comparecimento</div>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{fmtInt(x.faltas)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmtInt(x.contratados)}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {fmtInt(x.contratados)}
-                          <div className="text-[11px] text-muted-foreground">{fmtPct(x.contratados, x.compareceram)} dos que compareceram</div>
+                          <span className="font-semibold text-foreground">{fech === null ? "—" : fmtPct(x.contratados, x.compareceram)}</span>
+                          <Barra valor={fech ?? 0} max={maxFech} cor="bg-emerald-500" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          <span className="font-semibold text-foreground">{conv === null ? "—" : fmtPct(x.contratados, x.leads_novos)}</span>
-                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-emerald-500" />
+                          <span
+                            className={acimaDeCem ? "font-semibold text-amber-600 dark:text-amber-400" : "font-semibold text-foreground"}
+                            title={acimaDeCem ? "Passou de 100% porque os dois lados são safras diferentes: em cima, consultas do período de leads de qualquer época; embaixo, só os leads criados no período. Para comparar procedimentos, use Fechamento." : undefined}
+                          >
+                            {conv === null ? "—" : fmtPct(x.contratados, x.leads_novos)}
+                            {acimaDeCem && <span className="ml-0.5">*</span>}
+                          </span>
+                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-sky-500" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           <span className="font-semibold text-foreground">{x.receita > 0 ? brl.format(x.receita) : "—"}</span>
@@ -265,6 +305,7 @@ export default function CompararFunisTab() {
                       <TableCell className="text-right tabular-nums">{fmtInt(totais.compareceram)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtInt(totais.faltas)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtInt(totais.contratados)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtPct(totais.contratados, totais.compareceram)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtPct(totais.contratados, totais.leads_novos)}</TableCell>
                       <TableCell className="text-right tabular-nums">{totais.receita > 0 ? brl.format(totais.receita) : "—"}</TableCell>
                       <TableCell className="text-right tabular-nums">{totais.pagantes > 0 ? brl.format(totais.receita / totais.pagantes) : "—"}</TableCell>
@@ -279,7 +320,14 @@ export default function CompararFunisTab() {
           <p className="text-[11px] text-muted-foreground">
             Cada lead conta no funil em que está hoje. "Novos" são leads criados no período; agendamentos e contratos são
             consultas por data agendada no período; receita são pagamentos no período de pacientes ligados a leads do funil,
-            sem recorrência de ortodontia e sem lançamentos marcados como "não marketing". Conversão = contratados ÷ novos.
+            sem recorrência de ortodontia e sem lançamentos marcados como "não marketing".
+            {" "}
+            <strong className="font-medium">Fechamento</strong> = contratados ÷ compareceram, os dois lados da mesma safra
+            de consultas do período: é a taxa que compara procedimento com procedimento, e a que elege o destaque.
+            {" "}
+            <strong className="font-medium">Contratos ÷ novos</strong> divide as consultas com contrato do período (de leads
+            de qualquer época) pelos leads criados no período, então mistura safras, serve só de leitura de volume e pode
+            passar de 100% — quando passa, vem marcada com *.
           </p>
         </>
       )}

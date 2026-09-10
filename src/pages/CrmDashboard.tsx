@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+// toastDbError mostra a mensagem que o gatilho do banco devolveu (em vez de um
+// "erro" genérico) quando o desfecho falha no meio do caminho.
+import { toastDbError } from "@/lib/appointmentActions";
 import { useAuth } from "@/contexts/AuthContext";
 // Fundação canônica: datas em America/Bahia (fuso da clínica, não do navegador)
 // e paginação com ORDER BY estável que lança erro em vez de truncar silenciosamente.
@@ -288,9 +291,19 @@ export default function CrmDashboard() {
   const handleOutcome = async (appt: Appointment, outcome: "no_show" | "contracted" | "not_contracted") => {
     setOutcomeSaving(appt.id);
     try {
-      await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      const ok = await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
       // Invalida o cache: sem isso o agendamento "ressuscita" sem desfecho ao voltar à tela
       invalidateDashboardCache(user?.id);
+      // false = a consulta JÁ tinha desfecho e NADA foi gravado (o update exige
+      // status 'confirmed'). O retorno era ignorado: a tela dava sucesso e ainda
+      // pintava na lista um desfecho que não existe no banco, escondendo o que
+      // outra pessoa (ou o cron) já havia registrado. Mesmo caminho do chat
+      // (AppointmentConfirmBar.doOutcome): avisa e relê os dados.
+      if (!ok) {
+        toast.error("Este agendamento já recebeu desfecho — recarregando");
+        await fetchData();
+        return;
+      }
       toast.success(
         outcome === "no_show" ? "Marcado como não compareceu"
         : outcome === "contracted" ? "Marcado como contratado"
@@ -299,7 +312,18 @@ export default function CrmDashboard() {
       setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: outcome } : a));
       setOutcomeStep(prev => { const { [appt.id]: _, ...r } = prev; return r; });
     } catch (e) {
-      toast.error("Erro ao registrar desfecho");
+      // Defeito que existia: o catch engolia o erro num texto genérico e deixava
+      // a tela como estava. Mas applyAppointmentOutcome pode LANÇAR DEPOIS de já
+      // ter gravado o desfecho (a movimentação de etapa pode ser barrada por
+      // permissão), então o banco fica com um estado e a tela com outro — sem
+      // explicação e sem recarga. Agora a mensagem real do banco aparece e os
+      // dados são relidos, para a tela mostrar o que de fato ficou gravado.
+      // O invalidate vem ANTES do fetchData de propósito: se a exceção estourou
+      // antes da linha que invalida o cache, o cache segue quente e fetchData
+      // volta na hora sem consultar o banco — a "recarga" não recarregaria nada.
+      invalidateDashboardCache(user?.id);
+      toastDbError(e, "Erro ao registrar desfecho");
+      await fetchData();
     } finally {
       setOutcomeSaving(null);
     }

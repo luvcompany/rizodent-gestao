@@ -1975,8 +1975,43 @@ function bahiaMs(date: string, time: string | null): number {
   return Date.parse(`${date}T${hhmm}:00.000-03:00`);
 }
 
-/** true se o lead tem paciente vinculado com algum pagamento que CONTA. */
-async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boolean> {
+/**
+ * Janela de pagamento de UMA consulta: de 3 dias antes (sinal pago na véspera)
+ * até 30 dias depois (quem fecha o tratamento nas semanas seguintes). O piso
+ * respeita MIN_PAYMENT_DATE porque o sync não importa pagamento anterior a ele
+ * — pedir mais cedo só compararia com um vazio.
+ *
+ * DEFEITO que este helper fecha (revisão adversarial de 09/09/2026): a janela
+ * existia só dentro da passada de promoção, escrita à mão lá. O caminho
+ * principal (o passo que decide contracted × not_contracted em TODO
+ * comparecimento, 4x por dia) continuava perguntando "tem algum pagamento",
+ * sem data: um pagamento antigo transformava o comparecimento de hoje em
+ * contrato e, de quebra, ainda ocupava a janela e bloqueava a promoção legítima
+ * depois. Com a conta num só lugar as duas passadas não podem mais divergir.
+ */
+function janelaPagamentoDaConsulta(scheduledDate: string): { de: string; ate: string } {
+  return {
+    de: maxIso(addDays(scheduledDate, -3), MIN_PAYMENT_DATE),
+    ate: addDays(scheduledDate, 30),
+  };
+}
+
+/**
+ * true se o lead tem paciente vinculado com pagamento que CONTA e com
+ * data_pagamento DENTRO da janela [deISO, ateISO].
+ *
+ * A irmã sem data (leadTemPagamentoQueConta, "este paciente tem algum
+ * pagamento") foi REMOVIDA de propósito: era ela que fazia um pagamento de 2025
+ * promover uma consulta de setembro/2026 e que carimbava contrato no
+ * comparecimento de hoje por causa de pagamento velho. Não recriar: pagamento
+ * só vale para a consulta em cuja janela ele cai.
+ */
+async function leadTemPagamentoNaJanela(
+  admin: any,
+  leadId: string,
+  deISO: string,
+  ateISO: string,
+): Promise<boolean> {
   const { data: vincs } = await admin.from("crm_lead_pacientes")
     .select("paciente_id").eq("lead_id", leadId);
   const ids = (vincs || []).map((v: any) => v.paciente_id).filter(Boolean);
@@ -1985,8 +2020,38 @@ async function leadTemPagamentoQueConta(admin: any, leadId: string): Promise<boo
     .select("id", { count: "exact", head: true })
     .in("paciente_id", ids)
     .eq("recorrencia_orto", false)
-    .eq("nao_marketing", false);
+    .eq("nao_marketing", false)
+    .gte("data_pagamento", deISO)
+    .lte("data_pagamento", ateISO);
   return (count ?? 0) > 0;
+}
+
+/**
+ * Lê TODAS as linhas de uma consulta ao PostgREST, de 1.000 em 1.000.
+ *
+ * DEFEITO que este helper fecha (revisão adversarial de 09/09/2026): o
+ * PostgREST corta a resposta em 1.000 linhas SEM erro nenhum. As consultas da
+ * passada de promoção não paginavam nem ordenavam — passando de 1.000 consultas
+ * "não contratado" em 45 dias, o conjunto analisado virava um subconjunto
+ * arbitrário (e o de "já contratadas", que é justamente a trava contra crédito
+ * dobrado, também). `build()` é chamado a cada página porque o builder do
+ * supabase-js é de uso único; a ordenação por `id` é o que dá páginas estáveis.
+ * Em caso de erro devolve a mensagem para quem chamou ABORTAR — seguir com
+ * lista parcial é pior do que não promover nada nesta passada.
+ */
+async function lerTudoPaginado(
+  build: () => any,
+  page = 1000,
+): Promise<{ rows: any[]; error: string | null }> {
+  const rows: any[] = [];
+  let inicio = 0;
+  for (;;) {
+    const { data, error } = await build().order("id").range(inicio, inicio + page - 1);
+    if (error) return { rows, error: String(error.message ?? error) };
+    rows.push(...(data || []));
+    if (!data || data.length < page) return { rows, error: null };
+    inicio += page;
+  }
 }
 
 type DontusAg = { idStatus: number; descricao: string; nome: string; clinica: string; consumida?: boolean };
@@ -2184,252 +2249,496 @@ async function syncComparecimento(
     u[key]++;
   };
 
+  // Contadores declarados FORA do try abaixo: o resumo desta passada tem que
+  // sair mesmo quando um passo estoura no meio (ver o catch no fim da função).
+  let gravados = 0;
+  let promovidos = 0;
+  const promocoes: any[] = [];
+  let pendentesAnalisados = 0;
+  let erroFatal: string | null = null;
+
   if (ini > fim) {
     return {
       modo: "comparecimento", dry_run: dryRun, go_live: GO_LIVE,
       periodo: { from: ini, to: fim }, por_unidade: [], totais: {}, amostra, errors,
+      erro_fatal: null,
       nota: "Período fora da janela válida (GO_LIVE..hoje).",
     };
   }
 
-  // 1) PENDENTES do CRClin no período (poucos registros).
-  const { data: pendentes, error: apptErr } = await admin.from("crm_appointments")
-    .select("id, lead_id, scheduled_date, scheduled_time, status, lead_cidade")
-    .eq("tenant_id", RIZODENT_TENANT_ID)
-    .eq("status", "confirmed")
-    .gte("scheduled_date", ini)
-    .lte("scheduled_date", fim)
-    .order("scheduled_date", { ascending: true });
-  if (apptErr) throw new Error(`crm_appointments: ${apptErr.message}`);
-  const pend = (pendentes || []).filter((a: any) => a.lead_id);
-
-  // Leads dos pendentes (nome + telefone + etapa) em blocos.
-  const leadIds = [...new Set(pend.map((a: any) => a.lead_id))] as string[];
-  const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null; stage_id: string | null }>();
-  for (const bloco of chunkArr(leadIds, 200)) {
-    // Comparecimento vale só para o mundo legado (número principal).
-    const { data } = await admin.from("crm_leads")
-      .select("id, name, phone, cidade, stage_id")
-      .eq("tenant_id", RIZODENT_TENANT_ID)
-      .is("whatsapp_number_id", null)
-      .in("id", bloco);
-    for (const l of (data || [])) {
-      leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null, stage_id: l.stage_id ?? null });
-    }
-  }
-
-  // Leads na etapa de espera "Reagendar": a regra por tempo não se aplica a
-  // eles — a decisão fica para a varredura de fim de expediente
-  // (mode=reagendar_expirado), que marca falta ou completa a remarcação.
-  const stageIds = [...new Set([...leadsById.values()].map((l) => l.stage_id).filter(Boolean))] as string[];
-  const aguardandoStageIds = new Set<string>();
-  if (stageIds.length) {
-    const { data: sts } = await admin.from("crm_stages").select("id, name").in("id", stageIds);
-    for (const s of (sts || [])) {
-      if (normStage(s.name) === "reagendar") aguardandoStageIds.add(s.id);
-    }
-  }
-
-  // Outros agendamentos 'confirmed' dos mesmos leads (para detectar remarcação).
-  const outrosPorLead = new Map<string, { date: string; time: string | null }[]>();
-  for (const bloco of chunkArr(leadIds, 200)) {
-    const { data } = await admin.from("crm_appointments")
-      .select("lead_id, scheduled_date, scheduled_time")
+  // DEFEITO (auditoria 09/09/2026): a consulta dos pendentes logo abaixo faz
+  // throw e o handler do modo não tinha try/catch — um erro ali derrubava o
+  // modo inteiro com 500: a promoção nem começava e não sobrava resumo nenhum
+  // para o dono ver o que aconteceu. Agora o erro vira registro em errors[] +
+  // erro_fatal e o resumo sai com o que já tinha sido processado.
+  try {
+    // 1) PENDENTES do CRClin no período (poucos registros).
+    const { data: pendentes, error: apptErr } = await admin.from("crm_appointments")
+      .select("id, lead_id, scheduled_date, scheduled_time, status, lead_cidade")
       .eq("tenant_id", RIZODENT_TENANT_ID)
       .eq("status", "confirmed")
-      .in("lead_id", bloco);
-    for (const a of (data || [])) {
-      const arr = outrosPorLead.get(a.lead_id) || [];
-      arr.push({ date: a.scheduled_date, time: a.scheduled_time ?? null });
-      outrosPorLead.set(a.lead_id, arr);
-    }
-  }
+      .gte("scheduled_date", ini)
+      .lte("scheduled_date", fim)
+      .order("scheduled_date", { ascending: true });
+    if (apptErr) throw new Error(`crm_appointments: ${apptErr.message}`);
+    const pend = (pendentes || []).filter((a: any) => a.lead_id);
+    pendentesAnalisados = pend.length; // vai no resumo mesmo se um passo adiante estourar
 
-  // 2) Índice do Dontus: chave `tail8|YYYY-MM-DD` → lista de agendamentos.
-  const idx = new Map<string, DontusAg[]>();
-  for (const idClinica of clinicas) {
-    const clinicaNome = CLINICA_MAP[idClinica]?.nome ?? `idClinica ${idClinica}`;
-    try {
-      let cursor = ini;
-      while (cursor <= fim) {
-        const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), fim);
-        const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
-          input: {
-            contexto: { idDontus: DONTUS_ID, idClinica },
-            dataInicio: cursor, dataFim: wFim,
-          },
-        });
-        for (const ag of (Array.isArray(rows) ? rows : [])) {
-          const dataAg = String(ag?.dataAgendamento || "").slice(0, 10);
-          if (!dataAg) continue;
-          const entry: DontusAg = {
-            idStatus: Number(ag?.idStatus),
-            descricao: String(ag?.descricaoStatus || ""),
-            nome: String(ag?.paciente || "").trim(),
-            clinica: clinicaNome,
-          };
-          for (const tel of agTelefones(ag)) {
-            const tail = tailPhone(tel);
-            if (!tail) continue;
-            const key = `${tail}|${dataAg}`;
-            const arr = idx.get(key) || [];
-            arr.push(entry);
-            idx.set(key, arr);
+    // Leads dos pendentes (nome + telefone + etapa) em blocos.
+    const leadIds = [...new Set(pend.map((a: any) => a.lead_id))] as string[];
+    const leadsById = new Map<string, { name: string; phone: string | null; cidade: string | null; stage_id: string | null }>();
+    for (const bloco of chunkArr(leadIds, 200)) {
+      // Comparecimento vale só para o mundo legado (número principal).
+      const { data } = await admin.from("crm_leads")
+        .select("id, name, phone, cidade, stage_id")
+        .eq("tenant_id", RIZODENT_TENANT_ID)
+        .is("whatsapp_number_id", null)
+        .in("id", bloco);
+      for (const l of (data || [])) {
+        leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null, stage_id: l.stage_id ?? null });
+      }
+    }
+
+    // Leads na etapa de espera "Reagendar": a regra por tempo não se aplica a
+    // eles — a decisão fica para a varredura de fim de expediente
+    // (mode=reagendar_expirado), que marca falta ou completa a remarcação.
+    const stageIds = [...new Set([...leadsById.values()].map((l) => l.stage_id).filter(Boolean))] as string[];
+    const aguardandoStageIds = new Set<string>();
+    if (stageIds.length) {
+      const { data: sts } = await admin.from("crm_stages").select("id, name").in("id", stageIds);
+      for (const s of (sts || [])) {
+        if (normStage(s.name) === "reagendar") aguardandoStageIds.add(s.id);
+      }
+    }
+
+    // Outros agendamentos 'confirmed' dos mesmos leads (para detectar remarcação).
+    const outrosPorLead = new Map<string, { date: string; time: string | null }[]>();
+    for (const bloco of chunkArr(leadIds, 200)) {
+      const { data } = await admin.from("crm_appointments")
+        .select("lead_id, scheduled_date, scheduled_time")
+        .eq("tenant_id", RIZODENT_TENANT_ID)
+        .eq("status", "confirmed")
+        .in("lead_id", bloco);
+      for (const a of (data || [])) {
+        const arr = outrosPorLead.get(a.lead_id) || [];
+        arr.push({ date: a.scheduled_date, time: a.scheduled_time ?? null });
+        outrosPorLead.set(a.lead_id, arr);
+      }
+    }
+
+    // 2) Índice do Dontus: chave `tail8|YYYY-MM-DD` → lista de agendamentos.
+    const idx = new Map<string, DontusAg[]>();
+    for (const idClinica of clinicas) {
+      const clinicaNome = CLINICA_MAP[idClinica]?.nome ?? `idClinica ${idClinica}`;
+      try {
+        let cursor = ini;
+        while (cursor <= fim) {
+          const wFim = minIso(addDays(cursor, WINDOW_DAYS - 1), fim);
+          const rows: any[] = await mcpToolCall(admin, teamToken, "consultar_agendamentos", {
+            input: {
+              contexto: { idDontus: DONTUS_ID, idClinica },
+              dataInicio: cursor, dataFim: wFim,
+            },
+          });
+          for (const ag of (Array.isArray(rows) ? rows : [])) {
+            const dataAg = String(ag?.dataAgendamento || "").slice(0, 10);
+            if (!dataAg) continue;
+            const entry: DontusAg = {
+              idStatus: Number(ag?.idStatus),
+              descricao: String(ag?.descricaoStatus || ""),
+              nome: String(ag?.paciente || "").trim(),
+              clinica: clinicaNome,
+            };
+            for (const tel of agTelefones(ag)) {
+              const tail = tailPhone(tel);
+              if (!tail) continue;
+              const key = `${tail}|${dataAg}`;
+              const arr = idx.get(key) || [];
+              arr.push(entry);
+              idx.set(key, arr);
+            }
           }
+          cursor = addDays(wFim, 1);
         }
-        cursor = addDays(wFim, 1);
+      } catch (e: any) {
+        errors.push({ id_clinica_dontus: idClinica, error: e?.message ?? String(e) });
       }
-    } catch (e: any) {
-      errors.push({ id_clinica_dontus: idClinica, error: e?.message ?? String(e) });
     }
-  }
 
-  // 3) Decide o novo status de cada pendente.
-  let gravados = 0;
-  for (const appt of pend) {
-    const lead = leadsById.get(appt.lead_id);
-    if (!lead) continue;
-    const tail = tailPhone(lead.phone);
-    const cand = tail ? (idx.get(`${tail}|${appt.scheduled_date}`) || []) : [];
-    // Guard anti-falso-positivo: exige nome compatível E consome a entrada uma
-    // única vez — um comparecimento no Dontus não pode fechar dois agendamentos.
-    const dont = cand.find((c) => namesCompatible(lead.name, c.nome) && !c.consumida) || null;
-    if (dont) dont.consumida = true;
-    const unidade = dont?.clinica || appt.lead_cidade || lead.cidade || "Sem unidade";
+    // 3) Decide o novo status de cada pendente.
+    for (const appt of pend) {
+      const lead = leadsById.get(appt.lead_id);
+      if (!lead) continue;
+      const tail = tailPhone(lead.phone);
+      const cand = tail ? (idx.get(`${tail}|${appt.scheduled_date}`) || []) : [];
+      // Guard anti-falso-positivo: exige nome compatível E consome a entrada uma
+      // única vez — um comparecimento no Dontus não pode fechar dois agendamentos.
+      const dont = cand.find((c) => namesCompatible(lead.name, c.nome) && !c.consumida) || null;
+      if (dont) dont.consumida = true;
+      const unidade = dont?.clinica || appt.lead_cidade || lead.cidade || "Sem unidade";
 
-    let statusNovo: string | null = null;
-    let motivo = "";
-    let bucket = "";
+      let statusNovo: string | null = null;
+      let motivo = "";
+      let bucket = "";
 
-    const target = dont ? (DONTUS_STATUS_TARGET[dont.idStatus] ?? null) : null;
-    if (target === "not_contracted") {
-      const pagou = await leadTemPagamentoQueConta(admin, appt.lead_id);
-      statusNovo = pagou ? "contracted" : "not_contracted";
-      motivo = `Dontus Atendido${pagou ? " + pagamento que conta" : ""}`;
-      bucket = "compareceu";
-    } else if (target === "rescheduled") {
-      statusNovo = "rescheduled";
-      motivo = "Dontus Remarcado";
-      bucket = "rescheduled";
-    } else if (target === "no_show") {
-      statusNovo = "no_show";
-      motivo = "Dontus Faltou";
-      bucket = "no_show_por_dontus";
-    } else {
-      // Sem sinal de comparecimento no Dontus → regra por TEMPO.
-      if (!dont) bump(unidade, "sem_dontus");
-      // TRAVA anti-falta-indevida (auditoria de 01/09, os "20 comparecimentos
-      // sumidos"): se HÁ um Atendido no Dontus no MESMO telefone e MESMO dia,
-      // mas o nome não bateu (apelido, cadastro no nome do cônjuge), carimbar
-      // falta por tempo apagaria um comparecimento real. Fica pendente para a
-      // SDR decidir — falta de verdade não tem Atendido nenhum no telefone.
-      const atendidoNoMesmoTelefone = !dont && cand.some(
-        (c) => DONTUS_STATUS_TARGET[c.idStatus] === "not_contracted",
-      );
-      if (atendidoNoMesmoTelefone) {
-        bump(unidade, "possivel_comparecimento_nome_divergente");
-        continue;
+      const target = dont ? (DONTUS_STATUS_TARGET[dont.idStatus] ?? null) : null;
+      if (target === "not_contracted") {
+        // DEFEITO (revisão adversarial de 09/09/2026): aqui a pergunta era
+        // "este lead tem ALGUM pagamento que conta", sem data. Dois estragos de
+        // uma vez: (1) paciente que pagou em julho tinha o comparecimento de
+        // hoje carimbado como contrato, mesmo sem ter fechado nada agora; e
+        // (2) a consulta subia para 'contracted' com o pagamento de outra
+        // janela, ocupando o crédito daquele pagamento e derrubando a promoção
+        // legítima na trava (e) lá embaixo. Agora vale a MESMA janela da
+        // promoção — a consulta só é contrato se o pagamento cair nela.
+        const jp = janelaPagamentoDaConsulta(appt.scheduled_date);
+        const pagou = jp.de <= jp.ate
+          && await leadTemPagamentoNaJanela(admin, appt.lead_id, jp.de, jp.ate);
+        statusNovo = pagou ? "contracted" : "not_contracted";
+        motivo = `Dontus Atendido${pagou ? ` + pagamento que conta entre ${jp.de} e ${jp.ate}` : ""}`;
+        bucket = "compareceu";
+      } else if (target === "rescheduled") {
+        statusNovo = "rescheduled";
+        motivo = "Dontus Remarcado";
+        bucket = "rescheduled";
+      } else if (target === "no_show") {
+        statusNovo = "no_show";
+        motivo = "Dontus Faltou";
+        bucket = "no_show_por_dontus";
+      } else {
+        // Sem sinal de comparecimento no Dontus → regra por TEMPO.
+        if (!dont) bump(unidade, "sem_dontus");
+        // TRAVA anti-falta-indevida (auditoria de 01/09, os "20 comparecimentos
+        // sumidos"): se HÁ um Atendido no Dontus no MESMO telefone e MESMO dia,
+        // mas o nome não bateu (apelido, cadastro no nome do cônjuge), carimbar
+        // falta por tempo apagaria um comparecimento real. Fica pendente para a
+        // SDR decidir — falta de verdade não tem Atendido nenhum no telefone.
+        const atendidoNoMesmoTelefone = !dont && cand.some(
+          (c) => DONTUS_STATUS_TARGET[c.idStatus] === "not_contracted",
+        );
+        if (atendidoNoMesmoTelefone) {
+          bump(unidade, "possivel_comparecimento_nome_divergente");
+          continue;
+        }
+        if (lead.stage_id && aguardandoStageIds.has(lead.stage_id)) {
+          bump(unidade, "aguardando_reagendamento");
+          continue;
+        }
+        const semHora = !appt.scheduled_time;
+        const passou = semHora
+          ? appt.scheduled_date < hoje
+          : bahiaMs(appt.scheduled_date, appt.scheduled_time) + NO_SHOW_GRACE_MIN * 60_000 <= agora;
+        if (!passou) {
+          bump(unidade, "ainda_pendentes");
+          continue;
+        }
+        // Segurança anti-remarcação: existe outro 'confirmed' posterior?
+        const atualMs = bahiaMs(appt.scheduled_date, appt.scheduled_time);
+        const temPosterior = (outrosPorLead.get(appt.lead_id) || []).some((o) =>
+          o.date > appt.scheduled_date ||
+          (o.date === appt.scheduled_date && bahiaMs(o.date, o.time) > atualMs)
+        );
+        if (temPosterior) {
+          statusNovo = "rescheduled";
+          motivo = "sem desfecho + existe agendamento posterior (remarcado)";
+          bucket = "rescheduled";
+        } else {
+          statusNovo = "no_show";
+          motivo = semHora
+            ? "sem desfecho + data já passou (sem horário marcado)"
+            : "sem desfecho + passou horário marcado + 3h";
+          bucket = "no_show_por_tempo";
+        }
       }
-      if (lead.stage_id && aguardandoStageIds.has(lead.stage_id)) {
-        bump(unidade, "aguardando_reagendamento");
-        continue;
-      }
-      const semHora = !appt.scheduled_time;
-      const passou = semHora
-        ? appt.scheduled_date < hoje
-        : bahiaMs(appt.scheduled_date, appt.scheduled_time) + NO_SHOW_GRACE_MIN * 60_000 <= agora;
-      if (!passou) {
+
+      if (!statusNovo || statusNovo === appt.status) {
         bump(unidade, "ainda_pendentes");
         continue;
       }
-      // Segurança anti-remarcação: existe outro 'confirmed' posterior?
-      const atualMs = bahiaMs(appt.scheduled_date, appt.scheduled_time);
-      const temPosterior = (outrosPorLead.get(appt.lead_id) || []).some((o) =>
-        o.date > appt.scheduled_date ||
-        (o.date === appt.scheduled_date && bahiaMs(o.date, o.time) > atualMs)
+
+      bump(unidade, bucket);
+      if (amostra.length < 25) {
+        amostra.push({
+          lead: lead.name,
+          data: appt.scheduled_date,
+          hora: appt.scheduled_time ?? null,
+          de: appt.status,
+          para: statusNovo,
+          motivo,
+        });
+      }
+
+      if (!dryRun) {
+        // Fonte GRANULAR: "dontus-sync" seco não dizia se a falta veio do
+        // próprio Dontus (confiável) ou da regra por tempo (inferência) — e a
+        // reconciliação de agosto ficou impossível por isso. O sufixo é o bucket.
+        const { error: upErr } = await admin.from("crm_appointments")
+          .update({ status: statusNovo, outcome_source: `dontus-sync:${bucket}`, updated_at: new Date().toISOString() })
+          .eq("id", appt.id)
+          .eq("status", "confirmed"); // trava: só age em pendente
+        if (upErr) errors.push({ appointment_id: appt.id, error: upErr.message });
+        else gravados++;
+      }
+    }
+
+    // 4) PROMOÇÃO (pedido do dono, 09/09/2026): consulta já fechada como
+    // "compareceu sem contratar" cujo lead recebeu pagamento que conta depois
+    // (a SDR marcou o comparecimento antes deste sync, ou o paciente fechou dias
+    // depois) sobe para 'contracted' e o lead vai para Contratado. Só sobe,
+    // nunca rebaixa; a varredura olha 45 dias de consultas.
+    //
+    // A primeira versão desta passada (mesmo dia) perguntava só "este paciente
+    // tem ALGUM pagamento que conta", sem data e sem ligação com a consulta. Os
+    // quatro defeitos que isso causava e as travas de agora:
+    //  (a) pagamento de 2025 promovia consulta de setembro/2026 → o pagamento
+    //      agora tem que cair na janela da PRÓPRIA consulta (3 dias antes, para
+    //      sinal pago na véspera, até 30 dias depois, para quem fecha o
+    //      tratamento nas semanas seguintes) — a conta mora em
+    //      janelaPagamentoDaConsulta e é a MESMA do caminho principal;
+    //  (b) paciente com 3 comparecimentos virava 3 contratos → um lead promove
+    //      no máximo UMA consulta por passada;
+    //  (c) o gerente corrigia para "não contratou" e a passada seguinte (roda 4x
+    //      por dia) promovia de novo → decisão humana de NÃO contratar fica de
+    //      fora, e consulta já promovida por este sync também;
+    //  (d) faltava o recorte de mundo → só lead do mundo legado
+    //      (whatsapp_number_id IS NULL), igual ao resto de syncComparecimento:
+    //      lead carimbado do closer/recepção não é assunto desta passada.
+    // Há ainda a trava (e), logo abaixo, que impede o mesmo pagamento virar dois
+    // contratos ao longo de passadas diferentes.
+    //
+    // Rótulo `promocao:` para poder ABORTAR a passada inteira: se a leitura das
+    // consultas falhar no meio da paginação, promover com base em lista parcial
+    // carimbaria contrato em cima de uma trava que não pôde ser consultada.
+    // Nesse caso a passada não promove nada e o erro sai no resumo.
+    promocao: {
+      // MÉDIA 6 da revisão: esta consulta e a das "já contratadas" não
+      // paginavam nem ordenavam, e o PostgREST corta em 1.000 linhas sem erro —
+      // com mais de 1.000 consultas 'not_contracted' em 45 dias o conjunto
+      // analisado era um subconjunto arbitrário (e mudava de passada para
+      // passada). lerTudoPaginado ordena por id, pagina e delata erro.
+      const { rows: semContrato, error: scErr } = await lerTudoPaginado(() =>
+        admin.from("crm_appointments")
+          .select("id, lead_id, scheduled_date, scheduled_time, outcome_by, outcome_source")
+          .eq("tenant_id", RIZODENT_TENANT_ID)
+          .eq("status", "not_contracted")
+          .gte("scheduled_date", addDays(fim, -45))
+          .lte("scheduled_date", fim)
       );
-      if (temPosterior) {
-        statusNovo = "rescheduled";
-        motivo = "sem desfecho + existe agendamento posterior (remarcado)";
-        bucket = "rescheduled";
-      } else {
-        statusNovo = "no_show";
-        motivo = semHora
-          ? "sem desfecho + data já passou (sem horário marcado)"
-          : "sem desfecho + passou horário marcado + 3h";
-        bucket = "no_show_por_tempo";
+      if (scErr) {
+        errors.push({ passo: "promocao", error: scErr, abortada: true });
+        break promocao; // sem lista completa não se promove nada
       }
-    }
 
-    if (!statusNovo || statusNovo === appt.status) {
-      bump(unidade, "ainda_pendentes");
-      continue;
-    }
-
-    bump(unidade, bucket);
-    if (amostra.length < 25) {
-      amostra.push({
-        lead: lead.name,
-        data: appt.scheduled_date,
-        hora: appt.scheduled_time ?? null,
-        de: appt.status,
-        para: statusNovo,
-        motivo,
+      // (c) fora do alcance da automação — ALTA 2 da revisão: antes bastava
+      // outcome_by preenchido para descartar a consulta, e isso jogava fora TODO
+      // desfecho com carimbo humano. O comparecimento da SDR é exatamente isso:
+      // sdr_marcar_comparecimento grava outcome_source 'sdr' e o gatilho do banco
+      // sobrescrevia para 'ui' com outcome_by preenchido — ou seja, o caso mais
+      // comum (SDR marca o comparecimento, paciente fecha depois) nunca era
+      // promovido. Agora o filtro é só a decisão humana de NÃO CONTRATAR.
+      // A fonte 'sdr' só chega até aqui preservada depois da migration
+      // 20260910013000_gatilhos_desfecho_e_etapas.sql, que ensina o gatilho a não
+      // reescrever a fonte da SDR.
+      // Obs. 1: hoje a tela grava exatamente 'ui' (único valor de tela no banco);
+      // se algum dia surgir 'ui:algo', tem que entrar nesta linha também.
+      // Obs. 2: desfecho antigo, de antes do gatilho carimbar fonte, tem
+      // outcome_source vazio mesmo com outcome_by preenchido — e passa por aqui
+      // de propósito. É o preço de não voltar a tratar outcome_by como "decidiu
+      // que não contratou": deixar de promover TODO comparecimento marcado por
+      // gente era o defeito que se está consertando, e a trava (e) mais o filtro
+      // de 'dontus-sync:promovido' seguram a promoção repetida.
+      const candidatas = semContrato.filter((x: any) => {
+        if (!x.lead_id) return false;
+        const fonte = String(x.outcome_source || "");
+        if (fonte === "dontus-sync:promovido") return false;   // já promovida por este sync
+        if (fonte === "ui" && x.outcome_by) return false;      // gerente/recepção decidiu na tela
+        return true;                                           // deixa passar 'sdr', 'folha-sdr', 'service', 'dontus-sync:*'
       });
-    }
 
-    if (!dryRun) {
-      // Fonte GRANULAR: "dontus-sync" seco não dizia se a falta veio do
-      // próprio Dontus (confiável) ou da regra por tempo (inferência) — e a
-      // reconciliação de agosto ficou impossível por isso. O sufixo é o bucket.
-      const { error: upErr } = await admin.from("crm_appointments")
-        .update({ status: statusNovo, outcome_source: `dontus-sync:${bucket}`, updated_at: new Date().toISOString() })
-        .eq("id", appt.id)
-        .eq("status", "confirmed"); // trava: só age em pendente
-      if (upErr) errors.push({ appointment_id: appt.id, error: upErr.message });
-      else gravados++;
-    }
-  }
-
-  // 4) PROMOÇÃO (pedido do dono, 09/09/2026): consulta já fechada como
-  // "compareceu sem contratar" cujo lead recebeu pagamento que conta depois
-  // (a SDR marcou o comparecimento antes deste sync, ou o paciente fechou dias
-  // depois) sobe para 'contracted' e o lead vai para Contratado. Só sobe,
-  // nunca rebaixa; janela de 45 dias por data agendada.
-  let promovidos = 0;
-  const promocoes: any[] = [];
-  const { data: semContrato, error: scErr } = await admin.from("crm_appointments")
-    .select("id, lead_id, scheduled_date")
-    .eq("tenant_id", RIZODENT_TENANT_ID)
-    .eq("status", "not_contracted")
-    .gte("scheduled_date", addDays(fim, -45))
-    .lte("scheduled_date", fim);
-  if (scErr) errors.push({ passo: "promocao", error: scErr.message });
-  for (const a of (semContrato || []).filter((x: any) => x.lead_id)) {
-    try {
-      if (!(await leadTemPagamentoQueConta(admin, a.lead_id))) continue;
-      if (promocoes.length < 25) promocoes.push({ appointment_id: a.id, lead_id: a.lead_id, data: a.scheduled_date });
-      if (dryRun) { promovidos++; continue; }
-      const { data: up, error: upErr } = await admin.from("crm_appointments")
-        .update({ status: "contracted", outcome_source: "dontus-sync:promovido", updated_at: new Date().toISOString() })
-        .eq("id", a.id)
-        .eq("status", "not_contracted")
-        .select("id");
-      if (upErr) { errors.push({ appointment_id: a.id, error: upErr.message }); continue; }
-      if (!up || up.length === 0) continue;
-      promovidos++;
-      const { data: lead } = await admin.from("crm_leads")
-        .select("id, pipeline_id, tenant_id").eq("id", a.lead_id).maybeSingle();
-      if (lead) {
-        await moveLeadStageServer(
-          admin, lead,
-          (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
-          "🤝 Pagamento encontrado no Dontus — consulta promovida para Contratado",
-        ).catch((e: any) => errors.push({ appointment_id: a.id, error: String(e?.message ?? e) }));
+      // (d) crm_appointments não tem whatsapp_number_id — o recorte de mundo mora
+      // no lead. Busco os leads das candidatas em blocos com o MESMO filtro do
+      // passo 1 (tenant + whatsapp_number_id IS NULL) e trabalho só com os que
+      // voltarem; de graça isso já traz o pipeline_id que a movimentação de etapa
+      // precisa, no lugar de uma consulta por lead lá embaixo. `assigned_to` vem
+      // por causa da MÉDIA 4 (ciclo de carência da SDR), logo abaixo.
+      const promoLeadIds = [...new Set(candidatas.map((x: any) => String(x.lead_id)))] as string[];
+      const leadsPromo = new Map<string, { id: string; pipeline_id: string | null; tenant_id: string; assigned_to: string | null }>();
+      for (const bloco of chunkArr(promoLeadIds, 200)) {
+        const { data, error } = await admin.from("crm_leads")
+          .select("id, pipeline_id, tenant_id, assigned_to")
+          .eq("tenant_id", RIZODENT_TENANT_ID)
+          .is("whatsapp_number_id", null)
+          .in("id", bloco);
+        if (error) { errors.push({ passo: "promocao_leads", error: error.message }); continue; }
+        for (const l of (data || [])) leadsPromo.set(l.id, l);
       }
-    } catch (e: any) {
-      errors.push({ appointment_id: a.id, error: String(e?.message ?? e) });
+
+      // (b) ALTA 1 da revisão: FILTRAR PRIMEIRO, ESCOLHER DEPOIS. A versão
+      // anterior guardava só a consulta MAIS RECENTE de cada lead e só então
+      // testava a janela de pagamento sobre essa única sobrevivente — se o
+      // pagamento pertencia a uma consulta mais ANTIGA, a candidata escolhida não
+      // tinha pagamento na janela dela, a rotina pulava o lead e a consulta certa
+      // nunca era avaliada, em nenhuma passada (o defeito era permanente, não um
+      // atraso). Agora as candidatas do lead ficam ordenadas da mais recente para
+      // a mais antiga e a passada promove a PRIMEIRA que passa em TODOS os testes,
+      // parando ali — continua uma promoção por lead por passada.
+      const ordemAppt = (x: any) => `${x.scheduled_date}T${String(x.scheduled_time || "00:00").slice(0, 5)}`;
+      const candidatasPorLead = new Map<string, any[]>();
+      for (const a of candidatas) {
+        const leadId = String(a.lead_id);
+        if (!leadsPromo.has(leadId)) continue;
+        const arr = candidatasPorLead.get(leadId) || [];
+        arr.push(a);
+        candidatasPorLead.set(leadId, arr);
+      }
+      for (const arr of candidatasPorLead.values()) {
+        arr.sort((x: any, y: any) => (ordemAppt(x) < ordemAppt(y) ? 1 : ordemAppt(x) > ordemAppt(y) ? -1 : 0));
+      }
+      const leadsAnalisados = [...candidatasPorLead.keys()];
+
+      // (e) mesmo com (b), o lead volta na passada seguinte com outra consulta
+      // candidata — e um único pagamento acabaria creditado duas vezes (dois
+      // contratos para a mesma venda). Então guardo, por lead, as datas das
+      // consultas que JÁ estão contratadas: se alguma cai na janela de pagamento
+      // da candidata, o pagamento daquela janela já tem contrato e a candidata não
+      // sobe. Trade-off assumido: paciente que fechou dois tratamentos distintos
+      // no mesmo mês fica com um contrato só até o gerente marcar o outro na tela
+      // (e aí (c) protege a mão dele). Contar de menos é erro barato; contar
+      // contrato a mais é o que estraga o faturamento.
+      // MÉDIA 6: paginada também — esta é a trava contra crédito dobrado, ler
+      // pela metade seria promover justamente o que ela existe para barrar.
+      const contratadasPorLead = new Map<string, string[]>();
+      for (const bloco of chunkArr(leadsAnalisados, 200)) {
+        const { rows, error } = await lerTudoPaginado(() =>
+          admin.from("crm_appointments")
+            .select("id, lead_id, scheduled_date")
+            .eq("tenant_id", RIZODENT_TENANT_ID)
+            .eq("status", "contracted")
+            .gte("scheduled_date", addDays(fim, -48))
+            .lte("scheduled_date", addDays(fim, 30))
+            .in("lead_id", bloco)
+        );
+        if (error) {
+          errors.push({ passo: "promocao_contratadas", error, abortada: true });
+          break promocao; // sem a trava (e) completa, não se promove nada
+        }
+        for (const c of rows) {
+          const arr = contratadasPorLead.get(c.lead_id) || [];
+          arr.push(String(c.scheduled_date));
+          contratadasPorLead.set(c.lead_id, arr);
+        }
+      }
+
+      // MÉDIA 4: mover a etapa para "Contratado" quebra o ciclo de carência
+      // quando o lead ainda é de uma SDR — "Contratado" é etapa oculta para ela,
+      // o lead desaparece do quadro antes de a SDR olhar, e quem deve mover é a
+      // entrega no fim da carência. Então a etapa não se mexe se o lead ainda tem
+      // dona SDR ou se tem entrega agendada em crm_entregas_gestor. O desfecho da
+      // consulta ('contracted') sobe do mesmo jeito: é ele que o relatório conta.
+      // Se qualquer uma das duas leituras falhar, assumo o pior (é da SDR / tem
+      // entrega) e não mexo na etapa — errar para o lado de não mover só atrasa a
+      // etapa; errar para o lado de mover arranca o lead da SDR no meio do ciclo.
+      const donos = [...new Set([...leadsPromo.values()].map((l) => l.assigned_to).filter(Boolean))] as string[];
+      const donasSdr = new Set<string>();
+      let papeisIncertos = false;
+      for (const bloco of chunkArr(donos, 200)) {
+        const { data, error } = await admin.from("user_roles")
+          .select("user_id").eq("role", "sdr").in("user_id", bloco);
+        if (error) { papeisIncertos = true; errors.push({ passo: "promocao_papeis", error: error.message }); continue; }
+        for (const r of (data || [])) donasSdr.add(String(r.user_id));
+      }
+      const comEntregaAgendada = new Set<string>();
+      let entregasIncertas = false;
+      for (const bloco of chunkArr(leadsAnalisados, 200)) {
+        const { data, error } = await admin.from("crm_entregas_gestor")
+          .select("lead_id").in("lead_id", bloco);
+        if (error) { entregasIncertas = true; errors.push({ passo: "promocao_entregas", error: error.message }); continue; }
+        for (const e of (data || [])) comEntregaAgendada.add(String(e.lead_id));
+      }
+
+      // MÉDIA 5: a etapa "Contratado" dispara o gatilho
+      // auto_confirm_appointments_on_contracted, que carimba 'contracted' na
+      // consulta 'confirmed' mais recente do lead com data <= hoje — fechando uma
+      // consulta que ninguém marcou. Então só movo a etapa quando o lead NÃO tem
+      // outra consulta 'confirmed' nessa condição. Leitura com falha = assume que
+      // tem (não move).
+      const comConfirmadaVencida = new Set<string>();
+      let confirmadasIncertas = false;
+      for (const bloco of chunkArr(leadsAnalisados, 200)) {
+        const { rows, error } = await lerTudoPaginado(() =>
+          admin.from("crm_appointments")
+            .select("id, lead_id")
+            .eq("tenant_id", RIZODENT_TENANT_ID)
+            .eq("status", "confirmed")
+            .lte("scheduled_date", hoje)
+            .in("lead_id", bloco)
+        );
+        if (error) { confirmadasIncertas = true; errors.push({ passo: "promocao_confirmadas", error }); continue; }
+        for (const c of rows) comConfirmadaVencida.add(String(c.lead_id));
+      }
+
+      for (const [leadId, lista] of candidatasPorLead) {
+        for (const a of lista) {
+          try {
+            // (a) janela do pagamento amarrada à consulta (mesma conta do
+            // caminho principal, ver janelaPagamentoDaConsulta).
+            const { de: dePag, ate: atePag } = janelaPagamentoDaConsulta(a.scheduled_date);
+            if (dePag > atePag) continue;
+            // (e) pagamento desta janela já creditado em outra consulta contratada.
+            const jaCreditada = (contratadasPorLead.get(leadId) || [])
+              .some((d) => d >= dePag && d <= atePag);
+            if (jaCreditada) continue;
+            if (!(await leadTemPagamentoNaJanela(admin, a.lead_id, dePag, atePag))) continue;
+
+            const lead = leadsPromo.get(leadId) || null;
+            // MÉDIA 4 + MÉDIA 5: por que a etapa pode não acompanhar o desfecho.
+            const naoMoverPorque = !lead
+              ? "lead_fora_do_mundo_legado"
+              : (lead.assigned_to && (papeisIncertos || donasSdr.has(String(lead.assigned_to))))
+                ? "lead_ainda_com_a_sdr"
+                : (entregasIncertas || comEntregaAgendada.has(leadId))
+                  ? "entrega_ao_gestor_agendada"
+                  : (confirmadasIncertas || comConfirmadaVencida.has(leadId))
+                    ? "tem_consulta_confirmed_vencida"
+                    : null;
+
+            if (promocoes.length < 25) {
+              promocoes.push({
+                appointment_id: a.id, lead_id: leadId, data: a.scheduled_date,
+                janela_pagamento: { de: dePag, ate: atePag },
+                etapa: naoMoverPorque ? `nao_movida: ${naoMoverPorque}` : "contratado",
+              });
+            }
+            if (dryRun) { promovidos++; break; }
+            const { data: up, error: upErr } = await admin.from("crm_appointments")
+              .update({ status: "contracted", outcome_source: "dontus-sync:promovido", updated_at: new Date().toISOString() })
+              .eq("id", a.id)
+              .eq("status", "not_contracted")
+              .select("id");
+            if (upErr) { errors.push({ appointment_id: a.id, error: upErr.message }); continue; }
+            // 0 linhas = alguém mexeu no desfecho entre a leitura e a gravação.
+            // Encerro o lead nesta passada em vez de tentar a candidata seguinte:
+            // se o desfecho virou contrato por outro caminho, o pagamento desta
+            // janela já foi creditado.
+            if (!up || up.length === 0) break;
+            promovidos++;
+            if (lead && !naoMoverPorque) {
+              await moveLeadStageServer(
+                admin, lead,
+                (n) => n === "contratado" || n === "contratados" || (n.includes("contrat") && !n.includes("nao contrat")),
+                "🤝 Pagamento encontrado no Dontus — consulta promovida para Contratado",
+              ).catch((e: any) => errors.push({ appointment_id: a.id, error: String(e?.message ?? e) }));
+            }
+            break; // (b) uma promoção por lead por passada
+          } catch (e: any) {
+            errors.push({ appointment_id: a.id, error: String(e?.message ?? e) });
+          }
+        }
+      }
     }
+  } catch (e: any) {
+    erroFatal = String(e?.message ?? e);
+    errors.push({ passo: "comparecimento", fatal: true, error: erroFatal });
   }
 
   const por_unidade = Object.values(unidades);
@@ -2454,10 +2763,11 @@ async function syncComparecimento(
     dry_run: dryRun,
     go_live: GO_LIVE,
     periodo: { from: ini, to: fim },
-    pendentes_analisados: pend.length,
+    pendentes_analisados: pendentesAnalisados,
     atualizados: dryRun ? 0 : gravados,
     promovidos_para_contratado: promovidos,
     promocoes,
+    erro_fatal: erroFatal,
     por_unidade,
     totais,
     amostra,

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Loader2, Power, RefreshCw, Shuffle } from "lucide-react";
-import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
+import { mensagemDeErroRpc, rpcAusente } from "@/lib/relatorioSdr";
 
 /**
  * Painel do motor do rodízio, dentro da aba Equipe (só o gestor chega aqui).
@@ -19,8 +21,21 @@ import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
  *   sombra    — o motor só anota no livro quem TERIA recebido cada lead;
  *   ligado    — distribui de verdade.
  * O interruptor é a RPC rodizio_definir_modo; o retrato é rodizio_estado.
+ *
+ * Funis: o motor olhava UM funil só (o principal). Quando o dono criou funis
+ * por procedimento, todo lead que caía neles ficava fora da distribuição — sem
+ * aviso nenhum. Agora a lista de funis é escolhida aqui (rodizio_definir_funis)
+ * e o estado devolve funis_ids/funis; lista vazia = padrão (só o principal).
+ * A lista oferecida é recortada por tenant_id e só traz funil sem allowed_roles
+ * (ver carregarFunis): sem isso o superadmin via funis de outros clientes e a
+ * tela oferecia funil de closer/recepção que a RPC recusa.
+ *
  * A distribuição inicial dos leads sem resposta passa SEMPRE por um dry-run
- * que mostra a lista antes de mover alguém.
+ * que mostra a lista antes de mover alguém, e leva um TETO por SDR nesta
+ * rodada (p_max_por_sdr): sem teto, uma rodada só despeja a fila inteira na
+ * SDR que estiver com menos entregas. O diálogo mostra o teto que o banco
+ * realmente aplicou, e em modo sombra não oferece Confirmar — fora do modo
+ * ligado o banco recusa a execução real.
  */
 
 type Modo = "desligado" | "sombra" | "ligado";
@@ -38,13 +53,23 @@ interface Estado {
   entrega_gestor_apos_min?: number; entregas_pendentes?: number;
   /** Corte: reserva de quem não abriu até entrada + N min vai para quem abriu. */
   corte_tolerancia_min?: number;
+  /** Funil principal do rodízio (rodizio_funil): o padrão quando não há lista. */
+  funil_id?: string | null;
+  /** Funis escolhidos para o rodízio; opcionais porque o banco pode estar sem a migration. */
+  funis_ids?: string[] | null;
+  funis?: { id: string; nome: string }[] | null;
 }
 interface LinhaDistribuicao {
   lead_id: string; lead_nome: string | null; lead_telefone: string | null; etapa: string | null;
   ultima_mensagem_em: string | null; acao: string; para_user_id: string | null; para_nome: string | null;
 }
+/** Funil da tabela crm_pipelines (só os de venda entram no rodízio). */
+interface Funil { id: string; name: string; is_instagram: boolean; is_posvenda: boolean; position: number | null }
 
 const TEXTO_AUSENTE = "O motor do rodízio ainda não foi instalado no banco (migration da Fase 3 pendente).";
+const TEXTO_FUNIS_AUSENTE = "A escolha dos funis do rodízio ainda não foi instalada no banco (migration pendente).";
+/** Teto padrão por SDR na distribuição inicial: uma rodada calma, não um despejo. */
+const TETO_PADRAO = "30";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rpc = (fn: string, args?: Record<string, unknown>) => (supabase as any).rpc(fn, args);
 
@@ -63,6 +88,11 @@ const fmtHora = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 
 export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
+  // Clínica do usuário logado. A lista de funis é filtrada por ela: ver o
+  // comentário de carregarFunis — para o superadmin a RLS não filtra nada e a
+  // tela chegava a oferecer funis de OUTROS clientes.
+  const { profile } = useAuth();
+  const tenantId = profile?.tenant_id ?? null;
   const [estado, setEstado] = useState<Estado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -76,6 +106,51 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const [tolerancia, setTolerancia] = useState<string>("");
   const [salvandoTolerancia, setSalvandoTolerancia] = useState(false);
   const [distribuindo, setDistribuindo] = useState(false);
+  // Teto por SDR da distribuição inicial. `tetoAplicado` é o teto que o dry-run
+  // usou: a confirmação repete ESSE valor, senão o gestor confirmaria uma lista
+  // diferente da que leu (basta ele mexer no campo com o diálogo aberto).
+  const [maxPorSdr, setMaxPorSdr] = useState<string>(TETO_PADRAO);
+  const [tetoAplicado, setTetoAplicado] = useState<number | null>(Number(TETO_PADRAO));
+  // Funis do rodízio: a lista vem de crm_pipelines, a marcação vem do estado.
+  const [funisDisponiveis, setFunisDisponiveis] = useState<Funil[]>([]);
+  const [erroFunis, setErroFunis] = useState<string | null>(null);
+  const [funisSel, setFunisSel] = useState<string[]>([]);
+  const [funisNoBanco, setFunisNoBanco] = useState(false);
+  const [salvandoFunis, setSalvandoFunis] = useState(false);
+
+  /**
+   * Funis de venda DESTA clínica. Três filtros, cada um consertando um defeito:
+   *
+   *   • tenant_id — a consulta não filtrava por clínica e confiava na RLS. Para
+   *     o superadmin a RLS não recorta nada: a tela listava funis de OUTROS
+   *     clientes e o gestor podia marcar um deles para o rodízio;
+   *   • allowed_roles IS NULL — funil restrito a closer ou recepção não é porta
+   *     de entrada do rodízio. A RPC rodizio_definir_funis passou a recusar
+   *     esses funis; a tela não pode oferecer o que o banco vai rejeitar;
+   *   • Instagram e pós-venda ficam de fora: não são entrada de lead novo, e
+   *     entregá-los ao rodízio embaralharia o atendimento de comentário e o
+   *     pós-operatório.
+   */
+  const carregarFunis = useCallback(async () => {
+    if (!tenantId) {
+      setFunisDisponiveis([]);
+      setErroFunis("Não foi possível identificar a clínica do seu usuário para listar os funis.");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("crm_pipelines")
+      .select("id, name, is_instagram, is_posvenda, position")
+      .eq("tenant_id", tenantId)
+      .is("allowed_roles", null)
+      .order("position", { ascending: true, nullsFirst: false })
+      .order("created_at");
+    if (error) {
+      setErroFunis(mensagemDeErroRpc(error, "Não foi possível listar os funis.", TEXTO_FUNIS_AUSENTE));
+      return;
+    }
+    setErroFunis(null);
+    setFunisDisponiveis(((data ?? []) as Funil[]).filter((f) => !f.is_instagram && !f.is_posvenda));
+  }, [tenantId]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -88,7 +163,14 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     setMinutos(String(e.realocar_sem_resposta_min ?? ""));
     setCarenciaH(typeof e.entrega_gestor_apos_min === "number" ? String(Math.round(e.entrega_gestor_apos_min / 60)) : "");
     setTolerancia(typeof e.corte_tolerancia_min === "number" ? String(e.corte_tolerancia_min) : "");
-  }, []);
+    // `in` (e não `?? []`) porque precisamos distinguir "o banco devolveu lista
+    // vazia" (= padrão, só o funil principal) de "este banco ainda não conhece
+    // funis do rodízio" — no segundo caso a tela avisa em vez de sugerir que a
+    // marcação já vale.
+    setFunisNoBanco(("funis_ids" in e) || ("funis" in e));
+    setFunisSel(Array.isArray(e.funis_ids) ? e.funis_ids.map(String) : []);
+    await carregarFunis();
+  }, [carregarFunis]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -111,17 +193,58 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     aoMudar?.();
   };
 
+  /** Campo do teto: vazio = sem teto (null); `false` = número inválido. */
+  const tetoDoCampo = (): number | null | false => {
+    const t = maxPorSdr.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < 1 || n > 500) return false;
+    return n;
+  };
+
+  /**
+   * Distribuição inicial com teto por SDR. O parâmetro p_max_por_sdr é novo:
+   * se o banco ainda estiver na versão anterior a função "não existe" com essa
+   * assinatura (PGRST202) — aí repetimos SEM o teto e avisamos, em vez de
+   * deixar o botão morto ou aplicar um teto que o banco ignorou calado.
+   *
+   * Devolve o teto EFETIVAMENTE usado (`tetoUsado`), null quando caiu no
+   * fallback sem teto. Defeito que isso conserta: a tela guardava o teto PEDIDO
+   * e o diálogo dizia "Teto de 30 por SDR nesta rodada" para uma lista calculada
+   * sem teto nenhum — o gestor confirmava acreditando num limite que não existia.
+   */
+  const chamarDistribuir = async (
+    dryRun: boolean,
+    teto: number | null,
+  ): Promise<{ data: unknown; error: unknown; tetoUsado: number | null }> => {
+    const args: Record<string, unknown> = { p_dry_run: dryRun };
+    if (teto !== null) args.p_max_por_sdr = teto;
+    const r = await rpc("rodizio_distribuir_sem_resposta_agora", args);
+    if (r.error && teto !== null && rpcAusente(r.error)) {
+      toast.warning("Este banco ainda não aceita teto por SDR (migration pendente): a rodada vai sem limite por SDR.");
+      const semTeto = await rpc("rodizio_distribuir_sem_resposta_agora", { p_dry_run: dryRun });
+      return { data: semTeto.data, error: semTeto.error, tetoUsado: null };
+    }
+    return { data: r.data, error: r.error, tetoUsado: teto };
+  };
+
   const simular = async () => {
+    const teto = tetoDoCampo();
+    if (teto === false) { toast.error("O teto por SDR precisa ser um número inteiro de 1 a 500 (deixe em branco para não limitar)."); return; }
     setDistribuindo(true);
-    const { data, error } = await rpc("rodizio_distribuir_sem_resposta_agora", { p_dry_run: true });
+    const { data, error, tetoUsado } = await chamarDistribuir(true, teto);
     setDistribuindo(false);
     if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível simular a distribuição.", TEXTO_AUSENTE)); return; }
+    // O teto que o banco realmente aplicou nesta lista — não o que foi pedido.
+    setTetoAplicado(tetoUsado);
     setPrevia((data ?? []) as LinhaDistribuicao[]);
   };
 
   const distribuir = async () => {
     setDistribuindo(true);
-    const { data, error } = await rpc("rodizio_distribuir_sem_resposta_agora", { p_dry_run: false });
+    // Mesmo teto do dry-run que o gestor acabou de ler (tetoAplicado), não o
+    // que estiver no campo agora.
+    const { data, error } = await chamarDistribuir(false, tetoAplicado);
     setDistribuindo(false);
     setPrevia(null);
     if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível distribuir.", TEXTO_AUSENTE)); return; }
@@ -133,6 +256,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   };
 
   const salvarMinutos = async () => {
+    // Campo vazio NÃO é zero: Number("") é 0 e 0 aqui significa "desligar a
+    // realocação". Quem apagou o campo sem querer desligava a regra inteira.
+    if (minutos.trim() === "") { toast.error("Informe os minutos para a realocação (0 desliga)."); return; }
     const n = Number(minutos);
     if (!Number.isInteger(n) || n < 0 || n > 240) { toast.error("Informe um tempo entre 0 (desligado) e 240 minutos."); return; }
     setSalvandoMin(true);
@@ -144,6 +270,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   };
 
   const salvarCarencia = async () => {
+    // Campo vazio não vira 0: 0 aqui quer dizer "entrega o lead ao
+    // administrador na hora do comparecimento", uma decisão, não um branco.
+    if (carenciaH.trim() === "") { toast.error("Informe as horas de carência (0 = na hora)."); return; }
     const h = Number(carenciaH);
     if (!Number.isInteger(h) || h < 0 || h > 168) { toast.error("Informe entre 0 (na hora) e 168 horas (7 dias)."); return; }
     setSalvandoCarencia(true);
@@ -157,6 +286,10 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   };
 
   const salvarTolerancia = async () => {
+    // Com o campo VAZIO, Number("") é 0 e o botão gravava tolerância 0: o corte
+    // passava a acontecer no instante da entrada de cada SDR — quem chegasse um
+    // minuto atrasada perdia as reservas do dia. Campo em branco não é zero.
+    if (tolerancia.trim() === "") { toast.error("Informe os minutos de tolerância."); return; }
     const n = Number(tolerancia);
     if (!Number.isInteger(n) || n < 0 || n > 480) { toast.error("Informe entre 0 e 480 minutos."); return; }
     setSalvandoTolerancia(true);
@@ -165,6 +298,22 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar a tolerância.", TEXTO_AUSENTE)); return; }
     toast.success(`Reservas de quem não abrir até ${n} min depois da entrada passam para quem abriu.`);
     await carregar();
+  };
+
+  const alternarFunil = (id: string, marcado: boolean) =>
+    setFunisSel((prev) => (marcado ? [...new Set([...prev, id])] : prev.filter((x) => x !== id)));
+
+  const salvarFunis = async () => {
+    setSalvandoFunis(true);
+    const { error } = await rpc("rodizio_definir_funis", { p_ids: funisSel });
+    setSalvandoFunis(false);
+    if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar os funis do rodízio.", TEXTO_FUNIS_AUSENTE)); return; }
+    const nomes = funisDisponiveis.filter((f) => funisSel.includes(f.id)).map((f) => f.name).join(", ");
+    toast.success(funisSel.length === 0
+      ? "Rodízio de volta ao padrão: só o funil principal entra na distribuição."
+      : `Rodízio nos funis: ${nomes}.`);
+    await carregar();
+    aoMudar?.();
   };
 
   if (erro) {
@@ -184,11 +333,35 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   }
 
   const modo = estado.modo;
+  // Alcance do motor: os funis que o banco diz estar no rodízio. Sem lista
+  // (ou com lista vazia) vale só o funil principal — e a frase precisa dizer
+  // isso, porque foi justamente aí que os leads dos funis por procedimento
+  // ficaram parados sem ninguém perceber.
+  const nomesFunisEstado = Array.isArray(estado.funis) ? estado.funis.map((f) => f.nome).filter(Boolean) : [];
+  const alcance = nomesFunisEstado.length > 0
+    ? `dos funis ${nomesFunisEstado.join(", ")}`
+    : funisNoBanco ? "do funil principal" : "do funil";
   const descricao: Record<Modo, string> = {
     desligado: "Nada é distribuído. Leads novos continuam com o administrador.",
     sombra: "O motor só anota, no livro de atribuições, quem teria recebido cada lead. Ninguém muda de dona.",
-    ligado: `Leads novos do funil vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Reserva de quem não abriu até ${estado.corte_tolerancia_min ?? 60} min depois da entrada dela vai para quem abriu; realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana.`,
+    ligado: `Leads novos ${alcance} vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Reserva de quem não abriu até ${estado.corte_tolerancia_min ?? 60} min depois da entrada dela vai para quem abriu; realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana.`,
   };
+  // Salvar só habilita se a marcação mudou de verdade (ordem não conta).
+  const mesmaLista = (a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    const x = [...a].sort();
+    const y = [...b].sort();
+    return x.every((v, i) => v === y[i]);
+  };
+  const funisMudaram = !mesmaLista(funisSel, Array.isArray(estado.funis_ids) ? estado.funis_ids.map(String) : []);
+  const movidosPrevia = (previa ?? []).filter((l) => l.acao !== "fica").length;
+  // O diálogo da prévia prometia que "em modo sombra, a confirmação só anota no
+  // livro". Promessa falsa: fora do modo ligado o banco RECUSA a execução real —
+  // não existe anotação nem confirmação a oferecer. Em sombra a frase diz a
+  // verdade e o botão Confirmar nem aparece (ver o rodapé do diálogo).
+  const fraseDaConfirmacao = modo === "sombra"
+    ? "Em modo sombra esta lista é só simulação — para aplicar, ligue o rodízio."
+    : "Ao confirmar, cada um vai para a SDR indicada (ou fica reservado se ela não estiver em expediente).";
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -301,13 +474,73 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
         </div>
       )}
 
+      {/* Funis que entram no rodízio. Antes o motor olhava um funil só: lead que
+          caía num funil por procedimento nunca chegava a uma SDR. */}
+      <div className="mt-3 border-t border-border pt-3 text-sm">
+        <p className="font-medium text-foreground">Funis que entram no rodízio</p>
+        {!funisNoBanco && (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+            Este banco ainda não devolve os funis do rodízio (migration pendente): a marcação só passa
+            a valer depois de publicar as migrations.
+          </p>
+        )}
+        {erroFunis ? (
+          <p className="mt-1 text-xs text-destructive">{erroFunis}</p>
+        ) : funisDisponiveis.length === 0 ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Nenhum funil de vendas cadastrado. Funis de Instagram e de pós-venda não entram no rodízio.
+          </p>
+        ) : (
+          <>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              {funisDisponiveis.map((f) => (
+                <label key={f.id} className="flex cursor-pointer items-center gap-2">
+                  <Checkbox checked={funisSel.includes(f.id)} onCheckedChange={(c) => alternarFunil(f.id, !!c)} />
+                  <span className="text-foreground">
+                    {f.name}
+                    {estado.funil_id === f.id && <span className="text-muted-foreground"> (principal)</span>}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={salvarFunis} disabled={salvandoFunis || !funisMudaram}>
+                {salvandoFunis ? <Loader2 className="animate-spin" size={14} /> : "Salvar funis"}
+              </Button>
+              {/* A legenda dizia só "lead NOVO nele entra na distribuição" —
+                  prometia menos do que o clique faz. Marcar um funil também
+                  coloca em movimento os leads que JÁ estão nele: a varredura
+                  seguinte do motor os alcança. O gestor precisa saber disso antes
+                  de salvar, não depois de ver leads antigos mudando de dona. */}
+              <span className="text-xs text-muted-foreground">
+                {funisSel.length === 0
+                  ? "Nenhum marcado: volta ao padrão — só o funil principal entra no rodízio."
+                  : funisSel.length === 1
+                    ? "1 funil marcado. Entram na distribuição os leads novos dele e também os que já estão lá, na próxima varredura do motor."
+                    : `${funisSel.length} funis marcados. Entram na distribuição os leads novos deles e também os que já estão lá, na próxima varredura do motor.`}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
       {modo !== "desligado" && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Button variant="outline" size="sm" onClick={simular} disabled={distribuindo}>
             <Shuffle size={14} className="mr-1" /> Distribuir os leads sem resposta agora
           </Button>
+          <span className="text-xs text-muted-foreground">no máximo</span>
+          <input
+            type="number" min={1} max={500} value={maxPorSdr} onChange={(e) => setMaxPorSdr(e.target.value)}
+            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            aria-label="Máximo de leads por SDR nesta rodada"
+          />
           <span className="text-xs text-muted-foreground">
-            Mostra a lista antes de mover. {modo === "sombra" && "Em modo sombra só anota, não move."}
+            por SDR nesta rodada (em branco = sem teto). Mostra a lista antes de mover.
+            {/* Dizia "em modo sombra só anota, não move" — promessa falsa: o
+                banco recusa a execução real fora do modo ligado, então em sombra
+                não há nem anotação, só a simulação na tela. */}
+            {modo === "sombra" && " Em modo sombra esta lista é só simulação — para aplicar, ligue o rodízio."}
           </span>
         </div>
       )}
@@ -340,7 +573,11 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
             <AlertDialogDescription>
               {previa && previa.length === 0
                 ? "Nenhum lead do administrador está aguardando resposta agora."
-                : `${previa?.length ?? 0} lead${(previa?.length ?? 0) === 1 ? "" : "s"} aguardando resposta. ${modo === "sombra" ? "Em modo sombra, a confirmação só anota no livro." : "Ao confirmar, cada um vai para a SDR indicada (ou fica reservado se ela não estiver em expediente)."}`}
+                : `${previa?.length ?? 0} lead${(previa?.length ?? 0) === 1 ? "" : "s"} aguardando resposta; ${movidosPrevia === 1 ? "1 muda de dona" : `${movidosPrevia} mudam de dona`}. ${
+                    tetoAplicado === null
+                      ? `Sem teto por SDR: ${movidosPrevia === 1 ? "esse lead vai" : `todos esses ${movidosPrevia} leads vão`} de uma vez.`
+                      : `Teto de ${tetoAplicado} por SDR nesta rodada.`
+                  } ${fraseDaConfirmacao}`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {previa && previa.length > 0 && (
@@ -369,7 +606,10 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
           )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={distribuindo}>Fechar</AlertDialogCancel>
-            {previa && previa.length > 0 && (
+            {/* Em modo sombra não existe botão Confirmar: o banco recusa a
+                execução real fora do modo ligado, e o botão só serviria para o
+                gestor tomar um erro depois de decidir. */}
+            {modo !== "sombra" && previa && previa.length > 0 && (
               <AlertDialogAction onClick={(e) => { e.preventDefault(); distribuir(); }} disabled={distribuindo}>
                 {distribuindo ? <Loader2 className="animate-spin" size={14} /> : "Confirmar distribuição"}
               </AlertDialogAction>

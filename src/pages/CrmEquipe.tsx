@@ -20,6 +20,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { Info, KeyRound, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, UserX, Users } from "lucide-react";
+import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
 
 /**
  * Equipe — gestão das SDRs do rodízio pelo gestor do cliente.
@@ -50,9 +51,15 @@ import { Info, KeyRound, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, Us
  * A usuária troca a senha no primeiro login (must_change_password).
  *
  * Editar / excluir (decisão do dono, 09/09): "trocar de SDR é só trocar nome
- * e e-mail" — o diálogo Editar salva nome (RPC equipe_editar_nome), e-mail
- * (admin-manage-user set_email, que derruba as sessões da conta) e,
- * opcionalmente, uma senha temporária nova. Excluir apaga a conta pela mesma
+ * e e-mail" — o diálogo Editar salva horário (RPC equipe_definir_horario),
+ * nome (RPC equipe_editar_nome), e-mail (admin-manage-user set_email, que
+ * derruba as sessões da conta) e, opcionalmente, uma senha temporária nova.
+ * Essa ORDEM é regra: o horário é a única gravação que o banco recusa por
+ * validação, e ela precisa acontecer antes de mexer no e-mail e na senha. A
+ * validação do horário, por sua vez, só roda se o horário MUDOU — validar sempre
+ * impedia corrigir o nome de uma SDR cujo horário antigo não passa nas regras
+ * novas de front.
+ * Excluir apaga a conta pela mesma
  * function (delete), que ANTES redistribui os leads dela pela RPC
  * equipe_redistribuir_leads (rodízio ligado → revezam entre as outras SDRs;
  * senão → administrador); a prévia vem de equipe_excluir_previa.
@@ -75,27 +82,78 @@ type Membro = {
 
 const MIN_SENHA = 8;
 
+/** Site publicado antes de a migration ser aplicada (PGRST202): sem estes
+ *  textos a tela mostrava o "Could not find the function ..." do PostgREST. */
+const TEXTO_RPC_AUSENTE_EQUIPE =
+  "Esta parte da gestão de equipe ainda não foi instalada no banco: publique as migrations e tente de novo.";
+const TEXTO_RPC_AUSENTE_HORARIO =
+  "O horário de trabalho da SDR ainda não foi instalado no banco (migration pendente). Até publicar, o expediente dela segue o horário comercial da clínica.";
+
 /** Horário de trabalho da SDR (RPCs equipe_horarios / equipe_definir_horario). */
 type Horario = {
   hora_entrada: string | null; hora_saida: string | null; almoco_inicio: string | null; almoco_fim: string | null;
   sabado_entrada: string | null; sabado_saida: string | null;
 };
 const hhmm = (t: string | null | undefined): string => (t ? String(t).slice(0, 5) : "");
+/** Sem horário próprio o servidor NÃO deixa a SDR sem regra: usa o horário
+ *  comercial da clínica (rodizio_horario_dia) e encerra o expediente nele. O
+ *  "—" que ficava aqui lia-se como "não encerra sozinho", que é falso. */
 const resumoHorario = (h: Horario | undefined): string => {
-  if (!h || !h.hora_entrada) return "—";
+  if (!h || !h.hora_entrada) return "horário da clínica";
   let s = `${hhmm(h.hora_entrada)}–${hhmm(h.hora_saida)}`;
   if (h.almoco_inicio) s += ` · almoço ${hhmm(h.almoco_inicio)}–${hhmm(h.almoco_fim)}`;
   s += h.sabado_entrada ? ` · sáb ${hhmm(h.sabado_entrada)}–${hhmm(h.sabado_saida)}` : " · sem sábado";
   return s;
 };
 const EDICAO_VAZIA = { nome: "", email: "", senha: "", entrada: "", saida: "", almocoIni: "", almocoFim: "", sabEntrada: "", sabSaida: "" };
+type Edicao = typeof EDICAO_VAZIA;
+
+/**
+ * Valida o horário no FRONT, antes de qualquer gravação. Repete as 6 regras da
+ * RPC equipe_definir_horario (entrada/saída juntas, saída depois da entrada,
+ * almoço com início e fim juntos e dentro da jornada, sábado com as duas pontas
+ * e saída depois da entrada) porque, antes, a recusa do banco só chegava DEPOIS
+ * de o e-mail e a senha já terem sido trocados.
+ *
+ * A última regra não é do banco e sim do motor: rodizio_horario_dia só usa o
+ * horário próprio da SDR quando hora_entrada (seg–sex) está preenchida. Então
+ * sábado sozinho é aceito pelo banco e depois IGNORADO — a auditoria mediu
+ * isso. Aqui a tela recusa em vez de deixar o gestor achar que gravou.
+ * Comparação de "HH:MM" como texto: nesse formato a ordem alfabética é a ordem
+ * do relógio.
+ */
+const erroDoHorario = (e: Edicao): string | null => {
+  const { entrada, saida, almocoIni, almocoFim, sabEntrada, sabSaida } = e;
+  if (!!entrada !== !!saida) return "Informe a entrada e a saída de segunda a sexta (ou deixe as duas em branco).";
+  if (entrada && saida <= entrada) return "A saída precisa ser depois da entrada.";
+  if (!!almocoIni !== !!almocoFim) return "Informe o início e o fim do almoço (ou deixe os dois em branco).";
+  if (almocoIni) {
+    if (!entrada) return "Para definir o almoço, preencha primeiro a entrada e a saída de segunda a sexta.";
+    if (almocoFim <= almocoIni) return "O fim do almoço precisa ser depois do início.";
+    if (almocoIni < entrada || almocoFim > saida) return "O almoço precisa caber entre a entrada e a saída.";
+  }
+  if (!!sabEntrada !== !!sabSaida) return "Informe a entrada e a saída do sábado (ou deixe as duas em branco).";
+  if (sabEntrada && sabSaida <= sabEntrada) return "No sábado, a saída precisa ser depois da entrada.";
+  if (sabEntrada && !entrada)
+    return "Defina também o horário de segunda a sexta para o sábado valer: sem a entrada de segunda a sexta, o sistema usa o horário comercial da clínica e ignora o sábado preenchido aqui.";
+  return null;
+};
 
 type RespostaRpc = { data: unknown; error: unknown };
 /** Resultado de equipe_redistribuir_leads (devolvido por admin-manage-user no delete). */
 type Redistribuicao = { leads: number; para_rodizio: number; para_gestor: number; reservas_refeitas: number; destinos: Record<string, number> };
-/** Corpo devolvido por admin-manage-user (create/reset_password/set_email/delete). */
+/**
+ * Corpo devolvido por admin-manage-user (create/reset_password/set_email/delete).
+ *
+ * `aviso` é sucesso PARCIAL, não erro: a function passou a devolvê-lo quando a
+ * gravação principal deu certo mas algo ficou pela metade — por exemplo o e-mail
+ * trocado no login (auth.users) sem o cadastro (profiles) acompanhar. Sem este
+ * campo aqui a tela descartava o recado e mostrava só "atualizado", deixando o
+ * gestor achar que estava tudo certo.
+ */
 type RespostaFuncao = {
-  error?: string; user_id?: string; role?: string; sessoes_encerradas?: number | null; redistribuicao?: Redistribuicao | null;
+  error?: string; aviso?: string; user_id?: string; role?: string; sessoes_encerradas?: number | null;
+  redistribuicao?: Redistribuicao | null;
 } | null | undefined;
 /** equipe_excluir_previa: o que acontece com os leads dela se for excluída. */
 type Previa = {
@@ -118,12 +176,15 @@ const rpc = (nome: string, args?: Record<string, unknown>): Promise<RespostaRpc>
 
 const comoErro = (e: unknown): ErroLike => (e && typeof e === "object" ? (e as ErroLike) : {});
 
-/** Mensagem legível de um erro do PostgREST/Supabase (RAISE EXCEPTION chega em `message`). */
-const mensagemDe = (e: unknown, fallback: string): string => {
-  const err = comoErro(e);
-  const m = err.message || err.details || err.hint;
-  return typeof m === "string" && m.trim() ? m : fallback;
-};
+/** Mensagem legível de um erro do PostgREST/Supabase (RAISE EXCEPTION chega em
+ *  `message`). Delegada a mensagemDeErroRpc (o mesmo caminho do SdrExpediente):
+ *  a versão local daqui não conhecia PGRST202 e despejava o texto cru do
+ *  PostgREST quando a RPC ainda não estava publicada. */
+const mensagemDe = (e: unknown, fallback: string): string => mensagemDeErroRpc(e, fallback, TEXTO_RPC_AUSENTE_EQUIPE);
+
+/** Idem para as RPCs de horário (equipe_horarios / equipe_definir_horario), que
+ *  costumam ser as mais novas do banco. */
+const mensagemDeHorario = (e: unknown, fallback: string): string => mensagemDeErroRpc(e, fallback, TEXTO_RPC_AUSENTE_HORARIO);
 
 /** Extrai o erro de uma edge function (corpo JSON `{ error }` ou contexto da resposta). */
 const erroDaFuncao = async (data: RespostaFuncao, error: unknown, fallback: string): Promise<string> => {
@@ -161,6 +222,7 @@ export default function CrmEquipe() {
   const [edicaoDe, setEdicaoDe] = useState<Membro | null>(null);
   const [edicao, setEdicao] = useState(EDICAO_VAZIA);
   const [horarios, setHorarios] = useState<Record<string, Horario>>({});
+  const [erroHorarios, setErroHorarios] = useState<string | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [exclusaoDe, setExclusaoDe] = useState<Membro | null>(null);
   const [previa, setPrevia] = useState<Previa | null>(null);
@@ -178,12 +240,19 @@ export default function CrmEquipe() {
     }
     setErroLista(null);
     setMembros(((data ?? []) as Membro[]).map((m) => ({ ...m, leads_hoje: Number(m.leads_hoje ?? 0) })));
-    // Horários (RPC nova; se ainda não existir no banco, a coluna fica "—").
+    // Horários. Se a leitura falhar, a coluna NÃO pode continuar dizendo
+    // "horário da clínica" para todo mundo: sem o dado, isso seria uma
+    // afirmação falsa sobre quem tem horário próprio. Então a coluna volta a
+    // "—" e a tela diz por quê.
     const { data: hs, error: hErr } = await rpc("equipe_horarios");
-    if (!hErr && Array.isArray(hs)) {
+    if (hErr) {
+      setHorarios({});
+      setErroHorarios(mensagemDeHorario(hErr, "Não foi possível ler os horários da equipe."));
+    } else if (Array.isArray(hs)) {
       const mapa: Record<string, Horario> = {};
       for (const h of hs as (Horario & { user_id: string })[]) mapa[h.user_id] = h;
       setHorarios(mapa);
+      setErroHorarios(null);
     }
   }, []);
 
@@ -321,9 +390,18 @@ export default function CrmEquipe() {
     const nome = edicao.nome.trim();
     const email = edicao.email.trim().toLowerCase();
     const senha = edicao.senha;
+    // Toda validação de front acontece ANTES de qualquer chamada: nada de
+    // recusar o 4º campo quando o 2º já mudou o e-mail (o que desconecta a SDR).
     if (!nome) return toast.error("Informe o nome.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast.error("Informe um e-mail válido.");
     if (senha && senha.length < MIN_SENHA) return toast.error(`A nova senha precisa ter ao menos ${MIN_SENHA} caracteres.`);
+    // O que mudou é calculado ANTES da validação do horário, de propósito.
+    // Defeito: a validação rodava primeiro e valia para todo mundo. Uma das
+    // regras ("sábado só vale com segunda a sexta preenchida") é nova e só
+    // existe no front — então uma SDR cadastrada antes dela, com sábado sozinho
+    // no banco, travava a tela: o gestor não conseguia nem corrigir o NOME dela,
+    // porque o horário que ele não tocou reprovava. Agora o horário só é
+    // validado quando o gestor realmente mexeu nele.
     const mudouNome = nome !== (edicaoDe.nome ?? "").trim();
     const mudouEmail = email !== (edicaoDe.email ?? "").trim().toLowerCase();
     const hAtual = horarios[edicaoDe.user_id];
@@ -332,16 +410,46 @@ export default function CrmEquipe() {
       edicao.almocoIni !== hhmm(hAtual?.almoco_inicio) || edicao.almocoFim !== hhmm(hAtual?.almoco_fim) ||
       edicao.sabEntrada !== hhmm(hAtual?.sabado_entrada) || edicao.sabSaida !== hhmm(hAtual?.sabado_saida);
     if (!mudouNome && !mudouEmail && !senha && !mudouHorario) { setEdicaoDe(null); return; }
+    if (mudouHorario) {
+      const erroHorario = erroDoHorario(edicao);
+      if (erroHorario) return toast.error(erroHorario);
+    }
 
     setSalvandoEdicao(true);
     // Mesmo cuidado do criarSdr: a senha sai do estado antes da chamada.
     setEdicao((e) => ({ ...e, senha: "" }));
     const feitos: string[] = [];
+    /** "Horário salvo, mas o nome não: " — o gestor precisa saber o que já ficou gravado. */
+    const prefixo = (oQue: string) =>
+      feitos.length ? `${feitos.join(" e ")} ${feitos.length > 1 ? "salvos" : "salvo"}, mas ${oQue} não: ` : "";
+    // A senha é a ÚLTIMA gravação; qualquer falha antes dela significa que a
+    // senha nova não foi aplicada, e o campo já foi esvaziado acima.
+    const avisoSenha = senha ? " A senha nova não foi aplicada; digite de novo." : "";
+    /** Quantas sessões a troca de e-mail derrubou, quando a function informa. */
+    let sessoesEncerradas: number | null = null;
     try {
+      // Ordem deliberada: HORÁRIO primeiro. É a única gravação que o banco pode
+      // recusar por regra de negócio (equipe_definir_horario tem 6 validações);
+      // quando ela era a última, a recusa chegava com o e-mail já trocado (o
+      // que derruba a sessão da SDR) e a senha já redefinida.
+      if (mudouHorario) {
+        const { error } = await rpc("equipe_definir_horario", {
+          p_user_id: edicaoDe.user_id,
+          p_entrada: edicao.entrada || null, p_saida: edicao.saida || null,
+          p_almoco_inicio: edicao.almocoIni || null, p_almoco_fim: edicao.almocoFim || null,
+          p_sabado_entrada: edicao.sabEntrada || null, p_sabado_saida: edicao.sabSaida || null,
+        });
+        if (error) {
+          toast.error(`${mensagemDeHorario(error, "Não foi possível salvar o horário.")}${avisoSenha}${mudouNome || mudouEmail ? " Nome e e-mail continuam como estavam." : ""}`);
+          return;
+        }
+        feitos.push("horário");
+      }
       if (mudouNome) {
         const { error } = await rpc("equipe_editar_nome", { p_user_id: edicaoDe.user_id, p_nome: nome });
         if (error) {
-          toast.error(`${mensagemDe(error, "Não foi possível mudar o nome.")}${senha ? " A senha nova não foi aplicada; digite de novo." : ""}`);
+          toast.error(`${prefixo("o nome")}${mensagemDe(error, "Não foi possível mudar o nome.")}${avisoSenha}`);
+          await carregar();
           return;
         }
         feitos.push("nome");
@@ -352,10 +460,18 @@ export default function CrmEquipe() {
         });
         if (fnErr || data?.error) {
           const motivo = await erroDaFuncao(data, fnErr, "Não foi possível mudar o e-mail.");
-          toast.error(`${feitos.length ? `Nome salvo, mas o e-mail não: ${motivo}` : motivo}${senha ? " A senha nova não foi aplicada; digite de novo." : ""}`);
+          toast.error(`${prefixo("o e-mail")}${motivo}${avisoSenha}`);
           await carregar();
           return;
         }
+        // Sucesso parcial: a function trocou o e-mail do login mas avisou que
+        // algo ficou pela metade (o cadastro em profiles, por exemplo). Toast de
+        // aviso, com duração longa — é recado que o gestor precisa LER e
+        // provavelmente agir, não uma confirmação de passagem.
+        if (data?.aviso) toast.warning(data.aviso, { duration: 15_000 });
+        // Guardado para o toast final: só afirmamos que a sessão dela caiu se a
+        // function informou quantas sessões encerrou.
+        if (typeof data?.sessoes_encerradas === "number") sessoesEncerradas = data.sessoes_encerradas;
         feitos.push("e-mail");
       }
       if (senha) {
@@ -364,29 +480,20 @@ export default function CrmEquipe() {
         });
         if (fnErr || data?.error) {
           const motivo = await erroDaFuncao(data, fnErr, "Não foi possível redefinir a senha.");
-          toast.error(`${feitos.length ? `${feitos.join(" e ")} salvo(s), mas a senha não: ` : ""}${motivo} Digite a senha de novo.`);
+          toast.error(`${prefixo("a senha")}${motivo} Digite a senha de novo.`);
           await carregar();
           return;
         }
         feitos.push("senha");
       }
-      if (mudouHorario) {
-        const { error } = await rpc("equipe_definir_horario", {
-          p_user_id: edicaoDe.user_id,
-          p_entrada: edicao.entrada || null, p_saida: edicao.saida || null,
-          p_almoco_inicio: edicao.almocoIni || null, p_almoco_fim: edicao.almocoFim || null,
-          p_sabado_entrada: edicao.sabEntrada || null, p_sabado_saida: edicao.sabSaida || null,
-        });
-        if (error) {
-          toast.error(`${feitos.length ? `${feitos.join(" e ")} salvo(s), mas o horário não: ` : ""}${mensagemDe(error, "Não foi possível salvar o horário.")}`);
-          await carregar();
-          return;
-        }
-        feitos.push("horário");
-      }
+      // "Foi desconectada" só quando a function CONFIRMA quantas sessões
+      // encerrou. Antes a frase era incondicional: bastava o e-mail ter mudado
+      // para a tela afirmar a desconexão, mesmo em um banco cuja function não
+      // encerra sessão nenhuma — o gestor ficava esperando a SDR cair e ela
+      // seguia logada com o e-mail antigo.
       toast.success(
         `${nome}: ${feitos.join(", ")} ${feitos.length > 1 ? "atualizados" : "atualizado"}.` +
-        (mudouEmail ? " Quem estava logada nessa conta foi desconectada." : "") +
+        (typeof sessoesEncerradas === "number" ? " Quem estava logada nessa conta foi desconectada." : "") +
         (senha ? " Ela troca a senha no próximo acesso." : ""),
       );
       setEdicaoDe(null);
@@ -545,7 +652,16 @@ export default function CrmEquipe() {
                             <span className="text-xs text-muted-foreground">{m.no_rodizio && !m.bloqueado ? "Sim" : "Não"}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground" title="Defina em Editar">{resumoHorario(horarios[m.user_id])}</TableCell>
+                        <TableCell
+                          className="whitespace-nowrap text-xs text-muted-foreground"
+                          title={erroHorarios
+                            ? erroHorarios
+                            : horarios[m.user_id]?.hora_entrada
+                              ? "Horário próprio dela. Para mudar, use Editar."
+                              : "Sem horário próprio: vale o horário comercial da clínica e o expediente dela encerra nele. Para dar um horário próprio, use Editar."}
+                        >
+                          {erroHorarios ? "—" : resumoHorario(horarios[m.user_id])}
+                        </TableCell>
                         <TableCell className="text-right font-mono tabular-nums">{m.leads_hoje}</TableCell>
                         <TableCell className="text-muted-foreground">{fmtData(m.ultimo_login)}</TableCell>
                         <TableCell className="text-right">
@@ -585,12 +701,20 @@ export default function CrmEquipe() {
           )}
         </section>
 
+        {erroHorarios && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">
+            Coluna Horário indisponível: {erroHorarios}
+          </p>
+        )}
+
         <p className="text-xs text-muted-foreground">
           Bloquear tira a SDR do sistema na hora (e do rodízio). Tirar do rodízio só interrompe a
           entrega de leads novos quando a distribuição automática estiver ligada — os que já são
           dela continuam com ela. Para colocar outra pessoa no lugar de uma SDR, use Editar e troque
           nome, e-mail e senha: os leads e o histórico continuam na mesma conta. Excluir apaga a
-          conta e redistribui os leads dela.
+          conta e redistribui os leads dela. Quem aparece como "horário da clínica" não está sem
+          regra: sem horário próprio vale o horário comercial da clínica, e o expediente dela
+          encerra nele.
         </p>
       </div>
 
@@ -701,7 +825,9 @@ export default function CrmEquipe() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Horário de trabalho</p>
               <p className="text-[11px] text-muted-foreground">
                 Segunda a sexta. As reservas dela passam para quem abriu o expediente se ela não abrir até a
-                entrada + tolerância do painel do rodízio. Sábado em branco = não trabalha no sábado.
+                entrada + tolerância do painel do rodízio. Sábado em branco = não trabalha no sábado — e o
+                sábado só vale se a entrada e a saída de segunda a sexta estiverem preenchidas. Tudo em
+                branco = vale o horário comercial da clínica.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">

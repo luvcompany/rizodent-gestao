@@ -20,7 +20,10 @@ import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 import AutomationModal from "@/components/automation/AutomationModal";
 
 type Pipeline = { id: string; name: string; color?: string; description?: string };
-type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number; is_won?: boolean; is_lost?: boolean };
+// visivel_para_sdr entra no tipo porque a cópia do funil precisa levar essa
+// marca junto (o ciclo da SDR decide pelo campo se a etapa fecha o ciclo dela);
+// sem o campo aqui, o "Duplicar funil" não tinha de onde copiá-lo.
+type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number; is_won?: boolean; is_lost?: boolean; visivel_para_sdr?: boolean };
 type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
   action_config: Record<string, unknown>; is_active: boolean;
@@ -41,7 +44,7 @@ const PRESET_COLORS = [
 
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, userRole } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -87,6 +90,10 @@ export default function CrmAutomacoes() {
   const [rrProfiles, setRrProfiles] = useState<{ id: string; nome: string }[]>([]);
   const [rrActive, setRrActive] = useState(false);
 
+  // A RPC pipelines_definir_ordem só aceita gestão (crc/gerente/superadmin).
+  // Sem esta trava o item de menu aparecia para recepção e closer, que só
+  // descobriam a recusa depois de reordenar tudo e clicar em salvar.
+  const podeReordenarFunis = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -216,6 +223,86 @@ export default function CrmAutomacoes() {
     setNewPipelineColor("#6366f1");
     setUseCustomPipelineColor(false);
     fetchData(data.id);
+  };
+
+  /**
+   * Duplicar funil.
+   *
+   * Defeito que existia: desde 09/09/2026 TODO funil novo nasce com as etapas
+   * do Funil Principal (gatilho trg_zz_pipeline_etapas_padrao) e o gatilho
+   * trg_zz_stage_regras_padrao recusava, sem erro nenhum (RETURN NULL), etapa
+   * inserida pelo front nos primeiros 60 segundos de vida de um funil que já
+   * tem etapas. O handler antigo criava o funil e inseria as etapas do funil de
+   * origem: todas eram recusadas em silêncio, a cópia ficava com as etapas do
+   * Funil Principal e a tela ainda dizia "Funil duplicado". Nem um INSERT em
+   * lote escapava — o gatilho é BEFORE INSERT por linha e enxerga as linhas que
+   * a MESMA instrução já inseriu, então a partir da segunda linha o funil "já
+   * tinha etapas" e o resto caía. A regra dos 60 segundos foi removida na
+   * migration 20260910013000_gatilhos_desfecho_e_etapas.sql (só ficou a recusa
+   * de nome repetido no mesmo funil), o que faz o apagar-e-reinserir funcionar.
+   *
+   * Regra atual: apagar as etapas que vieram do clone (e CONFERIR no banco que
+   * sobrou zero, porque delete barrado por RLS não devolve erro, devolve zero
+   * linha) e só então gravar as do funil de origem. Se a limpeza não acontecer,
+   * a tela avisa e não segue — melhor um funil vazio explicado que uma cópia
+   * com as etapas erradas anunciada como sucesso.
+   */
+  const handleDuplicarFunil = async () => {
+    const pipe = pipelines.find((p) => p.id === selectedPipelineId);
+    if (!pipe) return;
+    const etapasOrigem = [...stages];
+
+    const { data: novo, error } = await supabase.from("crm_pipelines").insert({
+      name: `${pipe.name} (cópia)`, color: pipe.color,
+      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
+    }).select().single();
+    if (error) { toast.error("Erro ao duplicar funil: " + error.message); return; }
+    if (!novo) return;
+
+    const { error: delErr } = await supabase.from("crm_stages").delete().eq("pipeline_id", novo.id);
+    if (delErr) {
+      toast.error(`Funil criado, mas as etapas que ele herdou do Funil Principal não puderam ser apagadas (${delErr.message}) — as etapas de "${pipe.name}" não foram copiadas.`);
+      fetchData(novo.id);
+      return;
+    }
+    const { data: sobraram, error: confErr } = await supabase.from("crm_stages").select("id").eq("pipeline_id", novo.id);
+    if (confErr || (sobraram && sobraram.length > 0)) {
+      toast.error(`Funil criado, mas ele continua com as etapas herdadas do Funil Principal — as etapas de "${pipe.name}" não foram copiadas. Ajuste as etapas na mão.`);
+      fetchData(novo.id);
+      return;
+    }
+
+    if (etapasOrigem.length > 0) {
+      // UM único INSERT com todas as etapas, e levando as MARCAS junto:
+      // is_won/is_lost (o Kanban usa para saber o que é ganho e o que é perda) e
+      // visivel_para_sdr (o ciclo da SDR usa para saber quando o ciclo fecha).
+      // O insert antigo mandava só name/color/position, então a cópia nascia com
+      // todas as etapas "neutras": nenhuma etapa de ganho, nenhuma de perda e
+      // tudo visível para a SDR, mesmo copiando um funil que tinha isso certo.
+      const { data: criadas, error: insErr } = await supabase.from("crm_stages").insert(
+        etapasOrigem.map((s) => ({
+          pipeline_id: novo.id, name: s.name, color: s.color, position: s.position,
+          is_won: !!s.is_won, is_lost: !!s.is_lost,
+          visivel_para_sdr: s.visivel_para_sdr ?? true,
+        })),
+      ).select("id");
+      if (insErr) {
+        toast.error(`Funil criado, mas as etapas de "${pipe.name}" não foram copiadas: ${insErr.message}`);
+        fetchData(novo.id);
+        return;
+      }
+      // Insert que volta vazio (ou com menos linhas) é recusa silenciosa do
+      // gatilho, não sucesso: contamos pelo que o banco devolveu.
+      const copiadas = criadas?.length ?? 0;
+      if (copiadas < etapasOrigem.length) {
+        toast.error(`Funil duplicado, mas ${etapasOrigem.length - copiadas} de ${etapasOrigem.length} etapa(s) não entraram — confira as etapas do funil novo.`);
+        fetchData(novo.id);
+        return;
+      }
+    }
+
+    toast.success("Funil duplicado");
+    fetchData(novo.id);
   };
 
   const openDeleteStage = async (stageId: string) => {
@@ -619,34 +706,12 @@ export default function CrmAutomacoes() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => { setOrdem([...pipelines]); setOrdemOpen(true); }}>
-                    <ArrowUpDown size={14} className="mr-2" /> Ordem dos funis
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={async () => {
-                    const pipe = pipelines.find(p => p.id === selectedPipelineId);
-                    if (!pipe) return;
-                    const { data, error } = await supabase.from("crm_pipelines").insert({
-                      name: `${pipe.name} (cópia)`, color: pipe.color,
-                      ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}),
-                    }).select().single();
-                    if (error) { toast.error("Erro ao duplicar funil: " + error.message); return; }
-                    if (data) {
-                      // Duplicate stages
-                      let etapasComFalha = 0;
-                      for (const s of stages) {
-                        const { error: stageErr } = await supabase.from("crm_stages").insert({
-                          pipeline_id: data.id, name: s.name, color: s.color, position: s.position,
-                        });
-                        if (stageErr) etapasComFalha++;
-                      }
-                      if (etapasComFalha > 0) {
-                        toast.error(`Funil duplicado, mas ${etapasComFalha} de ${stages.length} etapa(s) não puderam ser copiadas.`);
-                      } else {
-                        toast.success("Funil duplicado");
-                      }
-                      fetchData(data.id);
-                    }
-                  }}>
+                  {podeReordenarFunis && (
+                    <DropdownMenuItem onClick={() => { setOrdem([...pipelines]); setOrdemOpen(true); }}>
+                      <ArrowUpDown size={14} className="mr-2" /> Ordem dos funis
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={handleDuplicarFunil}>
                     <Copy size={14} className="mr-2" /> Duplicar funil
                   </DropdownMenuItem>
                   <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
@@ -1079,7 +1144,14 @@ export default function CrmAutomacoes() {
       <Dialog open={ordemOpen} onOpenChange={(open) => { if (!salvandoOrdem) setOrdemOpen(open); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Ordem dos funis</DialogTitle></DialogHeader>
-          <p className="text-xs text-muted-foreground">A ordem vale para o Funil, as Conversas e os relatórios.</p>
+          {/* A tela só carrega os funis que o seu perfil enxerga (o de pós-venda
+              é invisível para o administrador). Funil fora desta lista mantém a
+              posição antiga e pode acabar empatado com um dos listados — daí o
+              aviso, em vez de deixar o usuário achar que ordenou todos. */}
+          <p className="text-xs text-muted-foreground">
+            A ordem vale para o Funil, as Conversas e os relatórios — e só para os funis listados aqui. Funil que o seu
+            perfil não enxerga não aparece nesta lista e mantém a posição que já tinha.
+          </p>
           <div className="max-h-80 space-y-1 overflow-y-auto">
             {ordem.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm">
@@ -1106,8 +1178,14 @@ export default function CrmAutomacoes() {
               disabled={salvandoOrdem}
               onClick={async () => {
                 setSalvandoOrdem(true);
+                // Manda a lista COMPLETA que a tela carregou, sem repetir id: a
+                // ordem escolhida no diálogo primeiro e, no fim, qualquer funil
+                // que a tela tenha e o diálogo não (aberto antes de um recarregar).
+                // Id repetido faria a RPC gravar duas posições para o mesmo
+                // funil e empatar a ordem de quem veio depois.
+                const idsEmOrdem = Array.from(new Set([...ordem.map((p) => p.id), ...pipelines.map((p) => p.id)]));
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { error } = await (supabase as any).rpc("pipelines_definir_ordem", { p_ids: ordem.map((p) => p.id) });
+                const { error } = await (supabase as any).rpc("pipelines_definir_ordem", { p_ids: idsEmOrdem });
                 setSalvandoOrdem(false);
                 if (error) { toast.error(`Não foi possível salvar a ordem: ${error.message}`); return; }
                 toast.success("Ordem dos funis salva");

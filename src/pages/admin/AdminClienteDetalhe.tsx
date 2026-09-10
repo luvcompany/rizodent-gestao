@@ -371,8 +371,20 @@ function UsersTab({ tenant }: { tenant: Tenant }) {
             <Button variant="ghost" onClick={() => setEmailEdit(null)}>Cancelar</Button>
             <Button onClick={async () => {
               if (!emailEdit?.email) return;
-              if (await call({ action: "set_email", user_id: emailEdit.id, email: emailEdit.email })) {
-                toast.success("E-mail alterado"); setEmailEdit(null); load();
+              // Este botão usava o `call`, que joga o CORPO da resposta no lixo
+              // e só devolve true/false. A function devolve `aviso` quando o
+              // login mudou no Auth mas o cadastro (profiles.email) NÃO — aí a
+              // lista da equipe segue mostrando o e-mail antigo. Esse aviso
+              // nunca chegava ao superadmin: ele lia "E-mail alterado", achava
+              // que estava tudo certo e mandava a senha para um endereço que já
+              // não entra no sistema. Por isso agora é `callRaw` (devolve o
+              // corpo) e o aviso vira toast.warning com duração longa, no lugar
+              // do "sucesso" seco que escondia o descompasso.
+              const res = await callRaw({ action: "set_email", user_id: emailEdit.id, email: emailEdit.email });
+              if (res) {
+                if (res.aviso) toast.warning(String(res.aviso), { duration: 20000 });
+                else toast.success("E-mail alterado");
+                setEmailEdit(null); load();
               }
             }}>Salvar</Button>
           </DialogFooter>

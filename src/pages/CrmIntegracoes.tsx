@@ -74,15 +74,11 @@ const defaultConfig: WhatsAppConfig = {
   pipeline_id: "",
 };
 
-const DEFAULT_STAGES = [
-  { name: "Novo Lead", color: "#6366f1", position: 0 },
-  { name: "Em Atendimento", color: "#3b82f6", position: 1 },
-  { name: "Agendado", color: "#f59e0b", position: 2 },
-  { name: "Compareceu", color: "#10b981", position: 3 },
-  { name: "Contratou", color: "#22c55e", position: 4 },
-  { name: "Perdido", color: "#ef4444", position: 5 },
-];
-
+// A lista fixa de etapas padrão (DEFAULT_STAGES) foi REMOVIDA daqui de
+// propósito: desde 09/09/2026 é o próprio banco que clona as etapas do funil
+// principal da clínica em todo funil novo (gatilho trg_zz_pipeline_etapas_padrao).
+// Manter a lista era duplicar a verdade em dois lugares — e essa cópia estava
+// desatualizada (nomes fixos de uma clínica só).
 const otherIntegrations = [
   { key: "facebook", name: "Facebook Messenger", desc: "Em breve", icon: Facebook, enabled: false },
   { key: "email", name: "E-mail (SMTP)", desc: "Em breve", icon: Mail, enabled: false },
@@ -342,11 +338,17 @@ export default function CrmIntegracoes() {
     const { data: pipeline, error } = await supabase.from("crm_pipelines").insert({ name: newPipelineName.trim(), ...(profile?.tenant_id ? { tenant_id: profile.tenant_id } : {}) }).select().single();
     if (error || !pipeline) { toast.error("Erro ao criar funil"); setCreatingPipeline(false); return; }
 
-    // Create default stages
-    const stagesPayload = DEFAULT_STAGES.map(s => ({ ...s, pipeline_id: pipeline.id }));
-    await supabase.from("crm_stages").insert(stagesPayload);
+    // Defeito que existia: aqui o front inseria a sua própria lista de etapas
+    // padrão logo depois de criar o funil. Como o banco já clona as etapas do
+    // funil principal da clínica em todo funil novo, essas etapas viravam
+    // duplicata — quem segurava isso era a regra dos "primeiros 60 segundos" do
+    // gatilho trg_zz_stage_regras_padrao, que recusava em silêncio (RETURN NULL)
+    // e mentia um sucesso. Essa regra foi removida na migration
+    // 20260910013000_gatilhos_desfecho_e_etapas.sql, então o insert passaria a
+    // entrar de verdade e o funil nasceria com as etapas em dobro.
+    // O funil já nasce com as etapas certas: não inserimos nada.
 
-    toast.success("Funil criado com etapas padrão!");
+    toast.success("Funil criado com as etapas padrão da clínica!");
     setNewPipelineName("");
     setCreatingPipeline(false);
     await loadPipelines();
@@ -644,8 +646,11 @@ export default function CrmIntegracoes() {
                       <Plus size={14} className="mr-1" /> Criar
                     </Button>
                   </div>
+                  {/* O texto listava nomes fixos de etapa que o front inseria.
+                      Agora as etapas vêm do funil principal da clínica, então
+                      prometer uma lista fixa aqui seria mentir. */}
                   <p className="text-xs text-muted-foreground">
-                    O novo funil será criado com as etapas padrão: {DEFAULT_STAGES.map(s => s.name).join(", ")}
+                    O novo funil já nasce com as etapas padrão da clínica (as mesmas do funil principal). Você pode ajustá-las em Automações.
                   </p>
                 </div>
 

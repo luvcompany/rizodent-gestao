@@ -25,12 +25,17 @@ const BAN_FOREVER = "876000h"; // ~100 anos
 //                       (o tenant_id do corpo é ignorado);
 //   • reset_password  → alvo do tenant do gestor cujo ÚNICO papel é 'sdr';
 //   • set_email       → idem (09/09: "trocar de SDR é só trocar nome e e-mail");
-//                       derruba as sessões da conta (equipe_encerrar_sessoes);
+//                       derruba as sessões da conta (equipe_encerrar_sessoes)
+//                       e, se ESSA parte falhar, devolve 409 — o e-mail já
+//                       mudou no Auth, então "ok" ali seria mentira: a pessoa
+//                       anterior seguiria logada com sessão válida;
 //   • delete          → idem; ANTES de apagar, redistribui os leads dela pela
 //                       RPC equipe_redistribuir_leads (caminho autorizado da
 //                       regra de propriedade — um UPDATE direto seria
 //                       preservado em silêncio pelo gatilho). Falhou a
-//                       redistribuição → nada é apagado.
+//                       redistribuição → nada é apagado. Depois disso a ordem é
+//                       Auth primeiro, papéis depois: se o Auth falhar a conta
+//                       fica inteira (com papel) e o gestor tenta de novo.
 // Nome é RPC (equipe_editar_nome). Bloquear/desbloquear e ligar/desligar no
 // rodízio são RPCs (equipe_bloquear, equipe_rodizio). set_role / block /
 // unblock continuam exclusivos do superadmin. Um crc que não seja o gestor
@@ -220,34 +225,95 @@ Deno.serve(async (req) => {
     if (action === "set_email") {
       const novoEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
       if (!novoEmail || !EMAIL_RE.test(novoEmail)) return json({ error: "Informe um e-mail válido." }, 400);
+      // As RPCs da equipe passaram a exigir a clínica quando quem chama é o
+      // servidor (ver o comentário do p_tenant logo abaixo). Sem tenant no
+      // perfil do alvo não há como encerrar as sessões dela, e é melhor barrar
+      // ANTES de trocar o e-mail no Auth do que deixar a pessoa antiga logada.
+      if (alvoSoSdr && !targetTenant) {
+        return json({ error: "Este usuário está sem clínica (tenant) no cadastro: não é possível encerrar as sessões dele com segurança. Corrija o perfil antes de trocar o e-mail." }, 400);
+      }
       const { error } = await admin.auth.admin.updateUserById(user_id, { email: novoEmail, email_confirm: true });
       if (error) {
         const dup = /already|exists|registered/i.test(error.message);
         return json({ error: dup ? "Já existe uma conta com este e-mail." : error.message }, 400);
       }
-      await admin.from("profiles").update({ email: novoEmail }).eq("id", user_id);
+      // O erro deste update era DESCARTADO. Se o Auth aceitasse o e-mail novo e
+      // o profiles recusasse (política, e-mail já usado no cadastro, rede), a
+      // função devolvia ok e a aba Equipe seguia mostrando o e-mail ANTIGO —
+      // enquanto o login que funciona já era o novo. O gestor mandava a senha
+      // para um endereço que não entra mais no sistema, sem nenhum sinal.
+      // Regra nova: o Auth já mudou e desfazer isso arriscaria derrubar o login,
+      // então a resposta continua ok:true, mas leva o campo `aviso` para a tela
+      // dizer que o cadastro ficou atrás, e o descompasso vai para access_logs.
+      const { error: profErr } = await admin.from("profiles").update({ email: novoEmail }).eq("id", user_id);
+      const aviso = profErr
+        ? `O login já é ${novoEmail}, mas o cadastro (perfil) não foi atualizado: ${profErr.message}. A lista da equipe pode continuar mostrando o e-mail antigo — avise o administrador.`
+        : null;
       // Trocou a pessoa por trás do login: a anterior não continua logada.
       let sessoes: number | null = null;
       if (alvoSoSdr) {
-        const { data: n, error: sErr } = await admin.rpc("equipe_encerrar_sessoes", { p_user_id: user_id });
-        if (!sErr && typeof n === "number") sessoes = n;
+        // p_tenant: com service role não existe auth.uid(), e o ramo de
+        // checagem dessas RPCs só roda quando há usuário no JWT — ou seja,
+        // chamada pelo servidor ninguém conferia DE QUAL CLÍNICA é o alvo.
+        // Por isso quem chama pelo servidor precisa DIZER a clínica, e ela é
+        // sempre a do profile do alvo (targetTenant), nunca a que veio no
+        // corpo da requisição (essa já foi rejeitada acima se divergisse).
+        const { data: n, error: sErr } = await admin.rpc("equipe_encerrar_sessoes", { p_user_id: user_id, p_tenant: targetTenant });
+        // O erro desta RPC era DESCARTADO (`if (!sErr && ...)`) e a função
+        // devolvia ok:true com sessoes_encerradas: null. O defeito não é
+        // cosmético: o e-mail do login JÁ foi trocado no Auth antes daqui,
+        // então a tela dizia "E-mail alterado" e dava a entender que a pessoa
+        // ANTERIOR havia sido desconectada — enquanto ela continuava logada,
+        // com sessão e refresh token válidos, vendo os leads da clínica.
+        // Agora falhar aqui é FATAL e explícito: 409 dizendo o que já mudou,
+        // o que NÃO foi feito e o que o operador precisa fazer agora
+        // (bloquear a conta, que derruba o acesso, e tentar de novo).
+        if (sErr) {
+          await admin.from("access_logs").insert({
+            user_id: userId, tenant_id: targetTenant, context: logContext,
+            event: isGestor ? "sdr_set_email" : "user_set_email",
+            metadata: {
+              target: user_id, email: novoEmail, sessoes_encerradas: null, sessoes_erro: sErr.message,
+              perfil_desatualizado: !!profErr, perfil_erro: profErr?.message ?? null,
+            },
+          });
+          return json({ error: `O login já é ${novoEmail}, mas NÃO foi possível encerrar as sessões da pessoa anterior (${sErr.message}). Ela continua logada: bloqueie a conta agora e tente de novo.` }, 409);
+        }
+        if (typeof n === "number") sessoes = n;
       }
       await admin.from("access_logs").insert({
         user_id: userId, tenant_id: targetTenant, context: logContext,
         event: isGestor ? "sdr_set_email" : "user_set_email",
-        metadata: { target: user_id, email: novoEmail, sessoes_encerradas: sessoes },
+        metadata: {
+          target: user_id, email: novoEmail, sessoes_encerradas: sessoes,
+          // Sempre null neste ponto (erro da RPC já saiu por 409 acima); fica
+          // registrado para o log de sucesso ter a MESMA forma do log de falha
+          // e dar para filtrar as trocas de e-mail por sessoes_erro.
+          sessoes_erro: null,
+          perfil_desatualizado: !!profErr, perfil_erro: profErr?.message ?? null,
+        },
       });
-      return json({ ok: true, sessoes_encerradas: sessoes });
+      return json({ ok: true, sessoes_encerradas: sessoes, ...(aviso ? { aviso } : {}) });
     }
     if (action === "delete") {
       let redistribuicao: any = null;
       if (alvoSoSdr) {
         // SDR: os leads dela têm dona protegida (trg_zz_propriedade_lead) — só
         // a RPC autorizada os move. Falhou → não apaga nada.
+        // Sem tenant no perfil não há clínica para informar à RPC (p_tenant),
+        // e sem ela a redistribuição não sabe para qual rodízio devolver: para
+        // antes de tocar em qualquer coisa.
+        if (!targetTenant) {
+          return json({ error: "Este usuário está sem clínica (tenant) no cadastro: não é possível redistribuir os leads dele (nada foi apagado). Corrija o perfil antes de excluir." }, 400);
+        }
         const dest = typeof destino === "string" && ["auto", "rodizio", "gestor"].includes(destino) ? destino : "auto";
         const { data, error: rErr } = await admin.rpc("equipe_redistribuir_leads", {
           p_user_id: user_id, p_destino: dest,
           p_motivo: `conta excluída${callerEmail ? ` por ${callerEmail}` : ""}`,
+          // p_tenant pelo mesmo motivo do set_email: chamada de servidor não
+          // tem auth.uid(), então é o chamador que precisa declarar a clínica
+          // do alvo — e ela vem do profile do alvo, não do corpo da requisição.
+          p_tenant: targetTenant,
         });
         if (rErr) return json({ error: `Não foi possível redistribuir os leads dela (nada foi apagado): ${rErr.message}` }, 400);
         redistribuicao = data ?? null;
@@ -255,9 +321,29 @@ Deno.serve(async (req) => {
         // Outros papéis: solta os leads antes de remover (evita órfãos).
         try { await admin.from("crm_leads").update({ assigned_to: null }).eq("assigned_to", user_id); } catch (_) { /* ignore */ }
       }
-      await admin.from("user_roles").delete().eq("user_id", user_id);
+      // ORDEM DOS DOIS ÚLTIMOS PASSOS: antes, user_roles era apagado ANTES do
+      // deleteUser. Se o deleteUser falhasse (Auth fora do ar, rede), a resposta
+      // era erro — mas a conta já tinha ficado SEM PAPEL NENHUM: a pessoa não
+      // entrava mais no sistema e desaparecia de equipe_listar (que casa por
+      // user_roles), então o gestor não conseguia nem tentar de novo pela tela.
+      // Regra nova: primeiro o passo que pode falhar (Auth) e só depois de
+      // sucesso os papéis. Falhando o Auth, a conta continua íntegra e visível
+      // na tela; repetir a exclusão só chama a redistribuição outra vez, que
+      // dessa vez não encontra leads dela.
       const { error } = await admin.auth.admin.deleteUser(user_id);
-      if (error) return json({ error: error.message }, 400);
+      if (error) {
+        const jaMoveu = alvoSoSdr
+          ? "Os leads dela já foram redistribuídos"
+          : "Os leads já foram soltos (ficaram sem responsável)";
+        return json({
+          error: `${jaMoveu}, mas a CONTA NÃO FOI EXCLUÍDA: o serviço de login recusou (${error.message}). A conta continua existindo e ainda entra no sistema — tente excluir de novo.`,
+          redistribuicao,
+        }, 400);
+      }
+      // user_roles referencia auth.users com ON DELETE CASCADE, então os papéis
+      // já caem junto com a conta; este delete fica como garantia (é inofensivo
+      // quando não há mais nada para apagar).
+      await admin.from("user_roles").delete().eq("user_id", user_id);
       await admin.from("access_logs").insert({
         user_id: userId, tenant_id: targetTenant, context: logContext,
         event: isGestor ? "sdr_delete" : "user_delete",

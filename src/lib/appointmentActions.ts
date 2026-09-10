@@ -175,20 +175,28 @@ export async function rescheduleAppointment(args: {
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
   await systemMessage(leadId, `🔁 Consulta remarcada de ${antigo} para ${novo}`);
 
-  const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
-  if (lead) {
+  // Automações de ENTRADA só quando o lead realmente trocou de etapa. Com o
+  // `movedStageId || lead.stage_id` de antes, lead que já estava na etapa (ou
+  // tenant sem a etapa destino) rodava de novo as automações de entrada da
+  // etapa ATUAL e o paciente recebia a mensagem dela outra vez.
+  if (movedStageId) {
+    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
     executeStageAutomations({
       leadId,
-      stageId: movedStageId || lead.stage_id,
-      leadPhone: lead.phone,
+      stageId: movedStageId,
+      leadPhone: lead?.phone ?? "",
       triggerTypes: ["on_enter"],
     }).catch((e) => console.error("[Reschedule] Automation error:", e));
   }
 
   if (falhaDeEtapa) {
     toast.warning(`Consulta remarcada, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);
+  } else if (movedStageId) {
+    toast.success("Consulta remarcada — lead movido para Reagendado");
   } else {
-    toast.success("Consulta remarcada");
+    // Sem etapa "Reagendado" no funil (ou o lead já estava nela): a remarcação
+    // valeu, mas não anunciamos um movimento que não houve.
+    toast.success("Consulta remarcada — o lead segue na etapa atual");
   }
   return true;
 }
@@ -241,20 +249,25 @@ export async function compareceuEAgendou(args: {
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
   await systemMessage(leadId, `📅 Compareceu e agendou — novo horário ${novo}`);
 
-  const { data: lead } = await supabase.from("crm_leads").select("stage_id, phone").eq("id", leadId).single();
-  if (lead) {
+  // Mesma regra da remarcação: sem troca de etapa, nada de automação de
+  // entrada — senão a mensagem de entrada da etapa atual ia de novo ao paciente.
+  if (movedStageId) {
+    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
     executeStageAutomations({
       leadId,
-      stageId: movedStageId || lead.stage_id,
-      leadPhone: lead.phone,
+      stageId: movedStageId,
+      leadPhone: lead?.phone ?? "",
       triggerTypes: ["on_enter"],
     }).catch((e) => console.error("[CompareceuEAgendou] Automation error:", e));
   }
 
   if (falhaDeEtapa) {
     toast.warning(`Comparecimento registrado, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);
+  } else if (movedStageId) {
+    toast.success("Comparecimento registrado — lead movido para Compareceu e agendou");
   } else {
-    toast.success("Comparecimento registrado com novo agendamento");
+    // Sem a etapa "Compareceu e agendou" no funil (ou o lead já estava nela).
+    toast.success("Comparecimento registrado com novo agendamento — o lead segue na etapa atual");
   }
   return true;
 }
