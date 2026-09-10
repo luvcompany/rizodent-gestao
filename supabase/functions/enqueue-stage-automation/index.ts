@@ -7,9 +7,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type AppRole = "crc" | "gerente" | "posvenda" | "superadmin" | "crc_legacy";
+type AppRole = "crc" | "gerente" | "posvenda" | "superadmin" | "crc_legacy" | "sdr";
 
 const allowedManagerRoles = new Set<AppRole>(["crc", "gerente", "posvenda", "superadmin"]);
+// Pedido do dono (10/09/2026): "o sdr também deve poder criar etapas, gatilhos,
+// disparos e funis". A SDR criava a automação, clicava em Executar e tomava 403 —
+// a tela abria e o recurso não funcionava. Agora ela dispara, MAS o disparo dela
+// alcança SOMENTE os leads dos quais ela é a responsável (assigned_to), e só em
+// etapa visível para a SDR. Sem essas duas travas o botão dela mandaria template
+// para os leads das colegas — o acidente das 46 pessoas — e o total devolvido
+// contaria leads na etapa "Contratado", que ela nunca pode ler.
+const allowedDispatchRoles = new Set<AppRole>([...allowedManagerRoles, "sdr"]);
+// Ordem = alcance. 'sdr' é a ÚLTIMA: quem acumula sdr + papel de gestão continua
+// disparando como gestão (sem recorte), igual ao comportamento de hoje.
+const rolePriority: AppRole[] = ["superadmin", "gerente", "crc", "posvenda", "sdr"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -48,10 +59,23 @@ Deno.serve(async (req) => {
     ]);
 
     const roles = ((roleRows || []) as Array<{ role: AppRole }>).map((r) => r.role);
-    const role = (["superadmin", "gerente", "crc", "posvenda"] as AppRole[]).find((r) => roles.includes(r));
-    if (!role || !allowedManagerRoles.has(role)) {
+    const role = rolePriority.find((r) => roles.includes(r));
+    if (!role || !allowedDispatchRoles.has(role)) {
       return json({ error: "Sem permissão para disparar automações" }, 403);
     }
+    // As duas policies RESTRICTIVE que definem o mundo da SDR
+    // (sdr_escopo_crm_leads_select e sdr_escopo_crm_stages_visiveis) são
+    // "NOT has_role(sdr) OR ...": quem CARREGA o papel sdr só lê os leads dela e
+    // só vê etapa visível — acumule ela papéis ou não. Esta function busca lead
+    // com service_role, que ignora RLS, então o recorte tem de ser reproduzido
+    // aqui pelo mesmo critério: carregar o papel sdr. Se valesse só para a "sdr
+    // pura", uma SDR que também é gerente dispararia template para leads que a
+    // tela dela nem mostra — o acidente das 46 pessoas de novo.
+    const carregaPapelSdr = roles.includes("sdr");
+    // Funil de pós-venda é do administrador: barra só a SDR sem papel de gestão
+    // (rolePriority já teria escolhido o papel de gestão), para não tirar de um
+    // posvenda/gerente o disparo no funil que é o trabalho dele.
+    const ehSdrSemGestao = role === "sdr";
 
     const { data: automation, error: autoError } = await admin
       .from("crm_automations")
@@ -81,7 +105,7 @@ Deno.serve(async (req) => {
 
     const { data: stage, error: stageError } = await admin
       .from("crm_stages")
-      .select("id, pipeline_id, tenant_id")
+      .select("id, pipeline_id, tenant_id, visivel_para_sdr")
       .eq("id", automation.stage_id)
       .maybeSingle();
     if (stageError) throw stageError;
@@ -89,7 +113,7 @@ Deno.serve(async (req) => {
 
     const { data: pipeline, error: pipelineError } = await admin
       .from("crm_pipelines")
-      .select("id, tenant_id, allowed_roles")
+      .select("id, tenant_id, allowed_roles, is_posvenda")
       .eq("id", stage.pipeline_id)
       .maybeSingle();
     if (pipelineError) throw pipelineError;
@@ -106,11 +130,34 @@ Deno.serve(async (req) => {
       return json({ error: "Seu perfil não tem acesso a este funil" }, 403);
     }
 
+    if (carregaPapelSdr) {
+      // A coluna visivel_para_sdr é a trava do isolamento dela: a SELECT de
+      // crm_automations é do cliente inteiro, então ela CONSEGUE o id de uma
+      // automação pendurada em "Contratado"/"Não contratado". Sem este teste o
+      // disparo mandaria mensagem para lead já fechado e o total_leads da
+      // resposta contaria quantos leads dela contrataram — exatamente o que o
+      // dono disse que a SDR nunca pode ler.
+      if ((stage as any).visivel_para_sdr !== true) {
+        console.warn(`[enqueue-stage-automation] BLOQUEADO sdr=${userData.user.id} etapa oculta stage=${automation.stage_id}`);
+        return json({ error: "Sem permissão para disparar automações nesta etapa" }, 403);
+      }
+      // Funil de pós-venda é do administrador (mesmo recorte de
+      // sdr_pode_editar_funil, que exige is_posvenda = false).
+      if (ehSdrSemGestao && (pipeline as any).is_posvenda === true) {
+        console.warn(`[enqueue-stage-automation] BLOQUEADO sdr=${userData.user.id} funil de pós-venda pipeline=${stage.pipeline_id}`);
+        return json({ error: "Sem permissão para disparar automações neste funil" }, 403);
+      }
+    }
+
     const tenantParaLeads = pipelineTenantId || userTenantId || null;
     // Mundo do funil: o disparo em massa só alcança leads do número daquele funil
     // (leads do mundo legado ficam de fora quando o funil é de um número próprio).
     const numeroDoMundo = await numeroDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
-    const leads = await fetchAllLeads(admin, automation.stage_id, tenantParaLeads, numeroDoMundo);
+    // Recorte por dono: a busca roda com service_role (ignora RLS), então o
+    // filtro TEM de ir dentro da consulta paginada — filtrar depois já teria
+    // lido (e paginado sobre) os leads das colegas.
+    const somenteDoResponsavel = carregaPapelSdr ? userData.user.id : null;
+    const leads = await fetchAllLeads(admin, automation.stage_id, tenantParaLeads, numeroDoMundo, somenteDoResponsavel);
     const conditions = (actionConfig.conditions as ConditionsConfig | undefined) || undefined;
     const hasConditions = !!(conditions && Array.isArray(conditions.rules) && conditions.rules.length > 0);
     const eligibleLeads = leads.filter((lead) => {
@@ -120,10 +167,15 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    console.log(`[enqueue-stage-automation] total=${leads.length} eligible=${eligibleLeads.length} hasConditions=${hasConditions}`);
+    const escopoLog = somenteDoResponsavel ? `apenas_meus(${somenteDoResponsavel})` : "toda_a_etapa";
+    console.log(`[enqueue-stage-automation] role=${role} papeis=${roles.join(",") || "-"} escopo=${escopoLog} total=${leads.length} eligible=${eligibleLeads.length} hasConditions=${hasConditions}`);
 
     if (eligibleLeads.length === 0) {
-      return json({ success: true, inserted: 0, total_leads: leads.length, message: hasConditions ? "Nenhum lead atende às condições configuradas" : "Nenhum lead com telefone encontrado nesta etapa" });
+      const semLead = somenteDoResponsavel
+        ? "Nenhum lead seu com telefone válido nesta etapa"
+        : "Nenhum lead com telefone encontrado nesta etapa";
+      console.log(`[enqueue-stage-automation] DONE automation=${automationId} role=${role} escopo=${escopoLog} alcancados=0 inserted=0`);
+      return json({ success: true, inserted: 0, total_leads: leads.length, message: hasConditions ? "Nenhum lead atende às condições configuradas" : semLead });
     }
 
     let inserted = 0;
@@ -149,7 +201,8 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ pending_batch_limit: 500 }),
     }).catch((error) => console.error("[enqueue-stage-automation] automation-engine kick failed", error));
 
-    console.log(`[enqueue-stage-automation] DONE automation=${automationId} inserted=${inserted}/${leads.length}`);
+    // Auditoria: quantos leads o disparo alcançou e sob qual papel/recorte.
+    console.log(`[enqueue-stage-automation] DONE automation=${automationId} role=${role} escopo=${escopoLog} alcancados=${eligibleLeads.length} inserted=${inserted}/${leads.length}`);
     return json({ success: true, inserted, total_leads: leads.length });
   } catch (error) {
     console.error("[enqueue-stage-automation] error", error);
@@ -157,7 +210,14 @@ Deno.serve(async (req) => {
   }
 });
 
-async function fetchAllLeads(admin: any, stageId: string, tenantId: string | null, numberId: string | null) {
+async function fetchAllLeads(
+  admin: any,
+  stageId: string,
+  tenantId: string | null,
+  numberId: string | null,
+  /** Quando preenchido, só leads deste responsável entram (recorte da SDR). */
+  assignedTo: string | null = null,
+) {
   const leads: Array<Record<string, any>> = [];
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
@@ -171,6 +231,9 @@ async function fetchAllLeads(admin: any, stageId: string, tenantId: string | nul
       .range(from, from + pageSize - 1);
     query = filtrarMundo(query, numberId);
     if (tenantId) query = query.eq("tenant_id", tenantId);
+    // Recorte por dono do lead: aplicado NA consulta (e em toda página), não
+    // depois — é o que impede o disparo da SDR de sair para lead de colega.
+    if (assignedTo) query = query.eq("assigned_to", assignedTo);
     const { data, error } = await query;
     if (error) throw error;
     if (!data?.length) break;

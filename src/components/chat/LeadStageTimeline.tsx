@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Clock, ArrowRight } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { ehPapelSdr } from "@/lib/desfechoLabel";
 
 type StageHistory = {
   id: string;
@@ -39,10 +41,32 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Props) {
+  // ==========================================================================
+  // SIGILO DO CONTRATO (10/09/2026)
+  // Este painel imprime o NOME de cada etapa por onde o lead passou e, para as
+  // etapas que o papel não enxerga, busca o nome em get_lead_stage_history_names
+  // — RPC SECURITY DEFINER que não filtra `visivel_para_sdr`. Resultado: a SDR
+  // lia "Contratado" / "Não contratado" em texto puro no histórico de um lead
+  // dela. Não é caso de laboratório: o dontus-sync move o lead pago para a etapa
+  // de ganho enquanto ele ainda está com ela na carência de 24 h.
+  //
+  // O dono foi explícito: a SDR nunca lê se o lead contratou. Então, para o
+  // papel 'sdr', o painel não existe — nem histórico, nem RPC.
+  //
+  // O teste é "mostra só para quem NÃO é SDR com papel já resolvido", e não
+  // "esconde quando for SDR": no boot o papel chega nulo por um instante e a
+  // segunda forma vazaria justamente nesse instante (mesma armadilha do guard
+  // de rota que expulsava o closer da própria home). Quem não é SDR só perde o
+  // painel por esse piscar, e ele volta sozinho quando o papel resolve.
+  // ==========================================================================
+  const { userRole, roleResolved } = useAuth();
+  const podeVerHistorico = roleResolved && !ehPapelSdr(userRole);
+
   const [history, setHistory] = useState<StageHistory[]>([]);
   const [extraStages, setExtraStages] = useState<Record<string, Stage>>({});
 
   useEffect(() => {
+    if (!podeVerHistorico) return;
     const fetch = async () => {
       const { data } = await supabase
         .from("crm_lead_stage_history")
@@ -64,12 +88,13 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
       }, () => fetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [leadId]);
+  }, [leadId, podeVerHistorico]);
 
   // Fetch names for any stage_id not present in the current pipeline's stages prop
   // (happens when the lead was moved across pipelines, e.g. to Pós-venda).
   // Uses an RPC that bypasses pipeline-access RLS so stages from other funnels resolve correctly.
   useEffect(() => {
+    if (!podeVerHistorico) return;
     const knownIds = new Set(stages.map((s) => s.id));
     const missing = Array.from(
       new Set(history.map((h) => h.stage_id).filter((id) => id && !knownIds.has(id) && !extraStages[id]))
@@ -85,8 +110,11 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
         });
       }
     })();
-  }, [history, stages, extraStages, leadId]);
+  }, [history, stages, extraStages, leadId, podeVerHistorico]);
 
+
+  // Guard depois dos hooks (a ordem deles não pode variar entre renders).
+  if (!podeVerHistorico) return null;
 
   const resolveStage = (stageId: string): Stage | undefined =>
     stages.find((s) => s.id === stageId) || extraStages[stageId];
