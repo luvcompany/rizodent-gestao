@@ -1,1 +1,16 @@
-CREATE OR REPLACE FUNCTION public.tmp_apply_migration(p_sql text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN EXECUTE p_sql; END; $$;
+-- NEUTRALIZADA EM 10/09/2026.
+--
+-- O agente do Lovable gravou aqui a criação de uma função auxiliar
+-- (public.tmp_apply_migration) que executava SQL arbitrário como dono do banco:
+--
+--   CREATE OR REPLACE FUNCTION public.tmp_apply_migration(p_sql text)
+--   RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+--   AS $$ BEGIN EXECUTE p_sql; END; $$;
+--
+-- Função nova nasce com EXECUTE para PUBLIC, então enquanto ela existiu qualquer
+-- sessão autenticada podia rodar SQL como dono do banco. Em produção ela viveu
+-- 47 segundos (foi apagada pela migration 20260910060448) e já não existe.
+--
+-- O corpo foi trocado por este comentário para que nenhum ambiente novo criado a
+-- partir do histórico chegue a abrir essa janela outra vez. Nada a aplicar.
+SELECT 1;
