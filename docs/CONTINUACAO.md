@@ -293,3 +293,106 @@ Pendências que ficam para o dono:
 - rotacionar a chave do Rizodent Vision
 - escolher os funis do rodízio na tela (hoje só o Funil Principal)
 - a etapa "Não contratado " está gravada com um espaço no fim do nome
+
+## Item 14 — Automações copiadas para os 7 funis de procedimento
+
+- status: concluído em 2026-09-10 ~11:30 UTC (só banco de produção, sem migration e sem publish)
+- autorizado: sim ("copie as automações/gatilhos para todos os funis novos", "menos
+  para o funil instagram e o funil nutrição", "faça no funil outros também",
+  "só o audio inicial que não deve ser copiado")
+
+Destino: Prótese, Implante, Zigomático, Faceta, Protocolo, Aparelho e Outros.
+Instagram e Nutrição ficaram intactos, como pedido.
+
+O Funil Principal tinha 15 automações. Foram copiadas 14 para cada funil, 98 no
+total. A que ficou de fora é a da etapa "Novo Lead" com gatilho de criação que
+dispara o bot "Áudio Inicial" — o dono pediu exatamente isso, porque mover um
+lead para a etapa Novo Lead de um funil faria o áudio tocar de novo para quem já
+tinha ouvido.
+
+Ajustes feitos em cada cópia, porque copiar cru levaria o lead de volta ao
+Funil Principal:
+
+1. `target_stage_id` do `move_stage` repontado para a etapa "Follow - Up" DO
+   PRÓPRIO funil (era a do Principal).
+2. `pipeline_id` do `assign_lead` repontado para o próprio funil. Essa automação
+   continua inativa, como está no Principal.
+3. A chave `send_to_all_existing` foi REMOVIDA da cópia. Ela não descreve
+   comportamento contínuo: é o "enviar para todos que já estão na etapa", e é o
+   caminho que em 09/09 mandou template para 46 pessoas. Inserir automação por SQL
+   não dispara esse caminho (ele só roda pela tela, em
+   `enqueue-stage-automation`), mas deixar a chave gravada seria uma bomba para o
+   próximo que abrisse e salvasse a automação na tela.
+
+### Os bots também precisaram ser clonados
+
+Descoberta no meio do caminho: os bots têm `stageId` FIXO dentro do fluxo, e o
+`bot-engine` move o lead levando o `pipeline_id` da etapa de destino junto
+(`case "move_stage"`, comentário "pipeline_id acompanha a etapa"). Ou seja, um
+lead de Prótese que recebesse o bot "Follow - UP" e clicasse num botão seria
+movido para "Recuperado" do FUNIL PRINCIPAL — saindo do funil de procedimento e
+esvaziando o relatório de conversão por procedimento, que é o objetivo de tudo
+isso.
+
+Por isso foram criados 14 bots, dois por funil: `Follow - UP (<funil>)` e
+`Agendamento (<funil>)`, com os nós de etapa apontando para o próprio funil:
+
+- `Follow - UP`: nó `move_recuperado` → "Recuperado" do próprio funil. O nó
+  `move_nutricao` ficou como estava, porque ir para o funil Nutrição é intencional.
+- `Agendamento`: nó `move-1` → "Pré - Agendado" do próprio funil; nó
+  `move_stage-1776523980304` → "Conversando" do próprio funil, com o
+  `pipelineId` também trocado.
+
+As 21 automações que usam bot (2 de `time_window` e 1 de `on_create_or_enter` por
+funil) foram repontadas para os clones. Os clones nascem com
+`current_version = 0` de propósito: com versão zero o `bot-engine` usa sempre o
+`flow_json` do próprio bot e nunca procura em `bot_versions`, que não tem linha
+para eles.
+
+Não foi mexido no bot original nem no `bot-engine`. Consequência conhecida: o
+funil Instagram continua com o comportamento antigo (o bot leva o lead dele para
+o Funil Principal). Instagram estava fora do pedido.
+
+### Por que ninguém recebeu mensagem indevida
+
+Medições feitas antes de aplicar, com a régua real de cada gatilho lida no
+`automation-engine`:
+
+- `no_response` exige que o lead tenha escrito, que a clínica tenha respondido
+  depois, e que tenha passado o prazo. Quando `no_response_amount` está ausente o
+  motor assume 1 (linha 141), então a automação de "Conversando" é 1 dia. Os 24
+  leads que estavam em "Conversando" nesses funis tinham no máximo 3,1 h sem
+  resposta — nenhum elegível.
+- `time_window` e `on_create_or_enter` só têm automação nas etapas "Novo Lead",
+  "Recuperado" e "Follow - Up", e nenhum lead desses funis estava nessas etapas.
+- `manual_bulk_send` só roda por clique humano com confirmação.
+- `before_scheduled` tinha UM caso na janela: MATHEUS SOUZA LIMA, consulta hoje
+  13:00, lembrete de 2 h antes já vencido às 11:00. Para não mandar lembrete
+  retroativo, a mesma transação gravou o claim em `crm_automation_queue` com
+  status `sent` e a razão no `error_message`, usando o UNIQUE
+  `(automation_id, appointment_id)` que o motor respeita. Os outros quatro
+  agendamentos estavam fora da janela ou em etapa sem automação.
+
+Quatro minutos de observação depois de aplicar: só conversa humana no ar, nenhum
+template, nenhum bot, nenhuma mudança de etapa automática.
+
+### Como desfazer, se precisar
+
+```sql
+-- apaga as 98 automações copiadas e os 14 bots clonados
+DELETE FROM public.crm_automations a USING public.crm_stages s
+ WHERE s.id = a.stage_id AND s.pipeline_id IN (
+   '0d939ab5-acd3-436d-9485-bcaef0127484','32cf10d0-f766-4b4c-9f1d-eddd99384876',
+   '68aca303-e832-490b-872d-4cbf6870c498','26f9b40e-336e-44c0-a6a4-331fd36205c3',
+   'f88daf77-aec8-42b2-a95e-40219963c6ae','5d21ddd4-2125-43b0-84a4-594a1f6def0f',
+   'c29d501a-2b3f-41c6-a966-b758a2766fb7');
+DELETE FROM public.bots
+ WHERE name ~ '\((Prótese|Implante|Zigomático|Faceta|Protocolo|Aparelho|Outros)\)$';
+```
+
+### O que ainda falta neste tema
+
+O gatilho `trg_zz_pipeline_etapas_padrao` clona as ETAPAS de todo funil novo, mas
+não clona automações nem bots. Funil criado de agora em diante nasce com as
+etapas certas e sem automação. Copiar automação e bot no mesmo gatilho é o passo
+que falta para o pedido "todo funil novo já deve nascer assim" valer inteiro.
