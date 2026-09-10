@@ -249,5 +249,3 @@ export async function applyAppointmentOutcome(args: {
  * Use marcarComparecimentoSdr de src/lib/appointmentActions.ts: ela monta o texto
  * com o que o servidor respondeu e não dispara automação nenhuma.
  */
-  return { ok: true };
-}

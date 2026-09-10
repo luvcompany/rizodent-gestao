@@ -72,6 +72,9 @@ type Pipeline = {
   is_default?: boolean | null;
   is_instagram?: boolean | null;
   is_posvenda?: boolean | null;
+  // Autoria (migration 20260910160000): a SDR só mexe na estrutura do funil que
+  // ela criou. NULL = funil da clínica, e nele ela não escreve.
+  created_by?: string | null;
 };
 
 const PRESET_COLORS = [
@@ -704,7 +707,7 @@ export default function CrmKanban() {
 
     // ── Fase 1: pipelines, perfis, etapas, leads e followups em paralelo ────
     const [pipelinesRes, profilesRes, stagesRes, fqRes] = await Promise.all([
-      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda").order("position", { ascending: true, nullsFirst: false }).order("created_at"),
+      supabase.from("crm_pipelines").select("id, name, color, description, created_at, is_default, is_instagram, is_posvenda, created_by").order("position", { ascending: true, nullsFirst: false }).order("created_at"),
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       targetPipelineId
         ? supabase.from("crm_stages").select("id, pipeline_id, name, color, position, is_won").eq("pipeline_id", targetPipelineId).order("position")
@@ -1108,23 +1111,35 @@ export default function CrmKanban() {
     return m;
   }, [leads]);
 
+  // Quem pode empurrar a posição das etapas DESTE funil: qualquer papel de
+  // gestão, ou a SDR quando o funil é dela (created_by). Ver a migration
+  // 20260910160000, que é onde a régua da autoria vive.
+  const podeEmpurrarEtapas = userRole !== "sdr" || (!!pipeline?.created_by && pipeline.created_by === user?.id);
+
   const handleAddStage = async () => {
     if (!newStageName || !pipeline) return;
     // If inserting between columns, shift positions
     const insertPos = newStageInsertIdx !== null ? newStageInsertIdx + 1 : stages.length;
     // Update positions of stages after insert point
     if (newStageInsertIdx !== null) {
-      for (const s of stages) {
-        if (s.position >= insertPos) {
-          // Update barrado pela RLS não devolve erro — devolve ZERO linhas. Sem
-          // conferir, a etapa nova entrava com posição duplicada em silêncio.
-          const { data: shifted, error: shiftError } = await supabase.from("crm_stages")
-            .update({ position: s.position + 1 }).eq("id", s.id).select("id");
-          if (shiftError) { toast.error("Erro ao reordenar as etapas: " + shiftError.message); return; }
-          if (!shifted || shifted.length === 0) {
-            toast.error("Seu perfil não tem permissão para reordenar as etapas deste funil.");
-            return;
-          }
+      // Deslocamento em UMA instrução, não num laço. O laço anterior fazia um
+      // UPDATE por etapa e dava return no primeiro que a RLS barrava — se
+      // algumas já tivessem sido deslocadas, a ordem ficava quebrada pela metade
+      // e sem etapa nova nenhuma. Aqui é tudo ou nada, e a contagem conferida
+      // diz se a permissão alcançou todas as etapas que precisavam andar.
+      const aEmpurrar = stages.filter((s) => s.position >= insertPos);
+      if (aEmpurrar.length > 0) {
+        const { data: shifted, error: shiftError } = await supabase.rpc("crm_stages_empurrar_posicao", {
+          p_pipeline_id: pipeline.id,
+          p_de_posicao: insertPos,
+        });
+        if (shiftError) {
+          toast.error("Erro ao reordenar as etapas: " + shiftError.message);
+          return;
+        }
+        if (Number(shifted ?? 0) !== aEmpurrar.length) {
+          toast.error("Seu perfil não tem permissão para reordenar as etapas deste funil.");
+          return;
         }
       }
     }
@@ -1533,7 +1548,15 @@ export default function CrmKanban() {
                       </Droppable>
                     </div>
 
-                    {idx < stages.length - 1 && (
+                    {/* "+" ENTRE colunas insere no meio, e inserir no meio EMPURRA a
+                        posição de todas as etapas seguintes. A SDR não altera etapa
+                        de funil da clínica, então para ela o laço de deslocamento
+                        falhava na primeira etapa que não é dela: ela lia "sem
+                        permissão para reordenar" e a etapa nunca era criada. Pior,
+                        o laço parava no meio e podia deixar a ordem deslocada sem
+                        etapa nova nenhuma. Some o botão para quem não pode empurrar;
+                        o "+" do fim da régua continua, e ele não desloca ninguém. */}
+                    {idx < stages.length - 1 && podeEmpurrarEtapas && (
                       <button
                         onClick={() => { setNewStageInsertIdx(idx); setNewStageOpen(true); }}
                         className="flex-shrink-0 mt-8 w-6 h-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center text-xs transition-colors"

@@ -233,6 +233,40 @@ CREATE POLICY sdr_del_crm_automations ON public.crm_automations
   FOR DELETE TO authenticated
   USING (public.has_role(auth.uid(), 'sdr'::app_role) AND public.etapa_em_funil_meu(stage_id));
 
+-- ============================================================ 5. reordenar etapa é tudo ou nada
+-- O "+" ENTRE colunas do Kanban insere uma etapa no meio, e para isso precisa
+-- empurrar a posição de todas as etapas seguintes. O front fazia isso num LAÇO,
+-- um UPDATE por etapa, com return no primeiro que a RLS barrava. Para a SDR num
+-- funil da clínica isso significava: algumas etapas já deslocadas, nenhuma etapa
+-- nova criada, e a ordem do funil quebrada pela metade — sem aviso de que ficou
+-- assim. (UPDATE barrado por RLS não devolve erro; devolve zero linhas.)
+--
+-- Aqui é uma instrução só. SECURITY INVOKER de propósito: a RLS do chamador é
+-- que decide o que ele pode empurrar. E a conferência não replica regra nenhuma
+-- de papel — compara o que o UPDATE alcançou com o que o próprio chamador
+-- CONSEGUE VER. Se não bate, o RAISE desfaz tudo e ninguém fica com a ordem
+-- pela metade.
+CREATE OR REPLACE FUNCTION public.crm_stages_empurrar_posicao(p_pipeline_id uuid, p_de_posicao integer)
+RETURNS integer LANGUAGE plpgsql SECURITY INVOKER SET search_path TO 'public' AS $fn$
+DECLARE v_esperado integer; n integer;
+BEGIN
+  IF p_pipeline_id IS NULL OR p_de_posicao IS NULL THEN
+    RAISE EXCEPTION 'Informe o funil e a posição.' USING ERRCODE = '22023';
+  END IF;
+  SELECT count(*) INTO v_esperado FROM public.crm_stages
+   WHERE pipeline_id = p_pipeline_id AND position >= p_de_posicao;
+  UPDATE public.crm_stages SET position = position + 1
+   WHERE pipeline_id = p_pipeline_id AND position >= p_de_posicao;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  IF n <> v_esperado THEN
+    RAISE EXCEPTION 'Seu perfil não altera todas as etapas deste funil, então a ordem não foi mexida.'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN n;
+END $fn$;
+REVOKE ALL ON FUNCTION public.crm_stages_empurrar_posicao(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.crm_stages_empurrar_posicao(uuid, integer) TO authenticated, service_role;
+
 -- =============================================================================
 -- VERIFICAÇÃO (só leitura, depois de aplicar)
 --

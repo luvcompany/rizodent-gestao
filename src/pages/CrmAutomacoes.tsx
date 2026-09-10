@@ -170,6 +170,13 @@ export default function CrmAutomacoes() {
   // Distribuição automática mexe na regra de propriedade do rodízio de SDRs —
   // não foi pedido e não é dela.
   const podeDistribuirLeads = !ehSdr;
+  // Fontes de lead (funnel_channels): a SDR é barrada no BANCO desde 08/09 pelas
+  // RESTRICTIVE sdr_sem_insert/update/delete_funnel_channels, criadas porque
+  // repontar a fonte de um funil muda o roteamento dos leads da clínica inteira.
+  // A tela não sabia disso e mostrava a lixeira e o "Adicionar fonte" para ela:
+  // dois botões que sempre falham, que é a reclamação literal do dono no item do
+  // AUTOMATIZE. A lista de fontes conectadas continua visível — o SELECT ela tem.
+  const podeMexerNasFontes = !ehSdr;
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -928,6 +935,7 @@ export default function CrmAutomacoes() {
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    {podeMexerNasFontes && (
                     <button onClick={async () => {
                       const { data, error } = await supabase.from("funnel_channels").delete().eq("id", ch.id).select("id");
                       if (error) { toast.error("Erro ao remover fonte: " + error.message); return; }
@@ -938,10 +946,12 @@ export default function CrmAutomacoes() {
                       toast.success("Fonte removida");
                       setChannels(prev => prev.filter(c => c.id !== ch.id));
                     }}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
+                    )}
                   </div>
                 </div>
               );
             })}
+            {podeMexerNasFontes && (
             <button
               onClick={async () => {
                 const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
@@ -959,6 +969,7 @@ export default function CrmAutomacoes() {
             >
               <Plus size={14} /> Adicionar fonte
             </button>
+            )}
           </div>
         </div>
 

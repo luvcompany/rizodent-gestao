@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
-import { corDesfecho, desfechoEhComparecimento, ehPapelSdr, rotuloDesfecho } from "@/lib/desfechoLabel";
+import { corDesfecho, desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
 
 type Task = {
   id: string;
@@ -643,7 +643,7 @@ export default function CrmCalendario() {
     const naoCompareceu = { cor: "bg-amber-500/40 border border-amber-500/60", texto: "Não compareceu" };
     const reagendado = { cor: "bg-purple-500/40 border border-purple-500/60", texto: "Reagendado" };
     const cancelado = { cor: "bg-muted border border-border", texto: "Cancelado" };
-    if (ehPapelSdr(userRole)) {
+    if (escondeDesfechoDeVenda(userRole)) {
       return [
         confirmado,
         { cor: compareceuCor, texto: rotuloDesfecho("contracted", userRole) },
@@ -998,7 +998,7 @@ export default function CrmCalendario() {
                             // ela os dois desfechos usam o mesmo símbolo neutro.
                             const statusIcon =
                               ehComparecimento
-                                ? (ehPapelSdr(userRole) ? "✅" : statusNorm === "contracted" ? "🤝" : "❌")
+                                ? (escondeDesfechoDeVenda(userRole) ? "✅" : statusNorm === "contracted" ? "🤝" : "❌")
                                 : statusNorm === "no_show"
                                 ? "🚫"
                                 : statusNorm === "cancelled"
@@ -1066,7 +1066,7 @@ export default function CrmCalendario() {
                     )}
                   >
                     <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
-                    {ehPapelSdr(userRole) ? (
+                    {escondeDesfechoDeVenda(userRole) ? (
                       <div className="text-[10px] text-emerald-700 dark:text-emerald-300" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
                     ) : (
                       <>
@@ -1164,7 +1164,7 @@ export default function CrmCalendario() {
                           NÃO abre o segundo passo — ela não decide contrato nem
                           pode ler as duas palavras (mesma regra do chat, em
                           AppointmentConfirmBar.tsx). */}
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => ehPapelSdr(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
                         <CheckCircle2 size={14} className="mr-1" /> Compareceu
                       </Button>
                       <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>
@@ -1184,7 +1184,7 @@ export default function CrmCalendario() {
 
                 {/* Resultado da avaliação (Contratou / Não contratou) é da
                     gestão: para a SDR este bloco não é renderizado. */}
-                {isOpen && apptStep === "compareceu" && !ehPapelSdr(userRole) && (
+                {isOpen && apptStep === "compareceu" && !escondeDesfechoDeVenda(userRole) && (
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold">Resultado da avaliação</Label>
                     <div className="grid grid-cols-2 gap-2">
