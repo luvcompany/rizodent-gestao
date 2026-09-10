@@ -221,3 +221,75 @@ Relacionamento), 2 consultas de teste apagadas, 1 consulta real (RUBENILSON
 11/09) mantida sem o crédito dela, livro/ponto/pesquisa/mensagens de sistema
 limpos. O dono vai testar de verdade em 10/09: cadastrar horários das SDRs na
 aba Equipe (Editar) e ligar o rodízio no painel.
+
+## Item 13 — Auditoria de 09/09 (28 achados) corrigida, aplicada e ensaiada
+
+- status: concluído em 2026-09-10 ~05:40 UTC
+- autorizado: sim ("corrija tudo")
+- commit `356a6f0e`; site no ar com `assets/index-TGxm-py5.js`
+- migrations aplicadas em produção, nesta ordem:
+  `20260910010000_fechar_funcoes_abertas.sql`,
+  `20260910011000_motor_multifunil_e_relogio.sql`,
+  `20260910012000_ciclo_carencia_e_relatorios.sql`,
+  `20260910013000_gatilhos_desfecho_e_etapas.sql`
+- edge functions reimplantadas: `admin-manage-user`, `dontus-sync`
+
+O que mudou, por tema:
+
+1. Superfície fechada. REVOKE de EXECUTE em 8 funções que estavam abertas a
+   `authenticated`/`anon` (`watchdog_reenqueue_missing_bots`,
+   `recover_stuck_bot_executions`, `backup_list_tables`,
+   `ensure_instagram_pipeline`, `recalculate_all_lead_scores()` sem argumento,
+   `notify_dashboard_event`, `dono_restrito_do_numero` para anon) e guarda de
+   superadmin em `generate_tenant_invoices`. A chave do Rizodent Vision saiu do
+   corpo de `notify_dashboard_event` e passou a ser lida de
+   `public._internal_secrets` (deny-all); falta a chave ser ROTACIONADA pelo
+   dono, porque esteve em texto no banco e em todos os backups.
+2. Motor multi-funil. `crm_rodizio_config.funis_ids` + `rodizio_funis`,
+   `rodizio_definir_funis` (recusa Instagram, pós-venda e qualquer funil com
+   `allowed_roles` preenchido — closer/recepção). Hoje a coluna está NULL, ou
+   seja, o rodízio segue só no Funil Principal até o dono escolher na tela.
+3. Relógio útil. `rodizio_minutos_uteis` mede silêncio em minutos de
+   expediente (madrugada e domingo não contam); `rodizio_em_almoco` tira a SDR
+   do pool "aberta" durante o almoço sem marcá-la ausente para o corte.
+4. Ciclo da carência. `sdr_marcar_comparecimento` não mexe mais na etapa e
+   devolve o campo `entrega`; quem move a etapa é `sdr_entrega_lead_ao_gestor`,
+   na hora da entrega. Com o motor desligado a linha ainda entra na fila (o
+   ciclo não se perde) e o chat diz "EM ESPERA" em vez de prometer hora.
+5. Entrega que falha não some. `crm_entregas_gestor.tentativas` + recuo de
+   30 min × tentativa; acima de 5 tentativas desiste, escreve no livro e
+   notifica o administrador.
+6. Relatórios. `relatorio_funis` sem o funil de pós-venda e recortado por
+   tenant; `relatorio_sdr_reagendamentos` sem dupla contagem no total da equipe.
+
+Ensaios em produção (todos dentro de transação desfeita, 10/09 ~05:00-05:40 UTC):
+
+- relógio útil: madrugada 0, dentro 60, atravessando a noite 180, sábado 90,
+  domingo 0, mais de 30 dias 999999 — todos batem
+- régua multi-funil: lead de Prótese fica fora com `funis_ids` NULL e entra com
+  a lista preenchida; comparecimento de 5 dias segura o lead, de 60 dias não;
+  entrega pendente segura
+- `rodizio_definir_funis`: recusou Instagram, Pós-venda e Padrão Closer;
+  aceitou Principal+Prótese+Implante na ordem de exibição
+- carência: etapa não mudou, dona continuou a SDR, consulta virou
+  `not_contracted`/`outcome_source='sdr'`, fila com +24 h e consulta vinculada
+- entrega: motor desligado não entrega e mantém a linha; motor ligado entrega,
+  move para "Não contratado" (etapa invisível para a SDR) e o dono vira o CRC
+- falha: tentativas 1 e 2 com recuo 30 e 60 min, lead segue com a SDR;
+  desistência em 6 tentativas com aviso ao administrador e registro no livro
+- almoço: `aberta=false` e `presente=true` durante o almoço; sem horário
+  cadastrado o almoço não vale
+- teto por SDR: rodízio circular Júlia→Fabíola→Bia, parada exata no teto com
+  `para_nome` nulo. Havia 29 leads elegíveis aguardando no dia do ensaio
+- corte relativo: entrada 08:00 + 60 min não corta às 05:31; entrada 03:00
+  corta e a mensagem diz o limite e a entrada
+- expediente: adiamento de 5 min segura o `ponto_vigia`; vencido, ele encerra
+- relatórios: `relatorio_funis` traz os 6 funis novos e não traz pós-venda;
+  reagendamentos com 2 remarcações, 1 falta depois de remarcar e 1 lead com
+  2 faltas, sem dupla contagem no total
+
+Pendências que ficam para o dono:
+
+- rotacionar a chave do Rizodent Vision
+- escolher os funis do rodízio na tela (hoje só o Funil Principal)
+- a etapa "Não contratado " está gravada com um espaço no fim do nome
