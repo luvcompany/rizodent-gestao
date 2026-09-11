@@ -6443,6 +6443,10 @@ export type Database = {
         }
         Returns: string
       }
+      sdr_corrigir_desfecho: {
+        Args: { p_appointment_id: string; p_compareceu: boolean }
+        Returns: Json
+      }
       sdr_destinos_transferencia: {
         Args: never
         Returns: {
@@ -6461,6 +6465,10 @@ export type Database = {
         Returns: boolean
       }
       sdr_entregas_pendentes: { Args: never; Returns: number }
+      sdr_excluir_agendamento: {
+        Args: { p_appointment_id: string; p_motivo: string }
+        Returns: Json
+      }
       sdr_marcar_comparecimento: {
         Args: { p_appointment_id: string }
         Returns: Json
