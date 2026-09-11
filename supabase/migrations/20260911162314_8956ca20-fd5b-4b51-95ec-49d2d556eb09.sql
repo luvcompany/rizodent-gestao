@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.aplicar_migracao_texto(text);

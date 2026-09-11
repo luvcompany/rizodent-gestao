@@ -2870,6 +2870,7 @@ export type Database = {
           em: string
           id: string
           motivo: string | null
+          motivo_detalhe: string | null
           origem: string
           tenant_id: string
           tipo: string
@@ -2880,6 +2881,7 @@ export type Database = {
           em?: string
           id?: string
           motivo?: string | null
+          motivo_detalhe?: string | null
           origem?: string
           tenant_id: string
           tipo: string
@@ -2890,10 +2892,56 @@ export type Database = {
           em?: string
           id?: string
           motivo?: string | null
+          motivo_detalhe?: string | null
           origem?: string
           tenant_id?: string
           tipo?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      crm_ponto_motivos: {
+        Row: {
+          ativo: boolean
+          atualizado_em: string
+          atualizado_por: string | null
+          chave: string
+          criado_em: string
+          criado_por: string | null
+          exige_texto: boolean
+          icone: string
+          id: string
+          posicao: number
+          rotulo: string
+          tenant_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          atualizado_em?: string
+          atualizado_por?: string | null
+          chave: string
+          criado_em?: string
+          criado_por?: string | null
+          exige_texto?: boolean
+          icone?: string
+          id?: string
+          posicao?: number
+          rotulo: string
+          tenant_id: string
+        }
+        Update: {
+          ativo?: boolean
+          atualizado_em?: string
+          atualizado_por?: string | null
+          chave?: string
+          criado_em?: string
+          criado_por?: string | null
+          exige_texto?: boolean
+          icone?: string
+          id?: string
+          posicao?: number
+          rotulo?: string
+          tenant_id?: string
         }
         Relationships: []
       }
@@ -5419,6 +5467,14 @@ export type Database = {
           table_name: string
         }[]
       }
+      buscar_leads_por_mensagem: {
+        Args: { p_limite?: number; p_termo: string }
+        Returns: {
+          lead_id: string
+          quando: string
+          trecho: string
+        }[]
+      }
       call_recording_belongs_to_current_tenant: {
         Args: { _object_name: string }
         Returns: boolean
@@ -5792,6 +5848,10 @@ export type Database = {
       }
       equipe_sdr_exclusiva: { Args: { p_user_id: string }; Returns: string }
       etapa_em_funil_meu: { Args: { _stage_id: string }; Returns: boolean }
+      etapa_equivalente_no_funil: {
+        Args: { _pipeline_id: string; _stage_id: string }
+        Returns: string
+      }
       etapa_tem_lead: { Args: { _stage_id: string }; Returns: boolean }
       funil_do_papel_do_usuario: {
         Args: { _pipeline_id: string }
@@ -6012,7 +6072,82 @@ export type Database = {
         Returns: number
       }
       ponto_meu_estado: { Args: never; Returns: Json }
-      ponto_pausar: { Args: { p_motivo: string }; Returns: Json }
+      ponto_minha_pausa: { Args: never; Returns: Json }
+      ponto_motivo_ativar: {
+        Args: { p_ativo: boolean; p_id: string }
+        Returns: Json
+      }
+      ponto_motivo_criar: {
+        Args: {
+          p_chave: string
+          p_exige_texto: boolean
+          p_icone: string
+          p_rotulo: string
+        }
+        Returns: Json
+      }
+      ponto_motivo_editar: {
+        Args: {
+          p_exige_texto: boolean
+          p_icone: string
+          p_id: string
+          p_rotulo: string
+        }
+        Returns: Json
+      }
+      ponto_motivo_excluir: { Args: { p_id: string }; Returns: Json }
+      ponto_motivo_icone_valido: { Args: { p_icone: string }; Returns: string }
+      ponto_motivos_ativos: {
+        Args: never
+        Returns: {
+          chave: string
+          exige_texto: boolean
+          icone: string
+          posicao: number
+          rotulo: string
+        }[]
+      }
+      ponto_motivos_listar: {
+        Args: never
+        Returns: {
+          ativo: boolean
+          chave: string
+          exige_texto: boolean
+          icone: string
+          id: string
+          orfao: boolean
+          posicao: number
+          rotulo: string
+          usos: number
+        }[]
+      }
+      ponto_motivos_reordenar: { Args: { p_ids: string[] }; Returns: Json }
+      ponto_motivos_semear: { Args: { p_tenant: string }; Returns: number }
+      ponto_pausar:
+        | { Args: { p_motivo: string }; Returns: Json }
+        | { Args: { p_detalhe: string; p_motivo: string }; Returns: Json }
+      ponto_pausar_registrar: {
+        Args: { p_detalhe: string; p_exigir_texto: boolean; p_motivo: string }
+        Returns: Json
+      }
+      ponto_pausas: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          detalhe: string
+          dia: string
+          em_curso: boolean
+          fim: string
+          fim_por: string
+          inicio: string
+          minutos: number
+          motivo: string
+          nome: string
+          papel: string
+          rotulo: string
+          segundos: number
+          user_id: string
+        }[]
+      }
       ponto_relatorio: {
         Args: { p_ate: string; p_de: string }
         Returns: {
@@ -6028,7 +6163,34 @@ export type Database = {
           user_id: string
         }[]
       }
+      ponto_resumo: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          aberto_desde: string
+          dias: number
+          estado_agora: string
+          media_diaria_min: number
+          minutos_pausa: number
+          minutos_pausa_atual: number
+          minutos_sessao_atual: number
+          minutos_trabalhados: number
+          motivo_pausa_atual: string
+          motivo_top: string
+          motivo_top_qtd: number
+          nome: string
+          papel: string
+          pausado_desde: string
+          pausas: number
+          rotulo_pausa_atual: string
+          rotulo_top: string
+          user_id: string
+        }[]
+      }
       ponto_retomar: { Args: never; Returns: Json }
+      ponto_rotulo_motivo: {
+        Args: { p_chave: string; p_tenant: string }
+        Returns: string
+      }
       ponto_sessoes: {
         Args: { p_ate: string; p_de: string; p_tenant: string; p_user: string }
         Returns: {
