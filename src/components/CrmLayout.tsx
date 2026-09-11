@@ -5,7 +5,7 @@ import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity, Phone, Users,
+  Activity, Phone, Users, Clock,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGestorEquipe } from "@/hooks/useGestorEquipe";
@@ -157,6 +157,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
       children: [
         { to: "/crm/equipe", icon: Users, label: "SDRs", end: true },
         { to: "/crm/equipe/relatorio-sdr", icon: BarChart3, label: "Relatório das SDRs" },
+        { to: "/crm/equipe/ponto", icon: Clock, label: "Ponto e pausas" },
         { to: "/crm/equipe/pesquisa", icon: Heart, label: "Pesquisa de satisfação" },
       ],
     });

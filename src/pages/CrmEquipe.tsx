@@ -19,7 +19,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Info, KeyRound, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, UserX, Users } from "lucide-react";
+import {
+  ArrowDown, ArrowUp, BookOpen, Car, Clock, Coffee, Info, KeyRound, Loader2, MoreHorizontal,
+  Pause, PauseCircle, Pencil, Phone, Plus, RefreshCw, Stethoscope, Trash2, User, UserCheck,
+  UserX, Users, Utensils,
+} from "lucide-react";
 import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
 
 /**
@@ -201,6 +205,405 @@ const erroDaFuncao = async (data: RespostaFuncao, error: unknown, fallback: stri
 };
 
 const fmtData = (iso: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "Nunca");
+
+/* ===========================================================================
+ * Motivos de pausa — o CRC gerenciando a lista que a SDR vê no botão "Pausar".
+ *
+ * PEDIDO DO DONO (11/09/2026): "no CRC adicione a opção de configurar essas
+ * opções de pausa. Pq o crc deve gerenciar tudo isso do SDR".
+ *
+ * Fonte: crm_ponto_motivos, por RPC (as mesmas travas do banco valem aqui):
+ *   ponto_motivos_listar()                                  → esta lista
+ *   ponto_motivo_criar(rotulo, icone, exige_texto, chave)    → chave derivada do nome
+ *   ponto_motivo_editar(id, rotulo, icone, exige_texto)      → a CHAVE não muda
+ *   ponto_motivo_ativar(id, ativo)                           → recusa zerar a lista
+ *   ponto_motivo_excluir(id)                                 → só o que nunca foi usado
+ *   ponto_motivos_reordenar(ids[])                           → a lista inteira, na ordem nova
+ *
+ * Duas coisas que a tela deixa explícitas, porque o gestor não tem como
+ * adivinhar:
+ *   • renomear é de graça, mas a CHAVE (cafe, almoco, ligacao...) é o que
+ *     costura o histórico do relatório de ponto — por isso ela aparece ao lado
+ *     do nome e não é editável;
+ *   • motivo que já foi usado não se exclui, se desativa: some do menu da SDR
+ *     e o relatório continua sabendo o nome dele. As chaves que só existem no
+ *     histórico (orfao) vêm listadas no rodapé, para o gestor não achar que o
+ *     relatório está inventando nome.
+ * Ordenação por setas, sem arrastar: é o suficiente para uma lista de até 12
+ * itens e não traz biblioteca nova para dentro do projeto.
+ * =========================================================================== */
+
+type MotivoLinha = {
+  id: string | null;
+  chave: string;
+  rotulo: string;
+  icone: string;
+  posicao: number;
+  ativo: boolean;
+  exige_texto: boolean;
+  usos: number;
+  orfao: boolean;
+};
+
+const TEXTO_RPC_AUSENTE_MOTIVOS =
+  "Os motivos de pausa configuráveis ainda não foram instalados no banco (migration pendente). Até publicar, a SDR continua com Café, Almoço e Outro.";
+const mensagemDeMotivos = (e: unknown, fallback: string): string =>
+  mensagemDeErroRpc(e, fallback, TEXTO_RPC_AUSENTE_MOTIVOS);
+
+/** Os mesmos ícones que a RPC aceita e que o cartão da SDR sabe desenhar. */
+const ICONES_MOTIVO: { valor: string; rotulo: string; Icone: typeof Coffee }[] = [
+  { valor: "coffee", rotulo: "Café", Icone: Coffee },
+  { valor: "utensils", rotulo: "Talheres", Icone: Utensils },
+  { valor: "phone", rotulo: "Telefone", Icone: Phone },
+  { valor: "more-horizontal", rotulo: "Reticências", Icone: MoreHorizontal },
+  { valor: "pause", rotulo: "Pausa", Icone: Pause },
+  { valor: "clock", rotulo: "Relógio", Icone: Clock },
+  { valor: "car", rotulo: "Carro", Icone: Car },
+  { valor: "stethoscope", rotulo: "Saúde", Icone: Stethoscope },
+  { valor: "user", rotulo: "Pessoa", Icone: User },
+  { valor: "book-open", rotulo: "Estudo", Icone: BookOpen },
+];
+const iconeDoMotivo = (nome: string): typeof Coffee =>
+  ICONES_MOTIVO.find((i) => i.valor === nome)?.Icone ?? Pause;
+
+function MotivosDePausa() {
+  const [linhas, setLinhas] = useState<MotivoLinha[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null); // id da linha (ou "novo"/"ordem")
+  // Rótulo em edição, por linha: o botão Salvar só aparece quando muda de verdade.
+  const [rascunho, setRascunho] = useState<Record<string, string>>({});
+  const [novo, setNovo] = useState({ rotulo: "", icone: "pause", exigeTexto: false });
+  const [exclusaoDe, setExclusaoDe] = useState<MotivoLinha | null>(null);
+
+  const carregarMotivos = useCallback(async () => {
+    setCarregando(true);
+    const { data, error } = await rpc("ponto_motivos_listar");
+    setCarregando(false);
+    if (error) {
+      setErro(mensagemDeMotivos(error, "Não foi possível carregar os motivos de pausa."));
+      return;
+    }
+    setErro(null);
+    const lista = ((data ?? []) as Record<string, unknown>[]).map((m) => ({
+      id: (m.id as string | null) ?? null,
+      chave: String(m.chave ?? ""),
+      rotulo: String(m.rotulo ?? ""),
+      icone: String(m.icone ?? "pause"),
+      posicao: Number(m.posicao ?? 0),
+      ativo: m.ativo === true,
+      exige_texto: m.exige_texto === true,
+      usos: Number(m.usos ?? 0),
+      orfao: m.orfao === true,
+    }));
+    setLinhas(lista);
+    setRascunho({});
+  }, []);
+
+  useEffect(() => { void carregarMotivos(); }, [carregarMotivos]);
+
+  const chamar = async (id: string, fn: string, args: Record<string, unknown>, falha: string) => {
+    setOcupado(id);
+    const { error } = await rpc(fn, args);
+    setOcupado(null);
+    if (error) {
+      toast.error(mensagemDeMotivos(error, falha));
+      await carregarMotivos(); // o banco é a verdade: recarrega para a tela não mentir
+      return false;
+    }
+    await carregarMotivos();
+    return true;
+  };
+
+  const criar = async () => {
+    const rotulo = novo.rotulo.trim();
+    if (!rotulo) return toast.error("Dê um nome ao motivo (ex.: Ligação, Banheiro).");
+    setOcupado("novo");
+    const { data, error } = await rpc("ponto_motivo_criar", {
+      p_rotulo: rotulo, p_icone: novo.icone, p_exige_texto: novo.exigeTexto, p_chave: null,
+    });
+    setOcupado(null);
+    if (error) {
+      toast.error(mensagemDeMotivos(error, "Não foi possível criar o motivo."));
+      return;
+    }
+    const chave = (data as { chave?: string } | null)?.chave;
+    toast.success(`Motivo "${rotulo}" criado${chave ? ` (chave ${chave})` : ""}. Ele já aparece no botão Pausar da SDR.`);
+    setNovo({ rotulo: "", icone: "pause", exigeTexto: false });
+    await carregarMotivos();
+  };
+
+  const salvarRotulo = async (l: MotivoLinha) => {
+    if (!l.id) return;
+    const rotulo = (rascunho[l.id] ?? l.rotulo).trim();
+    if (!rotulo) return toast.error("O motivo precisa de um nome.");
+    if (await chamar(l.id, "ponto_motivo_editar", { p_id: l.id, p_rotulo: rotulo, p_icone: l.icone, p_exige_texto: l.exige_texto }, "Não foi possível renomear o motivo.")) {
+      toast.success(`Agora a SDR vê "${rotulo}". O histórico do relatório continua na mesma chave (${l.chave}).`);
+    }
+  };
+
+  const trocarIcone = async (l: MotivoLinha, icone: string) => {
+    if (!l.id || icone === l.icone) return;
+    await chamar(l.id, "ponto_motivo_editar", { p_id: l.id, p_rotulo: l.rotulo, p_icone: icone, p_exige_texto: l.exige_texto }, "Não foi possível trocar o ícone.");
+  };
+
+  const alternarTexto = async (l: MotivoLinha, valor: boolean) => {
+    if (!l.id) return;
+    if (await chamar(l.id, "ponto_motivo_editar", { p_id: l.id, p_rotulo: l.rotulo, p_icone: l.icone, p_exige_texto: valor }, "Não foi possível mudar a exigência do texto.")) {
+      toast.success(valor
+        ? `Ao escolher "${l.rotulo}", a SDR vai ter que escrever o motivo.`
+        : `"${l.rotulo}" volta a ser um clique só, sem texto.`);
+    }
+  };
+
+  const alternarAtivo = async (l: MotivoLinha, valor: boolean) => {
+    if (!l.id) return;
+    if (await chamar(l.id, "ponto_motivo_ativar", { p_id: l.id, p_ativo: valor }, "Não foi possível ligar/desligar o motivo.")) {
+      toast.success(valor
+        ? `"${l.rotulo}" voltou para o menu de pausa da SDR.`
+        : `"${l.rotulo}" saiu do menu. As pausas antigas com esse motivo continuam no relatório.`);
+    }
+  };
+
+  /** Setas: manda a lista INTEIRA na ordem nova (é o que a RPC espera). */
+  const mover = async (l: MotivoLinha, delta: -1 | 1) => {
+    const ids = linhas.filter((x) => x.id).map((x) => x.id as string);
+    const i = l.id ? ids.indexOf(l.id) : -1;
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await chamar(l.id as string, "ponto_motivos_reordenar", { p_ids: ids }, "Não foi possível mudar a ordem.");
+  };
+
+  const excluir = async () => {
+    const l = exclusaoDe;
+    if (!l?.id) return;
+    setExclusaoDe(null);
+    if (await chamar(l.id, "ponto_motivo_excluir", { p_id: l.id }, "Não foi possível excluir o motivo.")) {
+      toast.success(`Motivo "${l.rotulo}" excluído.`);
+    }
+  };
+
+  const configurados = linhas.filter((l) => !l.orfao);
+  const orfaos = linhas.filter((l) => l.orfao);
+  const ativos = configurados.filter((l) => l.ativo).length;
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <PauseCircle size={18} className="text-primary" />
+          <h2 className="font-semibold text-foreground">Motivos de pausa</h2>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {carregando && linhas.length === 0
+            ? "carregando..."
+            : `${ativos} ${ativos === 1 ? "motivo ativo" : "motivos ativos"} no botão Pausar da SDR`}
+        </span>
+        <div className="ml-auto">
+          <Button variant="outline" size="sm" onClick={() => void carregarMotivos()} disabled={carregando} title="Atualizar">
+            <RefreshCw size={14} className={carregando ? "animate-spin" : ""} />
+          </Button>
+        </div>
+      </div>
+
+      <p className="mt-2 text-sm text-muted-foreground">
+        É esta lista que a SDR vê quando clica em "Pausar". Marque "pede o motivo escrito" no que
+        precisar de explicação (é o caso do "Outro") — aí ela digita o motivo e ele aparece no
+        relatório de ponto junto da pausa.
+      </p>
+
+      {erro ? (
+        <div className="mt-3 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+          {erro}
+          <Button variant="link" size="sm" className="ml-2 h-auto p-0" onClick={() => void carregarMotivos()}>Tentar de novo</Button>
+        </div>
+      ) : carregando && linhas.length === 0 ? (
+        <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="animate-spin" size={14} /> Lendo os motivos...
+        </div>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[76px]">Ordem</TableHead>
+                <TableHead className="w-[120px]">Ícone</TableHead>
+                <TableHead>Nome na tela</TableHead>
+                <TableHead className="w-[150px]" title="A chave gravada no histórico. Não muda quando você renomeia.">Chave</TableHead>
+                <TableHead className="w-[150px]" title="A SDR precisa digitar o motivo ao escolher este item">Pede o motivo escrito</TableHead>
+                <TableHead className="w-[110px]">No menu</TableHead>
+                <TableHead className="w-[60px] text-right">Excluir</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {configurados.map((l, i) => {
+                const Icone = iconeDoMotivo(l.icone);
+                const emAcao = ocupado === l.id;
+                const texto = rascunho[l.id as string] ?? l.rotulo;
+                const mudou = texto.trim() !== l.rotulo;
+                return (
+                  <TableRow key={l.id ?? l.chave} className={l.ativo ? "" : "opacity-60"}>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Subir"
+                          disabled={i === 0 || !!ocupado} onClick={() => void mover(l, -1)}>
+                          <ArrowUp size={14} />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Descer"
+                          disabled={i === configurados.length - 1 || !!ocupado} onClick={() => void mover(l, 1)}>
+                          <ArrowDown size={14} />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Icone size={16} className="shrink-0 text-muted-foreground" />
+                        <select
+                          value={l.icone}
+                          disabled={emAcao}
+                          onChange={(e) => void trocarIcone(l, e.target.value)}
+                          aria-label={`Ícone de ${l.rotulo}`}
+                          className="h-8 w-[88px] rounded-md border border-border bg-background px-1 text-xs"
+                        >
+                          {ICONES_MOTIVO.map((ic) => (
+                            <option key={ic.valor} value={ic.valor}>{ic.rotulo}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={texto}
+                          maxLength={40}
+                          disabled={emAcao}
+                          onChange={(e) => setRascunho((r) => ({ ...r, [l.id as string]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === "Enter" && mudou) { e.preventDefault(); void salvarRotulo(l); } }}
+                          className="h-8 max-w-[220px] text-sm"
+                          aria-label={`Nome de ${l.chave}`}
+                        />
+                        {mudou && (
+                          <Button size="sm" variant="outline" className="h-8" disabled={emAcao} onClick={() => void salvarRotulo(l)}>
+                            {emAcao ? <Loader2 size={14} className="animate-spin" /> : "Salvar"}
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                      {l.chave}
+                      <span className="ml-1 font-sans" title="Pausas já registradas com este motivo">
+                        ({l.usos})
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={l.exige_texto}
+                        disabled={emAcao}
+                        onCheckedChange={(v) => void alternarTexto(l, v)}
+                        aria-label={`Pedir o motivo escrito em ${l.rotulo}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={l.ativo}
+                          disabled={emAcao}
+                          onCheckedChange={(v) => void alternarAtivo(l, v)}
+                          aria-label={l.ativo ? `Tirar ${l.rotulo} do menu` : `Pôr ${l.rotulo} no menu`}
+                        />
+                        <span className="text-xs text-muted-foreground">{l.ativo ? "Sim" : "Não"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                        disabled={emAcao}
+                        title={l.usos > 0
+                          ? "Este motivo já foi usado: desative no interruptor para tirar do menu sem apagar o histórico"
+                          : "Excluir o motivo"}
+                        onClick={() => setExclusaoDe(l)}
+                      >
+                        {emAcao ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------- novo motivo */}
+      {!erro && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+          <Input
+            value={novo.rotulo}
+            maxLength={40}
+            placeholder="Novo motivo (ex.: Ligação, Banheiro, Reunião)"
+            onChange={(e) => setNovo({ ...novo, rotulo: e.target.value })}
+            onKeyDown={(e) => { if (e.key === "Enter" && novo.rotulo.trim()) { e.preventDefault(); void criar(); } }}
+            className="h-8 w-full max-w-[280px] text-sm"
+            aria-label="Nome do novo motivo de pausa"
+          />
+          <select
+            value={novo.icone}
+            onChange={(e) => setNovo({ ...novo, icone: e.target.value })}
+            aria-label="Ícone do novo motivo"
+            className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+          >
+            {ICONES_MOTIVO.map((ic) => (
+              <option key={ic.valor} value={ic.valor}>{ic.rotulo}</option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Switch
+              checked={novo.exigeTexto}
+              onCheckedChange={(v) => setNovo({ ...novo, exigeTexto: v })}
+              aria-label="Pedir o motivo escrito"
+            />
+            pede o motivo escrito
+          </label>
+          <Button size="sm" onClick={() => void criar()} disabled={ocupado === "novo" || !novo.rotulo.trim()}>
+            {ocupado === "novo" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Plus size={14} className="mr-1" />}
+            Adicionar
+          </Button>
+          <span className="w-full text-xs text-muted-foreground">
+            A chave sai do nome ("Ligação" vira <span className="font-mono">ligacao</span>) e não muda
+            mais: é ela que junta as pausas no relatório. Renomear depois é livre. Até 12 motivos.
+          </span>
+        </div>
+      )}
+
+      {orfaos.length > 0 && (
+        <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+          No histórico ainda há pausas com motivo que não está mais nesta lista:{" "}
+          {orfaos.map((o) => `${o.chave} (${o.usos})`).join(", ")}. O relatório de ponto continua
+          mostrando essas pausas — para o nome voltar a aparecer bonito, crie um motivo com o mesmo
+          nome.
+        </p>
+      )}
+
+      <AlertDialog open={!!exclusaoDe} onOpenChange={(v) => { if (!v) setExclusaoDe(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir "{exclusaoDe?.rotulo}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {exclusaoDe && exclusaoDe.usos > 0
+                ? `Este motivo já foi usado em ${exclusaoDe.usos} pausa(s), então o banco não deixa excluir: use o interruptor "No menu" para desativá-lo. Assim ele some da tela da SDR e o relatório de ponto continua mostrando "${exclusaoDe.rotulo}".`
+                : "Ele sai do menu de pausa da SDR. Como nunca foi usado, nada no histórico muda."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void excluir()}>Excluir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  );
+}
 
 export default function CrmEquipe() {
   const { profile } = useAuth();
@@ -589,6 +992,8 @@ export default function CrmEquipe() {
         </header>
 
         <RodizioPainel aoMudar={carregar} />
+
+        <MotivosDePausa />
 
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           {erroLista ? (

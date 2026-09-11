@@ -110,6 +110,14 @@ export async function cancelAppointment(args: {
  * agendamento, que segue 'confirmed'). Ali ele não recebe lembretes de
  * confirmação; se o dia terminar sem novo horário, a varredura noturna marca
  * falta (no_show) e move para "Não compareceu".
+ *
+ * Dois caminhos chegam aqui, e é o mesmo estado nos dois: o card de consulta
+ * com desfecho ("Aguardar reagendamento") e o link "Ainda sem data? Aguardar
+ * reagendamento" dentro do seletor do card de consulta ATIVA — este último é o
+ * caso mais comum da vida real ("não vou poder, depois eu vejo"), e sem ele o
+ * lead ficaria em "Agendado" recebendo os três lembretes before_scheduled de
+ * uma consulta já desmarcada.
+ *
  * Retorna false quando o tenant não tem a etapa "Reagendar" (chamador decide o fallback).
  */
 export async function iniciarReagendamento(leadId: string): Promise<boolean> {
@@ -127,8 +135,21 @@ export async function iniciarReagendamento(leadId: string): Promise<boolean> {
  * Remarca um agendamento:
  * 1. desfecho no antigo (`no_show` após horário+3h, senão `rescheduled`) com trava
  * 2. cria o novo vinculado por `rescheduled_from_id`
- * 3. UM movimento de etapa para "Reagendado"
+ * 3. UM movimento de etapa para "Reagendado" (no funil do próprio lead — o
+ *    moveLeadToStageCrossPipeline tenta o pipeline atual antes de qualquer
+ *    fallback, e todo funil do tenant tem a sua etapa "Reagendado")
  * 4. mensagem de sistema
+ *
+ * Desde 11/09 este é o caminho do botão "Reagendar" do card de consulta ativa,
+ * em UM passo: a barra abre o seletor de data e hora e confirma aqui. A etapa de
+ * espera "Reagendar" deixou de ser obrigatória neste clique, mas continua
+ * alcançável de dentro do próprio seletor, pelo link "Ainda sem data?"
+ * (iniciarReagendamento) — quem desmarca sem data nova precisa de um lugar para
+ * ir, senão o lead fica em "Agendado" recebendo lembrete de consulta morta.
+ *
+ * Se a remarcação vier mais de 3h depois do horário marcado, a consulta antiga
+ * é gravada como FALTA (statusForRescheduledOrigin) — e tanto a mensagem de
+ * sistema quanto o toast dizem isso com todas as letras.
  */
 export async function rescheduleAppointment(args: {
   leadId: string;
@@ -174,30 +195,54 @@ export async function rescheduleAppointment(args: {
 
   const antigo = `${old.scheduled_date.split("-").reverse().join("/")} às ${(old.scheduled_time || "").slice(0, 5)}`;
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
-  await systemMessage(leadId, `🔁 Consulta remarcada de ${antigo} para ${novo}`);
 
-  // Automações de ENTRADA só quando o lead realmente trocou de etapa. Com o
-  // `movedStageId || lead.stage_id` de antes, lead que já estava na etapa (ou
-  // tenant sem a etapa destino) rodava de novo as automações de entrada da
-  // etapa ATUAL e o paciente recebia a mensagem dela outra vez.
-  if (movedStageId) {
-    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
-    executeStageAutomations({
-      leadId,
-      stageId: movedStageId,
-      leadPhone: lead?.phone ?? "",
-      triggerTypes: ["on_enter"],
-    }).catch((e) => console.error("[Reschedule] Automation error:", e));
-  }
+  // A régua anti-lavagem (statusForRescheduledOrigin) grava a consulta antiga
+  // como FALTA quando a remarcação vem depois do horário marcado + 3h. Isso
+  // muda o relatório do lead e o crédito de quem clicou, e até aqui nem a
+  // mensagem de sistema nem o toast diziam uma palavra sobre isso: no chat
+  // ficava só "remarcada de X para Y", como se a consulta perdida tivesse
+  // virado a nova. Quem lesse o histórico depois não tinha como saber de onde
+  // saiu o "Não compareceu" do relatório.
+  const virouFalta = novoStatusAntigo === "no_show";
+  await systemMessage(
+    leadId,
+    virouFalta
+      ? `🔁 Consulta remarcada de ${antigo} para ${novo} — a de ${antigo} ficou registrada como falta (Não compareceu), porque a remarcação veio mais de 3h depois do horário`
+      : `🔁 Consulta remarcada de ${antigo} para ${novo}`,
+  );
+
+  // NÃO disparamos executeStageAutomations("on_enter") daqui, e isso é
+  // deliberado — é a mesma decisão já tomada e documentada em
+  // marcarComparecimentoSdr, no fim deste arquivo: "quem move a etapa é o banco;
+  // quem manda é a fila".
+  //
+  // O UPDATE de crm_leads.stage_id feito acima aciona o gatilho
+  // trg_enqueue_stage_entry_automations (AFTER INSERT OR UPDATE OF stage_id),
+  // que já enfileira as automações on_enter / on_create_or_enter da etapa de
+  // destino em crm_automation_queue; o automation-engine envia. Com o front
+  // disparando também, o paciente receberia DUAS vezes — e o front envia direto,
+  // sem passar pela fila, então nem a chave de deduplicação dela segurava.
+  //
+  // Hoje isso é inofensivo por acaso: não existe UMA automação on_enter ou
+  // on_create_or_enter em nenhuma etapa "Reagendado" do cliente (as que há ali
+  // são before_scheduled, os lembretes ancorados na data da consulta nova, e
+  // essas não passam por aqui). Mas este clique acabou de virar o caminho padrão
+  // de toda remarcação, e bastaria alguém cadastrar uma mensagem de entrada em
+  // "Reagendado" pela tela de automações para o envio duplo acordar em volume.
+
+  // Mesmo aviso do chat, na tela de quem clicou.
+  const avisoFalta = virouFalta
+    ? ` A consulta de ${antigo} ficou registrada como falta (Não compareceu).`
+    : "";
 
   if (falhaDeEtapa) {
-    toast.warning(`Consulta remarcada, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);
+    toast.warning(`Consulta remarcada, mas o lead não foi movido de etapa: ${falhaDeEtapa}.${avisoFalta}`);
   } else if (movedStageId) {
-    toast.success("Consulta remarcada — lead movido para Reagendado");
+    toast.success(`Consulta remarcada — lead movido para Reagendado.${avisoFalta}`);
   } else {
     // Sem etapa "Reagendado" no funil (ou o lead já estava nela): a remarcação
     // valeu, mas não anunciamos um movimento que não houve.
-    toast.success("Consulta remarcada — o lead segue na etapa atual");
+    toast.success(`Consulta remarcada — o lead segue na etapa atual.${avisoFalta}`);
   }
   return true;
 }

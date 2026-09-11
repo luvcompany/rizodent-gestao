@@ -52,6 +52,9 @@ const CrmEquipe = lazyWithPreload(() => import("./pages/CrmEquipe"));
 // (is_gestor_equipe / RPC só da própria SDR); o menu fica em CrmLayout.
 const CrmRelatorioSdr = lazyWithPreload(() => import("./pages/CrmRelatorioSdr"));
 const CrmPesquisaConfig = lazyWithPreload(() => import("./pages/CrmPesquisaConfig"));
+// Ponto da equipe (pausas e tempo de atendimento) — tela do GESTOR, criada
+// em 11/09/2026 porque ponto_relatorio existia no banco e nenhuma tela a lia.
+const CrmPonto = lazyWithPreload(() => import("./pages/CrmPonto"));
 const SdrMeuDesempenho = lazyWithPreload(() => import("./pages/SdrMeuDesempenho"));
 
 const CrmBots = lazyWithPreload(() => import("./pages/CrmBots"));
@@ -277,6 +280,8 @@ export const TenantApp = ({ slug, basename }: { slug: string; basename: string }
               <Route path="/crm/equipe" element={withRouteSuspense(<CrmEquipe />)} />
               <Route path="/crm/equipe/relatorio-sdr" element={withRouteSuspense(<CrmRelatorioSdr />)} />
               <Route path="/crm/equipe/pesquisa" element={withRouteSuspense(<CrmPesquisaConfig />)} />
+              {/* Ponto: pausas e tempo de atendimento da equipe (mesmo gate de gestor). */}
+              <Route path="/crm/equipe/ponto" element={withRouteSuspense(<CrmPonto />)} />
               <Route path="/crm/conexoes" element={withRouteSuspense(<RecepcaoConexoes />)} />
               <Route path="/crm/conversas" element={withRouteSuspense(<CrmConversas />)} />
               <Route path="/crm/conversa/:id" element={withRouteSuspense(<CrmConversa />)} />

@@ -44,6 +44,29 @@ type ReplyMessage = {
 type InstagramMediaKind = "image" | "video" | "audio";
 type SendBody = Record<string, unknown>;
 
+/**
+ * Retorno de public.instagram_janela_do_lead(uuid). O types.ts declara a RPC como
+ * Json genérico, então o formato é afirmado aqui (cast local) em vez de regenerar o arquivo.
+ * Devolve NULL quando quem chama não pode ver o lead.
+ */
+type IgJanela = {
+  pode_enviar: boolean;
+  situacao: "aberta" | "fechada" | "so_comentario" | "sem_direct";
+  fecha_em?: string | null;
+  fechou_em?: string | null;
+  minutos_restantes?: number | null;
+  ultimo_direct_em?: string | null;
+  tem_comentario?: boolean;
+  aviso?: string | null;
+};
+
+/** "3h20" / "45min" — texto curto para o tempo que resta da janela de 24 h. */
+const formataTempoRestante = (minutos: number) => {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return h > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
+};
+
 type ChatInputProps = {
   leadId: string;
   leadPhone: string | null;
@@ -316,6 +339,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       return;
     }
 
+    // Instagram: janela de Direct fechada. O campo já está desabilitado, mas o texto
+    // pode ter vindo de fora (externalMessage/atalho), então o envio é barrado aqui também.
+    if (igDirectBloqueado) {
+      toast.error(igAvisoBloqueio);
+      return;
+    }
+
     let type = "text";
     let rawMessage = newMessage.trim();
     // Prepend signature if enabled
@@ -518,6 +548,84 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return { expired: false, remaining: `${hours}h ${mins.toString().padStart(2, "0")}m` };
   }, [isInstagram, lastInboundDmAt, now]);
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Janela de 24 h do Instagram, perguntada ao banco ANTES de a SDR escrever.
+  //
+  // A Meta só aceita Direct enquanto a pessoa tiver mandado um Direct nas últimas
+  // 24 h, e comentário não abre essa janela. A edge function já detecta isso, mas
+  // só depois do clique em enviar — a SDR perde o texto e a confiança na tela.
+  // public.instagram_janela_do_lead responde antes, e traz o aviso pronto.
+  //
+  // Regra de ouro deste aviso: ele NUNCA pode travar o chat. Se a RPC não existir
+  // (ambiente antigo devolve PGRST202) ou falhar por qualquer motivo, ficamos sem
+  // janela conhecida e o campo funciona exatamente como funcionava antes.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const [igJanela, setIgJanela] = useState<IgJanela | null>(null);
+  const igJanelaReqRef = useRef(0);
+
+  const consultarJanelaIg = useCallback(async () => {
+    if (!isInstagram || !leadId) return;
+    const req = ++igJanelaReqRef.current;
+    try {
+      const { data, error } = await supabase.rpc("instagram_janela_do_lead", { p_lead_id: leadId });
+      if (req !== igJanelaReqRef.current) return; // resposta de um lead que já não está aberto
+      // Falha em silêncio: RPC ausente (PGRST202), sem permissão, rede caindo — segue sem aviso.
+      if (error) { setIgJanela(null); return; }
+      setIgJanela((data as unknown as IgJanela | null) ?? null);
+    } catch {
+      if (req === igJanelaReqRef.current) setIgJanela(null);
+    }
+  }, [isInstagram, leadId]);
+
+  // Some com o aviso do lead anterior assim que a conversa troca.
+  useEffect(() => {
+    setIgJanela(null);
+    igJanelaReqRef.current++;
+  }, [leadId, isInstagram]);
+
+  // Consulta ao abrir a conversa e reconsulta quando chega mensagem nova do lead
+  // (a janela REABRE quando a pessoa escreve; comentário novo muda tem_comentario).
+  useEffect(() => {
+    void consultarJanelaIg();
+  }, [consultarJanelaIg, lastInboundAt, lastInboundDmAt]);
+
+  // Quanto resta, recontado no relógio local (`now`) a partir de fecha_em, para o
+  // número descer sozinho sem bater no banco a cada minuto.
+  const igMinutosRestantes = useMemo(() => {
+    if (!igJanela || igJanela.situacao !== "aberta") return null;
+    if (igJanela.fecha_em) {
+      const fecha = new Date(igJanela.fecha_em).getTime();
+      // ceil: enquanto sobrar qualquer fração de minuto o texto mostra "1min", nunca "0min".
+      if (Number.isFinite(fecha)) return Math.ceil((fecha - now) / 60000);
+    }
+    return typeof igJanela.minutos_restantes === "number" ? igJanela.minutos_restantes : null;
+  }, [igJanela, now]);
+
+  // O contador zerou com a tela aberta: reconsulta para o banco dizer se fechou mesmo.
+  // Quem bloqueia é SEMPRE a resposta do servidor (now() do Postgres), nunca este relógio —
+  // um navegador adiantado bloquearia uma janela que ainda está aberta na Meta.
+  const igContadorZerou = igJanela?.situacao === "aberta" && igMinutosRestantes !== null && igMinutosRestantes <= 0;
+  useEffect(() => {
+    if (igContadorZerou) void consultarJanelaIg();
+  }, [igContadorZerou, consultarJanelaIg]);
+
+  // Só o Direct é bloqueado. Responder pelo comentário continua liberado — é o
+  // caminho que sobra dentro do CRM quando a janela fechou.
+  const igDirectBloqueado =
+    isInstagram &&
+    igReplyMode === "direct" &&
+    !!igJanela &&
+    igJanela.pode_enviar === false;
+
+  const igAvisoBloqueio = igDirectBloqueado
+    ? (igJanela?.aviso ||
+        `A janela de 24 horas do Instagram fechou. A Meta não deixa mais enviar Direct por aqui até a pessoa escrever de novo.${
+          igJanela?.tem_comentario
+            ? " Você pode responder pelo comentário, na aba Comentário."
+            : " Para falar agora, use o aplicativo do Instagram."
+        }`)
+    : "";
+
   const isWindowExpired = windowInfo.expired;
 
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
@@ -529,6 +637,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
       throw new Error("Janela expirada");
+    }
+
+    if (igDirectBloqueado) {
+      toast.error(igAvisoBloqueio);
+      throw new Error("Janela de Direct fechada");
     }
 
     let uploadBlob: Blob;
@@ -621,7 +734,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       onMessageError?.(tempId);
       toast.error(err?.message || "Erro ao enviar áudio");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId, igDirectBloqueado, igAvisoBloqueio]);
 
   const sendSticker = useCallback(async (mediaUrl: string) => {
     const sticker = { media_url: mediaUrl };
@@ -779,8 +892,37 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             )}
           </div>
         )}
-        {/* Instagram DM 24h window warning */}
-        {isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
+        {/* Instagram: janela de Direct fechada — resposta da RPC, dita ANTES de escrever */}
+        {igDirectBloqueado && (
+          <div className="flex items-start gap-2 mb-2 bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 text-xs text-destructive">
+            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1.5">
+              <p>
+                <strong>Não dá para enviar Direct agora.</strong> {igAvisoBloqueio}
+              </p>
+              {/* O caminho que sobra. A aba Comentário só liga depois de escolher QUAL comentário
+                  responder (botão "Responder comentário" na bolha), então quando ainda não há alvo
+                  o aviso diz onde clicar em vez de oferecer um botão que não faria nada. */}
+              {igJanela?.tem_comentario && (
+                igCommentTarget ? (
+                  <button
+                    type="button"
+                    onClick={() => setIgReplyMode("comment")}
+                    className="inline-flex items-center gap-1 rounded border border-destructive/30 px-2 py-0.5 font-medium hover:bg-destructive/10 transition-colors"
+                  >
+                    <MessageCircle size={11} /> Responder pelo comentário
+                  </button>
+                ) : (
+                  <p className="opacity-90">
+                    Para responder pelo comentário, role até a bolha roxa do comentário e clique em <strong>“Responder comentário”</strong>.
+                  </p>
+                )
+              )}
+            </div>
+          </div>
+        )}
+        {/* Fallback heurístico (só quando a RPC não respondeu): janela de DM pelo histórico carregado */}
+        {!igJanela && isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
           <div className="flex items-start gap-2 mb-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
             <span>
@@ -795,7 +937,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="p-2 text-muted-foreground hover:text-primary transition-colors" disabled={optimizing || uploading}>
+                  <button
+                    className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={optimizing || uploading || igDirectBloqueado}
+                    title={igDirectBloqueado ? igAvisoBloqueio : undefined}
+                  >
                     <Paperclip size={20} />
                   </button>
                 </DropdownMenuTrigger>
@@ -849,15 +995,21 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                     }
                     handleKeyDown(e);
                   }}
-                  placeholder="Digite / para atalhos ou uma mensagem..."
-                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2"
-                  disabled={optimizing || uploading}
+                  placeholder={
+                    igDirectBloqueado
+                      ? (igJanela?.situacao === "so_comentario" || igJanela?.situacao === "sem_direct"
+                          ? "Sem Direct desta pessoa — veja o aviso acima"
+                          : "Janela de Direct fechada — veja o aviso acima")
+                      : "Digite / para atalhos ou uma mensagem..."
+                  }
+                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2 disabled:opacity-60"
+                  disabled={optimizing || uploading || igDirectBloqueado}
                   rows={1}
                 />
               </div>
 
               <EmojiPickerButton
-                disabled={optimizing || uploading}
+                disabled={optimizing || uploading || igDirectBloqueado}
                 onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
                 stickersEnabled={!isInstagram}
                 stickersDisabledReason={isWindowExpired ? "Fora da janela de 24h — só template entrega" : undefined}
@@ -903,7 +1055,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               </Popover>
 
               {(newMessage.trim() || attachedFile) && (
-                <Button size="icon" onClick={handleSendMessage} disabled={optimizing || uploading}>
+                <Button
+                  size="icon"
+                  onClick={handleSendMessage}
+                  disabled={optimizing || uploading || igDirectBloqueado}
+                  title={igDirectBloqueado ? igAvisoBloqueio : undefined}
+                >
                   <Send size={18} />
                 </Button>
               )}
@@ -912,7 +1069,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
           {/* Single stable recorder instance — never unmounts during recording */}
           <AudioRecorderComposer
-            disabled={optimizing || uploading}
+            disabled={optimizing || uploading || igDirectBloqueado}
             onSendAudio={sendRecordedAudio}
             onModeChange={setRecorderActive}
             showMicButton={!newMessage.trim() && !attachedFile}
@@ -920,6 +1077,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           />
         </div>
         </>
+      )}
+
+      {/* Instagram: quanto ainda resta da janela de Direct. Informação, não alarme. */}
+      {isInstagram && igReplyMode === "direct" && igJanela?.situacao === "aberta" && igMinutosRestantes !== null && igMinutosRestantes > 0 && (
+        <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
+          <Clock size={12} />
+          <span>Direct aberto por mais <span className="font-medium text-foreground">{formataTempoRestante(igMinutosRestantes)}</span></span>
+        </div>
       )}
 
       {/* 24h window countdown (WhatsApp only) */}

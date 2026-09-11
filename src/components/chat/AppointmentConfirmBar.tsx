@@ -22,6 +22,7 @@ import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
   iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
   corrigirDesfecho, excluirAgendamento, marcarComparecimentoSdr,
+  statusForRescheduledOrigin,
 } from "@/lib/appointmentActions";
 import {
   rotuloDesfecho, corDesfecho, desfechoEhComparecimento, papelLeDesfechoDeVenda,
@@ -342,7 +343,11 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
   };
 
-  /** Reagendar a partir do card terminal: passo 1 (etapa Reagendar) + agendamento novo. */
+  /**
+   * Botão "Aguardar reagendamento" do card de consulta com desfecho: coloca o
+   * lead na etapa de espera "Reagendar" (sem data nova). Se o funil não tiver a
+   * etapa, cai no agendamento manual — ali ela marca a data direto.
+   */
   const handleTerminalReschedule = async () => {
     setTerminalBusy(true);
     try {
@@ -421,28 +426,85 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     run();
   };
 
+  /**
+   * Abre o seletor de data e hora DENTRO do card da consulta — o mesmo
+   * `renderPicker` (Popover + <Calendar> + <Input type="time">) que o
+   * agendamento normal desta barra usa. É a "aba de horário e data normal"
+   * que o dono pediu; não criar um seletor próprio para o reagendamento.
+   *
+   * O horário já vem preenchido com o da consulta atual SÓ na remarcação:
+   * remarcar costuma ser "mesma hora, outro dia", e o 09:00 fixo de antes
+   * obrigava a redigitar a cada clique. No modo "agendou" (o paciente
+   * compareceu e saiu da clínica com outro horário marcado) esse prefill não
+   * tem sentido nenhum — a consulta nova não tem relação com a hora da que
+   * acabou de acontecer, e repetir o horário antigo é justamente o valor que
+   * passa despercebido e vira agendamento errado. Este seletor é compartilhado
+   * pelos dois modos, então o prefill tem de perguntar em qual está.
+   *
+   * A DATA continua vazia de propósito nos dois — é a escolha que não pode sair
+   * por descuido, e `handlePickerSubmit` recusa enquanto ela não for feita.
+   */
   const openPicker = (appt: Appointment, mode: PickerMode) => {
     setPicker({ apptId: appt.id, mode });
     setPickerDate(undefined);
-    setPickerTime("09:00");
+    setPickerTime(mode === "reschedule" ? appt.scheduled_time?.slice(0, 5) || "09:00" : "09:00");
     setPickerNotes("");
   };
 
-  const [startingReschedule, setStartingReschedule] = useState(false);
+  // O "Reagendar" do card de consulta ativa não passa mais OBRIGATORIAMENTE pelo
+  // passo 1 (mover para a sala de espera "Reagendar" e marcar a data depois).
+  // Pedido do dono, 11/09:
+  // "esse botão precisa ser direto e objetivo já cair na aba de horário e data
+  // normal e quando eu reagendar esse lead deve ser movido para a etapa de
+  // reagendado". Agora ele abre o seletor na hora (openPicker → renderPicker) e o
+  // "Remarcar" chama rescheduleAppointment, que carimba o desfecho do antigo,
+  // cria o novo com rescheduled_from_id e move o lead para "Reagendado".
+  //
+  // A etapa de espera "Reagendar" CONTINUA existindo e em uso, por dois caminhos:
+  // o card de consulta terminal (handleTerminalReschedule) e, dentro do próprio
+  // seletor, o link "Ainda sem data? Aguardar reagendamento"
+  // (handleAguardarReagendamento) — porque o caso mais comum da vida real é o
+  // paciente desmarcar SEM dar data nova, e sem essa saída o lead ficaria em
+  // "Agendado" recebendo os três lembretes de uma consulta que não existe mais.
+  // A varredura das 18:30 que vira falta segue intacta. Um lead que já esteja na
+  // espera cai neste mesmo seletor, só que com o rótulo "Novo horário" (e sem o
+  // link, que ali não teria para onde mover).
 
-  /** Passo 1 do reagendar: move para a etapa de espera "Reagendar" (o novo
-   *  horário é registrado depois, quando o lead responder). Tenant sem a
-   *  etapa cai no fluxo antigo: seletor de data direto. */
-  const handleStartReschedule = async (appt: Appointment) => {
-    setStartingReschedule(true);
+  /**
+   * Saída do seletor para o caminho mais comum da vida real: o paciente avisa
+   * que não vai poder e NÃO dá data nova ("depois eu vejo").
+   *
+   * Sem esta saída, o clique único em "Reagendar" só oferece marcar uma data.
+   * A SDR fechava o seletor, o lead FICAVA em "Agendado" com a consulta
+   * 'confirmed' — e recebia os três lembretes before_scheduled dessa etapa
+   * (1 dia, 2h e 1h antes) de uma consulta que ele já tinha desmarcado, ainda
+   * queimando janela de marketing a cada um.
+   *
+   * Aqui ele vai para a etapa de espera "Reagendar", que não tem automação
+   * nenhuma: os lembretes calam na hora e, se o dia terminar sem novo horário,
+   * a varredura das 18:30 (job reagendar-expirado-2130utc) fecha o ciclo como
+   * falta. É o mesmo caminho que o card de consulta com desfecho usa em
+   * handleTerminalReschedule — não existem duas regras para a mesma espera.
+   */
+  const handleAguardarReagendamento = async () => {
+    setPickerSaving(true);
     try {
       const ok = await iniciarReagendamento(leadId);
-      if (!ok) { openPicker(appt, "reschedule"); return; }
-      await checkRescheduleMode();
+      if (ok) {
+        setPicker(null);
+      } else {
+        // Funil sem a etapa "Reagendar" (ou o lead já está nela): não fechamos o
+        // seletor nem anunciamos uma espera que não começou — ela segue podendo
+        // marcar a data ou registrar a falta.
+        toast.error(
+          'Não foi possível colocar o lead em espera: este funil não tem a etapa "Reagendar". Marque o novo horário ou registre "Não compareceu".',
+        );
+      }
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
     } catch (e) {
       toastDbError(e, "Erro ao mover para Reagendar");
     } finally {
-      setStartingReschedule(false);
+      setPickerSaving(false);
     }
   };
 
@@ -841,11 +903,27 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     </div>
   );
 
-  const renderPicker = (appt: Appointment, mode: PickerMode) => (
+  const renderPicker = (appt: Appointment, mode: PickerMode) => {
+    // Régua anti-lavagem (statusForRescheduledOrigin): remarcar depois do
+    // horário marcado + 3h grava a consulta antiga como 'no_show', não como
+    // 'rescheduled'. Isso mexe no relatório do lead e no crédito de quem clica,
+    // então tem de estar escrito ANTES do clique — não só no toast depois.
+    const viraFalta =
+      mode === "reschedule" &&
+      statusForRescheduledOrigin(appt.scheduled_date, appt.scheduled_time) === "no_show";
+
+    return (
     <div className="space-y-2 pt-2 border-t border-border/60">
       <p className="text-xs font-medium text-foreground">
         {mode === "reschedule" ? "Novo horário da remarcação" : "Novo horário agendado na clínica"}
       </p>
+      {viraFalta && (
+        <p className="text-[11px] text-destructive">
+          Já passaram mais de 3 horas do horário marcado: ao remarcar, a consulta
+          de {formatBahiaLabel(appt.scheduled_date, appt.scheduled_time)} fica
+          registrada como falta (Não compareceu).
+        </p>
+      )}
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !pickerDate && "text-muted-foreground")}>
@@ -865,8 +943,25 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           {pickerSaving ? "Salvando..." : mode === "reschedule" ? "Remarcar" : "Salvar"}
         </Button>
       </div>
+      {/* Saída para quem ainda não tem data nova. Discreta de propósito: o botão
+          principal continua sendo marcar o novo horário (pedido do dono), mas
+          quem fechar esta caixa sem data deixaria o lead em "Agendado" recebendo
+          lembrete de uma consulta desmarcada. Não aparece quando o lead JÁ está
+          na espera "Reagendar" — ali o clique não teria para onde mover. */}
+      {mode === "reschedule" && !isAwaitingReschedule && (
+        <button
+          type="button"
+          className="w-full text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          disabled={pickerSaving}
+          title="Sem novo horário: o lead para de receber os lembretes desta consulta e, se o dia terminar sem data, vira falta."
+          onClick={handleAguardarReagendamento}
+        >
+          Ainda sem data? Aguardar reagendamento
+        </button>
+      )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="p-4 border-b border-border">
@@ -981,8 +1076,10 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     size="sm"
                     variant="outline"
                     className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
-                    disabled={busy || startingReschedule}
-                    onClick={() => (isAwaitingReschedule ? openPicker(appt, "reschedule") : handleStartReschedule(appt))}
+                    disabled={busy}
+                    // Direto no seletor de data e hora, esteja o lead na sala de
+                    // espera "Reagendar" ou não — confirmar leva a "Reagendado".
+                    onClick={() => openPicker(appt, "reschedule")}
                   >
                     <Repeat size={12} /> {isAwaitingReschedule ? "Novo horário" : "Reagendar"}
                   </Button>
@@ -1082,7 +1179,12 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                   disabled={terminalBusy}
                   onClick={handleTerminalReschedule}
                 >
-                  <Repeat size={12} /> Reagendar
+                  {/* Nome do que ele faz: mover para a etapa de espera
+                      "Reagendar" (sem data nova). O "Reagendar" do card de
+                      consulta ATIVA faz outra coisa — abre o seletor e remarca
+                      de verdade —, e dois botões com o mesmo nome e efeitos
+                      diferentes na mesma tela é erro de clique garantido. */}
+                  <Repeat size={12} /> Aguardar reagendamento
                 </Button>
                 <Button
                   size="sm"
