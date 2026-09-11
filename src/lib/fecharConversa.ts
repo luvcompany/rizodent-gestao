@@ -32,7 +32,12 @@ type RespostaFechar = {
   ja_fechada?: boolean;
   conversa_fechada_em: string | null;
   pesquisa: Pesquisa | null;
-  pesquisa_nao_enviada: "pesquisa_desligada" | "lead_sem_telefone" | "canal_instagram" | null;
+  pesquisa_nao_enviada:
+    | "pesquisa_desligada"
+    | "lead_sem_telefone"
+    | "canal_instagram"
+    | "pesquisa_recente"
+    | null;
 };
 
 type RespostaRpc = { data: unknown; error: unknown };
@@ -72,7 +77,31 @@ export function conversaRpcDisponivel(): Promise<boolean> {
 const MOTIVO_SEM_PESQUISA: Record<string, string> = {
   lead_sem_telefone: "Pesquisa não enviada: o lead não tem telefone.",
   canal_instagram: "Pesquisa não enviada: a conversa é pelo Instagram.",
+  pesquisa_recente: "Pesquisa não enviada: este lead já respondeu uma há menos de 15 dias.",
 };
+
+/**
+ * "Dá para oferecer a pesquisa neste lead agora?" — perguntado ANTES de a
+ * pessoa marcar a caixa, para ela não escolher uma coisa que o banco vai
+ * recusar. Mesma régua de pesquisa_pode_enviar, com o texto pronto.
+ *
+ * Enquanto a migration não está aplicada a RPC não existe: devolvemos
+ * `{ pode: true }` para o diálogo continuar como era antes — a recusa real
+ * ainda acontece no banco, e nada quebra.
+ */
+export type PesquisaOferta = {
+  pode: boolean;
+  motivo: "pesquisa_desligada" | "lead_sem_telefone" | "canal_instagram" | "pesquisa_recente" | null;
+  aviso: string | null;
+  enviada_em?: string | null;
+  liberada_em?: string | null;
+};
+
+export async function pesquisaOferecer(leadId: string): Promise<PesquisaOferta> {
+  const { data, error } = await rpc("pesquisa_oferecer", { p_lead_id: leadId });
+  if (error || !data) return { pode: true, motivo: null, aviso: null };
+  return data as PesquisaOferta;
+}
 
 /** Fecha e, se houver, envia a pesquisa. Devolve o novo conversa_fechada_em ou null em erro. */
 export async function fecharConversa(leadId: string, enviarPesquisa: boolean): Promise<string | null> {

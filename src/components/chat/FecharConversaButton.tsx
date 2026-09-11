@@ -8,7 +8,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { conversaRpcDisponivel, fecharConversa, reabrirConversa } from "@/lib/fecharConversa";
+import { conversaRpcDisponivel, fecharConversa, pesquisaOferecer, reabrirConversa, type PesquisaOferta } from "@/lib/fecharConversa";
 import { CheckCircle2, Loader2, Star, Unlock } from "lucide-react";
 
 /**
@@ -52,6 +52,27 @@ type Props = {
   onChange: (fechadaEm: string | null) => void;
 };
 
+/**
+ * "A pesquisa cabe neste lead agora?" — perguntado quando o diálogo/menu abre.
+ * Enquanto não se sabe, vale `pode: true` (o estado otimista de antes); a
+ * recusa de verdade continua sendo do banco, aqui só evitamos oferecer uma
+ * opção que vai ser recusada. A regra dos 15 dias por lead é o caso comum.
+ */
+function usePesquisaOferta(leadId: string, ativo: boolean): PesquisaOferta {
+  const [oferta, setOferta] = useState<PesquisaOferta>({ pode: true, motivo: null, aviso: null });
+  useEffect(() => {
+    if (!ativo) return;
+    let vivo = true;
+    void pesquisaOferecer(leadId).then((o) => {
+      if (vivo) setOferta(o);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [leadId, ativo]);
+  return oferta;
+}
+
 /** true enquanto não se sabe (otimista); false só quando o banco disse que a RPC não existe. */
 function useConversaRpcDisponivel(): boolean {
   const [disponivel, setDisponivel] = useState(true);
@@ -85,8 +106,10 @@ export function ConversaFechadaBadge({ fechadaEm }: { fechadaEm: string | null |
 export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Props) {
   const { userRole } = useAuth();
   const [ocupado, setOcupado] = useState(false);
+  const [aberto, setAberto] = useState(false);
   const [enviarPesquisa, setEnviarPesquisa] = useState(true);
   const disponivel = useConversaRpcDisponivel();
+  const oferta = usePesquisaOferta(leadId, aberto && !fechadaEm);
   if (!userRole || !PAPEIS_QUE_FECHAM.has(userRole)) return null;
   if (!disponivel) return null;
 
@@ -115,7 +138,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
   }
 
   return (
-    <AlertDialog>
+    <AlertDialog open={aberto} onOpenChange={setAberto}>
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
           <AlertDialogTrigger asChild>
@@ -137,12 +160,23 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogTitle>Fechar esta conversa?</AlertDialogTitle>
           <AlertDialogDescription>{TEXTO_FECHAR}</AlertDialogDescription>
         </AlertDialogHeader>
-        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-          <Checkbox checked={enviarPesquisa} onCheckedChange={(v) => setEnviarPesquisa(v === true)} className="mt-0.5" />
+        <label
+          className={`flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm ${
+            oferta.pode ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+          }`}
+        >
+          <Checkbox
+            checked={oferta.pode && enviarPesquisa}
+            disabled={!oferta.pode}
+            onCheckedChange={(v) => setEnviarPesquisa(v === true)}
+            className="mt-0.5"
+          />
           <span>
             Enviar a pesquisa de satisfação
             <span className="block text-xs text-muted-foreground">
-              Só sai se a clínica tiver a pesquisa ligada e o lead tiver WhatsApp.
+              {oferta.pode
+                ? "Só sai se a clínica tiver a pesquisa ligada e o lead tiver WhatsApp."
+                : oferta.aviso ?? "A pesquisa não pode ser enviada para este lead agora."}
             </span>
           </span>
         </label>
@@ -151,7 +185,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogAction
             onClick={async () => {
               setOcupado(true);
-              const quando = await fecharConversa(leadId, enviarPesquisa);
+              const quando = await fecharConversa(leadId, oferta.pode && enviarPesquisa);
               setOcupado(false);
               if (quando) onChange(quando);
             }}
@@ -172,6 +206,9 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
 export function FecharConversaMenuItem({ leadId, fechadaEm, onChange }: Props) {
   const { userRole } = useAuth();
   const disponivel = useConversaRpcDisponivel();
+  // O conteúdo do menu só monta quando ele abre, então a consulta acontece no
+  // clique, não a cada linha da lista.
+  const oferta = usePesquisaOferta(leadId, !fechadaEm);
   if (!userRole || !PAPEIS_QUE_FECHAM.has(userRole)) return null;
   if (!disponivel) return null;
   if (fechadaEm) {
@@ -197,15 +234,17 @@ export function FecharConversaMenuItem({ leadId, fechadaEm, onChange }: Props) {
       }}>
         <CheckCircle2 size={14} className="mr-2 text-emerald-600" /> Fechar conversa
       </DropdownMenuItem>
-      <DropdownMenuItem onClick={async (e) => {
-        e.stopPropagation();
-        if (!window.confirm(
-          `Fechar esta conversa e enviar a pesquisa de satisfação?\n\n${TEXTO_FECHAR}\n\nA pesquisa só sai se a clínica a tiver ligada e o lead tiver WhatsApp.`,
-        )) return;
-        await fechar(true);
-      }}>
-        <Star size={14} className="mr-2 text-emerald-600" /> Fechar e enviar pesquisa
-      </DropdownMenuItem>
+      {oferta.pode && (
+        <DropdownMenuItem onClick={async (e) => {
+          e.stopPropagation();
+          if (!window.confirm(
+            `Fechar esta conversa e enviar a pesquisa de satisfação?\n\n${TEXTO_FECHAR}\n\nA pesquisa só sai se a clínica a tiver ligada e o lead tiver WhatsApp.`,
+          )) return;
+          await fechar(true);
+        }}>
+          <Star size={14} className="mr-2 text-emerald-600" /> Fechar e enviar pesquisa
+        </DropdownMenuItem>
+      )}
     </>
   );
 }

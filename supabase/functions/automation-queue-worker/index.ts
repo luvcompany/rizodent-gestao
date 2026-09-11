@@ -5,6 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { mesmoMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
+import { etapaDestinoRespeitandoFunil } from "../_shared/etapaDoFunilDoLead.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -450,9 +451,16 @@ async function sendAction(
       if (!config.target_stage_id) return;
       await assertIdNoTenant(supabase, "crm_stages", config.target_stage_id, leadId);
 
+      // A etapa vem da automação; o FUNIL é o do lead. Sem isto, gravar o
+      // stage_id de outro funil arrasta o lead junto (o gatilho
+      // trg_sync_lead_pipeline_with_stage puxa o pipeline_id da etapa) e desfaz
+      // a troca de funil que a SDR acabou de fazer.
+      const destinoId = await etapaDestinoRespeitandoFunil(supabase, leadId, config.target_stage_id as string);
+      if (!destinoId) return;
+
       await supabase
         .from("crm_leads")
-        .update({ stage_id: config.target_stage_id, updated_at: new Date().toISOString() })
+        .update({ stage_id: destinoId, updated_at: new Date().toISOString() })
         .eq("id", leadId);
       return;
     }

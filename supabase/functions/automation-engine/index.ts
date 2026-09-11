@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions } from "../_shared/automationConditions.ts";
+import { etapaDestinoRespeitandoFunil } from "../_shared/etapaDoFunilDoLead.ts";
 
 // Returns true if lead passes the optional conditions in config.conditions
 async function passesConditions(supabase: any, leadId: string, config: Record<string, any>): Promise<boolean> {
@@ -714,7 +715,11 @@ Deno.serve(async (req) => {
         if (config.target_stage_id) {
           const tenantLead = await tenantDoLead(supabase, lead.id);
           if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `lead_stale lead ${lead.id}`)) {
-            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+            // A etapa vem da automação; o funil é o do lead (ver _shared/etapaDoFunilDoLead.ts).
+            const destinoId = await etapaDestinoRespeitandoFunil(supabase, lead.id, config.target_stage_id);
+            if (destinoId) {
+              await supabase.from("crm_leads").update({ stage_id: destinoId }).eq("id", lead.id);
+            }
           }
         }
 
@@ -820,7 +825,11 @@ Deno.serve(async (req) => {
         if (config.target_stage_id) {
           const tenantLead = await tenantDoLead(supabase, lead.id);
           if (await idNoTenant(supabase, "crm_stages", config.target_stage_id, tenantLead, `no_show lead ${lead.id}`)) {
-            await supabase.from("crm_leads").update({ stage_id: config.target_stage_id }).eq("id", lead.id);
+            // A etapa vem da automação; o funil é o do lead (ver _shared/etapaDoFunilDoLead.ts).
+            const destinoId = await etapaDestinoRespeitandoFunil(supabase, lead.id, config.target_stage_id);
+            if (destinoId) {
+              await supabase.from("crm_leads").update({ stage_id: destinoId }).eq("id", lead.id);
+            }
           }
         }
 
