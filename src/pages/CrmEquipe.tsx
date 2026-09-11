@@ -580,8 +580,8 @@ function MotivosDePausa() {
         <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
           No histórico ainda há pausas com motivo que não está mais nesta lista:{" "}
           {orfaos.map((o) => `${o.chave} (${o.usos})`).join(", ")}. O relatório de ponto continua
-          mostrando essas pausas — para o nome voltar a aparecer bonito, crie um motivo com o mesmo
-          nome.
+          mostrando essas pausas, com a chave no lugar do nome — para o nome voltar, crie um motivo
+          com a MESMA chave (o texto entre parênteses acima).
         </p>
       )}
 
