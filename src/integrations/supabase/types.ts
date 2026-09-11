@@ -5408,6 +5408,7 @@ export type Database = {
         Returns: string
       }
       api4com_dial_enabled: { Args: never; Returns: boolean }
+      aplicar_migracao_texto: { Args: { p_sql: string }; Returns: undefined }
       assert_tenant_do_chamador: {
         Args: { _tenant: string }
         Returns: undefined
