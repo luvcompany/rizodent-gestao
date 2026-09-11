@@ -98,10 +98,37 @@ export async function executeAction(
         const currentStageId = stageId;
         if (currentStageId === config.target_stage_id) break;
         
-        await supabase.from("crm_leads").update({ 
+        // A etapa de destino pode estar em OUTRO funil — nesse caso o banco
+        // precisa receber o pipeline junto, senão o gatilho de coerência recusa
+        // a gravação. E a recusa (ou a RLS devolvendo zero linhas em silêncio)
+        // não pode seguir para a mensagem de sistema: o lead ficaria parado com
+        // a conversa anunciando "Etapa alterada".
+        const { data: etapaDestino } = await supabase
+          .from("crm_stages")
+          .select("id, pipeline_id")
+          .eq("id", config.target_stage_id as string)
+          .maybeSingle();
+
+        const payloadMove: { stage_id: string; updated_at: string; pipeline_id?: string } = {
           stage_id: config.target_stage_id as string,
           updated_at: new Date().toISOString(),
-        }).eq("id", leadId);
+        };
+        if (etapaDestino?.pipeline_id) payloadMove.pipeline_id = etapaDestino.pipeline_id;
+
+        const { data: movidoPelaAutomacao, error: erroMoveAutomacao } = await supabase
+          .from("crm_leads")
+          .update(payloadMove)
+          .eq("id", leadId)
+          .select("id");
+        if (erroMoveAutomacao || !movidoPelaAutomacao || movidoPelaAutomacao.length === 0) {
+          console.error(
+            "[Automation] move_stage não gravou:",
+            leadId,
+            config.target_stage_id,
+            erroMoveAutomacao?.message ?? "zero linhas (RLS)",
+          );
+          break;
+        }
 
         // Histórico de etapa é escrito só pelo gatilho sync_lead_stage_history.
 

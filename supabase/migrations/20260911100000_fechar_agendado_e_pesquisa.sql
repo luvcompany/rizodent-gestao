@@ -1148,34 +1148,42 @@ $fn$;
 --   (SELECT pg_get_functiondef(p.oid) ILIKE '%conversa_fechada_auto%'
 --      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
 --     WHERE n.nspname='public' AND p.proname='relatorio_sdr_calc')                     AS relatorio_filtra,
---   (SELECT pg_get_functiondef(p.oid) ILIKE '%agendado%'
+--   -- a lista literal do gatilho irmão (não vale procurar a palavra "agendado":
+--   -- ela aparece nos comentários do corpo)
+--   (SELECT pg_get_functiondef(p.oid) LIKE '%NOT IN (''reagendado'', ''relacionamento'')%'
 --      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
---     WHERE n.nspname='public' AND p.proname='conversa_fecha_na_etapa')                AS etapa_ainda_fecha_agendado;
--- -- esperado: 1,1,1,1,true,0,1,1,true,false
+--     WHERE n.nspname='public' AND p.proname='conversa_fecha_na_etapa')                AS etapa_so_reag_e_relac;
+-- -- esperado: 1,1,1,1,true,0,1,1,true,true
 --
 --
--- ENSAIO (desfeito) — as cinco perguntas que importam. Tudo dentro de um DO que
--- termina em RAISE EXCEPTION: lead de mentira, mensagens, linhas de fila e de
--- pesquisa somem no rollback (inclusive o ping do painel de TV, que o pg_net só
--- enfileira na transação).
--- Nota: pesquisa_pendente_tomar NÃO entra aqui porque passa por
--- conversa_lead_alcancavel, que exige auth.uid() — no SQL editor não há sessão
--- de usuária. Ela se testa pela tela, com a SDR dona do lead.
+-- ENSAIOS — RODADOS DE VERDADE, e desfeitos.
+--
+-- Onde: Postgres 17 local, descartável, com um esqueleto das tabelas e funções
+-- que esta migration toca (crm_leads, crm_stages, crm_pesquisa_config/respostas,
+-- crm_rodizio_config, messages, profiles, user_roles, auth.uid(),
+-- conversa_lead_alcancavel, normaliza_nome_etapa, rodizio_msg_sistema…). A
+-- migration subiu inteira, sem erro, e os blocos abaixo rodaram dentro de
+-- transações que terminaram em ROLLBACK. NADA foi executado no banco de
+-- produção. Os resultados anotados em cada linha são os que saíram.
+--
+-- Para repetir em produção (SQL editor), use os mesmos blocos trocando o
+-- RAISE NOTICE do fim por RAISE EXCEPTION, para o Postgres desfazer tudo.
+--
+-- ---------------------------------------------------------------- ENSAIO A
+-- O caminho automático inteiro, sem precisar de sessão de usuária.
 --
 -- DO $t$
 -- DECLARE
---   v_pipe uuid; v_novo uuid; v_agen uuid; v_outra uuid; v_lead uuid;
+--   v_pipe uuid; v_novo uuid; v_agen uuid; v_outra uuid; v_rel uuid; v_lead uuid;
 --   v_em timestamptz; v_por uuid; v_auto boolean; v_prazo timestamptz;
 --   v_n integer; v_pend boolean; v_pode boolean; v_erro text; rep text := E'\n';
 -- BEGIN
 --   SELECT p.id INTO v_pipe FROM public.crm_pipelines p
 --    WHERE p.tenant_id = '00000000-0000-0000-0000-000000000010' AND p.name = 'Funil Principal';
---   SELECT s.id INTO v_novo FROM public.crm_stages s
---    WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'novo lead';
---   SELECT s.id INTO v_agen FROM public.crm_stages s
---    WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'agendado';
---   SELECT s.id INTO v_outra FROM public.crm_stages s
---    WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'em atendimento';
+--   SELECT s.id INTO v_novo  FROM public.crm_stages s WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'novo lead';
+--   SELECT s.id INTO v_agen  FROM public.crm_stages s WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'agendado';
+--   SELECT s.id INTO v_outra FROM public.crm_stages s WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'em atendimento';
+--   SELECT s.id INTO v_rel   FROM public.crm_stages s WHERE s.pipeline_id = v_pipe AND public.normaliza_nome_etapa(s.name) = 'relacionamento';
 --
 --   -- distribuido_em preenchido de propósito: rodizio_lead_na_fila exige
 --   -- distribuido_em NULL, então o lead do ensaio não entra no rodízio.
@@ -1184,47 +1192,42 @@ $fn$;
 --           'ENSAIO fechar agendado', '5577999999999', 'Retroativo', now())
 --   RETURNING id INTO v_lead;
 --
---   -- 1) ENTROU EM AGENDADO: enfileira com prazo de 15 min e NÃO fecha agora.
+--   -- 1) entrou em Agendado: enfileira com 15 min e NÃO fecha agora
 --   UPDATE public.crm_leads SET stage_id = v_agen WHERE id = v_lead;
 --   SELECT f.fechar_em INTO v_prazo FROM public.crm_fechamentos_agendados f WHERE f.lead_id = v_lead;
 --   SELECT conversa_fechada_em INTO v_em FROM public.crm_leads WHERE id = v_lead;
 --   rep := rep || '1) enfileirou=' || (v_prazo IS NOT NULL)
 --              || ' | prazo ~15min=' || (v_prazo BETWEEN now() + interval '14 minutes' AND now() + interval '16 minutes')
---              || ' | ainda aberta=' || (v_em IS NULL) || ' (esperado true/true/true)' || E'\n';
+--              || ' | ainda aberta=' || (v_em IS NULL) || E'\n';          -- saiu: true | true | true
 --
---   -- 2) ANTES DA HORA A VARREDURA NÃO TOCA.
+--   -- 2) antes da hora a varredura não toca
 --   PERFORM public.fechar_conversas_agendadas();
 --   SELECT conversa_fechada_em INTO v_em FROM public.crm_leads WHERE id = v_lead;
---   rep := rep || '2) varredura antes da hora: continua aberta=' || (v_em IS NULL) || ' (esperado true)' || E'\n';
+--   rep := rep || '2) antes da hora: continua aberta=' || (v_em IS NULL) || E'\n';   -- saiu: true
 --
---   -- 3) NA HORA: fecha, autoria nula, carimbo de automático, aviso no chat e a
---   --    linha vira "pesquisa pendente".
+--   -- 3) na hora: fecha, autoria nula, carimbo automático, 1 aviso no chat,
+--   --    e a linha da fila vira "pesquisa pendente"
 --   UPDATE public.crm_fechamentos_agendados SET fechar_em = now() - interval '1 minute' WHERE lead_id = v_lead;
 --   PERFORM public.fechar_conversas_agendadas();
---   SELECT conversa_fechada_em, conversa_fechada_por, conversa_fechada_auto
---     INTO v_em, v_por, v_auto FROM public.crm_leads WHERE id = v_lead;
+--   SELECT conversa_fechada_em, conversa_fechada_por, conversa_fechada_auto INTO v_em, v_por, v_auto
+--     FROM public.crm_leads WHERE id = v_lead;
 --   SELECT count(*) INTO v_n FROM public.messages
 --    WHERE lead_id = v_lead AND status = 'system' AND content LIKE '🔒 Conversa fechada automaticamente%';
 --   SELECT f.pesquisa_pendente INTO v_pend FROM public.crm_fechamentos_agendados f WHERE f.lead_id = v_lead;
 --   rep := rep || '3) fechou=' || (v_em IS NOT NULL) || ' | autoria nula=' || (v_por IS NULL)
---              || ' | auto=' || COALESCE(v_auto, false) || ' | avisos no chat=' || v_n
---              || ' | pesquisa pendente=' || COALESCE(v_pend, false)
---              || ' (esperado true/true/true/1/true)' || E'\n';
+--              || ' | auto=' || COALESCE(v_auto, false) || ' | avisos=' || v_n
+--              || ' | pesquisa pendente=' || COALESCE(v_pend, false) || E'\n';  -- saiu: true|true|true|1|true
 --
---   -- 4) TRAVA 1 — REABRIR NÃO VIRA NOVO FECHAMENTO. Reabre e roda a varredura
---   --    dez vezes: nada refecha, porque a linha de fechamento já saiu e só uma
---   --    NOVA entrada em Agendado enfileira de novo.
+--   -- 4) TRAVA 1 — reabriu: rodar a varredura dez vezes não refecha nada
 --   UPDATE public.crm_leads SET conversa_fechada_em = NULL, conversa_fechada_por = NULL,
 --          conversa_fechada_auto = false WHERE id = v_lead;
 --   FOR v_n IN 1..10 LOOP PERFORM public.fechar_conversas_agendadas(); END LOOP;
 --   SELECT conversa_fechada_em INTO v_em FROM public.crm_leads WHERE id = v_lead;
 --   SELECT count(*) INTO v_n FROM public.messages
 --    WHERE lead_id = v_lead AND status = 'system' AND content LIKE '🔒 Conversa fechada automaticamente%';
---   rep := rep || '4) reabriu e rodou 10x: continua aberta=' || (v_em IS NULL)
---              || ' | avisos no chat ainda=' || v_n || ' (esperado true/1)' || E'\n';
+--   rep := rep || '4) reabriu e rodou 10x: aberta=' || (v_em IS NULL) || ' | avisos ainda=' || v_n || E'\n';  -- saiu: true | 1
 --
---   -- 5) TRAVA 3 — P3. Com uma pesquisa de hoje, pesquisa_pode_enviar diz NÃO e
---   --    o índice único recusa a segunda linha do mesmo dia.
+--   -- 5) TRAVA 3 — com pesquisa de hoje, a régua diz não e o índice recusa a 2ª
 --   INSERT INTO public.crm_pesquisa_respostas (tenant_id, lead_id, lead_nome, lead_telefone, enviada_em, canal)
 --   VALUES ('00000000-0000-0000-0000-000000000010', v_lead, 'ENSAIO', '5577999999999', now(), 'whatsapp');
 --   v_pode := public.pesquisa_pode_enviar(v_lead);
@@ -1234,62 +1237,57 @@ $fn$;
 --     v_erro := 'passou (ERRADO)';
 --   EXCEPTION WHEN unique_violation THEN v_erro := 'recusada pelo indice (certo)';
 --   END;
---   rep := rep || '5) pesquisa_pode_enviar=' || v_pode || ' | 2a pesquisa no mesmo dia: ' || v_erro
---              || ' (esperado false / recusada)' || E'\n';
+--   rep := rep || '5) pode_enviar=' || v_pode || ' | 2a no mesmo dia: ' || v_erro || E'\n';  -- saiu: false | recusada
 --
---   -- 6) 14 DIAS DEPOIS AINDA NÃO PODE; 16 DIAS DEPOIS PODE.
+--   -- 6) a janela é de dias, não de "uma por lead para sempre"
 --   UPDATE public.crm_pesquisa_respostas SET enviada_em = now() - interval '14 days' WHERE lead_id = v_lead;
---   v_pode := public.pesquisa_pode_enviar(v_lead);
---   rep := rep || '6a) com pesquisa de 14 dias atras: pode=' || v_pode || ' (esperado false)' || E'\n';
+--   rep := rep || '6a) 14 dias atras: pode=' || public.pesquisa_pode_enviar(v_lead) || E'\n';   -- saiu: false
 --   UPDATE public.crm_pesquisa_respostas SET enviada_em = now() - interval '16 days' WHERE lead_id = v_lead;
---   v_pode := public.pesquisa_pode_enviar(v_lead);
---   rep := rep || '6b) com pesquisa de 16 dias atras: pode=' || v_pode || ' (esperado true)' || E'\n';
+--   rep := rep || '6b) 16 dias atras: pode=' || public.pesquisa_pode_enviar(v_lead) || E'\n';   -- saiu: true
 --
---   -- 7) TRAVA 2 — SAIR DA ETAPA LIMPA A FILA.
---   UPDATE public.crm_leads SET stage_id = v_agen WHERE id = v_lead;   -- reentra: enfileira
---   UPDATE public.crm_leads SET stage_id = v_outra WHERE id = v_lead;  -- sai: linha some
+--   -- 7) TRAVA 2 — sair da etapa limpa a fila
+--   UPDATE public.crm_leads SET stage_id = v_agen  WHERE id = v_lead;   -- reentra: enfileira
+--   UPDATE public.crm_leads SET stage_id = v_outra WHERE id = v_lead;   -- sai: a linha some
 --   SELECT count(*) INTO v_n FROM public.crm_fechamentos_agendados WHERE lead_id = v_lead;
---   rep := rep || '7) saiu de Agendado: linhas na fila=' || v_n || ' (esperado 0)' || E'\n';
+--   rep := rep || '7) saiu de Agendado: linhas na fila=' || v_n || E'\n';   -- saiu: 0
 --
---   RAISE EXCEPTION 'ENSAIO (desfeito): %', rep;
+--   -- 8) Relacionamento continua fechando NA HORA (gatilho irmão), com carimbo auto
+--   UPDATE public.crm_leads SET conversa_fechada_em = NULL, conversa_fechada_auto = false WHERE id = v_lead;
+--   UPDATE public.crm_leads SET stage_id = v_rel WHERE id = v_lead;
+--   SELECT conversa_fechada_em, conversa_fechada_auto INTO v_em, v_auto FROM public.crm_leads WHERE id = v_lead;
+--   rep := rep || '8) Relacionamento: fechou na hora=' || (v_em IS NOT NULL)
+--              || ' | auto=' || COALESCE(v_auto, false) || E'\n';          -- saiu: true | true
+--
+--   -- 9) Agendado NÃO fecha mais na hora: ele espera a fila
+--   UPDATE public.crm_leads SET conversa_fechada_em = NULL, conversa_fechada_auto = false WHERE id = v_lead;
+--   UPDATE public.crm_leads SET stage_id = v_agen WHERE id = v_lead;
+--   SELECT conversa_fechada_em INTO v_em FROM public.crm_leads WHERE id = v_lead;
+--   SELECT count(*) INTO v_n FROM public.crm_fechamentos_agendados WHERE lead_id = v_lead;
+--   rep := rep || '9) Agendado: aberta=' || (v_em IS NULL) || ' | enfileirada=' || v_n || E'\n';  -- saiu: true | 1
+--
+--   RAISE EXCEPTION 'ENSAIO A (desfeito): %', rep;
 -- END $t$;
 --
+-- ---------------------------------------------------------------- ENSAIO B
+-- As quatro saídas da fila ("deixou de fazer sentido"), rodadas do mesmo jeito.
+-- Resultados obtidos:
+--   i)   pendência parada há 25 h  -> fila=0, 1 aviso ⚠️ no chat, 0 pesquisas criadas
+--   ii)  lead bloqueado            -> fila=0, conversa NÃO fechada, 0 mensagens escritas
+--   iii) alguém já tinha fechado   -> fila=0, carimbo e autoria antigos INTACTOS
+--   iv)  fechar_agendado_apos_min=0 -> nem enfileira (cliente que desligou a régua)
 --
--- ENSAIO 2 (desfeito) — o relatório da SDR não infla. Escolhe uma SDR de
--- verdade, conta as conversas fechadas dela hoje, marca um lead dela como
--- fechado AUTOMATICAMENTE e confere que o número não subiu; depois marca como
--- fechado POR ELA e confere que subiu.
---
--- DO $t$
--- DECLARE
---   v_sdr uuid; v_lead uuid; v_antes integer; v_auto integer; v_humano integer; rep text := E'\n';
--- BEGIN
---   SELECT p.id INTO v_sdr FROM public.profiles p
---    WHERE p.tenant_id = '00000000-0000-0000-0000-000000000010'
---      AND EXISTS (SELECT 1 FROM public.user_roles ur WHERE ur.user_id = p.id AND ur.role = 'sdr'::app_role)
---    LIMIT 1;
---   SELECT l.id INTO v_lead FROM public.crm_leads l
---    WHERE l.tenant_id = '00000000-0000-0000-0000-000000000010' AND l.assigned_to = v_sdr
---      AND l.conversa_fechada_em IS NULL LIMIT 1;
---
---   SELECT r.conversas_fechadas INTO v_antes
---     FROM public.relatorio_sdr_calc('00000000-0000-0000-0000-000000000010',
---            (now() AT TIME ZONE 'America/Bahia')::date, (now() AT TIME ZONE 'America/Bahia')::date, v_sdr, false) r;
---
---   UPDATE public.crm_leads SET conversa_fechada_em = now(), conversa_fechada_por = NULL,
---          conversa_fechada_auto = true WHERE id = v_lead;
---   SELECT r.conversas_fechadas INTO v_auto
---     FROM public.relatorio_sdr_calc('00000000-0000-0000-0000-000000000010',
---            (now() AT TIME ZONE 'America/Bahia')::date, (now() AT TIME ZONE 'America/Bahia')::date, v_sdr, false) r;
---
---   UPDATE public.crm_leads SET conversa_fechada_por = v_sdr, conversa_fechada_auto = false WHERE id = v_lead;
---   SELECT r.conversas_fechadas INTO v_humano
---     FROM public.relatorio_sdr_calc('00000000-0000-0000-0000-000000000010',
---            (now() AT TIME ZONE 'America/Bahia')::date, (now() AT TIME ZONE 'America/Bahia')::date, v_sdr, false) r;
---
---   rep := rep || 'antes=' || v_antes || ' | fechado pelo robo=' || v_auto
---              || ' | fechado por ela=' || v_humano
---              || ' (esperado: robo = antes, ela = antes + 1)' || E'\n';
---   RAISE EXCEPTION 'ENSAIO 2 (desfeito): %', rep;
--- END $t$;
+-- ---------------------------------------------------------------- ENSAIO C
+-- Com sessão de usuária (a tela). No SQL editor não há auth.uid(), então este
+-- rodou na réplica local com um auth.uid() de mentira lendo um GUC; em produção
+-- ele se repete pela própria tela, com a SDR dona do lead. Resultados obtidos:
+--   A) conversa_fechar(lead, true)                -> pesquisa criada, sem motivo de recusa,
+--      texto "Olá, Maria! … de 1 a 5, como você avalia…" (primeiro nome e escala aplicados)
+--   B) reabriu e fechou de novo pedindo pesquisa  -> pesquisa=null,
+--      pesquisa_nao_enviada='pesquisa_recente', o lead continua com UMA linha de pesquisa
+--      (é exatamente o pedido P3 do dono)
+--   C) depois do fechamento automático            -> pesquisa_pendentes() devolve 1 linha para a SDR dona
+--   D) pesquisa_pendente_tomar(lead)              -> devolve resposta_id + telefone + texto pronto
+--   E) tomar de novo (2ª aba)                     -> 'sem_pendencia', e continua UMA linha de pesquisa
+--   F) pesquisa_pendentes() depois de tomar       -> 0
+--   G) relatorio_sdr_calc no dia com 1 fechamento do robô e 1 dela -> conversas_fechadas = 1
 -- =============================================================================

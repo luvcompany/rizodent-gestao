@@ -186,6 +186,17 @@ END $policies$;
 -- alguém criar uma policy FOR ALL TO public sem perceber.
 REVOKE ALL ON TABLE public.crm_ponto_motivos FROM anon;
 
+-- E A ESCRITA DIRETA DO GESTOR TAMBÉM FECHA AQUI. Sem estas duas linhas, o
+-- comentário acima seria meia verdade: `authenticated` tem INSERT/UPDATE/DELETE
+-- por privilégio padrão do projeto, e as policies do gestor deixariam ele
+-- escrever na tabela pelo PostgREST, PULANDO todas as travas que vivem nas RPCs
+-- — a que impede esvaziar a lista (e deixar a SDR sem como pausar) e a que
+-- impede apagar motivo já usado (o relatório perderia o rótulo). O gestor passa
+-- a mexer SÓ pelas funções, que é onde as regras estão escritas. Ler continua
+-- liberado: é a lista que a tela do SDR e a do CRC mostram.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.crm_ponto_motivos FROM authenticated;
+GRANT SELECT ON TABLE public.crm_ponto_motivos TO authenticated;
+
 -- ======================================= 2. semeadura (agora e para o futuro)
 -- Função interna: só serve para um cliente que não tem NENHUM motivo cadastrado
 -- não deixar a SDR sem como pausar. Não é uma RPC de tela — fica fora do

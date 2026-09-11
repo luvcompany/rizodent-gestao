@@ -83,6 +83,23 @@ SET LOCAL lock_timeout = '5s';
 
 -- ============================================================ 1. uma linha por PAUSA
 -- Serve à lista da tela e é a fonte do "motivo mais frequente" do resumo.
+-- ============================================== 0. o rótulo de um motivo
+-- Ponto ÚNICO de tradução chave -> rótulo. Antes havia três listas fixas do mesmo
+-- trio café/almoço/outro espalhadas (ponto_pausar, a tela do SDR e o aviso de
+-- pausa longa do gestor); o CRC agora configura a lista, e qualquer cópia fixa
+-- passaria a mentir. Motivo apagado depois de usado cai no COALESCE e volta como
+-- a própria chave, para o relatório histórico não quebrar nem sumir com a pausa.
+CREATE OR REPLACE FUNCTION public.ponto_rotulo_motivo(p_tenant uuid, p_chave text)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $fn$
+  SELECT COALESCE(
+    (SELECT m.rotulo FROM public.crm_ponto_motivos m
+      WHERE m.tenant_id = p_tenant AND m.chave = p_chave),
+    NULLIF(btrim(COALESCE(p_chave, '')), ''),
+    'sem motivo');
+$fn$;
+REVOKE ALL ON FUNCTION public.ponto_rotulo_motivo(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ponto_rotulo_motivo(uuid, text) TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.ponto_pausas(p_de date, p_ate date)
 RETURNS TABLE(
   user_id  uuid,
@@ -94,6 +111,12 @@ RETURNS TABLE(
   minutos  integer,
   segundos integer,
   motivo   text,
+  -- 11/09: o rótulo vem de crm_ponto_motivos (o CRC configura a lista) e o
+  -- detalhe é o texto que a SDR escreve quando o motivo pede. Sem estes dois, a
+  -- tela mostrava a CHAVE crua ('ligacao', 'reuniao_com_a_gerencia') e o motivo
+  -- escrito não chegava a lugar nenhum — a SDR escrevia e ninguém lia.
+  rotulo   text,
+  detalhe  text,
   em_curso boolean,
   fim_por  text
 )
@@ -114,6 +137,7 @@ DECLARE
   v_sessao_vale boolean;    -- a sessão abriu dentro do período pedido?
   v_pausa_desde timestamptz;
   v_pausa_motivo text;
+  v_pausa_detalhe text;
   v_fecha timestamptz;
   v_fecha_por text;
 BEGIN
@@ -144,10 +168,10 @@ BEGIN
      ORDER BY 2
   LOOP
     v_aberta := false; v_sessao_abriu := NULL; v_sessao_vale := false;
-    v_pausa_desde := NULL; v_pausa_motivo := NULL;
+    v_pausa_desde := NULL; v_pausa_motivo := NULL; v_pausa_detalhe := NULL;
 
     FOR v_ev IN
-      SELECT e.tipo, e.motivo AS motivo_ev, e.em
+      SELECT e.tipo, e.motivo AS motivo_ev, e.motivo_detalhe AS detalhe_ev, e.em
         FROM public.crm_ponto_eventos e
        WHERE e.tenant_id = v_tenant AND e.user_id = r.uid
          AND e.em >= v_de AND e.em <= v_ler_ate
@@ -172,11 +196,13 @@ BEGIN
           segundos := GREATEST(0, (EXTRACT(EPOCH FROM (v_fecha - v_pausa_desde)))::integer);
           minutos  := segundos / 60;
           motivo   := v_pausa_motivo;
+          rotulo   := public.ponto_rotulo_motivo(v_tenant, v_pausa_motivo);
+          detalhe  := v_pausa_detalhe;
           em_curso := false;
           fim_por  := v_fecha_por;
           RETURN NEXT;
         END IF;
-        v_pausa_desde := NULL; v_pausa_motivo := NULL;
+        v_pausa_desde := NULL; v_pausa_motivo := NULL; v_pausa_detalhe := NULL;
       END IF;
 
       -- (3) transições de sessão — cópia da máquina de estados de ponto_sessoes
@@ -189,6 +215,7 @@ BEGIN
       ELSIF v_ev.tipo = 'pausar' AND v_pausa_desde IS NULL THEN
         v_pausa_desde := v_ev.em;
         v_pausa_motivo := v_ev.motivo_ev;
+        v_pausa_detalhe := v_ev.detalhe_ev;
       ELSIF v_ev.tipo = 'encerrar' THEN
         v_aberta := false; v_sessao_abriu := NULL; v_sessao_vale := false;
       END IF;
@@ -205,6 +232,8 @@ BEGIN
       segundos := GREATEST(0, (EXTRACT(EPOCH FROM (v_ler_ate - v_pausa_desde)))::integer);
       minutos  := segundos / 60;
       motivo   := v_pausa_motivo;
+      rotulo   := public.ponto_rotulo_motivo(v_tenant, v_pausa_motivo);
+      detalhe  := v_pausa_detalhe;
       em_curso := true;
       fim_por  := 'em_curso';
       RETURN NEXT;
@@ -230,11 +259,13 @@ RETURNS TABLE(
   pausas               integer,
   media_diaria_min     integer,
   motivo_top           text,
+  rotulo_top           text,   -- 11/09: o nome que o CRC configurou, já traduzido
   motivo_top_qtd       integer,
   estado_agora         text,
   aberto_desde         timestamptz,
   pausado_desde        timestamptz,
   motivo_pausa_atual   text,
+  rotulo_pausa_atual   text,
   minutos_sessao_atual integer,
   minutos_pausa_atual  integer
 )
@@ -348,18 +379,20 @@ BEGIN
 
     estado_agora := COALESCE(v_atual.estado, 'fechado');
     IF estado_agora = 'fechado' THEN
-      aberto_desde := NULL; pausado_desde := NULL; motivo_pausa_atual := NULL;
+      aberto_desde := NULL; pausado_desde := NULL; motivo_pausa_atual := NULL; rotulo_pausa_atual := NULL;
       minutos_sessao_atual := 0; minutos_pausa_atual := 0;
     ELSE
       aberto_desde         := v_atual.abriu_em;
       pausado_desde        := v_atual.pausa_desde;
       motivo_pausa_atual   := v_atual.motivo_pausa;
+      rotulo_pausa_atual   := public.ponto_rotulo_motivo(v_tenant, v_atual.motivo_pausa);
       minutos_sessao_atual := COALESCE(v_atual.minutos_trabalhados, 0);
       minutos_pausa_atual  := COALESCE(v_atual.minutos_pausa, 0);
     END IF;
 
     media_diaria_min := CASE WHEN dias > 0 THEN minutos_trabalhados / dias ELSE 0 END;
     motivo_top       := v_motivos -> r.uid::text ->> 'motivo';
+    rotulo_top       := public.ponto_rotulo_motivo(v_tenant, v_motivos -> r.uid::text ->> 'motivo');
     motivo_top_qtd   := COALESCE((v_motivos -> r.uid::text ->> 'qtd')::integer, 0);
     user_id := r.uid; nome := r.nome; papel := r.papel;
     RETURN NEXT;

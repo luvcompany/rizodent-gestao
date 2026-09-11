@@ -178,10 +178,18 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
     // Movimento automático: se o banco recusar (erro ou RLS com zero linhas),
     // não move o card nem anuncia — o toast só sai com a gravação confirmada.
+    // E a recusa deixou de ser muda: quem lançou o pagamento precisa saber que
+    // o lead ficou onde estava, para pedir a movimentação a quem pode.
     if (!error && moved && moved.length > 0) {
       onLeadUpdated({ stage_id: contratadoStage.id } as any);
       toast.success("Lead movido para Contratado 🎉");
+      return;
     }
+    toast.error(
+      error?.message
+        ? `O pagamento foi salvo, mas o lead não foi para Contratado: ${error.message}`
+        : "O pagamento foi salvo, mas seu perfil não tem permissão para mover o lead para Contratado.",
+    );
   };
 
   const addPacienteLink = async (pacienteId: string, makePrimary: boolean) => {

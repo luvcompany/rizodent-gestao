@@ -1372,18 +1372,81 @@ async function executeNode(
           return {};
         }
 
+        // O bot NÃO desfaz troca de funil feita por uma pessoa. O nó guarda um
+        // stage_id fixo (o bot "Áudio Inicial", por exemplo, aponta para
+        // "Conversando" do Funil Principal); se a SDR já tinha levado o lead
+        // para um funil de especialidade, aplicar esse id arrastava o lead de
+        // volta segundos depois — e, como a etapa tem o mesmo nome nos dois
+        // funis, nem a mensagem de sistema denunciava ("Conversando →
+        // Conversando"). Caso comprovado: lead JOSEFINA em 11/09/2026, movido
+        // para Faceta às 13:47:38 e devolvido ao Funil Principal às 13:48:05.
+        //
+        // A trava é estreita de propósito: só vale quando foi uma PESSOA que
+        // colocou o lead no funil atual, e há menos de 24h. Fora disso o bot
+        // segue trocando de funil como sempre (é assim que o follow-up manda o
+        // lead frio para o funil Nutrição).
+        const JANELA_DA_PESSOA_MS = 24 * 60 * 60 * 1000;
+        let destinoStageId: string = data.stageId;
+        let destinoPipelineId: string | null = (destStage as any).pipeline_id ?? lead.pipeline_id ?? null;
+        let toName = (destStage as any).name || "?";
+
+        if (lead.pipeline_id && destinoPipelineId && destinoPipelineId !== lead.pipeline_id) {
+          // Entradas ainda abertas (a passagem atual do lead). Vêm mais de uma
+          // quando a tela grava o histórico além do gatilho, e só uma delas
+          // carrega o changed_by — por isso olhamos todas, não só a última.
+          const { data: entradasAbertas } = await supabase
+            .from("crm_lead_stage_history")
+            .select("changed_by, entered_at")
+            .eq("lead_id", lead.id)
+            .is("exited_at", null)
+            .order("entered_at", { ascending: false })
+            .limit(5);
+
+          const pessoaMoveuAgoraPouco = (entradasAbertas ?? []).some((e: any) => {
+            if (!e?.changed_by || !e?.entered_at) return false;
+            return Date.now() - new Date(e.entered_at).getTime() < JANELA_DA_PESSOA_MS;
+          });
+
+          if (pessoaMoveuAgoraPouco) {
+            // Respeita o funil escolhido pela pessoa: só sincroniza a etapa,
+            // usando a equivalente (mesmo nome pela régua normaliza_nome_etapa)
+            // dentro do funil onde o lead está.
+            const { data: equivalenteId, error: eqErr } = await supabase.rpc("etapa_equivalente_no_funil", {
+              _stage_id: data.stageId,
+              _pipeline_id: lead.pipeline_id,
+            });
+            if (eqErr || !equivalenteId) {
+              console.warn(`[bot-engine] move_stage abortado — o lead ${lead.id} foi movido por uma pessoa para o funil ${lead.pipeline_id} e a etapa ${data.stageId} é de outro funil sem equivalente (${eqErr?.message ?? "sem equivalente"})`);
+              return {};
+            }
+            if (equivalenteId === lead.stage_id) {
+              // Já está na etapa equivalente do funil dele: nada a fazer.
+              return {};
+            }
+            destinoStageId = equivalenteId as string;
+            destinoPipelineId = lead.pipeline_id;
+            const { data: eqStage } = await supabase.from("crm_stages").select("name").eq("id", destinoStageId).maybeSingle();
+            toName = (eqStage as any)?.name || toName;
+          }
+        }
+
         // pipeline_id acompanha a etapa: mover só stage_id deixava o lead num funil
         // que não contém a etapa dele.
-        await supabase
+        const { data: movidoPeloBot, error: erroMover } = await supabase
           .from("crm_leads")
-          .update({ stage_id: data.stageId, pipeline_id: (destStage as any).pipeline_id ?? lead.pipeline_id })
-          .eq("id", lead.id);
-        await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() })
-          .eq("lead_id", lead.id).eq("stage_id", lead.stage_id).is("exited_at", null);
-        await supabase.from("crm_lead_stage_history").insert({ lead_id: lead.id, stage_id: data.stageId });
+          .update({ stage_id: destinoStageId, pipeline_id: destinoPipelineId ?? lead.pipeline_id })
+          .eq("id", lead.id)
+          .select("id");
+        if (erroMover || !movidoPeloBot || movidoPeloBot.length === 0) {
+          console.warn(`[bot-engine] move_stage não gravou — lead ${lead.id}, etapa ${destinoStageId} (${erroMover?.message ?? "zero linhas"})`);
+          return {};
+        }
+        // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history,
+        // que fecha a passagem anterior e grava from_stage_id. A escrita manual
+        // daqui duplicava cada passagem do bot (duas linhas no mesmo instante,
+        // uma delas sem etapa de origem).
         const { data: fromStage } = await supabase.from("crm_stages").select("name").eq("id", lead.stage_id).maybeSingle();
         const fromName = (fromStage as any)?.name || "?";
-        const toName = (destStage as any).name || "?";
         await supabase.from("messages").insert({
           lead_id: lead.id,
           tenant_id: lead.tenant_id ?? null,

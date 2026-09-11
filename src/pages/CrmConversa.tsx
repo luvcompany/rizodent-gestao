@@ -644,6 +644,7 @@ export default function CrmConversa() {
           <PipelineStageSelector
             stages={chat.stages}
             currentStageId={lead.stage_id}
+            currentPipelineId={lead.pipeline_id}
             onStageChange={handleStageChange}
           />
 

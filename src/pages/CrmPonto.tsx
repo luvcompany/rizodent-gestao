@@ -59,11 +59,13 @@ type ResumoPonto = {
   pausas: number;
   media_diaria_min: number;
   motivo_top: string | null;
+  rotulo_top: string | null;
   motivo_top_qtd: number;
   estado_agora: EstadoPonto;
   aberto_desde: string | null;
   pausado_desde: string | null;
   motivo_pausa_atual: string | null;
+  rotulo_pausa_atual: string | null;
   minutos_sessao_atual: number;
   minutos_pausa_atual: number;
 };
@@ -78,6 +80,8 @@ type PausaPonto = {
   minutos: number;
   segundos: number;
   motivo: string | null;
+  rotulo: string | null;
+  detalhe: string | null;
   em_curso: boolean;
   fim_por: string;
 };
@@ -110,9 +114,15 @@ const diaCurto = (d: string): string => {
   return p.length === 3 ? `${p[2]}/${p[1]}` : String(d);
 };
 
-const MOTIVOS: Record<string, string> = { cafe: "Café", almoco: "Almoço", outro: "Outro" };
-const rotuloMotivo = (m: string | null | undefined): string =>
-  m ? MOTIVOS[m] ?? m : "sem motivo";
+// O RÓTULO VEM DO BANCO. Havia aqui um mapa fixo { cafe, almoco, outro } — a
+// quarta cópia da mesma lista espalhada pelo sistema. Desde 11/09 o CRC configura
+// os motivos na aba Equipe, então "Ligação", "Banheiro" ou qualquer motivo novo
+// apareceria como a chave crua ('ligacao'), e um motivo renomeado continuaria com
+// o nome velho. Agora ponto_pausas devolve o rótulo já traduzido; a chave só
+// aparece quando o motivo foi apagado depois de usado, para a pausa histórica não
+// sumir do relatório.
+const rotuloMotivo = (rotulo: string | null | undefined, chave?: string | null): string =>
+  rotulo?.trim() || chave?.trim() || "sem motivo";
 
 const rotuloPapel = (p: string): string =>
   p === "sdr" ? "SDR" : p === "crc" ? "Administrador" : "Outro";
@@ -145,11 +155,13 @@ const normalizarResumo = (r: Record<string, unknown>): ResumoPonto => ({
   pausas: num(r.pausas),
   media_diaria_min: num(r.media_diaria_min),
   motivo_top: (r.motivo_top as string | null) ?? null,
+  rotulo_top: (r.rotulo_top as string | null) ?? null,
   motivo_top_qtd: num(r.motivo_top_qtd),
   estado_agora: (r.estado_agora as EstadoPonto) ?? "fechado",
   aberto_desde: (r.aberto_desde as string | null) ?? null,
   pausado_desde: (r.pausado_desde as string | null) ?? null,
   motivo_pausa_atual: (r.motivo_pausa_atual as string | null) ?? null,
+  rotulo_pausa_atual: (r.rotulo_pausa_atual as string | null) ?? null,
   minutos_sessao_atual: num(r.minutos_sessao_atual),
   minutos_pausa_atual: num(r.minutos_pausa_atual),
 });
@@ -164,6 +176,8 @@ const normalizarPausa = (r: Record<string, unknown>): PausaPonto => ({
   minutos: num(r.minutos),
   segundos: num(r.segundos),
   motivo: (r.motivo as string | null) ?? null,
+  rotulo: (r.rotulo as string | null) ?? null,
+  detalhe: (r.detalhe as string | null) ?? null,
   em_curso: r.em_curso === true,
   fim_por: String(r.fim_por ?? ""),
 });
@@ -315,7 +329,7 @@ export default function CrmPonto() {
                           ? "h-5 border-emerald-500/30 px-1.5 text-[10px] text-emerald-600 dark:text-emerald-400"
                           : "h-5 border-amber-500/30 px-1.5 text-[10px] text-amber-600 dark:text-amber-400"}
                       >
-                        {p.estado_agora === "aberto" ? "Em expediente" : `Em pausa · ${rotuloMotivo(p.motivo_pausa_atual)}`}
+                        {p.estado_agora === "aberto" ? "Em expediente" : `Em pausa · ${rotuloMotivo(p.rotulo_pausa_atual, p.motivo_pausa_atual)}`}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
                         abriu às {hora(p.aberto_desde)} · {fmtDuracao(p.minutos_sessao_atual)} trabalhados
@@ -382,7 +396,7 @@ export default function CrmPonto() {
                             {p.pausas}
                             {p.motivo_top && p.pausas > 0 ? (
                               <span className="ml-1 font-sans text-xs text-muted-foreground">
-                                · mais: {rotuloMotivo(p.motivo_top)} ({p.motivo_top_qtd})
+                                · mais: {rotuloMotivo(p.rotulo_top, p.motivo_top)} ({p.motivo_top_qtd})
                               </span>
                             ) : null}
                           </dd>
@@ -443,7 +457,10 @@ export default function CrmPonto() {
                             <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">{fmtDuracao(p.minutos)}</TableCell>
                             <TableCell>
                               <span className="flex flex-wrap items-center gap-1.5">
-                                <span>{rotuloMotivo(p.motivo)}</span>
+                                <span>
+                                  {rotuloMotivo(p.rotulo, p.motivo)}
+                                  {p.detalhe ? <span className="text-muted-foreground">: {p.detalhe}</span> : null}
+                                </span>
                                 {aviso && (
                                   <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">{aviso}</Badge>
                                 )}
