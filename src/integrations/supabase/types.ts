@@ -5915,6 +5915,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      instagram_janela_do_lead: { Args: { p_lead_id: string }; Returns: Json }
       integracoes_visiveis: {
         Args: never
         Returns: {
