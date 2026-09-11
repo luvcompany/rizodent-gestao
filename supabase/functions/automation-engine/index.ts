@@ -1325,22 +1325,13 @@ async function sendAction(
           if (moveErr) {
             console.error(`[AUTOMATION-ENGINE] move_stage error:`, moveErr);
           } else {
-            // Close previous stage history entry
-            if (previousStageId) {
-              await supabase
-                .from("crm_lead_stage_history")
-                .update({ exited_at: new Date().toISOString() })
-                .eq("lead_id", leadId)
-                .eq("stage_id", previousStageId)
-                .is("exited_at", null);
-            }
-            // Insert new stage history with from_stage_id
-            await supabase.from("crm_lead_stage_history").insert({
-              lead_id: leadId,
-              stage_id: config.target_stage_id,
-              from_stage_id: previousStageId || null,
-              entered_at: new Date().toISOString(),
-            });
+            // O HISTÓRICO NÃO É ESCRITO AQUI. Quem fecha a passagem anterior e
+            // abre a nova é o gatilho sync_lead_stage_history, no próprio UPDATE
+            // de crm_leads logo acima — escritor único desde a migration de
+            // 08/09. Escrever de novo daqui criava DUAS linhas para a mesma
+            // troca, com 300-400 ms de diferença, e a timeline que a SDR lê no
+            // chat mostrava a etapa repetida (368 linhas assim em 30 dias, 99
+            // num único dia).
 
             // System message for stage change
             const { data: stages } = await supabase

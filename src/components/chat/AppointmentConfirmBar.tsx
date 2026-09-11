@@ -1055,7 +1055,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                     disabled={busy}
                     // SDR não decide contrato (decisão do dono, 09/09): "Compareceu" fecha o
                     // ciclo dela e o lead passa para o administrador, que marca o resultado.
-                    onClick={() => guardEarly(appt, () => userRole === "sdr"
+                    //
+                    // A pergunta é POSITIVA — quem LÊ desfecho de venda —, nunca
+                    // `userRole === "sdr"`. Com o papel ainda nulo (o cache do
+                    // AuthContext pode liberar a tela antes de o papel chegar), a
+                    // pergunta negativa jogava a SDR no fluxo do gestor e ela lia
+                    // "Contratou"/"Não contratado" — o que o dono proibiu. Assim o
+                    // caminho do desconhecido é o da SDR, que é fail-closed: a RPC
+                    // sdr_marcar_comparecimento confere o papel no servidor.
+                    onClick={() => guardEarly(appt, () => !papelLeDesfechoDeVenda(userRole)
                       ? doSdrComparecimento(appt.id)
                       : setOutcomeStep((prev) => ({ ...prev, [appt.id]: "compareceu" })))}
                   >

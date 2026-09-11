@@ -81,6 +81,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (roleErr) console.warn("[AuthContext] fetch role error:", roleErr.message);
       const normalizedProfile = prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null;
       const normalizedRole = role?.role ?? null;
+
+      // "A consulta falhou" NÃO é "esta pessoa não tem papel". Gravar null no
+      // cache por causa de um erro de rede congelaria papel nulo por 15 minutos,
+      // e telas que decidem por afirmação (ex.: o botão Compareceu) mostrariam à
+      // SDR o fluxo do gestor. Em erro, mantemos o que já havia.
+      if (roleErr) {
+        console.warn("[AuthContext] papel não resolvido (erro de consulta) — mantendo o anterior");
+        setProfile(normalizedProfile);
+        return;
+      }
+
       setProfile(normalizedProfile);
       setUserRole(normalizedRole);
       writeCachedAuth(userId, { profile: normalizedProfile, userRole: normalizedRole });
