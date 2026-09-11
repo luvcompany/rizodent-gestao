@@ -2422,6 +2422,8 @@ export type Database = {
           created_at: string
           descricao_anuncio: string | null
           distribuido_em: string | null
+          em_atendimento_em: string | null
+          em_atendimento_por: string | null
           first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
@@ -2474,6 +2476,8 @@ export type Database = {
           created_at?: string
           descricao_anuncio?: string | null
           distribuido_em?: string | null
+          em_atendimento_em?: string | null
+          em_atendimento_por?: string | null
           first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
@@ -2526,6 +2530,8 @@ export type Database = {
           created_at?: string
           descricao_anuncio?: string | null
           distribuido_em?: string | null
+          em_atendimento_em?: string | null
+          em_atendimento_por?: string | null
           first_inbound_at?: string | null
           follow_up_count?: number | null
           has_task?: boolean
@@ -2955,6 +2961,7 @@ export type Database = {
           pausa_alerta_min: number
           ponteiro_user_id: string | null
           preferir_em_expediente: boolean
+          presenca_segura_min: number
           realocar_carencia_abertura_min: number
           realocar_sem_resposta_min: number
           tenant_id: string
@@ -2976,6 +2983,7 @@ export type Database = {
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
+          presenca_segura_min?: number
           realocar_carencia_abertura_min?: number
           realocar_sem_resposta_min?: number
           tenant_id: string
@@ -2997,6 +3005,7 @@ export type Database = {
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
+          presenca_segura_min?: number
           realocar_carencia_abertura_min?: number
           realocar_sem_resposta_min?: number
           tenant_id?: string
@@ -5484,6 +5493,7 @@ export type Database = {
         }
         Returns: string
       }
+      conversa_estou_aqui: { Args: { p_lead_id: string }; Returns: Json }
       conversa_fechar: {
         Args: { p_enviar_pesquisa?: boolean; p_lead_id: string }
         Returns: Json
@@ -5506,6 +5516,8 @@ export type Database = {
           created_at: string
           descricao_anuncio: string | null
           distribuido_em: string | null
+          em_atendimento_em: string | null
+          em_atendimento_por: string | null
           first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
@@ -5820,6 +5832,8 @@ export type Database = {
           created_at: string
           descricao_anuncio: string | null
           distribuido_em: string | null
+          em_atendimento_em: string | null
+          em_atendimento_por: string | null
           first_inbound_at: string | null
           follow_up_count: number | null
           has_task: boolean
