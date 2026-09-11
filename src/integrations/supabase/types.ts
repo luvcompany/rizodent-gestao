@@ -5789,6 +5789,7 @@ export type Database = {
         Args: { _stage_id: string }
         Returns: boolean
       }
+      funil_e_instagram: { Args: { _pipeline_id: string }; Returns: boolean }
       funil_meu: { Args: { _pipeline_id: string }; Returns: boolean }
       funil_tem_lead: { Args: { _pipeline_id: string }; Returns: boolean }
       generate_tenant_invoices: { Args: never; Returns: number }
@@ -5929,6 +5930,10 @@ export type Database = {
       is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      lead_da_caixa_do_instagram: {
+        Args: { _lead_id: string }
+        Returns: boolean
+      }
       lead_transferir_autorizado: {
         Args: { p_lead_id: string; p_payload: Json }
         Returns: number
