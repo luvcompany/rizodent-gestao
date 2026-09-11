@@ -68,21 +68,21 @@ const COLUNAS: Coluna[] = [
   {
     chave: "agendamentos",
     titulo: "Agendamentos",
-    dica: "Agendamentos no crédito dela pela data agendada, menos os cancelados (régua canônica).",
+    dica: "Consultas que ela MARCOU no período, menos as canceladas. Conta pelo dia em que ela agendou, não pelo dia da consulta — o trabalho dela acontece quando marca.",
     render: (l) => fmtInt(l.agendamentos),
     apoio: (l) => (l.agend_cancelados > 0 ? `${fmtInt(l.agend_cancelados)} cancelados` : null),
   },
   {
     chave: "compareceram",
     titulo: "Compareceram",
-    dica: "Contratados + não contratados na consulta. Remarcados não contam como comparecimento.",
+    dica: "Das consultas que ela marcou no período, quantas o paciente compareceu (contratados + não contratados). Remarcado não é comparecimento. No filtro de hoje fica baixo: a consulta marcada hoje ainda não aconteceu.",
     render: (l) => fmtInt(l.compareceram),
     apoio: (l) => (l.compareceram + l.faltas > 0 ? `${taxaComparecimento(l)} de comparecimento` : null),
   },
   {
     chave: "faltas",
     titulo: "Faltas",
-    dica: "Agendamentos com falta (no-show) pela data agendada.",
+    dica: "Das consultas que ela marcou no período, quantas o paciente faltou. Como o comparecimento, só aparece depois que a consulta chega.",
     render: (l) => fmtInt(l.faltas),
   },
   {
@@ -305,9 +305,13 @@ export default function CrmRelatorioSdr() {
               Recebidos e respostas seguem a dona do lead: a resposta conta para quem era dona do lead na
               hora, não para quem digitou. O relógio da 1ª resposta é corrido (não desconta a noite nem o
               fim de semana) e começa quando o lead chega à SDR já com mensagem esperando, ou na primeira
-              mensagem recebida depois disso. Agendamentos e comparecimentos usam a régua dos Relatórios
-              (por data agendada; remarcado não é comparecimento) e o crédito carimbado quando o
-              agendamento foi criado. Expediente é o tempo com o ponto aberto, já sem as pausas; a mediana e
+              mensagem recebida depois disso. Agendamentos contam pelo dia em que a SDR MARCOU a consulta,
+              e não pelo dia da consulta: o trabalho dela acontece quando ela marca. Comparecimentos,
+              faltas e reagendamentos acompanham as mesmas consultas — é uma coorte, "do que ela marcou
+              neste período, isto aconteceu". Por isso, no filtro de hoje, esses três ficam baixos ou
+              zerados: a consulta marcada hoje ainda não chegou. Para ver quantas consultas ACONTECEM
+              num período, use o Calendário. Remarcado não é comparecimento, e o crédito é o carimbado
+              quando o agendamento foi criado. Expediente é o tempo com o ponto aberto, já sem as pausas; a mediana e
               a nota da equipe são recalculadas sobre todos os leads e respostas, não como média das médias.
             </p>
           </div>

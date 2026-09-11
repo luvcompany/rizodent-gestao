@@ -361,6 +361,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [appointmentLeadIds, setAppointmentLeadIds] = useState<Set<string> | null>(null);
   // Lead IDs whose message history contains the current search term
   const [messageMatchLeadIds, setMessageMatchLeadIds] = useState<Set<string> | null>(null);
+  // Trecho da mensagem que casou com a busca, por lead. É o que explica na lista
+  // POR QUE aquele lead apareceu quando o nome e o telefone não têm o termo.
+  const [messageMatchSnippets, setMessageMatchSnippets] = useState<Map<string, string> | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
   const [pipelines, setPipelines] = useState<PipelineWithRoles[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
@@ -625,38 +628,79 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     return () => clearTimeout(handle);
   }, [search, tenant.id]);
 
-  // Server-side search inside message content (texto de mensagens antigas)
+  // Busca dentro do TEXTO das mensagens (não só na última).
+  //
+  // POR QUE VIA RPC E NÃO DIRETO NA TABELA: a consulta direta
+  // (.from("messages").ilike("content", ...)) sai daqui com a RLS ligada, e
+  // public.messages tem 255 mil linhas e 8 policies de leitura, quatro delas
+  // chamando função por linha. O ILIKE deixa de usar o índice trigram, a
+  // consulta estoura o statement_timeout, o erro caía no `return` mudo abaixo e
+  // a busca por conteúdo simplesmente não acontecia — sobravam os leads achados
+  // por nome/telefone/última mensagem. Era esse o bug que o dono via.
+  //
+  // public.buscar_leads_por_mensagem (SECURITY DEFINER) faz o ILIKE pelo índice
+  // e aplica a MESMA régua de visibilidade uma vez só, no fim, devolvendo UM
+  // registro por lead (o mais recente) com um trecho do texto em volta do termo.
   useEffect(() => {
     const term = search.trim();
-    if (!tenant.id) { setMessageMatchLeadIds(null); return; }
-    if (term.length < 3) { setMessageMatchLeadIds(null); return; }
+    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); return; }
     let cancelled = false;
     const handle = setTimeout(async () => {
-      // Escape special chars for ilike pattern
-      const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
-      const { data, error } = await supabase
-        .from("messages")
-        .select("lead_id")
-        .eq("tenant_id", tenant.id)
-        .not("lead_id", "is", null)
-        .ilike("content", `%${safe}%`)
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (cancelled || error) return;
       const ids = new Set<string>();
-      (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
-      setMessageMatchLeadIds(ids);
+      const trechos = new Map<string, string>();
 
-      // Fetch any matching leads not present in current cache so they show up in results
+      // Caminho novo: a RPC. O termo vai CRU — quem escapa os curingas do LIKE
+      // (%, _ e a barra invertida) é a função, para não escapar duas vezes.
+      const { data: achados, error: erroRpc } = await (supabase as any).rpc(
+        "buscar_leads_por_mensagem",
+        { p_termo: term, p_limite: 500 }
+      );
+      if (cancelled) return;
+
+      if (!erroRpc && Array.isArray(achados)) {
+        achados.forEach((r: { lead_id: string; trecho: string | null }) => {
+          if (!r?.lead_id) return;
+          ids.add(r.lead_id);
+          if (r.trecho) trechos.set(r.lead_id, r.trecho);
+        });
+      } else {
+        // Rede de segurança: se a RPC ainda não estiver publicada (ou falhar),
+        // cai no caminho antigo em vez de deixar a busca sem nada. Ele acha
+        // menos — é limitado pela RLS e por 500 LINHAS DE MENSAGEM —, mas acha.
+        const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
+        const { data, error } = await supabase
+          .from("messages")
+          .select("lead_id")
+          .eq("tenant_id", tenant.id)
+          .not("lead_id", "is", null)
+          .ilike("content", `%${safe}%`)
+          .order("created_at", { ascending: false })
+          .limit(500);
+        if (cancelled || error) return;
+        (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
+      }
+
+      if (cancelled) return;
+      setMessageMatchLeadIds(ids);
+      setMessageMatchSnippets(trechos.size ? trechos : null);
+
+      // Hidrata os leads que não estão na lista carregada, para eles aparecerem
+      // no resultado. Sem teto de 100: o corte agora é o LIMIT da RPC (500
+      // LEADS, não 500 linhas de mensagem). O que existe é um lote de 100 por
+      // requisição, porque `.in("id", [...])` viaja na URL e 500 uuids passam
+      // de 18 KB — tamanho que proxy nenhum aceita.
       const missing = Array.from(ids).filter((id) => !leads.some((l) => l.id === id));
-      if (missing.length) {
+      const LOTE = 100;
+      for (let i = 0; i < missing.length; i += LOTE) {
         const { data: leadRows } = await supabase
           .from("crm_leads")
           .select(LEAD_LIST_COLS)
           .eq("tenant_id", tenant.id)
           // Busca por conteúdo de mensagem também retorna bloqueados.
-          .in("id", missing.slice(0, 100));
-        if (cancelled || !leadRows?.length) return;
+          .in("id", missing.slice(i, i + LOTE));
+        if (cancelled) return;
+        if (!leadRows?.length) continue;
         setLeads((prev) => {
           const existing = new Set(prev.map((l) => l.id));
           const additions = (leadRows as any as LeadConversation[])
@@ -1372,6 +1416,39 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                 preview = basePreview || "Sem mensagens";
                               }
                               return <p className="text-xs text-muted-foreground truncate mt-0.5">{preview}</p>;
+                            })()}
+                            {(() => {
+                              // Por que este lead apareceu: o termo está numa mensagem
+                              // ANTIGA da conversa. Só mostramos quando o nome e a última
+                              // mensagem não têm o termo — senão seria repetir o óbvio.
+                              const termo = search.trim().toLowerCase();
+                              if (termo.length < 3) return null;
+                              const trecho = messageMatchSnippets?.get(lead.id);
+                              if (!trecho) return null;
+                              const jaExplicado =
+                                lead.name.toLowerCase().includes(termo) ||
+                                (lead.last_message || "").toLowerCase().includes(termo);
+                              if (jaExplicado) return null;
+                              const corte = trecho.toLowerCase().indexOf(termo);
+                              return (
+                                <p
+                                  className="text-[11px] text-muted-foreground/90 truncate mt-1 flex items-center gap-1"
+                                  title={trecho}
+                                >
+                                  <Search size={10} className="flex-shrink-0 opacity-70" />
+                                  <span className="truncate italic">
+                                    {corte < 0 ? trecho : (
+                                      <>
+                                        {trecho.slice(0, corte)}
+                                        <mark className="bg-primary/25 text-foreground rounded-[2px] px-0.5 not-italic">
+                                          {trecho.slice(corte, corte + termo.length)}
+                                        </mark>
+                                        {trecho.slice(corte + termo.length)}
+                                      </>
+                                    )}
+                                  </span>
+                                </p>
+                              );
                             })()}
                           </div>
                         </button>

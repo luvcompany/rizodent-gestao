@@ -412,15 +412,40 @@ export function useChatConversation(leadId: string | null | undefined) {
     // edição não libera. Sem conferir a linha afetada, mover de etapa "dava
     // certo", o histórico era escrito e a automação da etapa disparava — com o
     // lead parado onde estava.
+    //
+    // O retorno traz stage_id e pipeline_id GRAVADOS (não os pedidos): gatilhos
+    // do banco podem ajustar o funil conforme a etapa, e a tela tem de mostrar
+    // o que ficou na linha, não o que ela tentou escrever.
     const { data: movido, error } = await supabase
       .from("crm_leads")
       .update(updatePayload)
       .eq("id", leadId)
-      .select("id");
-    if (error) { toast.error("Erro ao mover lead"); return; }
-    if (!movido || movido.length === 0) {
-      toast.error("Seu perfil não tem permissão para mover este lead de etapa.");
+      .select("id, stage_id, pipeline_id");
+    if (error) {
+      // Recusa de gatilho vem com mensagem escrita em português para a pessoa
+      // (lead do Instagram que não sai do funil, etapa de funil diferente do
+      // que a tela mandou). Engolir isso num "Erro ao mover lead" apagava a
+      // única explicação existente.
+      toast.error(error.message ? `Não foi possível mover: ${error.message}` : "Erro ao mover lead");
       return;
+    }
+    if (!movido || movido.length === 0) {
+      toast.error(
+        newPipelineId
+          ? "Seu perfil não tem permissão para mover este lead para esse funil. Peça ao gestor o acesso ao funil de destino."
+          : "Seu perfil não tem permissão para mover este lead de etapa.",
+      );
+      return;
+    }
+
+    // O que o banco realmente gravou — é isso que volta para a tela.
+    const gravado = movido[0] as { stage_id: string; pipeline_id: string | null };
+    const stageGravado = gravado.stage_id || newStageId;
+    const pipelineGravado = gravado.pipeline_id || newPipelineId;
+    if (stageGravado !== newStageId) {
+      toast.error("O banco gravou uma etapa diferente da escolhida. Recarregue a conversa antes de seguir.");
+    } else if (newPipelineId && pipelineGravado && pipelineGravado !== newPipelineId) {
+      toast.error("A etapa foi gravada, mas o lead continuou no funil anterior.");
     }
 
     // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history
@@ -428,7 +453,7 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     // Insert system message
     const fromName = stages.find(s => s.id === currentStageId)?.name || "?";
-    const toName = stages.find(s => s.id === newStageId)?.name || "?";
+    const toName = stages.find(s => s.id === stageGravado)?.name || "?";
     const systemContent = `📋 Etapa alterada: ${fromName} → ${toName}`;
     await supabase.from("messages").insert({
       lead_id: leadId,
@@ -443,11 +468,11 @@ export function useChatConversation(leadId: string | null | undefined) {
     // Execute automations for the new stage (on_enter + on_create_or_enter)
     executeStageAutomations({
       leadId,
-      stageId: newStageId,
+      stageId: stageGravado,
       triggerTypes: ["on_enter", "on_create_or_enter"],
     });
 
-    onSuccess?.(newStageId, newPipelineId);
+    onSuccess?.(stageGravado, pipelineGravado || undefined);
     toast.success("Etapa atualizada");
   }, [leadId, stages, showActivityToast]);
 

@@ -472,6 +472,13 @@ END $fn$;
 COMMENT ON FUNCTION public.conversa_fecha_na_etapa() IS
   'Fecha a conversa na hora em que o lead entra em Reagendado ou Relacionamento (autoria automática). Agendado NÃO entra aqui: ele passa pela fila crm_fechamentos_agendados, que espera 15 min e ainda prepara a pesquisa de satisfação.';
 
+-- Repetidos de propósito: se por algum motivo a migration 20260911070000 não
+-- tiver sido aplicada antes desta, o CREATE OR REPLACE acima CRIA a função — e
+-- função recém-criada nasce executável por PUBLIC. Com a 070000 aplicada, estas
+-- duas linhas são inócuas (já é o estado dela).
+REVOKE ALL ON FUNCTION public.conversa_fecha_na_etapa() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.conversa_fecha_na_etapa() TO authenticated, service_role;
+
 
 -- ====================================== 9. a varredura que o cron vai chamar
 -- Molde: public.sdr_entregas_pendentes (mesma forma de laço, mesmo teto de 200,
