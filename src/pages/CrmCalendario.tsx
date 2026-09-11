@@ -23,7 +23,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
-import { cancelAppointment, rescheduleAppointment, toastDbError } from "@/lib/appointmentActions";
+import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
+import { corDesfecho, desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
 
 type Task = {
   id: string;
@@ -386,6 +387,47 @@ export default function CrmCalendario() {
     }
   };
 
+  /**
+   * "Compareceu" da SDR aqui no calendário — espelho do que
+   * AppointmentConfirmBar.tsx já faz no chat (doSdrComparecimento).
+   *
+   * Por que não pode ser o caminho comum (handleApptOutcome):
+   *   • ele obriga a escolher entre "Contratou" e "Não contratou" — as duas
+   *     palavras que a SDR não pode ler (decisão do dono);
+   *   • ele grava o status por UPDATE, sem outcome_source = 'sdr'. A consulta
+   *     ficava marcada como desfecho "do sistema" e a RPC de correção depois
+   *     recusava com "esta marcada como CONTRATADA pelo sistema de pagamentos":
+   *     ela travava num erro que ela mesma tinha cometido;
+   *   • ela não enxerga a etapa de destino (RLS), então o movimento de etapa
+   *     não sairia daqui de qualquer jeito.
+   * A RPC sdr_marcar_comparecimento grava 'not_contracted' (= compareceu, com
+   * contrato em aberto) carimbando a autoria da SDR, e a entrega ao
+   * administrador continua com os gatilhos da carência de 24 h.
+   */
+  const handleApptComparecimentoSdr = async (appt: Appointment) => {
+    setApptBusy(true);
+    try {
+      // marcarComparecimentoSdr (e não applySdrComparecimento, que foi apagada):
+      // ela monta o aviso com o que o SERVIDOR respondeu. O texto fixo que estava
+      // aqui prometia "a etapa não muda agora", e desde 10/09 a RPC move o lead
+      // para "Compareceu" — que agora é etapa visível para a SDR. O card saltava
+      // de coluna na frente dela enquanto a tela garantia que nada tinha mudado.
+      const ok = await marcarComparecimentoSdr(appt.id);
+      if (!ok) { await fetchTasks(); return; }
+      // Estado local com o status que o banco gravou; o rótulo/cor da tela saem
+      // de rotuloDesfecho/corDesfecho, então para ela o card lê "Compareceu".
+      refreshAppt(appt.id, "not_contracted");
+      // A etapa mudou no banco: recarrega para a agenda bater com o funil.
+      await fetchTasks();
+      setSelectedAppointment(null);
+    } catch (e) {
+      toastDbError(e, "Erro ao registrar comparecimento");
+    } finally {
+      setApptBusy(false);
+      setApptStep("init");
+    }
+  };
+
   const handleApptReschedule = async (appt: Appointment) => {
     if (!apptNewDate) { toast.error("Selecione a nova data"); return; }
     setApptBusy(true);
@@ -588,6 +630,37 @@ export default function CrmCalendario() {
     const uniqueExtra = [...new Set(extra)];
     return [...tenantCities, ...uniqueExtra];
   }, [tenantCities, appointments]);
+
+  // Legenda do calendário de agendamentos.
+  // Para a SDR, os dois desfechos de comparecimento ('contracted' e
+  // 'not_contracted') viram UMA entrada só, "Compareceu" (decisão D3): quem
+  // decide contrato é o pagamento, não ela. Duas entradas ensinariam a ler o
+  // contrato pela cor — exatamente o que o rótulo esconde. Para os demais
+  // papéis os itens continuam sendo os mesmos de antes, na mesma ordem.
+  const legendaAgendamentos = useMemo(() => {
+    const confirmado = { cor: "bg-blue-500/40 border border-blue-500/60", texto: "Confirmado" };
+    const compareceuCor = "bg-emerald-500/40 border border-emerald-500/60";
+    const naoCompareceu = { cor: "bg-amber-500/40 border border-amber-500/60", texto: "Não compareceu" };
+    const reagendado = { cor: "bg-purple-500/40 border border-purple-500/60", texto: "Reagendado" };
+    const cancelado = { cor: "bg-muted border border-border", texto: "Cancelado" };
+    if (escondeDesfechoDeVenda(userRole)) {
+      return [
+        confirmado,
+        { cor: compareceuCor, texto: rotuloDesfecho("contracted", userRole) },
+        naoCompareceu,
+        reagendado,
+        cancelado,
+      ];
+    }
+    return [
+      confirmado,
+      { cor: compareceuCor, texto: "Contratado" },
+      naoCompareceu,
+      { cor: "bg-red-500/40 border border-red-500/60", texto: "Não contratou" },
+      reagendado,
+      cancelado,
+    ];
+  }, [userRole]);
 
   return (
     <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
@@ -852,12 +925,11 @@ export default function CrmCalendario() {
           {/* Legenda de cores */}
           <div className="flex items-center gap-3 mb-2 flex-shrink-0 flex-wrap text-[11px]">
             <span className="text-muted-foreground font-medium">Legenda:</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500/40 border border-blue-500/60" /> Confirmado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-500/40 border border-emerald-500/60" /> Contratado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500/40 border border-amber-500/60" /> Não compareceu</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500/40 border border-red-500/60" /> Não contratou</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500/40 border border-purple-500/60" /> Reagendado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted border border-border" /> Cancelado</span>
+            {legendaAgendamentos.map((item) => (
+              <span key={item.texto} className="flex items-center gap-1">
+                <span className={cn("w-3 h-3 rounded", item.cor)} /> {item.texto}
+              </span>
+            ))}
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
           <div className="flex-1 overflow-auto rounded-lg border border-border">
@@ -892,29 +964,62 @@ export default function CrmCalendario() {
                       <div key={`${city}-${dayKey}`} className={cn("bg-card border-b border-border p-1.5 min-h-[80px]", isToday(day) && "bg-primary/5")}>
                         <div className="space-y-1">
                           {cellAppts.map(appt => {
+                            // Status normalizado UMA vez. `desfechoEhComparecimento`
+                            // e `rotuloDesfecho` já normalizam por dentro, mas os
+                            // ramos daqui comparavam o valor cru: um status com
+                            // espaço/caixa diferente entrava no ramo do
+                            // comparecimento e, lá dentro, `=== "contracted"`
+                            // falhava — a gestão lia ❌ ("não contratou") num lead
+                            // contratado. Um valor, uma régua, para cor, ícone e
+                            // balão não poderem divergir.
+                            const statusNorm = (appt.status ?? "").trim().toLowerCase();
+                            const remarcada = !!(appt as any).is_rescheduled;
+                            const ehComparecimento = desfechoEhComparecimento(statusNorm);
+                            // Os dois desfechos de comparecimento saem do helper:
+                            // para a SDR ele devolve a MESMA cor nos dois casos
+                            // (decisão D3) e, para os outros papéis, exatamente as
+                            // classes que este calendário já usava. Os demais
+                            // ramos ficam como estavam — inclusive a precedência
+                            // de is_rescheduled sobre 'confirmed'.
                             const statusStyle =
-                              appt.status === "contracted"
-                                ? "bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/50"
-                                : appt.status === "no_show"
+                              ehComparecimento
+                                ? corDesfecho(statusNorm, userRole)
+                                : statusNorm === "no_show"
                                 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/50"
-                                : appt.status === "not_contracted"
-                                ? "bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/50"
-                                : appt.status === "cancelled"
+                                : statusNorm === "cancelled"
                                 ? "bg-muted text-muted-foreground border border-border line-through"
-                                : (appt as any).is_rescheduled
+                                : remarcada
                                 ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30"
-                                : appt.status === "confirmed"
+                                : statusNorm === "confirmed"
                                 ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
                                 : "bg-primary/10 text-foreground border border-border";
+                            // O ícone segue a mesma regra de sigilo do rótulo: se a
+                            // SDR visse 🤝 x ❌, o emoji contaria o contrato. Para
+                            // ela os dois desfechos usam o mesmo símbolo neutro.
                             const statusIcon =
-                              appt.status === "contracted" ? "🤝" :
-                              appt.status === "no_show" ? "🚫" :
-                              appt.status === "not_contracted" ? "❌" :
-                              appt.status === "cancelled" ? "🗑️" : null;
+                              ehComparecimento
+                                ? (escondeDesfechoDeVenda(userRole) ? "✅" : statusNorm === "contracted" ? "🤝" : "❌")
+                                : statusNorm === "no_show"
+                                ? "🚫"
+                                : statusNorm === "cancelled"
+                                ? "🗑️"
+                                : null;
+                            // Balão na MESMA ordem de precedência da cor: quando a
+                            // consulta veio de uma remarcação o chip pinta roxo, que
+                            // na legenda desta tela é "Reagendado". O balão anterior
+                            // ignorava is_rescheduled e escrevia "Confirmado" em cima
+                            // de um chip roxo — contradizendo a legenda ao lado.
+                            const statusTitulo =
+                              ehComparecimento || statusNorm === "no_show" || statusNorm === "cancelled"
+                                ? rotuloDesfecho(statusNorm, userRole)
+                                : remarcada
+                                ? "Reagendado"
+                                : rotuloDesfecho(statusNorm, userRole);
                             return (
                               <div
                                 key={appt.id}
                                 className={cn("text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm", statusStyle)}
+                                title={statusTitulo}
                                 onClick={() => {
                                   setSelectedAppointment(appt);
                                   setApptStep("init");
@@ -924,7 +1029,7 @@ export default function CrmCalendario() {
                               >
                                 <div className="font-medium break-words leading-tight">
                                    {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
-                                   {!statusIcon && (appt as any).is_rescheduled && <span className="text-purple-500 mr-0.5">↻</span>}
+                                   {!statusIcon && remarcada && <span className="text-purple-500 mr-0.5">↻</span>}
                                    {appt.lead_name}
                                  </div>
                                 <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
@@ -948,6 +1053,10 @@ export default function CrmCalendario() {
                 const total = dayAppts.length;
                 const contratados = dayAppts.filter(a => a.status === "contracted").length;
                 const naoContratados = dayAppts.filter(a => a.status === "not_contracted").length;
+                // Para a SDR os dois desfechos somam um número só: dois contadores
+                // separados diriam quantos contrataram, que é justamente o que ela
+                // não deve ler (decisão D3).
+                const compareceram = dayAppts.filter(a => desfechoEhComparecimento(a.status)).length;
                 return (
                   <div
                     key={`totals-${dayKey}`}
@@ -957,8 +1066,14 @@ export default function CrmCalendario() {
                     )}
                   >
                     <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
-                    <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
-                    <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
+                    {escondeDesfechoDeVenda(userRole) ? (
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
+                    ) : (
+                      <>
+                        <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
+                        <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -1045,7 +1160,11 @@ export default function CrmCalendario() {
                 {isOpen && apptStep === "init" && (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => setApptStep("compareceu")}>
+                      {/* SDR: "Compareceu" fecha o ciclo dela na RPC própria e
+                          NÃO abre o segundo passo — ela não decide contrato nem
+                          pode ler as duas palavras (mesma regra do chat, em
+                          AppointmentConfirmBar.tsx). */}
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
                         <CheckCircle2 size={14} className="mr-1" /> Compareceu
                       </Button>
                       <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>
@@ -1063,7 +1182,9 @@ export default function CrmCalendario() {
                   </div>
                 )}
 
-                {isOpen && apptStep === "compareceu" && (
+                {/* Resultado da avaliação (Contratou / Não contratou) é da
+                    gestão: para a SDR este bloco não é renderizado. */}
+                {isOpen && apptStep === "compareceu" && !escondeDesfechoDeVenda(userRole) && (
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold">Resultado da avaliação</Label>
                     <div className="grid grid-cols-2 gap-2">
@@ -1087,7 +1208,9 @@ export default function CrmCalendario() {
                 )}
 
                 {!isOpen && (
-                  <p className="text-xs text-muted-foreground">Desfecho já registrado.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Desfecho já registrado: {rotuloDesfecho(appt.status, userRole)}.
+                  </p>
                 )}
 
                 <div>

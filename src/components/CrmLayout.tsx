@@ -46,7 +46,10 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
   // SDR do rodízio: base da recepção, isolada por "leads dela" (não por número).
   // Sem Transmissão/Conexões/Pacientes/Relatórios; com Calendário e Tarefas
   // porque agenda e faz follow-up dos próprios leads. Bots/modelos/respostas
-  // são os do mundo do CRC (compartilhados). Guard espelho: ProtectedRoute (SDR_PREFIXES).
+  // são os do mundo do CRC (compartilhados). Automações entra em Ferramentas:
+  // é onde ela cria funil, etapa, gatilho e disparo, e até agora só se chegava
+  // lá pelo botão AUTOMATIZE do funil (que o guarda barrava).
+  // Guard espelho: ProtectedRoute (SDR_PREFIXES).
   if (role === "sdr") {
     return [
       { to: "/crm/sdr", icon: Home, label: "Início", end: true },
@@ -60,6 +63,10 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
         label: "Ferramentas",
         icon: Bot,
         children: [
+          // Mesmo rótulo e ícone que os outros papéis usam para Automações (Bot).
+          // Dentro de um grupo o renderNavGroup só pinta o rótulo, mas o ícone é
+          // obrigatório no tipo NavItem — fica igual ao dos demais menus.
+          { to: "/crm/automacoes", icon: Bot, label: "Automações" },
           { to: "/crm/bots", icon: Bot, label: "Bots" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },

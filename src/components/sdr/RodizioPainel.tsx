@@ -30,6 +30,26 @@ import { mensagemDeErroRpc, rpcAusente } from "@/lib/relatorioSdr";
  * (ver carregarFunis): sem isso o superadmin via funis de outros clientes e a
  * tela oferecia funil de closer/recepção que a RPC recusa.
  *
+ * Realocação por silêncio: o tempo NÃO é mais contado no relógio da clínica, e
+ * sim no expediente de cada SDR (migration do relógio justo, 10/09) — pausa,
+ * almoço, depois de encerrar, fim de semana e feriado não correm contra ela.
+ * A frase antiga desta tela ("realocação após N min sem resposta humana") ficou
+ * meia verdade em dois pontos, e os dois estão escritos aqui agora:
+ *   • lead que escreveu fora do horário CONTRATADO da dona (noite, fim de
+ *     semana, dia de folga) ganha uma carência a mais — o "prazo maior pela
+ *     manhã" que o dono pediu. É o campo novo desta tela, gravado por
+ *     rodizio_definir_carencia_abertura. Pausa e almoço NÃO ganham carência: o
+ *     relógio da própria SDR já para no almoço inteiro, e somar as duas coisas
+ *     empurraria para a tarde o lead que escreveu 12h10;
+ *   • se a dona não abriu o expediente no dia (falta, atestado, férias, conta
+ *     esquecida), o relógio volta a ser o da clínica — senão o lead ficaria
+ *     preso com quem não veio trabalhar.
+ * O campo só aparece quando rodizio_estado devolve
+ * realocar_carencia_abertura_min: banco sem a migration não pode mostrar um
+ * número que não sabe gravar. src/integrations/supabase/types.ts ainda não
+ * conhece a coluna nem a RPC, e nada aqui depende disso — as RPCs desta tela
+ * passam todas pelo helper `rpc()` (cast local) e o estado é lido como jsonb.
+ *
  * A distribuição inicial dos leads sem resposta passa SEMPRE por um dry-run
  * que mostra a lista antes de mover alguém, e leva um TETO por SDR nesta
  * rodada (p_max_por_sdr): sem teto, uma rodada só despeja a fila inteira na
@@ -49,6 +69,12 @@ interface Estado {
   modo: Modo; modo_alterado_em: string | null; em_expediente: boolean; dia_util: boolean;
   agora_local: string; fuso: string; reservas_pendentes: number; reservas_aviso: string | null;
   realocar_sem_resposta_min: number; hora_corte: string; corte_ate: string; equipe: MembroEstado[];
+  /**
+   * Minutos a MAIS no limite de silêncio quando a mensagem do lead chegou fora
+   * do horário contratado da dona (noite, fim de semana, folga). Opcional
+   * porque o banco pode estar sem a migration do relógio justo.
+   */
+  realocar_carencia_abertura_min?: number;
   /** Carência (min) entre o comparecimento e a entrega do lead ao administrador; 0 = na hora. */
   entrega_gestor_apos_min?: number; entregas_pendentes?: number;
   /** Corte: reserva de quem não abriu até entrada + N min vai para quem abriu. */
@@ -68,6 +94,8 @@ interface Funil { id: string; name: string; is_instagram: boolean; is_posvenda: 
 
 const TEXTO_AUSENTE = "O motor do rodízio ainda não foi instalado no banco (migration da Fase 3 pendente).";
 const TEXTO_FUNIS_AUSENTE = "A escolha dos funis do rodízio ainda não foi instalada no banco (migration pendente).";
+const TEXTO_CARENCIA_AUSENTE =
+  "O prazo extra de quem escreve fora do horário da SDR ainda não foi instalado no banco (migration do relógio justo pendente).";
 /** Teto padrão por SDR na distribuição inicial: uma rodada calma, não um despejo. */
 const TETO_PADRAO = "30";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,6 +131,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const [salvandoMin, setSalvandoMin] = useState(false);
   const [carenciaH, setCarenciaH] = useState<string>("");
   const [salvandoCarencia, setSalvandoCarencia] = useState(false);
+  // Carência de abertura: o prazo extra de quem escreveu fora do horário da SDR.
+  const [carenciaAbertura, setCarenciaAbertura] = useState<string>("");
+  const [salvandoCarenciaAbertura, setSalvandoCarenciaAbertura] = useState(false);
   const [tolerancia, setTolerancia] = useState<string>("");
   const [salvandoTolerancia, setSalvandoTolerancia] = useState(false);
   const [distribuindo, setDistribuindo] = useState(false);
@@ -162,6 +193,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     setEstado(e);
     setMinutos(String(e.realocar_sem_resposta_min ?? ""));
     setCarenciaH(typeof e.entrega_gestor_apos_min === "number" ? String(Math.round(e.entrega_gestor_apos_min / 60)) : "");
+    setCarenciaAbertura(typeof e.realocar_carencia_abertura_min === "number" ? String(e.realocar_carencia_abertura_min) : "");
     setTolerancia(typeof e.corte_tolerancia_min === "number" ? String(e.corte_tolerancia_min) : "");
     // `in` (e não `?? []`) porque precisamos distinguir "o banco devolveu lista
     // vazia" (= padrão, só o funil principal) de "este banco ainda não conhece
@@ -265,7 +297,38 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     const { error } = await rpc("rodizio_definir_tempo_realocacao", { p_min: n });
     setSalvandoMin(false);
     if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar o tempo.", TEXTO_AUSENTE)); return; }
-    toast.success(n === 0 ? "Realocação por silêncio desligada." : `Realocação após ${n} min sem resposta humana.`);
+    // O "de expediente da SDR" só é verdade em banco com a migration do relógio
+    // justo — o mesmo sinal usado no resto da tela (a chave da carência).
+    const porSdr = typeof estado?.realocar_carencia_abertura_min === "number";
+    toast.success(n === 0
+      ? "Realocação por silêncio desligada."
+      : porSdr
+        ? `Realocação após ${n} min de expediente da SDR sem resposta humana.`
+        : `Realocação após ${n} min sem resposta humana (horário comercial da clínica).`);
+    await carregar();
+  };
+
+  /**
+   * Carência de abertura — o "prazo maior pela manhã". Vale só para a mensagem
+   * que chegou fora do horário contratado da dona (noite, fim de semana,
+   * folga); pausa e almoço já param o relógio dela e não somam carência.
+   *
+   * Campo vazio NÃO é zero: 0 aqui significa "quem escreveu de madrugada tem o
+   * mesmo prazo de quem escreveu às 10h", uma decisão. O teto de 480 min é o
+   * mesmo que a RPC rodizio_definir_carencia_abertura aceita — validar aqui
+   * evita mandar ao banco um número que ele vai recusar.
+   */
+  const salvarCarenciaAbertura = async () => {
+    if (carenciaAbertura.trim() === "") { toast.error("Informe os minutos a mais (0 desliga a carência)."); return; }
+    const n = Number(carenciaAbertura);
+    if (!Number.isInteger(n) || n < 0 || n > 480) { toast.error("Informe entre 0 (desligada) e 480 minutos (8 h)."); return; }
+    setSalvandoCarenciaAbertura(true);
+    const { error } = await rpc("rodizio_definir_carencia_abertura", { p_min: n });
+    setSalvandoCarenciaAbertura(false);
+    if (error) { toast.error(mensagemDeErroRpc(error, "Não foi possível salvar a carência.", TEXTO_CARENCIA_AUSENTE)); return; }
+    toast.success(n === 0
+      ? "Sem prazo extra: quem escreveu fora do horário da SDR tem o mesmo tempo."
+      : `Quem escreveu fora do horário da SDR ganha ${n} min a mais antes da realocação.`);
     await carregar();
   };
 
@@ -341,10 +404,31 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
   const alcance = nomesFunisEstado.length > 0
     ? `dos funis ${nomesFunisEstado.join(", ")}`
     : funisNoBanco ? "do funil principal" : "do funil";
+  // Realocação por silêncio em palavras verdadeiras. A frase antiga dizia
+  // "realocação após N min sem resposta humana" e mentia em dois pontos: o
+  // relógio é o expediente da SDR (não o da clínica) e quem escreveu fora do
+  // horário dela tem N + carência. Cada pedaço abaixo conserta um.
+  const carenciaAberturaMin =
+    typeof estado.realocar_carencia_abertura_min === "number" ? estado.realocar_carencia_abertura_min : null;
+  const fraseCarencia = carenciaAberturaMin === null
+    ? "" // banco sem a migration: não prometer um prazo extra que ainda não existe
+    : carenciaAberturaMin > 0
+      ? ` Mensagem que chegou fora do horário dela (noite, fim de semana, folga) ganha ${carenciaAberturaMin} min a mais: ${estado.realocar_sem_resposta_min} + ${carenciaAberturaMin}.`
+      : " Sem prazo extra: quem escreveu fora do horário dela tem o mesmo tempo.";
+  // `carenciaAberturaMin === null` é o sinal de que ESTE banco ainda não tem a
+  // migration do relógio justo (a chave nasce com a coluna). Aí o cronômetro
+  // continua sendo o comercial da clínica, e prometer "expediente da SDR" seria
+  // a mesma mentira do painel antigo, só invertida.
+  const relogioDaSdr = carenciaAberturaMin !== null;
+  const fraseRealocacao = estado.realocar_sem_resposta_min <= 0
+    ? "Realocação por silêncio desligada: lead sem resposta continua com a mesma SDR."
+    : relogioDaSdr
+      ? `Realocação por silêncio: ${estado.realocar_sem_resposta_min} min sem resposta humana contados no expediente da SDR — pausa, almoço, depois de encerrar, fim de semana e feriado não contam.${fraseCarencia} Se a dona não abriu o expediente no dia, o tempo volta a ser contado no horário da clínica, para o lead não ficar preso com quem não veio trabalhar.`
+      : `Realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana, contados no horário comercial da clínica (o relógio por SDR ainda não foi publicado neste banco).`;
   const descricao: Record<Modo, string> = {
     desligado: "Nada é distribuído. Leads novos continuam com o administrador.",
     sombra: "O motor só anota, no livro de atribuições, quem teria recebido cada lead. Ninguém muda de dona.",
-    ligado: `Leads novos ${alcance} vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Reserva de quem não abriu até ${estado.corte_tolerancia_min ?? 60} min depois da entrada dela vai para quem abriu; realocação após ${estado.realocar_sem_resposta_min} min sem resposta humana.`,
+    ligado: `Leads novos ${alcance} vão para a SDR em expediente com menos entregas; fora do expediente ficam reservados. Reserva de quem não abriu até ${estado.corte_tolerancia_min ?? 60} min depois da entrada dela vai para quem abriu. ${fraseRealocacao}`,
   };
   // Salvar só habilita se a marcação mudou de verdade (ordem não conta).
   const mesmaLista = (a: string[], b: string[]) => {
@@ -425,13 +509,51 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
         <input
           type="number" min={0} max={240} value={minutos} onChange={(e) => setMinutos(e.target.value)}
           className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
-          aria-label="Minutos sem resposta"
+          aria-label="Minutos de expediente da SDR sem resposta"
         />
-        <span className="text-muted-foreground">min (0 desliga)</span>
+        <span className="text-muted-foreground">{relogioDaSdr ? "min de expediente da SDR (0 desliga)" : "min (0 desliga)"}</span>
         <Button size="sm" variant="outline" onClick={salvarMinutos} disabled={salvandoMin || String(estado.realocar_sem_resposta_min) === minutos}>
           {salvandoMin ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
         </Button>
+        {/* O relógio é o dela, não o da clínica: sem esta linha o gestor lê "30
+            min" e cobra 30 minutos de parede — inclusive o almoço. Em banco sem
+            a migration a linha diz o que vale lá: o relógio da clínica. */}
+        <span className="w-full text-xs text-muted-foreground">
+          {relogioDaSdr
+            ? "O tempo corre só enquanto a dona está com o expediente aberto e sem pausa: almoço, pausa, depois de encerrar, fim de semana e feriado não contam. Se ela não abriu o expediente no dia, o tempo é contado no horário da clínica e o lead é realocado normalmente."
+            : "Neste banco o tempo ainda é contado no horário comercial da clínica, inclusive durante a pausa e o almoço da SDR: o relógio por expediente entra depois de publicar as migrations."}
+          {/* Em sombra não existe dona de verdade — a simulação continua no
+              relógio da clínica, e dizer o contrário aqui seria mentir de novo. */}
+          {relogioDaSdr && modo === "sombra" && " Em modo sombra o motor só simula e usa o relógio da clínica: o relógio por expediente vale quando o rodízio está ligado, com dona de verdade."}
+        </span>
       </div>
+
+      {/* O "prazo maior pela manhã" do dono. Só aparece quando rodizio_estado
+          devolve a chave: banco sem a migration do relógio justo não tem coluna
+          para gravar, e campo que não salva é pior do que campo nenhum. */}
+      {typeof estado.realocar_carencia_abertura_min === "number" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
+          <span className="text-muted-foreground">Quem escreveu fora do horário da SDR (noite, fim de semana, folga) ganha</span>
+          <input
+            type="number" min={0} max={480} value={carenciaAbertura} onChange={(e) => setCarenciaAbertura(e.target.value)}
+            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            aria-label="Minutos a mais antes da realocação quando a mensagem chegou fora do horário da SDR"
+          />
+          <span className="text-muted-foreground">min a mais antes de realocar (0 desliga)</span>
+          <Button
+            size="sm" variant="outline" onClick={salvarCarenciaAbertura}
+            disabled={salvandoCarenciaAbertura || String(estado.realocar_carencia_abertura_min) === carenciaAbertura}
+          >
+            {salvandoCarenciaAbertura ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
+          </Button>
+          <span className="w-full text-xs text-muted-foreground">
+            Vale só para o horário contratado dela (aba Equipe → Editar) e para dia não útil. Pausa e
+            almoço não entram aqui: o relógio da própria SDR já para nesses períodos, e somar as duas
+            coisas empurraria para a tarde o lead que escreveu na hora do almoço.
+            {estado.realocar_sem_resposta_min > 0 && ` Limite desses leads: ${estado.realocar_sem_resposta_min + estado.realocar_carencia_abertura_min} min de expediente dela.`}
+          </span>
+        </div>
+      )}
 
       {typeof estado.entrega_gestor_apos_min === "number" && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
@@ -471,6 +593,15 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
           >
             {salvandoTolerancia ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
           </Button>
+          {/* Esta mesma tolerância é a régua que diz "não abriu o expediente
+              hoje" na realocação por silêncio (relógio justo). O gestor mexe em
+              um número e move duas regras: precisa saber disso antes. */}
+          {relogioDaSdr && (
+            <span className="w-full text-xs text-muted-foreground">
+              Este mesmo prazo decide quando a SDR conta como ausente no dia: passado ele sem expediente
+              aberto, os leads dela voltam a ser contados pelo relógio da clínica e podem ser realocados.
+            </span>
+          )}
         </div>
       )}
 

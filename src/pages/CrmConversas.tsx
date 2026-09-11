@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { ehPapelSdr, rotuloDesfecho, type PapelUsuario } from "@/lib/desfechoLabel";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
@@ -158,6 +159,27 @@ const SidePanelFallback = () => (
     <div className="h-24 rounded-lg bg-secondary/40 animate-pulse" />
   </div>
 );
+
+/**
+ * Rótulo do chip do filtro `?appointment_status=` da URL. Antes o valor cru do
+ * banco ia para a tela ("not_contracted"), e para a SDR isso é justamente o que
+ * ela não pode ler (decisão D3).
+ *
+ * Os apelidos "compareceram"/"attended", "missed" e "reagendados" descrevem uma
+ * RÉGUA (compareceram = contracted + not_contracted), não um status; por isso o
+ * primeiro tem texto próprio para todos os papéis — chamá-lo de "Contratado"
+ * seria mentira — e os outros dois emprestam o nome do status equivalente.
+ * Qualquer outro valor é um status de crm_appointments e passa pelo helper de
+ * papel: a SDR lê "Compareceu", a gestão lê "Contratado"/"Não contratado".
+ */
+const rotuloFiltroAgendamento = (valor: string, papel: PapelUsuario): string => {
+  const v = valor.trim().toLowerCase();
+  if (v === "attended" || v === "compareceram") return "Compareceram";
+  if (v === "missed") return rotuloDesfecho("no_show", papel);
+  if (v === "reagendados") return rotuloDesfecho("rescheduled", papel);
+  return rotuloDesfecho(valor, papel);
+};
+
 const CONVERSATION_PAGE_SIZE = 1000;
 const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao receber página incompleta)
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
@@ -1113,7 +1135,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
                 <div className="flex items-center gap-1 mb-2 flex-wrap">
                   {urlGhost && <Badge variant="destructive" className="text-[10px]">Leads Fantasma</Badge>}
-                  {urlAppointmentStatus && <Badge variant="secondary" className="text-[10px]">Agendamento: {urlAppointmentStatus}</Badge>}
+                  {urlAppointmentStatus && <Badge variant="secondary" className="text-[10px]">Agendamento: {rotuloFiltroAgendamento(urlAppointmentStatus, userRole)}</Badge>}
                   {urlInactiveDays && <Badge variant="secondary" className="text-[10px]">Inativos +{urlInactiveDays}d</Badge>}
                   <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setSearchParams({})}>✕ Limpar</Button>
                 </div>
@@ -1811,11 +1833,24 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
                 <LeadResponseTimes messages={chat.messages} />
 
-                <LeadStageTimeline
-                  leadId={selectedLead.id}
-                  stages={chat.stages}
-                  lastInboundAt={chat.lastInboundAt}
-                />
+                {/* Histórico de Etapas — não é montado para a SDR, mesmo
+                    critério do LeadBudgetPanel acima. O painel imprime o NOME de
+                    cada etapa por onde o lead passou e, para as etapas que ela
+                    não enxerga, resolve o nome por get_lead_stage_history_names —
+                    RPC SECURITY DEFINER que não filtra visivel_para_sdr. Ela
+                    leria "Contratado" / "Não contratado" em texto puro no
+                    histórico de um lead DELA: caminho real, porque o dontus-sync
+                    move o lead pago para a etapa de ganho enquanto ele ainda está
+                    com ela na carência de 24 h. O componente também se protege
+                    por dentro (LeadStageTimeline.tsx), mas aqui nem o chunk nem
+                    as consultas saem. */}
+                {!ehPapelSdr(userRole) && (
+                  <LeadStageTimeline
+                    leadId={selectedLead.id}
+                    stages={chat.stages}
+                    lastInboundAt={chat.lastInboundAt}
+                  />
+                )}
 
                 {/* Cidade */}
                 <LeadExtraFields

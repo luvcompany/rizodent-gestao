@@ -16,13 +16,16 @@ import {
   applyAppointmentOutcome,
   moveLeadToStageInCurrentPipeline,
   moveLeadToNaoContratadosPipeline,
-  applySdrComparecimento,
 } from "@/lib/appointmentOutcome";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
   iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
+  corrigirDesfecho, excluirAgendamento, marcarComparecimentoSdr,
 } from "@/lib/appointmentActions";
+import {
+  rotuloDesfecho, corDesfecho, desfechoEhComparecimento, papelLeDesfechoDeVenda,
+} from "@/lib/desfechoLabel";
 
 type Task = {
   id: string;
@@ -54,17 +57,37 @@ type TerminalAppointment = {
   outcome_source: string | null;
   outcome_at: string | null;
   outcome_by: string | null;
+  cancelled_reason: string | null;
 };
 
 const TERMINAL_STATUSES = ["no_show", "rescheduled", "cancelled", "contracted", "not_contracted"];
 
-const TERMINAL_LABEL: Record<string, string> = {
-  no_show: "Falta",
-  rescheduled: "Remarcada",
-  cancelled: "Cancelada",
-  contracted: "Contratado",
-  not_contracted: "Não contratado",
-};
+// O rótulo (e a cor) do desfecho saem de @/lib/desfechoLabel — fonte única, e a
+// única que sabe esconder "Contratado"/"Não contratado" de quem não é da gestão
+// (decisão D3 e pedido literal do dono: "não precisa aparecer para o sdr se o
+// lead é contratado ou não"). Lá a pergunta é papelLeDesfechoDeVenda(papel), que
+// só diz "sim" para papel reconhecido — papel nulo, do instante do boot, lê
+// "Compareceu" como a SDR. O antigo TERMINAL_LABEL daqui virou o ROTULO_POR_STATUS
+// de lá; não recrie um mapa local, e não volte a comparar userRole !== "sdr"
+// nesta barra: é essa afirmação que vaza contrato quando o papel ainda não chegou.
+
+/**
+ * Desfechos que a barra deixa corrigir/excluir, na mesma régua das RPCs
+ * sdr_corrigir_desfecho / sdr_excluir_agendamento:
+ * 'no_show' e 'not_contracted' sempre; 'contracted' só quando a marca é da SDR
+ * (contrato vindo do pagamento/Dontus é dado dele, não da marcação de presença);
+ * 'rescheduled' nunca (é o histórico da remarcação — vale a consulta nova) e
+ * 'cancelled' nunca (já está excluída).
+ */
+function podeMexerNoDesfecho(t: TerminalAppointment): boolean {
+  if (t.status === "no_show" || t.status === "not_contracted") return true;
+  return t.status === "contracted" && (t.outcome_source || "") === "sdr";
+}
+
+/** Contrato que veio do pagamento: nem a SDR nem o CRC mexem por aqui. */
+function contratoDoPagamento(t: TerminalAppointment): boolean {
+  return t.status === "contracted" && (t.outcome_source || "") !== "sdr";
+}
 
 const AUTO_SOURCES = ["dontus-sync", "auto_reagendar_expirado", "service"];
 
@@ -95,6 +118,12 @@ function terminalSourceLabel(t: TerminalAppointment): string {
 export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const { userRole } = useAuth();
   const isManager = userRole === "gerente" || userRole === "superadmin";
+  // Quem o BANCO aceita nas RPCs sdr_corrigir_desfecho / sdr_excluir_agendamento:
+  // a SDR dona do lead e a gestão do ciclo (crc, gerente, superadmin). Recepção,
+  // closer e pós-venda levam "Seu perfil não corrige desfecho de consulta" —
+  // então o bloco "Marcou errado?" não aparece para eles. Botão que só serve para
+  // dar erro é exatamente o defeito que o dono reclamou nesta rodada.
+  const podeCorrigirDesfecho = userRole === "sdr" || userRole === "crc" || isManager;
   const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [lastTerminal, setLastTerminal] = useState<TerminalAppointment | null>(null);
@@ -137,6 +166,13 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   // Confirmação extra para desfecho antes do horário marcado
   const [earlyConfirm, setEarlyConfirm] = useState<{ appt: Appointment; run: () => void } | null>(null);
 
+  // Correção do desfecho já registrado (compareceu ↔ não compareceu) e exclusão
+  // do agendamento — as duas ações que o dono pediu em 10/09.
+  const [corrigindoDesfecho, setCorrigindoDesfecho] = useState(false);
+  const [excluirFor, setExcluirFor] = useState<TerminalAppointment | null>(null);
+  const [excluirMotivo, setExcluirMotivo] = useState("");
+  const [excluirSaving, setExcluirSaving] = useState(false);
+
   const fetchTasks = useCallback(async () => {
     const { data } = await supabase
       .from("crm_tasks")
@@ -164,7 +200,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     if (ativos.length === 0) {
       const { data: term } = await supabase
         .from("crm_appointments")
-        .select("id, scheduled_date, scheduled_time, status, notes, outcome_source, outcome_at, outcome_by")
+        .select("id, scheduled_date, scheduled_time, status, notes, outcome_source, outcome_at, outcome_by, cancelled_reason")
         .eq("lead_id", leadId)
         .in("status", TERMINAL_STATUSES)
         .order("scheduled_date", { ascending: false })
@@ -223,21 +259,19 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   };
 
   /**
-   * "Compareceu" da SDR: RPC no servidor (ver applySdrComparecimento).
-   * A RPC não move mais a etapa — quem move é o gatilho de entrega, quando o
-   * lead passa ao administrador no fim da carência de 24 h. Então o toast fala
-   * só do que aconteceu agora (crédito da SDR + lead ainda com ela) e não
-   * promete mudança de etapa, que era a parte que a tela inventava.
+   * "Compareceu" da SDR: RPC no servidor (marcarComparecimentoSdr).
+   *
+   * A RPC marca a consulta como comparecida, MOVE o lead para a etapa
+   * "Compareceu" — que desde 10/09 é visível para ela — e deixa a passagem ao
+   * administrador agendada pela carência de 24 h. Por isso o texto do toast não
+   * é escrito aqui: quem escreve é a própria ação, com o que o banco devolveu
+   * (etapa e entrega). A versão anterior desta tela dizia "a etapa não muda
+   * agora" enquanto o card saltava de coluna na frente da SDR.
    */
   const doSdrComparecimento = async (apptId: string) => {
     setOutcomeSaving(apptId);
     try {
-      const r = await applySdrComparecimento(apptId);
-      if (!r.ok) {
-        toast.error("Este agendamento já recebeu desfecho — recarregando");
-      } else {
-        toast.success("Comparecimento registrado no seu crédito — o lead continua com você e passa para o administrador ao fim da carência; a etapa não muda agora");
-      }
+      await marcarComparecimentoSdr(apptId);
       await Promise.all([fetchAppointments(), checkRescheduleMode()]);
     } catch (e) {
       toastDbError(e, "Erro ao registrar comparecimento");
@@ -336,6 +370,47 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
     }
   };
 
+  /**
+   * Corrigir a marcação de presença de uma consulta que JÁ tem desfecho.
+   *
+   * Quem faz o trabalho é a RPC sdr_corrigir_desfecho (ver appointmentActions):
+   * ela troca o status, move a etapa, (re)agenda ou cancela a passagem ao
+   * administrador, escreve no livro do rodízio e no chat do lead. Aqui só
+   * relemos o estado depois — a tela se atualiza sozinha, sem recarregar a
+   * página, no mesmo padrão das outras ações desta barra.
+   */
+  const handleCorrigirDesfecho = async (t: TerminalAppointment, compareceu: boolean) => {
+    setTerminalBusy(true);
+    try {
+      const ok = await corrigirDesfecho({ appointmentId: t.id, compareceu });
+      if (ok) setCorrigindoDesfecho(false);
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } catch (e) {
+      toastDbError(e, "Erro ao corrigir a marcação de presença");
+    } finally {
+      setTerminalBusy(false);
+    }
+  };
+
+  /** Excluir o agendamento (status 'cancelled' + motivo). Confirmação no diálogo. */
+  const handleExcluirSubmit = async () => {
+    if (!excluirFor) return;
+    setExcluirSaving(true);
+    try {
+      const ok = await excluirAgendamento({ appointmentId: excluirFor.id, motivo: excluirMotivo });
+      if (ok) {
+        setExcluirFor(null);
+        setExcluirMotivo("");
+        setCorrigindoDesfecho(false);
+      }
+      await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+    } catch (e) {
+      toastDbError(e, "Erro ao excluir o agendamento");
+    } finally {
+      setExcluirSaving(false);
+    }
+  };
+
 
   /** Roda a ação, pedindo confirmação extra se ainda não chegou o horário marcado. */
   const guardEarly = (appt: Appointment, run: () => void) => {
@@ -428,6 +503,13 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
       .subscribe();
     return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); };
   }, [leadId, fetchTasks, fetchAppointments, checkRescheduleMode]);
+
+  // A escolha "Compareceu / Não compareceu" da correção fecha quando a consulta
+  // muda (outro lead, outro desfecho, ou a correção que acabou de ser gravada) —
+  // senão a pergunta ficaria aberta sobre um estado que já não é o da tela.
+  useEffect(() => {
+    setCorrigindoDesfecho(false);
+  }, [lastTerminal?.id, lastTerminal?.status]);
 
   const moveLeadToScheduledStage = useCallback(async () => {
     const { data: leadData } = await supabase
@@ -967,10 +1049,23 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
             <p className="text-sm font-medium text-foreground">
               {lastTerminal.scheduled_date.split("-").reverse().join("/")} às {lastTerminal.scheduled_time?.slice(0, 5)}
               {" · "}
-              <span className="text-destructive">{TERMINAL_LABEL[lastTerminal.status] || lastTerminal.status}</span>
+              {/* Rótulo e cor pelo papel: a SDR lê "Compareceu" nos dois
+                  desfechos de comparecimento, e a cor não pode contar o que o
+                  rótulo esconde (por isso corDesfecho, não text-destructive). */}
+              <span
+                className={cn(
+                  "inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium align-middle",
+                  corDesfecho(lastTerminal.status, userRole),
+                )}
+              >
+                {rotuloDesfecho(lastTerminal.status, userRole)}
+              </span>
             </p>
             {terminalSourceLabel(lastTerminal) && (
               <p className="text-xs text-muted-foreground">{terminalSourceLabel(lastTerminal)}</p>
+            )}
+            {lastTerminal.status === "cancelled" && lastTerminal.cancelled_reason && (
+              <p className="text-xs text-muted-foreground mt-0.5">Motivo: {lastTerminal.cancelled_reason}</p>
             )}
             {lastTerminal.notes && (
               <p className="text-xs text-muted-foreground mt-0.5 truncate">{lastTerminal.notes}</p>
@@ -999,8 +1094,11 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                   <XCircle size={12} /> Não compareceu
                 </Button>
               </div>
-              {/* Contrato não é decisão da SDR (o ciclo dela termina no comparecimento). */}
-              {userRole !== "sdr" && (
+              {/* Contrato não é decisão da SDR (o ciclo dela termina no
+                  comparecimento) — e a pergunta é papelLeDesfechoDeVenda, não
+                  userRole !== "sdr": com o papel ainda não resolvido no boot, a
+                  comparação por afirmação punha estas duas palavras na tela dela. */}
+              {papelLeDesfechoDeVenda(userRole) && (
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
@@ -1033,6 +1131,105 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
                 </Button>
               )}
             </div>
+          )}
+
+          {/* Marcou errado? (pedido do dono, 10/09) — corrigir a presença ou
+              excluir o agendamento. Some quando o banco não deixaria mesmo: por
+              papel (só SDR dona do lead, crc, gerente e superadmin passam pelas
+              RPCs) ou por estado da consulta (remarcada, já excluída ou
+              contratada pelo pagamento). */}
+          {podeCorrigirDesfecho && podeMexerNoDesfecho(lastTerminal) && (
+            <div className="space-y-2 pt-2 border-t border-muted-foreground/20">
+              {!corrigindoDesfecho ? (
+                <>
+                  <p className="text-[11px] text-muted-foreground">
+                    Marcou errado? Corrija a presença ou exclua este agendamento.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1"
+                      disabled={terminalBusy}
+                      onClick={() => setCorrigindoDesfecho(true)}
+                    >
+                      <Pencil size={12} /> Corrigir
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                      disabled={terminalBusy}
+                      onClick={() => { setExcluirFor(lastTerminal); setExcluirMotivo(""); }}
+                    >
+                      <Trash2 size={12} /> Excluir
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    O paciente compareceu? Hoje está como{" "}
+                    <span className="font-medium text-foreground">
+                      {rotuloDesfecho(lastTerminal.status, userRole)}
+                    </span>
+                    . A correção acerta também o seu relatório.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Desabilitado quando não mudaria nada — a mesma régua da
+                        RPC (compareceu → 'not_contracted', faltou → 'no_show'). */}
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                      disabled={terminalBusy || desfechoEhComparecimento(lastTerminal.status)}
+                      // O rótulo tem de ser o MESMO que esta pessoa está lendo
+                      // acima: "Compareceu" para a SDR, "Contratado"/"Não
+                      // contratado" para a gestão. Texto fixo aqui contradizia o
+                      // card na tela do gerente.
+                      title={desfechoEhComparecimento(lastTerminal.status)
+                        ? `Já está marcado como ${rotuloDesfecho(lastTerminal.status, userRole)}`
+                        : undefined}
+                      onClick={() => handleCorrigirDesfecho(lastTerminal, true)}
+                    >
+                      <CheckCircle2 size={12} /> Compareceu
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                      disabled={terminalBusy || lastTerminal.status === "no_show"}
+                      title={lastTerminal.status === "no_show" ? "Já está marcado como Não compareceu" : undefined}
+                      onClick={() => handleCorrigirDesfecho(lastTerminal, false)}
+                    >
+                      <XCircle size={12} /> Não compareceu
+                    </Button>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[11px] w-full"
+                    disabled={terminalBusy}
+                    onClick={() => setCorrigindoDesfecho(false)}
+                  >
+                    ← Voltar
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Desfecho que veio do pagamento: nem a SDR nem o crc mexem por aqui,
+              e é por isso que os botões acima desaparecem. Sem explicação, a
+              própria ausência do botão virava o sinal de que o lead fechou —
+              então a SDR também recebe uma linha, na versão neutra: sem a palavra
+              contrato e sem a palavra pagamento. Quem lê contrato (gestão) recebe
+              o motivo real. */}
+          {contratoDoPagamento(lastTerminal) && (
+            <p className="text-[11px] text-muted-foreground pt-2 border-t border-muted-foreground/20">
+              {papelLeDesfechoDeVenda(userRole)
+                ? "Esta consulta está contratada pelo sistema de pagamentos — a presença dela não é corrigida nem excluída por aqui."
+                : "O desfecho desta consulta foi registrado pelo sistema da clínica — a presença dela não é corrigida nem excluída por aqui. Se estiver errado, fale com o administrador."}
+            </p>
           )}
         </div>
       )}
@@ -1152,6 +1349,38 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
             <Button variant="outline" size="sm" onClick={() => { setCancelFor(null); setCancelReason(""); }}>Voltar</Button>
             <Button variant="destructive" size="sm" disabled={cancelSaving || cancelReason.trim().length < 3} onClick={handleCancelSubmit}>
               {cancelSaving ? "Cancelando..." : "Cancelar agendamento"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Excluir agendamento: confirmação explícita + motivo obrigatório */}
+      <Dialog open={!!excluirFor} onOpenChange={(o) => { if (!o) { setExcluirFor(null); setExcluirMotivo(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir este agendamento?</DialogTitle></DialogHeader>
+          <p className="text-xs font-medium text-foreground">
+            {excluirFor && `${excluirFor.scheduled_date.split("-").reverse().join("/")} às ${excluirFor.scheduled_time?.slice(0, 5)} · ${rotuloDesfecho(excluirFor.status, userRole)}`}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            O agendamento sai dos relatórios e da contagem de comparecimento — inclusive do seu.
+            Ele continua no histórico do paciente, com o motivo e o nome de quem excluiu.
+            Não dá para desfazer por aqui: se o paciente tiver horário, crie um agendamento novo.
+          </p>
+          <Textarea
+            value={excluirMotivo}
+            onChange={(e) => setExcluirMotivo(e.target.value)}
+            placeholder="Motivo da exclusão (obrigatório) — ex.: agendei no lead errado"
+            className="text-sm"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setExcluirFor(null); setExcluirMotivo(""); }}>Voltar</Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={excluirSaving || excluirMotivo.trim().length < 3}
+              onClick={handleExcluirSubmit}
+            >
+              {excluirSaving ? "Excluindo..." : "Excluir agendamento"}
             </Button>
           </div>
         </DialogContent>

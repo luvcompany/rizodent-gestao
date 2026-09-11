@@ -43,8 +43,22 @@ const CLOSER_ROTAS_EXATAS = ["/crm"];
 // do cliente. Por isso não tem Conexões (não conecta número próprio) nem
 // Transmissão; tem Calendário/Tarefas porque agenda e faz follow-up dos
 // próprios leads. Bots/modelos/respostas são os do mundo do CRC
-// (compartilhados). Automações ficam FORA nesta fase: não há item de menu e a
-// SDR não escreve nas regras — a tela só ofereceria botões que falham.
+// (compartilhados).
+//
+// Automações AGORA ENTRA (antes ficava fora "nesta fase"). São dois motivos:
+//   1. "/crm/automacoes" é o destino do botão AUTOMATIZE do funil (CrmKanban).
+//      Sem o prefixo, o guarda devolvia a SDR para "/crm/sdr" — exatamente o
+//      "manda para a página de início" que o dono relatou.
+//   2. É a única tela onde se cria funil, etapa, gatilho e disparo. A escrita
+//      em si é liberada por policies novas em crm_stages, crm_pipelines e
+//      crm_automations; aqui só se abre a porta da navegação.
+// Nada além deste prefixo é necessário para ela criar FUNIL e ETAPA: tudo isso
+// vive dentro de /crm/automacoes e, no caso de etapa, também no Kanban, que é a
+// rota exata "/crm" (já liberada em SDR_ROTAS_EXATAS).
+// "/crm/integracoes" continua FORA de propósito: ali moram token do WhatsApp,
+// contas de Instagram e Api4Com. Aquela tela só duplica a gestão de funil e
+// abriria credencial do cliente para a SDR — seria alargar o acesso sem
+// necessidade.
 // O menu espelho fica em CrmLayout (role === "sdr").
 const SDR_PREFIXES = [
   "/crm/sdr",
@@ -52,6 +66,7 @@ const SDR_PREFIXES = [
   "/crm/conversa",
   "/crm/calendario",
   "/crm/ligacoes",
+  "/crm/automacoes",
   "/crm/modelos",
   "/crm/respostas-rapidas",
   "/crm/bots",

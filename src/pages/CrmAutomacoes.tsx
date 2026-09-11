@@ -19,11 +19,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 import AutomationModal from "@/components/automation/AutomationModal";
 
-type Pipeline = { id: string; name: string; color?: string; description?: string };
+// created_by entra no tipo porque é a coluna que dá AUTORIA à linha (migration
+// 20260910130000_sdr_desfecho_e_autonomia.sql desta rodada): a SDR só altera e
+// exclui funil/etapa que ela mesma criou. Linha antiga fica com created_by NULL
+// e NULL significa "estrutura da clínica" — a SDR não mexe. Os tipos gerados em
+// integrations/supabase/types.ts ainda não têm a coluna (o arquivo é gerado),
+// por isso ela é declarada aqui como opcional; o SELECT é "*", então o valor
+// chega do banco. Enquanto a migration não estiver aplicada, vem undefined e a
+// SDR só perde botão — nunca ganha (falha fechando).
+type Pipeline = { id: string; name: string; color?: string; description?: string; created_by?: string | null };
 // visivel_para_sdr entra no tipo porque a cópia do funil precisa levar essa
 // marca junto (o ciclo da SDR decide pelo campo se a etapa fecha o ciclo dela);
 // sem o campo aqui, o "Duplicar funil" não tinha de onde copiá-lo.
-type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number; is_won?: boolean; is_lost?: boolean; visivel_para_sdr?: boolean };
+type Stage = { id: string; pipeline_id: string; name: string; color: string; position: number; is_won?: boolean; is_lost?: boolean; visivel_para_sdr?: boolean; created_by?: string | null };
 type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
   action_config: Record<string, unknown>; is_active: boolean;
@@ -42,9 +50,33 @@ const PRESET_COLORS = [
 
 // No auto-final names - user controls is_final_stage manually
 
+/**
+ * Espelho de public.normaliza_nome_etapa (migration 20260908140000): tira
+ * acento, apara as pontas e baixa a caixa. Não colapsa espaço interno, igual ao
+ * SQL — por isso a lista abaixo guarda "follow - up" com os espaços que o banco
+ * guarda. A autoridade é a policy no banco; aqui é só para não OFERECER na tela
+ * um botão que o banco vai recusar.
+ */
+const normalizaNomeEtapa = (nome?: string | null) =>
+  (nome ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+/**
+ * Espelho de public.etapa_canonica_do_ciclo(text). Toda a máquina de desfecho
+ * (agendamento, comparecimento, entrega ao administrador, follow-up) casa etapa
+ * POR NOME. Renomear uma destas quebra o ciclo de todo mundo em silêncio, então
+ * o banco nega UPDATE/DELETE delas para o papel sdr e a tela não oferece.
+ */
+const ETAPAS_CANONICAS_DO_CICLO = new Set([
+  "novo lead", "conversando", "relacionamento", "follow - up", "recuperado",
+  "pre - agendado", "agendado", "nao compareceu", "reagendado", "reagendar",
+  "contratado", "nao contratado", "compareceu", "compareceu e agendou",
+]);
+const etapaCanonicaDoCiclo = (nome?: string | null) =>
+  ETAPAS_CANONICAS_DO_CICLO.has(normalizaNomeEtapa(nome));
+
 export default function CrmAutomacoes() {
   const navigate = useNavigate();
-  const { profile, userRole } = useAuth();
+  const { profile, userRole, user } = useAuth();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -95,6 +127,57 @@ export default function CrmAutomacoes() {
   // descobriam a recusa depois de reordenar tudo e clicar em salvar.
   const podeReordenarFunis = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
 
+  // ─── Gate do papel sdr nesta tela ──────────────────────────────────────────
+  // O dono pediu que a SDR pudesse CRIAR etapa, funil, gatilho e disparo — e
+  // reclamou de botão que não funciona. Ele NÃO pediu que ela apagasse ou
+  // renomeasse a estrutura que já existe, nem que mexesse na distribuição
+  // automática. A migration desta rodada põe isso no banco: INSERT liberado em
+  // crm_stages/crm_pipelines/crm_automations, mas UPDATE e DELETE de etapa e de
+  // funil só na linha com created_by = auth.uid(), e nunca em etapa cujo nome é
+  // canônico do ciclo. Daqui para baixo a tela só ESCONDE o que o banco vai
+  // recusar (para não repetir a reclamação do dono) e o que é perigoso: o
+  // revisor mostrou "Excluir funil" e a lixeira da etapa levando embora, em
+  // cascata (crm_leads.stage_id ON DELETE CASCADE), os leads, as mensagens e os
+  // agendamentos das colegas — e a contagem de leads da lixeira roda sob a RLS
+  // dela, então mostrava zero justamente quando o lead era da colega.
+  const ehSdr = userRole === "sdr";
+  const criadoPorMim = (createdBy?: string | null) => !!user?.id && createdBy === user.id;
+
+  // Alterar etapa (nome, cor, tipo Ganho/Perda, ordem) e excluí-la caem todas na
+  // MESMA policy: linha dela e nome fora do ciclo. Uma função só, por isso.
+  const podeAlterarEtapa = (s: Stage) =>
+    !ehSdr || (criadoPorMim(s.created_by) && !etapaCanonicaDoCiclo(s.name));
+
+  // Automação é presa à etapa: o banco aceita UPDATE/DELETE de automação quando
+  // a ETAPA dela é da SDR — aqui não entra o teste de nome canônico, porque
+  // criar gatilho e disparo na própria etapa é exatamente o que o dono pediu.
+  const podeMexerNaAutomacaoDaEtapa = (s: Stage) => !ehSdr || criadoPorMim(s.created_by);
+
+  // Arrastar reescreve a position de TODAS as etapas do funil; se uma delas não
+  // for alterável por ela, o laço falha no meio. Melhor não oferecer a alça.
+  const podeReordenarEtapas = !ehSdr || stages.every(podeAlterarEtapa);
+
+  const funilSelecionado = pipelines.find((p) => p.id === selectedPipelineId);
+  // Excluir funil apaga as etapas primeiro; só aparece quando o funil é dela E
+  // todas as etapas carregadas são apagáveis por ela — senão é botão que falha.
+  const podeExcluirFunil =
+    !ehSdr || (criadoPorMim(funilSelecionado?.created_by) && stages.every(podeAlterarEtapa));
+
+  // Duplicar funil, para a SDR, copia só as etapas que ela VÊ: a cópia nasce sem
+  // as etapas de desfecho e o ciclo do lead quebra sem aviso.
+  const podeDuplicarFunil = !ehSdr;
+
+  // Distribuição automática mexe na regra de propriedade do rodízio de SDRs —
+  // não foi pedido e não é dela.
+  const podeDistribuirLeads = !ehSdr;
+  // Fontes de lead (funnel_channels): a SDR é barrada no BANCO desde 08/09 pelas
+  // RESTRICTIVE sdr_sem_insert/update/delete_funnel_channels, criadas porque
+  // repontar a fonte de um funil muda o roteamento dos leads da clínica inteira.
+  // A tela não sabia disso e mostrava a lixeira e o "Adicionar fonte" para ela:
+  // dois botões que sempre falham, que é a reclamação literal do dono no item do
+  // AUTOMATIZE. A lista de fontes conectadas continua visível — o SELECT ela tem.
+  const podeMexerNasFontes = !ehSdr;
+
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
     const { data: pipeData } = await supabase.from("crm_pipelines").select("*").order("position", { ascending: true, nullsFirst: false }).order("created_at");
@@ -126,6 +209,8 @@ export default function CrmAutomacoes() {
   // Load round-robin state
   useEffect(() => {
     const loadRR = async () => {
+      // Bloco escondido para a SDR: nem carregar a lista de atendentes.
+      if (!podeDistribuirLeads) return;
       const { data: profiles } = await supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG);
       setRrProfiles(profiles || []);
       if (!selectedPipelineId) return;
@@ -143,7 +228,7 @@ export default function CrmAutomacoes() {
       }
     };
     loadRR();
-  }, [selectedPipelineId]);
+  }, [selectedPipelineId, podeDistribuirLeads]);
 
   const handleSaveRoundRobin = async () => {
     if (rrEligible.length === 0) return toast.error("Selecione ao menos um atendente");
@@ -248,6 +333,9 @@ export default function CrmAutomacoes() {
    * com as etapas erradas anunciada como sucesso.
    */
   const handleDuplicarFunil = async () => {
+    // Trava dupla do gate de cima: para a SDR a cópia sairia só com as etapas
+    // que ela VÊ, sem as de desfecho, e o ciclo do lead quebraria calado.
+    if (!podeDuplicarFunil) { toast.error("Duplicar funil é uma ação da gestão."); return; }
     const pipe = pipelines.find((p) => p.id === selectedPipelineId);
     if (!pipe) return;
     const etapasOrigem = [...stages];
@@ -306,6 +394,15 @@ export default function CrmAutomacoes() {
   };
 
   const openDeleteStage = async (stageId: string) => {
+    // Trava dupla: a lixeira já não aparece nas etapas que não são dela, mas o
+    // diálogo não deve nem abrir se um dia aparecer — a contagem de leads que
+    // ele mostra roda sob a RLS de quem olha e diz "etapa vazia" justamente
+    // quando o lead é da colega, e a exclusão levaria tudo em cascata.
+    const etapa = stages.find((s) => s.id === stageId);
+    if (etapa && !podeAlterarEtapa(etapa)) {
+      toast.error("Esta etapa faz parte da estrutura da clínica — só a gestão pode excluí-la.");
+      return;
+    }
     setDeleteStageId(stageId);
     setDeleteStageAction("move");
     setDeleteStageMoveTo("");
@@ -699,39 +796,59 @@ export default function CrmAutomacoes() {
               >
                 {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
-                    <MoreVertical size={16} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {podeReordenarFunis && (
-                    <DropdownMenuItem onClick={() => { setOrdem([...pipelines]); setOrdemOpen(true); }}>
-                      <ArrowUpDown size={14} className="mr-2" /> Ordem dos funis
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem onClick={handleDuplicarFunil}>
-                    <Copy size={14} className="mr-2" /> Duplicar funil
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
-                    if (!confirm("Excluir este funil e todas suas etapas?")) return;
-                    const { error: stagesErr } = await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
-                    if (stagesErr) { toast.error("Erro ao excluir as etapas do funil: " + stagesErr.message); return; }
-                    const { data: funilApagado, error: pipeErr } = await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId).select("id");
-                    if (pipeErr) { toast.error("Erro ao excluir funil: " + pipeErr.message); return; }
-                    if (!funilApagado || funilApagado.length === 0) {
-                      toast.error("Seu perfil não tem permissão para excluir este funil.");
-                      fetchData();
-                      return;
-                    }
-                    toast.success("Funil excluído");
-                    fetchData();
-                  }}>
-                    <Trash2 size={14} className="mr-2" /> Excluir funil
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Menu que abre vazio também é botão que não funciona: para a SDR
+                  não sobra nenhum item, então o trigger nem aparece. */}
+              {(podeReordenarFunis || podeDuplicarFunil || podeExcluirFunil) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                      <MoreVertical size={16} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {podeReordenarFunis && (
+                      <DropdownMenuItem onClick={() => { setOrdem([...pipelines]); setOrdemOpen(true); }}>
+                        <ArrowUpDown size={14} className="mr-2" /> Ordem dos funis
+                      </DropdownMenuItem>
+                    )}
+                    {podeDuplicarFunil && (
+                      <DropdownMenuItem onClick={handleDuplicarFunil}>
+                        <Copy size={14} className="mr-2" /> Duplicar funil
+                      </DropdownMenuItem>
+                    )}
+                    {podeExcluirFunil && (
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={async () => {
+                        if (!confirm("Excluir este funil e todas suas etapas?")) return;
+                        const { error: stagesErr } = await supabase.from("crm_stages").delete().eq("pipeline_id", selectedPipelineId);
+                        if (stagesErr) { toast.error("Erro ao excluir as etapas do funil: " + stagesErr.message); return; }
+                        // Delete barrado por RLS não devolve erro, devolve zero linha.
+                        // Conferir o que SOBROU é obrigatório aqui: crm_stages.pipeline_id
+                        // é ON DELETE CASCADE, então apagar o funil levaria as etapas que
+                        // ficaram — e, em cascata, os leads, as mensagens e os agendamentos
+                        // que estão nelas — sem passar por nenhuma policy.
+                        const { data: sobraram, error: confErr } = await supabase.from("crm_stages").select("id").eq("pipeline_id", selectedPipelineId);
+                        if (confErr) { toast.error("Não foi possível conferir as etapas do funil: " + confErr.message); return; }
+                        if (sobraram && sobraram.length > 0) {
+                          toast.error(`Este funil ainda tem ${sobraram.length} etapa(s) que seu perfil não pode excluir. O funil NÃO foi excluído, para não levar embora em cascata os leads que estão nelas.`);
+                          fetchData();
+                          return;
+                        }
+                        const { data: funilApagado, error: pipeErr } = await supabase.from("crm_pipelines").delete().eq("id", selectedPipelineId).select("id");
+                        if (pipeErr) { toast.error("Erro ao excluir funil: " + pipeErr.message); return; }
+                        if (!funilApagado || funilApagado.length === 0) {
+                          toast.error("Seu perfil não tem permissão para excluir este funil.");
+                          fetchData();
+                          return;
+                        }
+                        toast.success("Funil excluído");
+                        fetchData();
+                      }}>
+                        <Trash2 size={14} className="mr-2" /> Excluir funil
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           )}
         </div>
@@ -764,33 +881,38 @@ export default function CrmAutomacoes() {
               </div>
               <Switch checked={duplicateEnabled} onCheckedChange={setDuplicateEnabled} />
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm text-foreground">Distribuição automática</div>
-                <p className="text-xs text-muted-foreground max-w-xs">Distribui novos leads automaticamente entre os atendentes selecionados, usando Round Robin (alternado) ou Menor Carga.</p>
-                <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline mt-0.5">Configurar</button>
+            {/* Distribuição automática mexe na regra de propriedade do rodízio de
+                SDRs (quem é dono do lead). Não foi pedido e não é da SDR: para
+                ela o bloco não existe — nem o Configurar, nem o Switch. */}
+            {podeDistribuirLeads && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-foreground">Distribuição automática</div>
+                  <p className="text-xs text-muted-foreground max-w-xs">Distribui novos leads automaticamente entre os atendentes selecionados, usando Round Robin (alternado) ou Menor Carga.</p>
+                  <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline mt-0.5">Configurar</button>
+                </div>
+                <Switch checked={rrActive} onCheckedChange={async (v) => {
+                  const anterior = rrActive;
+                  setRrActive(v);
+                  const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
+                  const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
+                  if (match) {
+                    const { data: salvo, error } = await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id).select("id");
+                    if (error) {
+                      toast.error("Erro ao alterar distribuição: " + error.message);
+                      setRrActive(anterior);
+                      return;
+                    }
+                    if (!salvo || salvo.length === 0) {
+                      toast.error("Seu perfil não tem permissão para alterar esta distribuição.");
+                      setRrActive(anterior);
+                      return;
+                    }
+                    toast.success(v ? "Distribuição ativada" : "Distribuição desativada");
+                  }
+                }} />
               </div>
-              <Switch checked={rrActive} onCheckedChange={async (v) => {
-                const anterior = rrActive;
-                setRrActive(v);
-                const { data: existing } = await supabase.from("crm_automations").select("id, action_config").eq("action_type", "assign_lead");
-                const match = existing?.find((a: any) => (a.action_config as any)?.pipeline_id === selectedPipelineId);
-                if (match) {
-                  const { data: salvo, error } = await supabase.from("crm_automations").update({ is_active: v }).eq("id", match.id).select("id");
-                  if (error) {
-                    toast.error("Erro ao alterar distribuição: " + error.message);
-                    setRrActive(anterior);
-                    return;
-                  }
-                  if (!salvo || salvo.length === 0) {
-                    toast.error("Seu perfil não tem permissão para alterar esta distribuição.");
-                    setRrActive(anterior);
-                    return;
-                  }
-                  toast.success(v ? "Distribuição ativada" : "Distribuição desativada");
-                }
-              }} />
-            </div>
+            )}
             <hr className="border-border" />
             <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
             {channels.length === 0 ? (
@@ -813,6 +935,7 @@ export default function CrmAutomacoes() {
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    {podeMexerNasFontes && (
                     <button onClick={async () => {
                       const { data, error } = await supabase.from("funnel_channels").delete().eq("id", ch.id).select("id");
                       if (error) { toast.error("Erro ao remover fonte: " + error.message); return; }
@@ -823,10 +946,12 @@ export default function CrmAutomacoes() {
                       toast.success("Fonte removida");
                       setChannels(prev => prev.filter(c => c.id !== ch.id));
                     }}><Trash2 size={12} className="text-destructive cursor-pointer" /></button>
+                    )}
                   </div>
                 </div>
               );
             })}
+            {podeMexerNasFontes && (
             <button
               onClick={async () => {
                 const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
@@ -844,6 +969,7 @@ export default function CrmAutomacoes() {
             >
               <Plus size={14} /> Adicionar fonte
             </button>
+            )}
           </div>
         </div>
 
@@ -857,8 +983,12 @@ export default function CrmAutomacoes() {
                   <div ref={provided.innerRef} {...provided.droppableProps} className="flex gap-4 items-start min-w-max">
                     {stages.map((stage, idx) => {
                       const stageAutos = getAutomationsForStage(stage.id);
+                      // Automação de etapa que não é dela: o banco recusa UPDATE e DELETE,
+                      // e o "Executar" dos disparos manuais mandaria mensagem para os leads
+                      // das colegas que estão na etapa. Fica só leitura.
+                      const podeMexerNaAutomacao = podeMexerNaAutomacaoDaEtapa(stage);
                       return (
-                        <Draggable key={stage.id} draggableId={stage.id} index={idx}>
+                        <Draggable key={stage.id} draggableId={stage.id} index={idx} isDragDisabled={!podeReordenarEtapas}>
                           {(prov, snap) => (
                             <div
                               ref={prov.innerRef}
@@ -869,94 +999,140 @@ export default function CrmAutomacoes() {
                               <div className="p-3">
                               <div className="flex items-center justify-between mb-1">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
-                                    <span {...prov.dragHandleProps} className="cursor-grab text-muted-foreground hover:text-foreground">
-                                      <GripVertical size={14} />
-                                    </span>
-                                    <input
-                                      className="font-semibold text-sm text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none w-full min-w-0"
-                                      value={stage.name}
-                                      onChange={async (e) => {
-                                        const newName = e.target.value;
-                                        setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
-                                      }}
-                                      onBlur={async (e) => {
-                                        const { data, error } = await supabase.from("crm_stages").update({ name: e.target.value }).eq("id", stage.id).select("id");
-                                        if (error || !data || data.length === 0) {
-                                          toast.error(error ? "Erro ao renomear etapa: " + error.message : "Seu perfil não tem permissão para renomear esta etapa.");
-                                          // O nome na tela já é o digitado (onChange otimista); relê o valor do banco para reverter
-                                          const { data: atual } = await supabase.from("crm_stages").select("name").eq("id", stage.id).single();
-                                          if (atual) setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: atual.name } : s));
-                                        }
-                                      }}
-                                    />
+                                    {/* Arrastar reescreve a position de todas as etapas do funil; sem
+                                        direito sobre uma delas o laço para no meio. Alça só quando dá. */}
+                                    {podeReordenarEtapas && (
+                                      <span {...prov.dragHandleProps} className="cursor-grab text-muted-foreground hover:text-foreground">
+                                        <GripVertical size={14} />
+                                      </span>
+                                    )}
+                                    {/* Renomear etapa canônica do ciclo (ou etapa que não é dela) é
+                                        recusado pelo banco: a máquina de desfecho casa etapa POR NOME.
+                                        Campo editável ali só levaria o nome digitado a voltar sozinho. */}
+                                    {podeAlterarEtapa(stage) ? (
+                                      <input
+                                        className="font-semibold text-sm text-foreground bg-transparent border-b border-transparent hover:border-border focus:border-primary focus:outline-none w-full min-w-0"
+                                        value={stage.name}
+                                        onChange={async (e) => {
+                                          const newName = e.target.value;
+                                          setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: newName } : s));
+                                        }}
+                                        onBlur={async (e) => {
+                                          const { data, error } = await supabase.from("crm_stages").update({ name: e.target.value }).eq("id", stage.id).select("id");
+                                          if (error || !data || data.length === 0) {
+                                            toast.error(error ? "Erro ao renomear etapa: " + error.message : "Seu perfil não tem permissão para renomear esta etapa.");
+                                            // O nome na tela já é o digitado (onChange otimista); relê o valor do banco para reverter
+                                            const { data: atual } = await supabase.from("crm_stages").select("name").eq("id", stage.id).single();
+                                            if (atual) setStages(prev => prev.map(s => s.id === stage.id ? { ...s, name: atual.name } : s));
+                                          }
+                                        }}
+                                      />
+                                    ) : (
+                                      <span
+                                        className="font-semibold text-sm text-foreground truncate"
+                                        title="Etapa da estrutura da clínica — o nome faz parte do ciclo do lead e só a gestão altera"
+                                      >
+                                        {stage.name}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
-                                    <Popover>
-                                      <PopoverTrigger asChild>
-                                        <button className="w-5 h-5 rounded-md border border-border" style={{ backgroundColor: stage.color }} title="Alterar cor" />
-                                      </PopoverTrigger>
-                                      <PopoverContent className="w-auto p-2" align="end">
-                                        <div className="grid grid-cols-5 gap-1">
-                                          {PRESET_COLORS.map(c => (
-                                            <button
-                                              key={c}
-                                              onClick={async () => {
-                                                const corAnterior = stage.color;
-                                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: c } : s));
-                                                const { data, error } = await supabase.from("crm_stages").update({ color: c }).eq("id", stage.id).select("id");
-                                                if (error || !data || data.length === 0) {
-                                                  toast.error(error ? "Erro ao alterar a cor da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
-                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: corAnterior } : s));
-                                                }
-                                              }}
-                                              className={`w-6 h-6 rounded-md border-2 ${stage.color === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
-                                              style={{ backgroundColor: c }}
-                                            />
-                                          ))}
-                                        </div>
-                                      </PopoverContent>
-                                    </Popover>
-                                    <Popover>
-                                      <PopoverTrigger asChild>
-                                        <button
-                                          className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted"
-                                          title="Tipo da etapa (Ganho / Perda / Aberta) — usado na Análise de Funil"
-                                        >
-                                          {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
-                                            : stage.is_lost ? <span className="text-destructive">Perda</span>
-                                            : <span className="text-muted-foreground">Aberta</span>}
-                                        </button>
-                                      </PopoverTrigger>
-                                      <PopoverContent className="w-36 p-1" align="end">
-                                        {([
-                                          { key: "aberta", label: "Aberta", won: false, lost: false },
-                                          { key: "ganho", label: "Ganho", won: true, lost: false },
-                                          { key: "perda", label: "Perda", won: false, lost: true },
-                                        ] as const).map((opt) => {
-                                          const active = opt.won === !!stage.is_won && opt.lost === !!stage.is_lost;
-                                          return (
-                                            <button
-                                              key={opt.key}
-                                              onClick={async () => {
-                                                const tipoAnterior = { is_won: stage.is_won, is_lost: stage.is_lost };
-                                                setStages(prev => prev.map(s => s.id === stage.id ? { ...s, is_won: opt.won, is_lost: opt.lost } : s));
-                                                const { data, error } = await supabase.from("crm_stages").update({ is_won: opt.won, is_lost: opt.lost } as any).eq("id", stage.id).select("id");
-                                                if (error || !data || data.length === 0) {
-                                                  toast.error(error ? "Erro ao alterar o tipo da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
-                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, ...tipoAnterior } : s));
-                                                }
-                                              }}
-                                              className={`w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${active ? "bg-muted font-medium" : ""}`}
-                                            >
-                                              {opt.label}
-                                            </button>
-                                          );
-                                        })}
-                                      </PopoverContent>
-                                    </Popover>
-                                    <button onClick={() => openDeleteStage(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                                      <Trash2 size={14} />
-                                    </button>
+                                    {/* Cor, tipo e lixeira caem na mesma policy do nome: só a linha que
+                                        ela criou, e fora dos nomes do ciclo. Sem este gate o popover
+                                        abria, a cor mudava na tela e voltava sozinha no segundo seguinte. */}
+                                    {podeAlterarEtapa(stage) ? (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button className="w-5 h-5 rounded-md border border-border" style={{ backgroundColor: stage.color }} title="Alterar cor" />
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-2" align="end">
+                                          <div className="grid grid-cols-5 gap-1">
+                                            {PRESET_COLORS.map(c => (
+                                              <button
+                                                key={c}
+                                                onClick={async () => {
+                                                  const corAnterior = stage.color;
+                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: c } : s));
+                                                  const { data, error } = await supabase.from("crm_stages").update({ color: c }).eq("id", stage.id).select("id");
+                                                  if (error || !data || data.length === 0) {
+                                                    toast.error(error ? "Erro ao alterar a cor da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
+                                                    setStages(prev => prev.map(s => s.id === stage.id ? { ...s, color: corAnterior } : s));
+                                                  }
+                                                }}
+                                                className={`w-6 h-6 rounded-md border-2 ${stage.color === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"}`}
+                                                style={{ backgroundColor: c }}
+                                              />
+                                            ))}
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    ) : (
+                                      <span
+                                        className="w-5 h-5 rounded-md border border-border inline-block"
+                                        style={{ backgroundColor: stage.color }}
+                                        title="Cor definida pela gestão"
+                                      />
+                                    )}
+
+                                    {podeAlterarEtapa(stage) ? (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button
+                                            className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted"
+                                            title="Tipo da etapa (Ganho / Perda / Aberta) — usado na Análise de Funil"
+                                          >
+                                            {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
+                                              : stage.is_lost ? <span className="text-destructive">Perda</span>
+                                              : <span className="text-muted-foreground">Aberta</span>}
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-36 p-1" align="end">
+                                          {([
+                                            { key: "aberta", label: "Aberta", won: false, lost: false },
+                                            { key: "ganho", label: "Ganho", won: true, lost: false },
+                                            { key: "perda", label: "Perda", won: false, lost: true },
+                                          ] as const).map((opt) => {
+                                            const active = opt.won === !!stage.is_won && opt.lost === !!stage.is_lost;
+                                            return (
+                                              <button
+                                                key={opt.key}
+                                                onClick={async () => {
+                                                  const tipoAnterior = { is_won: stage.is_won, is_lost: stage.is_lost };
+                                                  setStages(prev => prev.map(s => s.id === stage.id ? { ...s, is_won: opt.won, is_lost: opt.lost } : s));
+                                                  const { data, error } = await supabase.from("crm_stages").update({ is_won: opt.won, is_lost: opt.lost } as any).eq("id", stage.id).select("id");
+                                                  if (error || !data || data.length === 0) {
+                                                    toast.error(error ? "Erro ao alterar o tipo da etapa: " + error.message : "Seu perfil não tem permissão para alterar esta etapa.");
+                                                    setStages(prev => prev.map(s => s.id === stage.id ? { ...s, ...tipoAnterior } : s));
+                                                  }
+                                                }}
+                                                className={`w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted ${active ? "bg-muted font-medium" : ""}`}
+                                              >
+                                                {opt.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </PopoverContent>
+                                      </Popover>
+                                    ) : (
+                                      <span
+                                        className="text-[10px] px-1.5 py-0.5 rounded border border-border"
+                                        title="Tipo da etapa (Ganho / Perda / Aberta) — definido pela gestão"
+                                      >
+                                        {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
+                                          : stage.is_lost ? <span className="text-destructive">Perda</span>
+                                          : <span className="text-muted-foreground">Aberta</span>}
+                                      </span>
+                                    )}
+
+                                    {/* A lixeira é o caminho que o revisor usou para levar embora, em
+                                        cascata, os leads das colegas — e a contagem que o diálogo mostra
+                                        roda sob a RLS dela, então dizia "etapa vazia" justamente quando o
+                                        lead era da colega. Só aparece na etapa que ela criou. */}
+                                    {podeAlterarEtapa(stage) && (
+                                      <button onClick={() => openDeleteStage(stage.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="text-xs text-primary cursor-pointer mb-3">{stageAutos.length} automação(ões)</div>
@@ -965,8 +1141,10 @@ export default function CrmAutomacoes() {
                                   {stageAutos.map(auto => (
                                     <div
                                       key={auto.id}
-                                      className="bg-primary/10 border border-primary/20 rounded p-2 text-xs cursor-pointer hover:bg-primary/20 transition-colors"
+                                      className={`bg-primary/10 border border-primary/20 rounded p-2 text-xs transition-colors ${podeMexerNaAutomacao ? "cursor-pointer hover:bg-primary/20" : ""}`}
+                                      title={podeMexerNaAutomacao ? undefined : "Automação da estrutura da clínica — só a gestão altera"}
                                       onClick={() => {
+                                        if (!podeMexerNaAutomacao) return;
                                         setAutoForm({
                                           stage_id: auto.stage_id,
                                           trigger_type: auto.trigger_type,
@@ -992,7 +1170,7 @@ export default function CrmAutomacoes() {
                                         )}
                                       </div>
                                       <div className="flex items-center gap-2 mt-1">
-                                        {auto.trigger_type === "manual_bulk_move" && (
+                                        {auto.trigger_type === "manual_bulk_move" && podeMexerNaAutomacao && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRunBulkMove(auto); }}
                                             className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
@@ -1000,7 +1178,7 @@ export default function CrmAutomacoes() {
                                             Executar
                                           </button>
                                         )}
-                                        {auto.trigger_type === "manual_bulk_send" && (
+                                        {auto.trigger_type === "manual_bulk_send" && podeMexerNaAutomacao && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRunBulkSend(auto); }}
                                             className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
@@ -1008,12 +1186,12 @@ export default function CrmAutomacoes() {
                                             Executar
                                           </button>
                                         )}
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
-                                          <Trash2 size={10} />
-                                        </button>
+                                        {podeMexerNaAutomacao && (
+                                          <button onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(auto.id); }} className="text-destructive/70 hover:text-destructive ml-auto">
+                                            <Trash2 size={10} />
+                                          </button>
+                                        )}
                                       </div>
-
-
                                     </div>
                                   ))}
                                   <button
@@ -1277,44 +1455,46 @@ export default function CrmAutomacoes() {
         </DialogContent>
       </Dialog>
 
-      {/* Round Robin Modal */}
-      <Dialog open={roundRobinOpen} onOpenChange={setRoundRobinOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Distribuição Automática de Leads</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Método</Label>
-              <Select value={rrMethod} onValueChange={setRrMethod}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="round_robin">Round Robin</SelectItem>
-                  <SelectItem value="least_load">Menor Carga</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                {rrMethod === "round_robin" ? "Distribui leads igualmente entre os atendentes" : "Atribui ao atendente com menos leads ativos"}
-              </p>
-            </div>
-            <div>
-              <Label>Atendentes Elegíveis</Label>
-              <div className="space-y-2 mt-2 max-h-60 overflow-auto">
-                {rrProfiles.map(p => (
-                  <label key={p.id} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-secondary">
-                    <Checkbox
-                      checked={rrEligible.includes(p.id)}
-                      onCheckedChange={() => setRrEligible(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
-                    />
-                    <span className="text-sm">{p.nome}</span>
-                  </label>
-                ))}
+      {/* Round Robin Modal — só para quem pode mexer na distribuição. */}
+      {podeDistribuirLeads && (
+        <Dialog open={roundRobinOpen} onOpenChange={setRoundRobinOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Distribuição Automática de Leads</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Método</Label>
+                <Select value={rrMethod} onValueChange={setRrMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="round_robin">Round Robin</SelectItem>
+                    <SelectItem value="least_load">Menor Carga</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {rrMethod === "round_robin" ? "Distribui leads igualmente entre os atendentes" : "Atribui ao atendente com menos leads ativos"}
+                </p>
               </div>
+              <div>
+                <Label>Atendentes Elegíveis</Label>
+                <div className="space-y-2 mt-2 max-h-60 overflow-auto">
+                  {rrProfiles.map(p => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-secondary">
+                      <Checkbox
+                        checked={rrEligible.includes(p.id)}
+                        onCheckedChange={() => setRrEligible(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                      />
+                      <span className="text-sm">{p.nome}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <Button onClick={handleSaveRoundRobin} className="w-full"><Zap size={16} /> Salvar Configuração</Button>
             </div>
-            <Button onClick={handleSaveRoundRobin} className="w-full"><Zap size={16} /> Salvar Configuração</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

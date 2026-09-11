@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
 import SdrExpediente from "@/components/sdr/SdrExpediente";
+import { rotuloDesfecho } from "@/lib/desfechoLabel";
 
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
@@ -400,6 +401,20 @@ export default function RecepcaoHome() {
                 <ul className="px-[18px] pb-1.5">
                   {consultas.map((c, i) => {
                     const confirmada = c.status === "confirmed";
+                    // A consulta desta lista nasce 'pending' ou 'confirmed' (a
+                    // busca já exclui cancelada, remarcada e as com desfecho).
+                    // Nesses dois casos o texto continua o mesmo de sempre —
+                    // "Sem confirmação" é uma cobrança de ação da recepção, não o
+                    // nome do estado. Qualquer outro status passa pelo helper de
+                    // papel, que devolve "Compareceu" para a SDR nos dois
+                    // desfechos de comparecimento (decisão D3) em vez de deixar
+                    // um "não contratado" aparecer como "Sem confirmação".
+                    const pendente = !c.status || c.status === "pending";
+                    const rotulo = confirmada
+                      ? "Confirmado"
+                      : pendente
+                      ? "Sem confirmação"
+                      : rotuloDesfecho(c.status, userRole);
                     return (
                       <li
                         key={c.id}
@@ -418,7 +433,7 @@ export default function RecepcaoHome() {
                               : "bg-muted text-muted-foreground"
                           }`}
                         >
-                          {confirmada ? "Confirmado" : "Sem confirmação"}
+                          {rotulo}
                         </span>
                         {!confirmada && (
                           <button
