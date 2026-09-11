@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, ArrowRight } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface PipelineStageSelectorProps {
   stages: { id: string; name: string; color: string; pipeline_id: string }[];
@@ -79,20 +79,16 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
         </Select>
       </div>
 
-      {/* O combo de funil sozinho não grava nada — o aviso diz o que falta fazer. */}
-      {trocandoDeFunil && (
-        <p className="text-xs text-amber-500 flex items-start gap-1.5">
-          <ArrowRight size={13} className="mt-0.5 shrink-0" />
-          <span>
-            O lead ainda está em <strong>{nomeFunil(funilDoLead) || "outro funil"}</strong>. Ele só vai para{" "}
-            <strong>{nomeFunil(selectedPipelineId)}</strong> quando você escolher a etapa de destino abaixo.
-          </span>
-        </p>
-      )}
+      {/* O aviso em amarelo saiu a pedido da operação: a equipe já sabe que
+          precisa escolher a etapa, e o texto repetia a cada troca de funil.
+          A orientação continua onde ela é lida de fato — no rótulo e no
+          placeholder do seletor de etapa logo abaixo, que passam a dizer
+          "destino" enquanto a troca não foi concluída. */}
 
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">
-          Etapa do Funil{selectedPipelineId && nomeFunil(selectedPipelineId) ? ` · ${nomeFunil(selectedPipelineId)}` : ""}
+          {trocandoDeFunil ? "Etapa de destino" : "Etapa do Funil"}
+          {selectedPipelineId && nomeFunil(selectedPipelineId) ? ` · ${nomeFunil(selectedPipelineId)}` : ""}
         </label>
         <Select
           value={etapaAtualVisivel ? currentStageId : ""}
