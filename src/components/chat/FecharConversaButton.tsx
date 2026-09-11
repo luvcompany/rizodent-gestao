@@ -61,6 +61,10 @@ type Props = {
 function usePesquisaOferta(leadId: string, ativo: boolean): PesquisaOferta {
   const [oferta, setOferta] = useState<PesquisaOferta>({ pode: true, motivo: null, aviso: null });
   useEffect(() => {
+    // LIMPA ANTES de consultar, e antes do `if (!ativo)`. Sem isto a oferta do
+    // lead anterior fica na tela: a SDR abria o diálogo do lead B e lia "já
+    // recebeu a pesquisa em 08/09" — data do lead A.
+    setOferta({ pode: true, motivo: null, aviso: null });
     if (!ativo) return;
     let vivo = true;
     void pesquisaOferecer(leadId).then((o) => {
@@ -110,6 +114,8 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
   const [enviarPesquisa, setEnviarPesquisa] = useState(true);
   const disponivel = useConversaRpcDisponivel();
   const oferta = usePesquisaOferta(leadId, aberto && !fechadaEm);
+  // A caixa não herda o "desmarcado" do lead anterior.
+  useEffect(() => { setEnviarPesquisa(true); }, [leadId]);
   if (!userRole || !PAPEIS_QUE_FECHAM.has(userRole)) return null;
   if (!disponivel) return null;
 
@@ -185,7 +191,11 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogAction
             onClick={async () => {
               setOcupado(true);
-              const quando = await fecharConversa(leadId, oferta.pode && enviarPesquisa);
+              // Manda o que a pessoa marcou, SEM refazer a régua aqui. O banco
+              // decide de novo em conversa_fechar e devolve o motivo, que vira
+              // toast. Assim uma oferta desatualizada no máximo mostra texto
+              // velho — nunca decide por ela.
+              const quando = await fecharConversa(leadId, enviarPesquisa);
               setOcupado(false);
               if (quando) onChange(quando);
             }}

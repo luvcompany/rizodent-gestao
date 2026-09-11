@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
+import { usePresencaNaConversa } from "@/hooks/usePresencaNaConversa";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -103,6 +104,12 @@ export default function CrmConversa() {
   const [newNote, setNewNote] = useState("");
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => profilesCacheConv.data || []);
   const [igAccountsMap, setIgAccountsMap] = useState<Record<string, string>>({});
+
+  // ESTA é a página que a SDR abre pelo Kanban e pela notificação, e é aqui que
+  // ela agenda. Sem o carimbo de presença, ela podia perder o lead para outra
+  // SDR no meio da resposta (realocação por silêncio) e ter a conversa fechada
+  // por cima dela nos 15 minutos depois do agendamento.
+  usePresencaNaConversa(id);
 
   useEffect(() => {
     supabase

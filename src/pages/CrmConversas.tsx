@@ -3,6 +3,17 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { usePresencaNaConversa } from "@/hooks/usePresencaNaConversa";
+
+/**
+ * Compara ignorando acento, do mesmo jeito que a busca no banco faz desde
+ * 11/09/2026 (public.termo_regex_acento_indiferente). Sem isto a RPC devolve os
+ * 444 leads certos para "orcamento" e a lista não realça nada, porque
+ * indexOf("orcamento") não acha "orçamento": a pessoa recebe um parágrafo
+ * cortado e tem de caçar a palavra com o olho.
+ */
+const semAcento = (t: string) =>
+  (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 import { useAuth } from "@/contexts/AuthContext";
 import { ehPapelSdr, rotuloDesfecho, type PapelUsuario } from "@/lib/desfechoLabel";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
@@ -821,31 +832,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [leadParaHidratar]);
 
   // PRESENÇA NA CONVERSA. Enquanto esta conversa estiver aberta e a aba visível,
-  // carimba crm_leads.em_atendimento_por/_em pela RPC conversa_estou_aqui. A
-  // realocação por silêncio não tira da dona um lead carimbado há poucos minutos
-  // (crm_rodizio_config.presenca_segura_min) — é a resposta ao relato do dono de
-  // 11/09: "ela já estava pra responder" e o lead foi transferido no meio.
-  //
-  // Renova a cada minuto e PARA quando a aba perde a visibilidade, de propósito:
-  // quem deixou a tela aberta e foi embora não segura o lead. Falha em silêncio
-  // porque presença é conforto, não pode quebrar o chat — e porque o site pode
-  // estar publicado antes da migration da RPC existir.
-  useEffect(() => {
-    if (!selectedLeadId) return;
-    const carimbar = () => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (supabase as any).rpc("conversa_estou_aqui", { p_lead_id: selectedLeadId }).then(() => {}, () => {}); }
-      catch { /* presença é best-effort */ }
-    };
-    carimbar();
-    const t = window.setInterval(carimbar, 60_000);
-    document.addEventListener("visibilitychange", carimbar);
-    return () => {
-      window.clearInterval(t);
-      document.removeEventListener("visibilitychange", carimbar);
-    };
-  }, [selectedLeadId]);
+  // Presença nesta conversa (ver src/hooks/usePresencaNaConversa.ts): segura o
+  // lead contra a realocação por silêncio e contra o fechamento automático
+  // enquanto a pessoa está aqui de verdade.
+  usePresencaNaConversa(selectedLeadId);
 
   // Realtime - leads list
   useEffect(() => {
@@ -1441,11 +1431,18 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                               if (termo.length < 3) return null;
                               const trecho = messageMatchSnippets?.get(lead.id);
                               if (!trecho) return null;
+                              const alvo = semAcento(termo);
                               const jaExplicado =
-                                lead.name.toLowerCase().includes(termo) ||
-                                (lead.last_message || "").toLowerCase().includes(termo);
+                                semAcento(lead.name).includes(alvo) ||
+                                semAcento(lead.last_message || "").includes(alvo);
                               if (jaExplicado) return null;
-                              const corte = trecho.toLowerCase().indexOf(termo);
+                              // Só usa o índice normalizado quando a normalização
+                              // preservou a contagem de caracteres; senão o slice
+                              // recortaria no lugar errado.
+                              const trechoNorm = semAcento(trecho);
+                              const corte = trechoNorm.length === trecho.length
+                                ? trechoNorm.indexOf(alvo)
+                                : trecho.toLowerCase().indexOf(termo);
                               return (
                                 <p
                                   className="text-[11px] text-muted-foreground/90 truncate mt-1 flex items-center gap-1"

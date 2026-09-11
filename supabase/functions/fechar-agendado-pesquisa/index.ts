@@ -102,6 +102,12 @@ Deno.serve(async (req) => {
             to: r.pesquisa.telefone,
             type: "text",
             message: r.pesquisa.texto,
+            // A pesquisa é o robô falando, não a clínica respondendo. Sem isto,
+            // o envio empurraria last_outbound_at e um lead com pergunta do
+            // paciente pendente sumiria do badge, do filtro "Aberto" e do modo
+            // "maior espera" — a pergunta ficaria enterrada. O bot-engine já usa
+            // a mesma bandeira pelo mesmo motivo.
+            skip_mark_as_read: true,
           }),
         });
 
@@ -115,7 +121,21 @@ Deno.serve(async (req) => {
         if (falhou) {
           // Desfaz a marca de "enviada" para não mentir no relatório nem
           // consumir a janela de 15 dias do paciente.
-          await supabase.rpc("pesquisa_envio_falhou", { p_resposta_id: r.pesquisa.resposta_id });
+          // pesquisa_envio_falhou_auto, e NÃO a irmã pesquisa_envio_falhou: a
+          // original exige auth.uid() + current_tenant_id() e recusa a service
+          // key com 42501. Chamar a errada deixaria a linha fantasma de pé, e o
+          // paciente que não recebeu nada ficaria 15 dias sem poder receber.
+          // O retorno É conferido: apagamento que falha em silêncio é pior que
+          // apagamento nenhum, porque some do relatório de erros.
+          const { data: apagou, error: errApagar } = await supabase.rpc(
+            "pesquisa_envio_falhou_auto",
+            { p_resposta_id: r.pesquisa.resposta_id },
+          );
+          if (errApagar || apagou === false) {
+            relatorio.erros.push(
+              `${leadId}: PESQUISA FANTASMA nao apagada (${errApagar?.message ?? "delete sem efeito"}) resposta_id=${r.pesquisa.resposta_id}`,
+            );
+          }
           relatorio.pesquisas_falharam++;
           relatorio.erros.push(`${leadId}: pesquisa ${resp.status} ${txt.substring(0, 160)}`);
         } else {

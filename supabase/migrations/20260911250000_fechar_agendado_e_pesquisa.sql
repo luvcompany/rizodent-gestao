@@ -63,11 +63,20 @@
 
 
 -- ============================================== 1. as duas réguas configuráveis
+-- Nasce DESLIGADA. O CRClin é multi-cliente: uma clínica que nunca pediu
+-- fechamento automático não pode começar a fechar conversa (e, se ligar a
+-- pesquisa, a mandar WhatsApp) porque uma migration passou por aqui. Quem pediu
+-- em 11/09/2026 foi a Rizodent, e é só nela que o valor é ligado.
 ALTER TABLE public.crm_rodizio_config
-  ADD COLUMN IF NOT EXISTS fechar_agendado_apos_min integer NOT NULL DEFAULT 15;
+  ADD COLUMN IF NOT EXISTS fechar_agendado_apos_min integer NOT NULL DEFAULT 0;
+
+UPDATE public.crm_rodizio_config
+   SET fechar_agendado_apos_min = 15
+ WHERE tenant_id = '00000000-0000-0000-0000-000000000010'
+   AND fechar_agendado_apos_min = 0;
 
 COMMENT ON COLUMN public.crm_rodizio_config.fechar_agendado_apos_min IS
-  'Minutos entre o lead ENTRAR numa etapa de agendamento e a conversa fechar sozinha, enviando a pesquisa. 0 desliga o fechamento automático sem mexer em mais nada.';
+  'Minutos entre o lead ENTRAR numa etapa de agendamento e a conversa fechar sozinha, enviando a pesquisa. 0 (o padrão) DESLIGA: só fecha o cliente que tem linha nesta tabela com valor maior que zero. Mudar para 0 desliga a qualquer momento, sem mexer em mais nada.';
 
 ALTER TABLE public.crm_pesquisa_config
   ADD COLUMN IF NOT EXISTS intervalo_dias integer NOT NULL DEFAULT 15;
@@ -167,11 +176,17 @@ BEGIN
        AND r.enviada_em > now() - make_interval(days => v_dias));
 END $fn$;
 
-REVOKE ALL ON FUNCTION public.pesquisa_pode_enviar(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.pesquisa_pode_enviar(uuid) TO authenticated, service_role;
+-- NÃO alcançável pelo usuário logado. Ela recebe um lead_id por parâmetro e não
+-- confere o cliente de quem chama: liberada a authenticated, viraria um oráculo
+-- ("este uuid existe?" e "recebeu pesquisa nos últimos 15 dias?") sobre paciente
+-- de OUTRA clínica. Quem a tela chama é pesquisa_oferecer, que confere o
+-- tenant e a visibilidade do lead. As duas funções de fechamento a chamam por
+-- dentro, e chamada interna roda como o dono da função.
+REVOKE ALL ON FUNCTION public.pesquisa_pode_enviar(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.pesquisa_pode_enviar(uuid) TO service_role;
 
 COMMENT ON FUNCTION public.pesquisa_pode_enviar(uuid) IS
-  'Régua única dos 15 dias. A tela chama para esconder a opção antes de o usuário marcar, e os dois caminhos de fechamento chamam antes de criar a linha da pesquisa.';
+  'Régua única dos 15 dias, chamada por dentro pelos dois caminhos de fechamento antes de criar a linha da pesquisa. NÃO é para a tela: quem a tela chama é pesquisa_oferecer, que confere o cliente e a visibilidade do lead.';
 
 
 -- ============================= 5. o gatilho: quem entra em Agendado entra na fila
@@ -200,10 +215,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT COALESCE(c.fechar_agendado_apos_min, 15) INTO v_min
+  SELECT c.fechar_agendado_apos_min INTO v_min
     FROM public.crm_rodizio_config c WHERE c.tenant_id = NEW.tenant_id;
-  v_min := COALESCE(v_min, 15);
-  IF v_min <= 0 THEN RETURN NEW; END IF;            -- desligado nesta clínica
+  -- Cliente sem linha de configuração nenhuma = fechamento desligado. Sem isto,
+  -- um cliente que nunca configurou nada começaria a fechar conversa sozinho.
+  IF NOT FOUND THEN RETURN NEW; END IF;
+  IF COALESCE(v_min, 0) <= 0 THEN RETURN NEW; END IF;   -- desligado nesta clínica
 
   INSERT INTO public.crm_fechamentos_agendados (lead_id, tenant_id, stage_id, entrou_em, fechar_em)
   VALUES (NEW.id, NEW.tenant_id, NEW.stage_id, now(),
@@ -226,6 +243,33 @@ DROP TRIGGER IF EXISTS trg_zzz_fecha_agendado_enfileira ON public.crm_leads;
 CREATE TRIGGER trg_zzz_fecha_agendado_enfileira
   AFTER INSERT OR UPDATE OF stage_id ON public.crm_leads
   FOR EACH ROW EXECUTE FUNCTION public.fecha_agendado_enfileira();
+
+
+-- ============ 5b. desfazer a pesquisa que não saiu — versão que o cron alcança
+-- public.pesquisa_envio_falhou (Fase 2) começa por auth.uid() + current_tenant_id()
+-- e levanta 42501 quando os dois são nulos. A edge function roda com a service
+-- key e NÃO tem sessão: a chamada dela SEMPRE falharia, a linha da pesquisa
+-- ficaria de pé e o paciente que NÃO recebeu nada ficaria 15 dias bloqueado —
+-- justamente o contrário do que o desenho promete. Esta é a gêmea sem sessão,
+-- fechada a todo mundo menos ao servidor. A original não é tocada: as guardas
+-- dela são a proteção do caminho da tela.
+CREATE OR REPLACE FUNCTION public.pesquisa_envio_falhou_auto(p_resposta_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $fn$
+BEGIN
+  IF p_resposta_id IS NULL THEN RETURN false; END IF;
+  -- respondida_em/nota nulos: nunca apaga uma pesquisa que o paciente já respondeu.
+  DELETE FROM public.crm_pesquisa_respostas r
+   WHERE r.id = p_resposta_id
+     AND r.respondida_em IS NULL
+     AND r.nota IS NULL;
+  RETURN FOUND;
+END $fn$;
+
+REVOKE ALL ON FUNCTION public.pesquisa_envio_falhou_auto(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.pesquisa_envio_falhou_auto(uuid) TO service_role;
+
+COMMENT ON FUNCTION public.pesquisa_envio_falhou_auto(uuid) IS
+  'Apaga a linha de uma pesquisa cujo envio falhou, para ela não contar como enviada nem queimar os 15 dias do paciente. Só para o servidor (o cron não tem sessão, e por isso não pode usar pesquisa_envio_falhou).';
 
 
 -- =========================== 6. a varredura: quem já pode fechar agora
@@ -268,20 +312,76 @@ BEGIN
          'system'
     FROM desistiu d;
 
-  -- 6c. adia quem está com a dona dentro da conversa AGORA.
+  -- 6a-bis. BACKLOG DE INDISPONIBILIDADE. Publicar é em 3 passos, e a edge
+  -- function pode ficar horas sem existir depois de o cron começar a chamar. Sem
+  -- isto, a primeira execução real devolveria o dia inteiro de uma vez e dezenas
+  -- de pacientes receberiam "avalie de 1 a 5" à meia-noite. Vencido há mais de
+  -- 6 horas não fecha mais: vira nota no chat INTERNO e sai da fila.
+  WITH velho AS (
+    DELETE FROM public.crm_fechamentos_agendados f
+     WHERE f.fechar_em < now() - interval '6 hours'
+     RETURNING f.lead_id, f.tenant_id
+  )
+  INSERT INTO public.messages (lead_id, tenant_id, direction, type, content, status)
+  SELECT v.lead_id, v.tenant_id, 'outbound', 'system',
+         '⚠️ O fechamento automático desta conversa venceu há muito tempo e foi cancelado (a pesquisa NÃO foi enviada). Feche pelo botão quando quiser.',
+         'system'
+    FROM velho v;
+
+  -- 6b-bis. FORA DA JANELA AGORA. A janela é calculada no enfileiramento; entre
+  -- lá e cá o relógio andou. Reagendar (em vez de só filtrar) é o que impede a
+  -- fila de represar e disparar tudo junto às 08:00.
+  -- (a função é chamada duas vezes de propósito: FROM LATERAL não enxerga a
+  -- tabela-alvo do UPDATE, e o custo é irrelevante porque só as linhas já
+  -- vencidas chegam aqui)
+  UPDATE public.crm_fechamentos_agendados f
+     SET fechar_em = public.fechar_agendado_na_janela(now(), f.tenant_id)
+   WHERE f.fechar_em <= now()
+     AND public.fechar_agendado_na_janela(now(), f.tenant_id) <> now();
+
+  -- 6c. adia quem está com gente na conversa AGORA.
   -- A carência de presença é POR CLIENTE: lida da config do tenant de cada
   -- linha, nunca de um tenant tirado da fila a esmo (o CRClin é multi-cliente e
   -- cada clínica pode ter o seu número).
+  -- Duas formas de "tem gente aqui": a aba aberta (presença) e uma mensagem de
+  -- GENTE nos últimos minutos — de qualquer lado. Medido em 30 dias: 33 casos de
+  -- o PACIENTE ter escrito nos 5 min antes do fechamento contra 7 da SDR; mandar
+  -- pesquisa em cima da pergunta do paciente é tão ruim quanto em cima dela.
+  -- A presença vale para QUEM ESTIVER ali (não só a dona): closer, CRC e gerente
+  -- atendendo também não podem ser atropelados.
+  -- sender_id só existe quando quem mandou foi gente: bot, automação e a própria
+  -- pesquisa (enviada pela service key) gravam NULL e não se auto-adiam.
   UPDATE public.crm_fechamentos_agendados f
-     SET fechar_em = now() + make_interval(mins => COALESCE(c.presenca_segura_min, 5))
+     SET fechar_em = public.fechar_agendado_na_janela(
+                       now() + make_interval(mins => COALESCE(c.presenca_segura_min, 5)), l.tenant_id)
     FROM public.crm_leads l
     LEFT JOIN public.crm_rodizio_config c ON c.tenant_id = l.tenant_id
    WHERE f.lead_id = l.id
      AND f.fechar_em <= now()
-     AND l.em_atendimento_por IS NOT NULL
-     AND l.em_atendimento_por = l.assigned_to
-     AND l.em_atendimento_em IS NOT NULL
-     AND l.em_atendimento_em > now() - make_interval(mins => COALESCE(c.presenca_segura_min, 5));
+     AND (
+           (l.em_atendimento_por IS NOT NULL
+            AND l.em_atendimento_em IS NOT NULL
+            AND l.em_atendimento_em > now() - make_interval(mins => COALESCE(c.presenca_segura_min, 5)))
+        OR EXISTS (
+             SELECT 1 FROM public.messages m
+              WHERE m.lead_id = l.id
+                AND m.created_at > now() - make_interval(mins => COALESCE(c.presenca_segura_min, 5))
+                AND COALESCE(m.type, 'text') <> 'system'
+                AND m.deleted_at IS NULL
+                AND (m.sender_id IS NOT NULL OR m.direction = 'inbound'))
+         );
+
+  -- 6c-bis. O PACIENTE FALOU POR ÚLTIMO: a bola está com a clínica. Fechar aqui
+  -- enterraria a pergunta dele (o lead sai do filtro "Aberto" e do badge) e a
+  -- pesquisa chegaria como resposta a um pedido de remarcação. ADIA, não remove:
+  -- só a ENTRADA na etapa enfileira, então remover seria nunca mais fechar.
+  UPDATE public.crm_fechamentos_agendados f
+     SET fechar_em = public.fechar_agendado_na_janela(now() + interval '15 minutes', l.tenant_id)
+    FROM public.crm_leads l
+   WHERE f.lead_id = l.id
+     AND f.fechar_em <= now()
+     AND l.last_inbound_at IS NOT NULL
+     AND (l.last_outbound_at IS NULL OR l.last_inbound_at > l.last_outbound_at);
 
   -- 6d. o que sobrou e está vencido: marca a tentativa e devolve.
   RETURN QUERY
@@ -357,6 +457,12 @@ BEGIN
     v_sem := 'canal_instagram';
   ELSIF NOT public.pesquisa_pode_enviar(v_lead.id) THEN
     v_sem := 'pesquisa_recente';
+  ELSIF v_lead.last_inbound_at IS NOT NULL
+        AND (v_lead.last_outbound_at IS NULL OR v_lead.last_inbound_at > v_lead.last_outbound_at) THEN
+    -- Mensagem que chegou entre a varredura e este instante. A conversa fecha
+    -- (fechar é reversível com um clique); a pesquisa não sai em cima de uma
+    -- pergunta sem resposta.
+    v_sem := 'paciente_aguardando';
   ELSE
     v_primeiro_nome := NULLIF(split_part(btrim(COALESCE(v_lead.name, '')), ' ', 1), '');
     v_escala_txt := CASE WHEN v_cfg.escala ~ '^\d+-\d+$'
