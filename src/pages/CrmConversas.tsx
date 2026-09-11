@@ -1973,12 +1973,20 @@ function useChannelUnreadCount(channel: "whatsapp" | "instagram") {
 export default function CrmConversas() {
   const whatsappUnread = useChannelUnreadCount("whatsapp");
   const instagramUnread = useChannelUnreadCount("instagram");
-  // Recepção, closer e SDR atendem só WhatsApp — os hooks acima ficam
-  // incondicionais (regra de hooks); apenas a aba deixa de ser renderizada.
-  // (SDR: ig_accounts/instagram_* bloqueadas no banco e o funil Instagram não
-  // recebe override — a aba ficaria sempre vazia.)
+  // Recepção e closer atendem só WhatsApp — os hooks acima ficam incondicionais
+  // (regra de hooks); apenas a aba deixa de ser renderizada.
+  //
+  // A SDR SAIU desta lista em 11/09/2026, a pedido do dono: "os leads do
+  // instagram não estão aparecendo para as sdrs, não precisa fazer distribuição
+  // neles apenas deixar aparecer pra todo mundo". A justificativa antiga era que
+  // a aba ficaria sempre vazia — e era verdade, porque o funil do Instagram não
+  // recebia override e os leads de lá não têm dona, então a régua da SDR (só o
+  // que é dela) escondia todos. A migration 20260911010000 mudou as duas coisas:
+  // o funil virou caixa comum, visível para toda a equipe de pré-venda.
+  //
+  // Recepção e closer continuam fora porque para eles nada mudou no banco.
   const { userRole } = useAuth();
-  const hideInstagram = userRole === "recepcao" || userRole === "closer" || userRole === "sdr";
+  const hideInstagram = userRole === "recepcao" || userRole === "closer";
 
   return (
     <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
