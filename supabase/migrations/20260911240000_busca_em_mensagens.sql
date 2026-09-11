@@ -203,13 +203,36 @@ BEGIN
              OR m.whatsapp_number_id IS NULL
              OR m.whatsapp_number_id = ANY (v_numeros)
            )
+       AND m.lead_id IS NOT NULL   -- sem isto, todas as mensagens órfãs viram
+                                   -- UMA linha com lead_id nulo que o front
+                                   -- descarta, gastando uma das 500 vagas
      ORDER BY m.lead_id, m.created_at DESC
   ),
   visiveis AS (
     -- Passo 2: a régua das policies, uma vez por lead.
     SELECT a.id_lead, a.conteudo, a.momento
       FROM achados a
-     WHERE (NOT v_sdr      OR public.sdr_pode_ver_lead(a.id_lead))
+     -- SDR: o JOIN direto no lugar da função por lead.
+     -- sdr_pode_ver_lead é SECURITY DEFINER e faz um EXISTS por chamada; medida
+     -- em produção com o papel da SDR, a busca ia a 3,7 s com o termo "com" e o
+     -- statement_timeout de authenticated é 8 s — margem de 2,4x num cliente que
+     -- tem 255 mil mensagens, e quem estoura cai no fallback do front, que roda
+     -- a consulta velha e gasta outros 8 s. A pessoa esperaria uns 16 segundos e
+     -- veria de novo o bug que o dono relatou.
+     -- A régua é a MESMA da função (leia sdr_pode_ver_lead): lead dela, ou lead
+     -- sem dona no funil do Instagram, sempre do próprio cliente. Escrita como
+     -- JOIN, o planejador usa o índice de crm_leads em vez de chamar função
+     -- 7.387 vezes.
+     WHERE (NOT v_sdr
+            OR EXISTS (
+                 SELECT 1
+                   FROM public.crm_leads l
+                   LEFT JOIN public.crm_pipelines p ON p.id = l.pipeline_id
+                  WHERE l.id = a.id_lead
+                    AND l.tenant_id = v_tenant
+                    AND (l.assigned_to = v_uid
+                         OR (l.assigned_to IS NULL AND COALESCE(p.is_instagram, false)))
+               ))
        AND (NOT v_closer   OR public.closer_pode_ver_lead(a.id_lead))
        AND (NOT v_recepcao OR public.recepcao_pode_ver_lead(a.id_lead))
        AND (
@@ -219,6 +242,17 @@ BEGIN
                     FROM public.crm_leads l
                    WHERE l.id = a.id_lead
                      AND public.can_access_pipeline(l.pipeline_id)
+                     -- A policy da pós-venda diz só can_access_pipeline, MAS ela
+                     -- é avaliada dentro da RLS, onde o SELECT em crm_leads passa
+                     -- pela policy da própria tabela — que exige também o número
+                     -- de WhatsApp e a conta de Instagram. Aqui a função é
+                     -- DEFINER e o EXISTS roda SEM RLS, então os dois testes
+                     -- precisam ser escritos à mão, senão a busca fica mais
+                     -- permissiva que a tela. Hoje empata (quase todo lead tem os
+                     -- dois campos nulos), e é por isso mesmo que passa
+                     -- despercebido até o dia da segunda conexão.
+                     AND public.can_access_whatsapp_number(l.whatsapp_number_id)
+                     AND public.can_access_instagram_account(l.ig_account_uuid)
                 )
            )
        AND (
