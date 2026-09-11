@@ -303,6 +303,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Lê localStorage uma vez no primeiro render — fallback quando módulo cache está frio (reload)
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
+  // Lead que o Realtime avisou existir mas que ainda não está na lista (tipicamente
+  // um lead que acabou de ser realocado para esta SDR). Guardamos só o id: quem
+  // busca a linha é o efeito de hidratação, no banco, onde a RLS vale.
+  const [leadParaHidratar, setLeadParaHidratar] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Identificação do "mundo" (conexão de WhatsApp) na lista. Só aparece quando o
   // tenant tem mais de um número ativo — com só o principal não poluímos a UI.
@@ -740,6 +744,57 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [selectedLeadId, leads]);
 
 
+  // Hidrata, do BANCO, o lead que o Realtime avisou existir e que não está na
+  // lista. É assim que o lead recém-realocado aparece para a nova dona sem ela
+  // recarregar a página. Se a RLS não devolver a linha, nada acontece — que é
+  // exatamente o que deve acontecer quando o lead não é dela.
+  useEffect(() => {
+    if (!leadParaHidratar) return;
+    let cancelado = false;
+    (async () => {
+      const { data } = await supabase
+        .from("crm_leads")
+        .select(LEAD_LIST_COLS)
+        .eq("id", leadParaHidratar)
+        .maybeSingle();
+      if (cancelado) return;
+      setLeadParaHidratar(null);
+      if (!data || (data as any).is_blocked) return;
+      const novo = normalizeLead(data as any);
+      setLeads((prev) => prev.some((l) => l.id === (novo as any).id)
+        ? prev
+        : sortLeadsByLastActivity([novo as any, ...prev]));
+    })();
+    return () => { cancelado = true; };
+  }, [leadParaHidratar]);
+
+  // PRESENÇA NA CONVERSA. Enquanto esta conversa estiver aberta e a aba visível,
+  // carimba crm_leads.em_atendimento_por/_em pela RPC conversa_estou_aqui. A
+  // realocação por silêncio não tira da dona um lead carimbado há poucos minutos
+  // (crm_rodizio_config.presenca_segura_min) — é a resposta ao relato do dono de
+  // 11/09: "ela já estava pra responder" e o lead foi transferido no meio.
+  //
+  // Renova a cada minuto e PARA quando a aba perde a visibilidade, de propósito:
+  // quem deixou a tela aberta e foi embora não segura o lead. Falha em silêncio
+  // porque presença é conforto, não pode quebrar o chat — e porque o site pode
+  // estar publicado antes da migration da RPC existir.
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const carimbar = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { (supabase as any).rpc("conversa_estou_aqui", { p_lead_id: selectedLeadId }).then(() => {}, () => {}); }
+      catch { /* presença é best-effort */ }
+    };
+    carimbar();
+    const t = window.setInterval(carimbar, 60_000);
+    document.addEventListener("visibilitychange", carimbar);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", carimbar);
+    };
+  }, [selectedLeadId]);
+
   // Realtime - leads list
   useEffect(() => {
     const channel = supabase
@@ -760,10 +815,23 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
           }
           setLeads((prev) => {
             const exists = prev.some((l) => l.id === updated.id);
-            const newList = exists
-              ? prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l)
-              : [updated, ...prev];
-            return sortLeadsByLastActivity(newList);
+            // LEAD QUE AINDA NÃO ESTÁ NA LISTA: não entra pelo payload.
+            //
+            // É o caso da realocação por silêncio — o lead passa a ser desta SDR
+            // e precisa aparecer sem ela recarregar a página (relato do dono em
+            // 11/09). Só que inserir o payload cru tem dois problemas: ele não
+            // passou pela consulta da lista (que traz derivados e recortes) e,
+            // sobretudo, o evento de Realtime chega antes de qualquer conferência
+            // de permissão do lado do cliente — confiar nele para montar a lista
+            // é confiar no que veio pela rede.
+            //
+            // Então o evento serve só de AVISO: quem busca é o efeito abaixo, no
+            // banco, onde a RLS decide. Se a linha não for dela, nada aparece.
+            if (!exists) {
+              setLeadParaHidratar(updated.id as string);
+              return prev;
+            }
+            return sortLeadsByLastActivity(prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l));
           });
           if (updated.id === selectedLeadId) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);
