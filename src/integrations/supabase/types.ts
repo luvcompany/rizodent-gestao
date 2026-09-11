@@ -2952,6 +2952,7 @@ export type Database = {
           pausa_alerta_min: number
           ponteiro_user_id: string | null
           preferir_em_expediente: boolean
+          realocar_carencia_abertura_min: number
           realocar_sem_resposta_min: number
           tenant_id: string
           updated_at: string
@@ -2972,6 +2973,7 @@ export type Database = {
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
+          realocar_carencia_abertura_min?: number
           realocar_sem_resposta_min?: number
           tenant_id: string
           updated_at?: string
@@ -2992,6 +2994,7 @@ export type Database = {
           pausa_alerta_min?: number
           ponteiro_user_id?: string | null
           preferir_em_expediente?: boolean
+          realocar_carencia_abertura_min?: number
           realocar_sem_resposta_min?: number
           tenant_id?: string
           updated_at?: string
@@ -6162,6 +6165,10 @@ export type Database = {
         Returns: number
       }
       rodizio_corte_9h: { Args: never; Returns: number }
+      rodizio_definir_carencia_abertura: {
+        Args: { p_min: number }
+        Returns: Json
+      }
       rodizio_definir_carencia_entrega: {
         Args: { p_min: number }
         Returns: Json
@@ -6211,6 +6218,10 @@ export type Database = {
         Args: { p_data: string; p_tenant: string }
         Returns: boolean
       }
+      rodizio_fim_do_expediente: {
+        Args: { p_data: string; p_tenant: string }
+        Returns: string
+      }
       rodizio_fonte_excluida: { Args: { p_source: string }; Returns: boolean }
       rodizio_funil: { Args: { p_tenant: string }; Returns: string }
       rodizio_funis: { Args: { p_tenant: string }; Returns: string[] }
@@ -6238,6 +6249,10 @@ export type Database = {
           p_run: string
         }
         Returns: undefined
+      }
+      rodizio_minutos_da_sdr: {
+        Args: { p_ate: string; p_de: string; p_tenant: string; p_user: string }
+        Returns: number
       }
       rodizio_minutos_uteis: {
         Args: { p_ate: string; p_de: string; p_tenant: string }
