@@ -1809,6 +1809,51 @@ export type Database = {
           },
         ]
       }
+      crm_fechamentos_agendados: {
+        Row: {
+          entrou_em: string
+          fechar_em: string
+          lead_id: string
+          stage_id: string
+          tenant_id: string
+          tentativas: number
+          ultima_tentativa_em: string | null
+        }
+        Insert: {
+          entrou_em?: string
+          fechar_em: string
+          lead_id: string
+          stage_id: string
+          tenant_id: string
+          tentativas?: number
+          ultima_tentativa_em?: string | null
+        }
+        Update: {
+          entrou_em?: string
+          fechar_em?: string
+          lead_id?: string
+          stage_id?: string
+          tenant_id?: string
+          tentativas?: number
+          ultima_tentativa_em?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_fechamentos_agendados_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_fechamentos_agendados_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "crm_leads_com_pagamento"
+            referencedColumns: ["lead_id"]
+          },
+        ]
+      }
       crm_followup_configs: {
         Row: {
           created_at: string
@@ -2417,6 +2462,7 @@ export type Database = {
           blocked_by: string | null
           cidade: string | null
           comment_only: boolean
+          conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
@@ -2471,6 +2517,7 @@ export type Database = {
           blocked_by?: string | null
           cidade?: string | null
           comment_only?: boolean
+          conversa_fechada_auto?: boolean
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
@@ -2525,6 +2572,7 @@ export type Database = {
           blocked_by?: string | null
           cidade?: string | null
           comment_only?: boolean
+          conversa_fechada_auto?: boolean
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
@@ -2729,6 +2777,7 @@ export type Database = {
           ativa: boolean
           atraso_min: number
           escala: string
+          intervalo_dias: number
           template_id: string | null
           tenant_id: string
           texto: string | null
@@ -2738,6 +2787,7 @@ export type Database = {
           ativa?: boolean
           atraso_min?: number
           escala?: string
+          intervalo_dias?: number
           template_id?: string | null
           tenant_id: string
           texto?: string | null
@@ -2747,6 +2797,7 @@ export type Database = {
           ativa?: boolean
           atraso_min?: number
           escala?: string
+          intervalo_dias?: number
           template_id?: string | null
           tenant_id?: string
           texto?: string | null
@@ -3000,6 +3051,7 @@ export type Database = {
           entrada_todas_etapas: boolean
           entrega_gestor_apos_min: number
           etapas_entrada: string[] | null
+          fechar_agendado_apos_min: number
           funil_id: string | null
           funis_ids: string[] | null
           gestor_user_id: string | null
@@ -3022,6 +3074,7 @@ export type Database = {
           entrada_todas_etapas?: boolean
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
+          fechar_agendado_apos_min?: number
           funil_id?: string | null
           funis_ids?: string[] | null
           gestor_user_id?: string | null
@@ -3044,6 +3097,7 @@ export type Database = {
           entrada_todas_etapas?: boolean
           entrega_gestor_apos_min?: number
           etapas_entrada?: string[] | null
+          fechar_agendado_apos_min?: number
           funil_id?: string | null
           funis_ids?: string[] | null
           gestor_user_id?: string | null
@@ -5554,6 +5608,7 @@ export type Database = {
         Args: { p_enviar_pesquisa?: boolean; p_lead_id: string }
         Returns: Json
       }
+      conversa_fechar_automatico: { Args: { p_lead_id: string }; Returns: Json }
       conversa_lead_alcancavel: {
         Args: { p_lead_id: string }
         Returns: {
@@ -5567,6 +5622,7 @@ export type Database = {
           blocked_by: string | null
           cidade: string | null
           comment_only: boolean
+          conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
@@ -5853,6 +5909,16 @@ export type Database = {
         Returns: string
       }
       etapa_tem_lead: { Args: { _stage_id: string }; Returns: boolean }
+      fechar_agendado_na_janela: {
+        Args: { p_quando: string; p_tenant: string }
+        Returns: string
+      }
+      fechar_agendado_pendentes: {
+        Args: { p_limite?: number }
+        Returns: {
+          lead_id: string
+        }[]
+      }
       funil_do_papel_do_usuario: {
         Args: { _pipeline_id: string }
         Returns: boolean
@@ -5887,6 +5953,7 @@ export type Database = {
           blocked_by: string | null
           cidade: string | null
           comment_only: boolean
+          conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
@@ -6056,6 +6123,12 @@ export type Database = {
         Args: { p_resposta_id: string }
         Returns: boolean
       }
+      pesquisa_envio_falhou_auto: {
+        Args: { p_resposta_id: string }
+        Returns: boolean
+      }
+      pesquisa_oferecer: { Args: { p_lead_id: string }; Returns: Json }
+      pesquisa_pode_enviar: { Args: { p_lead_id: string }; Returns: boolean }
       pipeline_clonar_etapas_padrao: {
         Args: { p_pipeline_id: string }
         Returns: number
@@ -6689,6 +6762,7 @@ export type Database = {
         Args: { p_appointment_id: string; p_lead_id: string }
         Returns: boolean
       }
+      sem_acento: { Args: { p_texto: string }; Returns: string }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -6701,7 +6775,12 @@ export type Database = {
         }
         Returns: undefined
       }
+      termo_regex_acento_indiferente: {
+        Args: { p_termo: string }
+        Returns: string
+      }
       transfer_lead_to_whatsapp: { Args: { p_lead_id: string }; Returns: Json }
+      unaccent: { Args: { "": string }; Returns: string }
       update_whatsapp_template_sharing: {
         Args: {
           _owner_role: Database["public"]["Enums"]["app_role"]
