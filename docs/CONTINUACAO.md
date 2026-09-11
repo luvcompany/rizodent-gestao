@@ -504,3 +504,134 @@ provar cada caso. Foi mais rápido e mais preciso que outra rodada de agentes.
 - Ainda não implementado, dos pedidos de 10/09: fechar a conversa automaticamente
   nas etapas Agendado, Reagendado e Relacionamento; e o botão Reagendar caindo
   direto no seletor de data e hora, movendo para "Reagendado" ao confirmar.
+
+## Item 16 — 11/09: relatórios confiáveis, Instagram, busca e o bot que puxava o lead de volta
+
+- status: em produção em 2026-09-11, site `assets/index-DrXf5Dc-.js`
+- 629 policies em public + storage (eram 624; as 5 novas são da tabela nova
+  `crm_ponto_motivos`, e nenhuma existente foi tocada)
+- edge functions reimplantadas: `enqueue-stage-automation` e `bot-engine`
+
+### O bot que desfazia a troca de funil (causa provada)
+
+A SDR dizia que tinha mudado o lead de funil e ele continuava no mesmo. Prova, lead
+JOSEFINA, 11/09:
+
+| hora | o que aconteceu |
+| --- | --- |
+| 13:46:56 | criado no Funil Principal, etapa "Novo Lead" |
+| 13:47:38 | a Bia moveu para "Conversando" do funil **Faceta** |
+| 13:48:05 | voltou para "Conversando" do **Funil Principal**, `changed_by` nulo |
+
+A mensagem no chat foi `Etapa alterada: Conversando → Conversando (Bot)`. O bot
+"Áudio Inicial" tem, no fluxo, um nó `move_stage` com o **id fixo** da etapa
+"Conversando" do Funil Principal. Como as duas etapas têm o mesmo nome, nem a
+conversa denunciava. Três leads em 30 dias: JOSEFINA (11/09), CRISLAN e elienepaz
+(10/09).
+
+Descartados com dado, não com opinião: gravação barrada devolvendo zero linhas
+(todos os caminhos já conferiam a contagem desde 26/08; das 2.842 mensagens de
+etapa dos últimos 21 dias, só 2 sem movimento real, nenhuma é o caso) e o gatilho
+de sincronismo puxando de volta (`enforce_lead_tenant_consistency` roda antes e
+levanta exceção, então o banco recusa com erro em vez de mover errado).
+
+Conserto no `bot-engine`: o nó manda a ETAPA, quem manda no FUNIL é onde o lead
+está. Destino de outro funil com etapa de mesmo nome no funil atual → vale a do
+funil atual (`public.etapa_equivalente_no_funil`). **Sem janela de tempo**: a
+primeira versão só protegia se uma pessoa tivesse mexido nas últimas 24 h, lendo
+`crm_lead_stage_history` com `exited_at` nulo — e `sync_lead_stage_history` fecha
+todas as linhas abertas a cada troca, então bastava um movimento automático antes
+para a proteção evaporar (o bot "Agendamento" faz dois `move_stage` seguidos). Sem
+etapa equivalente, move entre funis como sempre: é assim que o Follow-UP manda
+lead frio para Nutrição.
+
+### Busca em mensagens: existia e nunca rodava
+
+O dono pesquisou "site" e viu 2 conversas. Existem **133 mensagens de 115 leads**
+com essa palavra. A busca por conteúdo já existia no front, mas a consulta não
+terminava: 8 policies de leitura em `messages`, várias com função por linha, sobre
+255 mil linhas, contra um `statement_timeout` de 8 s no papel `authenticated`. O
+efeito da tela engolia o erro e sobravam os leads achados por nome e última
+mensagem.
+
+Agora é `public.buscar_leads_por_mensagem`, SECURITY DEFINER, com a régua das 8
+policies reproduzida uma vez no fim. Medido em produção depois de aplicar:
+
+| quem | termo | leads | tempo |
+| --- | --- | --- | --- |
+| CRC | site | 115 | 31 ms |
+| CRC | com | 500 (teto) | 252 ms |
+| Bia | site | 5 | 9 ms |
+| Bia | com | 500 (teto) | 242 ms |
+| Bia | con | 500 (teto) | 309 ms |
+
+A primeira versão da função ainda ia falhar para a SDR: `sdr_pode_ver_lead` rodava
+uma vez por lead e dava 3.678 ms com o termo "com" — margem de 2,4x contra o
+limite, e quem estoura cai no caminho antigo e gasta outros 8 s. Virou JOIN
+indexado. O ramo da pós-venda ganhou os dois testes que a RLS aplica por dentro
+(número de WhatsApp e conta de Instagram), senão a busca ficaria mais permissiva
+que a tela.
+
+### Relatório por SDR: agendamentos pela data em que ela agendou
+
+O dono viu 10 no mês e 3 no dia, no primeiro dia de uso. Apurado antes de mexer:
+foram criados 10 agendamentos naquele dia (7 Bia, 3 Fabíola), mas só 3 consultas
+eram para o próprio dia — as outras para 12, 14, 16 e 21/09. A coluna contava por
+`scheduled_date`. Decisão dele: "tem que contar pela data que a sdr agendou".
+
+`relatorio_sdr_calc` e `relatorio_sdr_reagendamentos` passam a recortar por
+`created_at` na janela do período. Os desfechos acompanham: a linha vira uma
+coorte, "do que ela agendou neste período, isto aconteceu". No filtro de hoje os
+desfechos ficam baixos — a consulta marcada hoje ainda não aconteceu — e isso está
+escrito coluna por coluna na tela.
+
+### Ponto, pausas e motivos configuráveis
+
+O dono desconfiou das "2 horas" da Fabíola achando que ela tinha aberto 07:30. Ela
+abriu **07:47**, pausou 09:21 (54 min, "outro"), voltou 10:14, pausou 10:58
+("café") e **encerrou 11:30 ainda pausada**. Trabalhado 2h17, pausado 1h25. O
+número estava certo.
+
+O que faltava era tela: `ponto_relatorio` existia desde o começo do rodízio e
+nenhuma parte do front a chamava. Agora há `/crm/equipe/ponto` com `ponto_pausas`
+(uma linha por pausa, com motivo, duração e como terminou) e `ponto_resumo`.
+Conferido depois de aplicar: Fabíola 2h17 trabalhados e 1h25 em pausa — o mesmo
+que a apuração à mão.
+
+Os motivos viraram tabela (`crm_ponto_motivos`), o CRC configura na aba Equipe,
+entrou "Ligação" e "Outro" pede o motivo escrito, que aparece no relatório ao lado
+da pausa. `public.ponto_rotulo_motivo` é o ponto único de tradução — havia QUATRO
+cópias da lista fixa café/almoço/outro espalhadas pelo sistema.
+
+### Lead agendado não é mais redistribuído
+
+O pedido era "fechar a conversa nas etapas Agendado, Reagendado e Relacionamento
+para o lead não ser redistribuído". Fechar a conversa **não resolveria**, por dois
+motivos conferidos no banco: `rodizio_realocar_sem_resposta` não olha
+`conversa_fechada_em` ao escolher candidatos (usa só como trava de concorrência no
+UPDATE final), e o gatilho `trg_zz_conversa_reabre_ao_receber` reabre a conversa
+com QUALQUER mensagem do lead — o "Ok" do paciente desfaria em segundos.
+
+**Eu tinha dito ao dono que mensagem do lead não reabria conversa. Estava errado:
+olhei só `conversa_reabre_ao_enviar` e não vi a irmã `conversa_reabre_ao_receber`.**
+
+O caminho certo é por ETAPA: 30 leads de SDR ficaram protegidos no ato.
+
+### O que ficou FORA, e por quê
+
+`fechar_agendado_e_pesquisa` (fechar a conversa 15 min depois de Agendado, com
+pesquisa, e pesquisa uma vez a cada 15 dias) foi retirada da branch. Quatro
+bloqueantes:
+
+1. Embutia uma cópia ANTIGA de `relatorio_sdr_calc` e, aplicada, teria **revertido
+   em silêncio** a régua de agendamentos que o dono decidiu no mesmo dia.
+2. Dependia de uma migration que não existe (a de fechar conversa nas etapas, que
+   foi reprovada e removida): criaria função órfã, sem gatilho.
+3. A pesquisa nunca sairia — o banco não envia WhatsApp e o desenho deixava a
+   pendência para a tela, que não foi tocada. Medido: 13 a 17 leads/dia entram em
+   Agendado; seriam ~15 avisos de falha por dia no chat dos pacientes e zero
+   pesquisas.
+4. Fechava por cima da SDR que estivesse trabalhando dentro dos 15 minutos.
+
+Para refazer: usar a presença (`em_atendimento_por`, já no ar) para não atropelar
+quem está atendendo, e entregar o envio de verdade junto.
