@@ -430,3 +430,77 @@ distinguir reentrada legítima na etapa de reenfileiramento cego, cruzando
 
 Os 7 funis novos ficam sujeitos à mesma régua quando tiverem lead em
 "Follow - Up". Hoje não têm nenhum.
+
+## Item 15 — Sete pedidos do dono de 10/09, aplicados e publicados
+
+- status: em produção em 2026-09-11 ~00:55 UTC
+- autorizado: sim ("Aplique logo")
+- commit `84b457a5`; site no ar com `assets/index-DCYeIUj0.js`
+- migrations aplicadas nesta ordem: `20260910130000_sdr_desfecho_e_autonomia.sql`,
+  `20260910140000_relogio_justo_do_silencio.sql`,
+  `20260910160000_sdr_autonomia_nos_funis_dela.sql`
+- edge function reimplantada: `enqueue-stage-automation`
+- 618 policies em public + storage (eram 609; as 9 novas são da SDR e nenhuma
+  antiga saiu)
+
+O que entrou:
+
+1. **Corrigir e excluir desfecho.** `sdr_corrigir_desfecho(uuid, boolean)` troca
+   entre compareceu e não compareceu; `sdr_excluir_agendamento(uuid, text)` marca
+   `cancelled` (a trilha fica, e todo relatório já ignora cancelado) e pede
+   motivo. As duas recusam quando o desfecho veio do Dontus: ali quem decide é o
+   pagamento. Provado em produção no caso real do dono — o lead Vitor Santos, da
+   Fabíola, tinha DOIS agendamentos idênticos de 10/09 09:00, criados às 12:02 e
+   12:21, porque ela não conseguia corrigir o primeiro.
+2. **Etapa "Compareceu" é da SDR.** Visível nos 9 funis que a têm; marcar
+   comparecido move o lead para lá na hora. Contratado, Não contratado e
+   Compareceu e agendou seguem ocultos (29 etapas).
+3. **A SDR nunca lê contrato.** Helper único `src/lib/desfechoLabel.ts` decide por
+   NEGAÇÃO: só papel positivamente reconhecido como gestão vê "Contratado" /
+   "Não contratado"; papel nulo ou desconhecido lê "Compareceu". Antes decidia por
+   afirmação e a janela do boot vazava.
+4. **Botão AUTOMATIZE.** `/crm/automacoes` entrou em `SDR_PREFIXES` e no menu.
+5. **A SDR cria estrutura — nos funis dela.** Decisão do dono entre três opções.
+   Régua = autoria (`created_by` em `crm_pipelines` e `crm_stages`). O que já
+   existia fica sem autor e é intocável: 13 funis e 160 etapas protegidos sem
+   depender de comparar nome.
+6. **Relógio justo da realocação.** `rodizio_minutos_da_sdr` conta só o tempo em
+   que ela está com o expediente aberto e sem pausa. Mais
+   `realocar_carencia_abertura_min` (60) para a fila da manhã, e teto de ausência
+   para quem não abriu o ponto no dia.
+7. **Disparo em massa para a SDR** com filtro por `assigned_to`.
+
+Ensaios em produção (transação desfeita): correção e exclusão 10/10 no caso real;
+relógio 5/5 (almoço 0 min, pós-almoço 40, noite 0, dia 540, fechamento 18:00);
+autonomia 8/8 (clínica recusa apagar, renomear, tornar visível e criar automação;
+funil dela cria com autoria e 15 etapas clonadas, aceita etapa e automação,
+recusa apagar etapa com lead).
+
+### A revisão adversarial reprovou duas rodadas, e valeu
+
+39 defeitos na segunda rodada, 5 bloqueantes. O pior: a primeira versão liberava
+escrita nos funis da clínica, e apagar etapa leva os leads por
+`ON DELETE CASCADE` — a SDR mandaria excluir o Funil Principal e iria embora com
+os 3.582 leads, com mensagens e agendamentos, porque o contador de leads da tela
+roda sob a RLS dela e mostra zero quando os leads são das colegas.
+
+Os outros quatro: automação criada por ela em etapa compartilhada dispara para o
+lead de qualquer colega (o gatilho de entrada não filtra dono); etapa com nome
+parecido sequestra o ciclo, porque o front casa etapa por pedaço do nome e pega a
+primeira por position; criar funil nem funcionava, porque o `INSERT ... RETURNING`
+avalia a policy de SELECT na linha nova e nenhuma passava para SDR pura; e o
+front disparava as automações de entrada por cima da fila do banco, o que mandaria
+a mensagem DUAS vezes ao paciente.
+
+A partir da terceira rodada o conserto foi à mão, com Postgres descartável para
+provar cada caso. Foi mais rápido e mais preciso que outra rodada de agentes.
+
+### O que fica para o dono
+
+- O motor do rodízio continua DESLIGADO. Ligar é na aba Equipe.
+- Horários hoje: a Bia tem entrada 08:00 e saída 18:00, sem almoço e sem sábado;
+  Júlia e Fabíola sem horário nenhum, então caem no horário da clínica. A regra do
+  almoço funciona pelo botão de pausa mesmo sem o almoço cadastrado.
+- Ainda não implementado, dos pedidos de 10/09: fechar a conversa automaticamente
+  nas etapas Agendado, Reagendado e Relacionamento; e o botão Reagendar caindo
+  direto no seletor de data e hora, movendo para "Reagendado" ao confirmar.
