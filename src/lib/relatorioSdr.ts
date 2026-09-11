@@ -18,13 +18,17 @@
 //     entrega do lead (se já havia mensagem esperando) ou da 1ª mensagem
 //     recebida depois; crédito para a DONA do lead, não para quem digitou;
 //   • agendamentos/comparecimentos = régua canônica (reportKit.kpiAgendamentos):
-//     agendamentos = total − cancelados; compareceram = contratados + não
-//     contratados; por DATA AGENDADA e crédito carimbado na criação;
+//     agendamentos = total − cancelados − a linha substituída por uma remarcação
+//     da mesma janela; compareceram = contratados + não contratados. Desde
+//     11/09/2026 a janela é por crm_appointments.created_at — O DIA EM QUE A SDR
+//     MARCOU, não a data da consulta (decisão do dono: "tem que contar pela data
+//     que a sdr agendou"). A linha virou uma coorte: os desfechos acompanham as
+//     consultas marcadas no período. Crédito carimbado na criação;
 //   • expediente = tempo com o ponto aberto, já sem as pausas.
 
 import { supabase } from "@/integrations/supabase/client";
 
-/** relatorio_sdr_reagendamentos: reagendamentos e faltas repetidas por SDR (crédito, data agendada). */
+/** relatorio_sdr_reagendamentos: reagendamentos e faltas repetidas por SDR (crédito, pela data em que ela REMARCOU — created_at). */
 export type ReagendamentosSdr = {
   reagendamentos: number;
   faltas_apos_reagendar: number;

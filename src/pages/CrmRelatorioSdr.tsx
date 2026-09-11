@@ -88,7 +88,7 @@ const COLUNAS: Coluna[] = [
   {
     chave: "reagendamentos",
     titulo: "Reagendamentos",
-    dica: "Consultas remarcadas (ligadas à consulta anterior), por data agendada, no crédito dela.",
+    dica: "Consultas remarcadas (ligadas à consulta anterior) que ela REMARCOU no período — conta pelo dia em que ela remarcou, não pelo dia da consulta nova.",
     render: (l) => (typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"),
   },
   {
@@ -100,7 +100,7 @@ const COLUNAS: Coluna[] = [
   {
     chave: "leads_2_faltas",
     titulo: "Leads com 2+ faltas",
-    dica: "Leads do crédito dela com duas ou mais faltas até o fim do período.",
+    dica: "Leads que faltaram duas ou mais vezes em consultas que ELA MARCOU no período — mesma coorte das outras colunas. Não é o histórico do paciente: quem faltou em agosto e de novo em setembro só aparece se as duas consultas foram marcadas dentro do período.",
     render: (l) => (typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"),
   },
   {

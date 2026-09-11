@@ -138,10 +138,10 @@ export default function SdrMeuDesempenho() {
               </Painel>
 
               <Painel titulo="Consultas no seu crédito">
-                <Linha rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="por data agendada" />
+                <Linha rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="pelo dia em que você marcou" />
                 <Linha rotulo="Compareceram" valor={fmtInt(l.compareceram)} apoio={l.compareceram + l.faltas > 0 ? taxaComparecimento(l) : undefined} />
                 <Linha rotulo="Faltas" valor={fmtInt(l.faltas)} />
-                <Linha rotulo="Reagendamentos" valor={typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"} apoio="consultas remarcadas" />
+                <Linha rotulo="Reagendamentos" valor={typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"} apoio="pelo dia em que você remarcou" />
                 <Linha rotulo="Reagendou e faltou" valor={typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"} apoio="faltou de novo depois de remarcar" />
                 <Linha rotulo="Leads com 2+ faltas" valor={typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"} />
                 <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="fora da conta" />
@@ -165,10 +165,13 @@ export default function SdrMeuDesempenho() {
         <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
           <Info size={14} className="mt-0.5 shrink-0" />
           <p>
-            Os números contam o que aconteceu enquanto o lead era seu. Agendamentos e comparecimentos
-            ficam no seu crédito quando você era a dona do lead na hora de marcar, por data agendada —
-            e continuam seus mesmo depois de o lead passar para o administrador. O relógio da 1ª resposta
-            é corrido, sem descontar noite e fim de semana.
+            Os números contam o que aconteceu enquanto o lead era seu, e continuam seus mesmo depois
+            de o lead passar para o administrador. <strong>Agendamentos contam pelo dia em que você
+            marcou</strong>, não pelo dia da consulta: no filtro de hoje, "Compareceram" e "Faltas"
+            ficam baixos porque a consulta que você marcou hoje ainda não aconteceu — as duas colunas
+            acompanham as mesmas consultas desta linha. Para ver quantas consultas ACONTECEM no
+            período, use o Calendário. O relógio da 1ª resposta é corrido, sem descontar noite e fim
+            de semana.
           </p>
         </div>
       </div>

@@ -364,6 +364,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Trecho da mensagem que casou com a busca, por lead. É o que explica na lista
   // POR QUE aquele lead apareceu quando o nome e o telefone não têm o termo.
   const [messageMatchSnippets, setMessageMatchSnippets] = useState<Map<string, string> | null>(null);
+  // A busca devolve no máximo 500 leads. Sem este aviso, "avaliação" mostra 500
+  // de 2.412 e o contador ao lado de "Conversas" é lido como se fosse o total —
+  // o mesmo sintoma que originou a correção da busca ("não puxa o geral").
+  const [buscaNoTeto, setBuscaNoTeto] = useState(false);
   const [profiles, setProfiles] = useState<{ id: string; nome: string }[]>(() => canUseInitialCache ? (leadsListCache.profiles || []) : (_lsData?.profiles || []));
   const [pipelines, setPipelines] = useState<PipelineWithRoles[]>(() => canUseInitialCache ? (leadsListCache.pipelines || []) : (_lsData?.pipelines || []));
   const [activeExecution, setActiveExecution] = useState<{
@@ -643,8 +647,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // registro por lead (o mais recente) com um trecho do texto em volta do termo.
   useEffect(() => {
     const term = search.trim();
-    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); return; }
-    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); return; }
+    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
     let cancelled = false;
     const handle = setTimeout(async () => {
       const ids = new Set<string>();
@@ -658,13 +662,17 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       );
       if (cancelled) return;
 
+      const TETO_BUSCA = 500;
       if (!erroRpc && Array.isArray(achados)) {
         achados.forEach((r: { lead_id: string; trecho: string | null }) => {
           if (!r?.lead_id) return;
           ids.add(r.lead_id);
           if (r.trecho) trechos.set(r.lead_id, r.trecho);
         });
+        // Veio exatamente o teto: quase certamente há mais do que isto.
+        setBuscaNoTeto(achados.length >= TETO_BUSCA);
       } else {
+        setBuscaNoTeto(false);
         // Rede de segurança: se a RPC ainda não estiver publicada (ou falhar),
         // cai no caminho antigo em vez de deixar a busca sem nada. Ele acha
         // menos — é limitado pela RLS e por 500 LINHAS DE MENSAGEM —, mas acha.
@@ -1295,6 +1303,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-8 h-8 text-sm bg-secondary"
                 />
+                {/* A busca por mensagem corta em 500 leads. Dizer isso é o que
+                    separa "não existe mais nada" de "tem mais, refine". */}
+                {buscaNoTeto && (
+                  <p className="mt-1 px-0.5 text-[11px] leading-snug text-amber-600 dark:text-amber-500">
+                    Mostrando as 500 conversas com a mensagem mais recente. Há mais — use uma palavra
+                    mais específica para chegar nas antigas.
+                  </p>
+                )}
                 {/* Search autocomplete dropdown */}
                 {search.trim().length >= 2 && sortedFiltered.length > 0 && sortedFiltered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
                   <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
