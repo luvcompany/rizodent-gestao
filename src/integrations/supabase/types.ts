@@ -2810,6 +2810,7 @@ export type Database = {
           allowed_roles: Database["public"]["Enums"]["app_role"][] | null
           color: string | null
           created_at: string
+          created_by: string | null
           description: string | null
           id: string
           is_default: boolean
@@ -2823,6 +2824,7 @@ export type Database = {
           allowed_roles?: Database["public"]["Enums"]["app_role"][] | null
           color?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_default?: boolean
@@ -2836,6 +2838,7 @@ export type Database = {
           allowed_roles?: Database["public"]["Enums"]["app_role"][] | null
           color?: string | null
           created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
           is_default?: boolean
@@ -3058,6 +3061,7 @@ export type Database = {
         Row: {
           color: string
           created_at: string
+          created_by: string | null
           id: string
           is_lost: boolean
           is_won: boolean
@@ -3070,6 +3074,7 @@ export type Database = {
         Insert: {
           color?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           is_lost?: boolean
           is_won?: boolean
@@ -3082,6 +3087,7 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           is_lost?: boolean
           is_won?: boolean
@@ -5559,6 +5565,10 @@ export type Database = {
         Args: { p_lead_id: string; p_origem?: string }
         Returns: string
       }
+      crm_stages_empurrar_posicao: {
+        Args: { p_de_posicao: number; p_pipeline_id: string }
+        Returns: number
+      }
       crm_template_usage_counts: {
         Args: { _tenant_id: string }
         Returns: {
@@ -5769,6 +5779,8 @@ export type Database = {
         Returns: undefined
       }
       equipe_sdr_exclusiva: { Args: { p_user_id: string }; Returns: string }
+      etapa_em_funil_meu: { Args: { _stage_id: string }; Returns: boolean }
+      etapa_tem_lead: { Args: { _stage_id: string }; Returns: boolean }
       funil_do_papel_do_usuario: {
         Args: { _pipeline_id: string }
         Returns: boolean
@@ -5777,6 +5789,8 @@ export type Database = {
         Args: { _stage_id: string }
         Returns: boolean
       }
+      funil_meu: { Args: { _pipeline_id: string }; Returns: boolean }
+      funil_tem_lead: { Args: { _pipeline_id: string }; Returns: boolean }
       generate_tenant_invoices: { Args: never; Returns: number }
       get_conversation_leads: {
         Args: { p_limit?: number; p_tenant_id?: string }
