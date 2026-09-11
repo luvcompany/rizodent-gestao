@@ -635,3 +635,118 @@ bloqueantes:
 
 Para refazer: usar a presença (`em_atendimento_por`, já no ar) para não atropelar
 quem está atendendo, e entregar o envio de verdade junto.
+
+## Item 17 — 11/09 (tarde): validação da entrega, e o que ela achou
+
+Duas rodadas de agentes: uma **validando** o que tinha sido publicado de manhã
+(9 dimensões, 67 agentes, cada achado passado por um cético) e outra **revisando
+adversarialmente** o pacote da pesquisa antes de aplicá-lo (6 ângulos, 51
+agentes). 35 + 28 achados confirmados, 23 + 17 refutados.
+
+### O que a validação achou na entrega da manhã
+
+**O Instagram não contava no relatório da SDR — e a migration afirmava por
+escrito que contava.** O lead da caixa comum não tem dona por desenho (é o
+pedido do dono), e `carimba_credito_agendamento` tirava o crédito de
+`assigned_to`: o agendamento nascia com `responsavel_credito_id` nulo e
+`relatorio_sdr_calc` faz JOIN por essa coluna. Provado por ensaio desfeito: a
+Bia criou dois agendamentos, um de Instagram e um de lead dela; o relatório foi
+de 7 para 8, não para 9.
+
+**A remarcação sumia do relatório de quem remarcou.** A linha nova herdava o
+crédito da consulta anterior. A herança foi desenhada quando a coluna contava
+por `scheduled_date` ("as consultas dela"); em 11/09 a régua virou `created_at`
+("o trabalho que ela fez hoje") e as duas deixaram de casar. Medido: a Bia
+inseriu 9 agendamentos no dia e o crédito mostrava 7 — os 2 que faltavam eram
+remarcações do lead LUCIANO SILVA PESSOA, creditadas ao CRC porque a consulta de
+origem era dele.
+
+A precedência nova é: **herdar só de SDR > dona do lead > quem marcou (caixa
+comum) > sem dona**. Testado nos quatro casos.
+
+**A SDR não fechava o ciclo do Instagram.** As três RPCs de desfecho exigem
+`assigned_to = auth.uid()`, condição impossível lá (`protege_caixa_do_instagram`
+impede a SDR de virar dona). Ela marcava a consulta e o botão "Compareceu"
+respondia "Este lead não é seu". O efeito era pior que travar: o agendamento
+nasce `confirmed` e 3 h depois do horário o cron do Dontus o carimba
+`no_show_por_tempo` — comparecimento real do Instagram virava **falta
+automática** no relatório. As três passaram a aceitar
+`lead_da_caixa_do_instagram`, e a etapa "Compareceu" foi criada no Instagram e
+no Nutrição (o dono pediu "para todos os funis"; Padrão Closer e Pós-venda ficam
+de fora de propósito, são o mundo de outros papéis).
+
+**A SDR revertia o carimbo do Dontus no próprio número.** `sdr_corrigir_desfecho`
+só protegia `contracted`. Agora o que o Dontus **confirmou** fica com a gestão; a
+**inferência por tempo** (`no_show_por_tempo`, 53 das 89 faltas) continua
+corrigível por ela — corrigir inferência errada é exatamente o que o dono pediu.
+
+**Remarcação contava duas vezes.** `rescheduled` não é `cancelled`, então a linha
+substituída somava ao lado da substituta: 6 pares em setembro, 5,5% de inflação.
+Sai da conta só a linha substituída cujo substituto está na MESMA janela — assim
+um mês já fechado não encolhe quando o paciente remarcar no mês seguinte.
+
+**O sigilo do contrato estava só no front.** `get_lead_stage_history_names`
+devolvia o nome cru das etapas ocultas para qualquer autenticado. Agora quem
+esconde é o banco.
+
+### O que a revisão achou no pacote da pesquisa, ANTES de aplicar
+
+**A pesquisa que não saísse ficaria marcada como enviada, para sempre.**
+`pesquisa_envio_falhou` começa por `auth.uid()` + `current_tenant_id()` e levanta
+42501 quando os dois são nulos — e a edge function roda com a service key, sem
+sessão. A chamada dela SEMPRE falharia, e o erro estava sendo descartado em
+silêncio. O paciente que não recebeu nada ficaria 15 dias bloqueado. Medido: de
+224 entradas em Agendado em 14 dias, 24 (11%) não tinham mensagem do paciente
+nas 24 h anteriores — ~1,7 casos por dia de envio recusado pela Meta. Criada a
+gêmea `pesquisa_envio_falhou_auto`, só para o servidor, com o retorno conferido.
+
+**Uma indisponibilidade da edge function despejaria a fila de madrugada.** A
+janela comercial era calculada só no enfileiramento. Agora é reconferida a cada
+varredura, e o que venceu há mais de 6 h é cancelado com nota no chat interno.
+
+**A presença não existia em `/crm/conversa/:id`** — a página que a SDR abre pelo
+Kanban e onde ela agenda. Virou `src/hooks/usePresencaNaConversa.ts`, usado nas
+duas telas. Isso também fecha o mesmo buraco na realocação por silêncio.
+
+**Fechava com o paciente esperando.** Se ele escreveu por último, a bola é da
+clínica: fechar enterraria a pergunta (o lead sai do filtro "Aberto" e do badge)
+e a pesquisa chegaria como resposta a um pedido de remarcação. Agora adia. E o
+envio da pesquisa leva `skip_mark_as_read`, para não empurrar `last_outbound_at`.
+
+**Nascia LIGADO em cliente que nunca configurou nada.** O padrão virou 0; só liga
+quem tem linha em `crm_rodizio_config` com valor maior que zero. A Rizodent foi
+ligada explicitamente em 15 minutos.
+
+A bateria local ainda pegou um erro de SQL no próprio conserto sugerido pela
+revisão: `FROM LATERAL` não enxerga a tabela-alvo do `UPDATE`.
+
+### A busca: regex em vez de índice novo
+
+Para ignorar acento, o caminho óbvio era `unaccent()` dos dois lados — que exige
+um índice de expressão sobre 255 mil linhas. Criar esse índice trava
+`public.messages`, que é onde o webhook do WhatsApp grava; tentei com
+`CONCURRENTLY` e a conexão caiu duas vezes no meio, deixando índice inválido
+(removidos os dois).
+
+A saída foi melhor: **o índice trigram que já existe aceita expressão regular**.
+Medido antes de escolher: `content ~* 'or[cç][aá]mento'` sai por Bitmap Index
+Scan em 8,7 ms. Zero índice novo, zero trava.
+
+| quem | termo | antes | agora | tempo |
+| --- | --- | --- | --- | --- |
+| CRC | orcamento | 8 | 444 | 206 ms |
+| CRC | orçamento | 444 | 444 | 167 ms |
+| Bia | orcamento | — | 34 | 163 ms |
+| Bia | avaliacao | — | 187 | 99 ms |
+
+A **transcrição de áudio** (7.088 mensagens, 2.176 leads) continua fora, e agora
+está escrito por quê: precisa de índice próprio, criado em janela de baixo
+movimento por uma conexão que aguente o tempo da construção.
+
+### Pendente do dono, uma decisão só
+
+Duas linhas de hoje ficaram com o crédito errado porque foram carimbadas ANTES
+do conserto: os agendamentos `fa542549` e `bc29f777`, do lead LUCIANO SILVA
+PESSOA, inseridos pela Bia, creditados ao CRC. O conserto impede que volte a
+acontecer, mas não reescreve o passado — e reescrever dado de `crm_appointments`
+precisa da palavra do dono.
