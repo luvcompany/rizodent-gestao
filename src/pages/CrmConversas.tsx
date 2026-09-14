@@ -375,6 +375,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Trecho da mensagem que casou com a busca, por lead. É o que explica na lista
   // POR QUE aquele lead apareceu quando o nome e o telefone não têm o termo.
   const [messageMatchSnippets, setMessageMatchSnippets] = useState<Map<string, string> | null>(null);
+  // Data/hora da mensagem que casou com a busca, por lead. Na busca, é ESTE
+  // horário que a lista mostra — não o da última mensagem da conversa.
+  const [messageMatchTimes, setMessageMatchTimes] = useState<Map<string, string> | null>(null);
   // A busca devolve no máximo 500 leads. Sem este aviso, "avaliação" mostra 500
   // de 2.412 e o contador ao lado de "Conversas" é lido como se fosse o total —
   // o mesmo sintoma que originou a correção da busca ("não puxa o geral").
@@ -658,12 +661,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // registro por lead (o mais recente) com um trecho do texto em volta do termo.
   useEffect(() => {
     const term = search.trim();
-    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
-    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
+    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setMessageMatchTimes(null); setBuscaNoTeto(false); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setMessageMatchTimes(null); setBuscaNoTeto(false); return; }
     let cancelled = false;
     const handle = setTimeout(async () => {
       const ids = new Set<string>();
       const trechos = new Map<string, string>();
+      const quandos = new Map<string, string>();
 
       // Caminho novo: a RPC. O termo vai CRU — quem escapa os curingas do LIKE
       // (%, _ e a barra invertida) é a função, para não escapar duas vezes.
@@ -675,10 +679,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const TETO_BUSCA = 500;
       if (!erroRpc && Array.isArray(achados)) {
-        achados.forEach((r: { lead_id: string; trecho: string | null }) => {
+        achados.forEach((r: { lead_id: string; trecho: string | null; quando?: string | null }) => {
           if (!r?.lead_id) return;
           ids.add(r.lead_id);
           if (r.trecho) trechos.set(r.lead_id, r.trecho);
+          if (r.quando) quandos.set(r.lead_id, r.quando);
         });
         // Veio exatamente o teto: quase certamente há mais do que isto.
         setBuscaNoTeto(achados.length >= TETO_BUSCA);
@@ -690,19 +695,26 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
         const { data, error } = await supabase
           .from("messages")
-          .select("lead_id")
+          .select("lead_id, created_at")
           .eq("tenant_id", tenant.id)
           .not("lead_id", "is", null)
           .ilike("content", `%${safe}%`)
           .order("created_at", { ascending: false })
           .limit(500);
         if (cancelled || error) return;
-        (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
+        // Vem ordenado do mais novo para o mais velho: o primeiro de cada lead
+        // é o horário da mensagem encontrada mais recente.
+        (data ?? []).forEach((r: any) => {
+          if (!r.lead_id) return;
+          ids.add(r.lead_id);
+          if (r.created_at && !quandos.has(r.lead_id)) quandos.set(r.lead_id, r.created_at);
+        });
       }
 
       if (cancelled) return;
       setMessageMatchLeadIds(ids);
       setMessageMatchSnippets(trechos.size ? trechos : null);
+      setMessageMatchTimes(quandos.size ? quandos : null);
 
       // Hidrata os leads que não estão na lista carregada, para eles aparecerem
       // no resultado. Sem teto de 100: o corte agora é o LIMIT da RPC (500
@@ -1392,19 +1404,32 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                   </Badge>
                                 )}
                               </span>
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
-                                {(() => {
-                                  const ts = lead.last_message_at || lead.created_at;
-                                  if (!ts) return "";
-                                  const d = new Date(ts);
-                                  const today = new Date();
-                                  const yest = new Date(Date.now() - 86400000);
-                                  if (d.toDateString() === today.toDateString())
-                                    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-                                  if (d.toDateString() === yest.toDateString()) return "Ontem";
-                                  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-                                })()}
-                              </span>
+                              {(() => {
+                                // Na busca, o horário é o da MENSAGEM ENCONTRADA.
+                                // Fora dela, o da última mensagem da conversa.
+                                const termo = search.trim();
+                                const achada = termo.length >= 3 ? messageMatchTimes?.get(lead.id) : null;
+                                const ts = achada || lead.last_message_at || lead.created_at;
+                                if (!ts) return null;
+                                const d = new Date(ts);
+                                const today = new Date();
+                                const yest = new Date(Date.now() - 86400000);
+                                let texto: string;
+                                if (d.toDateString() === today.toDateString())
+                                  texto = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                else if (d.toDateString() === yest.toDateString()) texto = "Ontem";
+                                else texto = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                return (
+                                  <span
+                                    className="text-[10px] text-muted-foreground whitespace-nowrap"
+                                    title={achada
+                                      ? `Mensagem encontrada: ${d.toLocaleString("pt-BR")}`
+                                      : "Última mensagem"}
+                                  >
+                                    {texto}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               {lead.source && (
