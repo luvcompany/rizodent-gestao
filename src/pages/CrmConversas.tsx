@@ -16,6 +16,7 @@ const semAcento = (t: string) =>
   (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 import { useAuth } from "@/contexts/AuthContext";
 import { ehPapelSdr, rotuloDesfecho, type PapelUsuario } from "@/lib/desfechoLabel";
+import { leadSourceMatchesFilter } from "@/lib/reportKit";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
