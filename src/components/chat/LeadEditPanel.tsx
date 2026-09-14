@@ -61,6 +61,7 @@ const SOURCE_OPTIONS_DEFAULT = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "facebook_ad", label: "Anúncio Facebook" },
   { value: "instagram_ad", label: "Anúncio Instagram" },
+  { value: "google_ads", label: "Google Ads" },
   { value: "indicação", label: "Indicação" },
   { value: "orgânico", label: "Orgânico" },
   { value: "site", label: "Site" },

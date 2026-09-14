@@ -1175,6 +1175,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         if (filters.source === "anuncio") {
           const s = (l.source || "").toLowerCase();
           if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
+        } else if (filters.source === "google_ads") {
+          const s = (l.source || "").toLowerCase();
+          if (s !== "google_ads" && s !== "google") return false;
         } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
       }
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;

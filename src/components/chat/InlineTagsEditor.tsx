@@ -37,6 +37,7 @@ type Props = {
 
 const SOURCE_OPTIONS_DEFAULT = [
   { value: "anúncio", label: "Anúncio" },
+  { value: "google_ads", label: "Google Ads" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "indicação", label: "Indicação" },
   { value: "orgânico", label: "Orgânico" },
