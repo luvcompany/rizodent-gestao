@@ -171,7 +171,7 @@ export interface LeadOrigemInput {
 }
 
 /** minúsculas, sem acentos, espaços colapsados. */
-function norm(s: string | null | undefined): string {
+export function norm(s: string | null | undefined): string {
   return (s ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -179,6 +179,22 @@ function norm(s: string | null | undefined): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/** Verifica se a origem de um lead casa com o valor selecionado no filtro,
+ *  ignorando acentos e maiúsculas. */
+export function leadSourceMatchesFilter(leadSource: string | null, filterValue: string): boolean {
+  const f = norm(filterValue);
+  const s = norm(leadSource);
+  if (!f) return true;
+  if (f === "anuncio") {
+    return s.includes("_ad") || s === "anuncio" || s.startsWith("anuncio");
+  }
+  if (f === "google_ads") {
+    return s === "google_ads" || s === "google";
+  }
+  return s === f;
+}
+
 
 // Cobre as variações reais do banco: "SEM ANÚNCIO", "SEM ANUNCIO", "SEM ANÚNIO",
 // "Sem anúncio " (com espaço) e também "NÃO IDENTIFICADO".
