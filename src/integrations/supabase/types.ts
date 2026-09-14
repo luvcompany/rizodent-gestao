@@ -5572,6 +5572,7 @@ export type Database = {
             }[]
           }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
+      cleanup_system_logs: { Args: never; Returns: undefined }
       closer_clinicas_do_tenant: {
         Args: never
         Returns: {
