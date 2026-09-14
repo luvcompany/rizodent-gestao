@@ -345,8 +345,17 @@ const NewLeadDialog = memo(function NewLeadDialog({
               <Select value={form.source} onValueChange={v => set("source", v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {["instagram","whatsapp","facebook","facebook_ad","instagram_ad","manual","indicação","google"].map(s =>
-                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                  {[
+                    { value: "instagram", label: "Instagram" },
+                    { value: "whatsapp", label: "WhatsApp" },
+                    { value: "facebook", label: "Facebook" },
+                    { value: "facebook_ad", label: "Anúncio Facebook" },
+                    { value: "instagram_ad", label: "Anúncio Instagram" },
+                    { value: "google_ads", label: "Google Ads" },
+                    { value: "manual", label: "Manual" },
+                    { value: "indicação", label: "Indicação" },
+                  ].map(s =>
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -1195,6 +1204,9 @@ export default function CrmKanban() {
         if (kanbanFilters.source === "anuncio") {
           const s = (l.source || "").toLowerCase();
           if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
+        } else if (kanbanFilters.source === "google_ads") {
+          const s = (l.source || "").toLowerCase();
+          if (s !== "google_ads" && s !== "google") return false;
         } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
       }
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
