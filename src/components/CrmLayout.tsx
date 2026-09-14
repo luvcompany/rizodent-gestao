@@ -229,8 +229,10 @@ const CrmLayout = () => {
       }
     };
     const scheduleFetchUnread = () => {
+      // Debounce longo: com webhook ativo, crm_leads muda várias vezes por
+      // segundo. 3s agrupa a rajada em UMA recontagem (era 600ms).
       if (unreadRefreshTimer.current) window.clearTimeout(unreadRefreshTimer.current);
-      unreadRefreshTimer.current = window.setTimeout(fetchUnread, 600);
+      unreadRefreshTimer.current = window.setTimeout(fetchUnread, 3_000);
     };
     fetchUnread();
     const ch = supabase.channel("unread-badge")
@@ -254,11 +256,21 @@ const CrmLayout = () => {
         .lte("due_date", `${today}T23:59:59`);
       setTodayTaskCount(count || 0);
     };
+    // Mesma ideia do badge de não lidas: agrupa rajadas de mudanças em tarefas
+    // em uma única contagem, em vez de uma consulta por evento.
+    let taskTimer: number | null = null;
+    const scheduleFetchTasks = () => {
+      if (taskTimer) window.clearTimeout(taskTimer);
+      taskTimer = window.setTimeout(fetchTodayTasks, 3_000);
+    };
     fetchTodayTasks();
     const ch = supabase.channel("task-badge")
-      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, fetchTodayTasks)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, scheduleFetchTasks)
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      if (taskTimer) window.clearTimeout(taskTimer);
+      supabase.removeChannel(ch);
+    };
   }, [user?.id]);
 
   const renderNavItem = (item: NavItem) => (
