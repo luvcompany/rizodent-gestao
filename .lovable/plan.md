@@ -1,53 +1,25 @@
-# Corrigir os erros recorrentes na fila de automações
+# Adicionar "Google Ads" como origem
 
-## Diagnóstico (confirmado com queries)
+Hoje os leads que chegam pelo Google Ads são gravados com a fonte `google_ads` (o webhook do WhatsApp já detecta isso pelo texto da primeira mensagem), mas essa opção não existe em nenhuma lista da tela: nem no filtro das Conversas/Kanban, nem nos campos de Origem do lead. Por isso não dá para filtrar nem para marcar manualmente.
 
-Últimas 24 h em `crm_automation_queue` (tenant Rizodent):
+## O que muda
 
-| Erro | Ocorrências | Origem |
-|---|---|---|
-| `Rate limit exceeded for trace X. Retry after Yms` | 140 | 429 do Edge Runtime quando o `automation-queue-worker` chama `bot-engine`/`send-whatsapp-message` em rajada |
-| `lead blocked` | 4 | Lead marcado `is_blocked=true` chega no worker e o `throw new Error("lead blocked")` marca como `failed` |
-| `bot-engine 502` | 1 | Transiente |
+1. **Filtro de Fonte/Integração** (usado nas Conversas e no Kanban): entra a opção "Google Ads", logo abaixo de "Anúncio".
+2. **Filtragem**: ao escolher "Google Ads", a lista passa a mostrar os leads gravados como `google_ads` e também os gravados apenas como `google` (leads antigos criados pelo cadastro manual).
+3. **Campo Origem do lead** (painel de edição do lead e a edição rápida na conversa): entra "Google Ads" na lista, para poder corrigir manualmente um lead.
+4. **Cadastro de lead no Kanban**: a lista de origem passa a ter "Google Ads" com rótulo legível, no lugar do atual "Google".
 
-Todas as 140 falhas de rate-limit vieram de **uma única rajada 11:00–11:04 UTC**. O worker hoje trata 429 como falha terminal (não relê o `Retry-After` do corpo do erro), então dezenas de itens que só precisavam esperar ~40 s foram descartados.
+Nada de dado é alterado em massa: leads já existentes continuam como estão, e o filtro passa a alcançá-los.
 
-## Auditoria de triggers
+## Detalhes técnicos
 
-- Nenhum trigger do schema `public` está desabilitado (`pg_trigger.tgenabled != 'O'` retorna 0 linhas).
-- `pg_net`: 1759 requisições 200 nas últimas 24 h e **487 timeouts de 5 s**, todos vindos dos triggers de notificação para o dashboard externo Rizodent Pulse. Não bloqueiam o CRM (execução assíncrona), mas mostram que o endpoint externo está intermitentemente lento/indisponível — reportado para você decidir se quer aumentar o timeout ou trocar o host.
+- `src/components/chat/ConversationFilters.tsx`: novo `SelectItem value="google_ads"`.
+- `src/pages/CrmConversas.tsx` (~linha 1174) e `src/pages/CrmKanban.tsx` (~linha 1194): no bloco que compara `filters.source`, tratar `google_ads` como conjunto (`google_ads`, `google`), do mesmo jeito que `anuncio` já agrupa `facebook_ad`/`instagram_ad`.
+- `src/components/chat/LeadEditPanel.tsx` e `src/components/chat/InlineTagsEditor.tsx`: acrescentar `{ value: "google_ads", label: "Google Ads" }` em `SOURCE_OPTIONS_DEFAULT`.
+- `src/pages/CrmKanban.tsx` (~linha 348): trocar a lista de strings crua por pares valor/rótulo, incluindo `google_ads` → "Google Ads".
 
-## Mudanças de código
+Só código de tela — nenhuma migration, edge function ou publish.
 
-### 1. `supabase/functions/automation-queue-worker/index.ts` — tratar 429 como transiente
+## Observação (fora do pedido, se quiser depois)
 
-- No `catch` do `processOne`, detectar `Rate limit exceeded` e extrair `Retry after Xms` do texto.
-- Se for 429:
-  - Reagendar: `status='pending'`, `scheduled_at = now() + retryAfter + jitter (500-1500 ms)`, `error_message` guardando o motivo do último adiamento.
-  - Limitar a 5 reagendamentos por item, usando um contador embutido no `error_message` (`retry #N/5`) — evita loop infinito sem precisar de migration.
-  - Passado o limite: marca `failed` normalmente.
-- Reduzir a rajada: baixar `PARALLEL` (hoje ~5) para **3** e aumentar o `setTimeout` entre chunks de 400 ms para **800 ms**. Combinado com o retry, cortamos o rate-limit sem alongar significativamente o processamento.
-
-### 2. `supabase/functions/automation-queue-worker/index.ts` — tratar `lead blocked` como cancelamento
-
-- Antes do `switch(actionType)`, se `lead.is_blocked`, marcar o item como `status='cancelled'` com `error_message='lead bloqueado — automação ignorada'` e contar em `stats.cancelled` (novo campo). Não conta como falha.
-
-### 3. `supabase/functions/automation-engine/index.ts` — pular enfileiramento de leads bloqueados
-
-- Nos loops que enfileiram (`before_scheduled`, `no_response`, `progressive_reengagement`, `lead_stale`, `no_show`, `time_window`), adicionar `is_blocked=false` no filtro do `SELECT` de leads elegíveis. Impede que os 4 casos por dia sequer entrem na fila.
-
-## O que **não** muda
-
-- Nenhuma migration de schema.
-- Nenhuma alteração de lógica de negócio das automações (etapas, condições, templates permanecem iguais).
-- Triggers do dashboard externo permanecem como estão até você decidir sobre os timeouts.
-
-## Verificação após deploy
-
-1. `psql -c "SELECT status, count(*) FROM crm_automation_queue WHERE updated_at > now() - interval '1 hour' GROUP BY status"` — esperar `failed` cair a ~0 e ver `cancelled` aparecer para leads bloqueados.
-2. Redeploy manual de `automation-queue-worker` e `automation-engine`.
-3. Monitorar logs por 1 h para confirmar que itens 429 reaparecem como `sent` após o retry.
-
-## Resposta rápida à sua pergunta sobre triggers
-
-**Nenhum gatilho do banco está desabilitado ou quebrado.** Os únicos avisos são timeouts (5 s) nas notificações HTTP para o dashboard externo Rizodent Pulse — assíncronas e sem impacto no CRM. Se quiser, posso aumentar o timeout ou tornar o POST fire-and-forget num plano separado.
+No filtro atual, "Indicação" e "Orgânico" enviam `indicacao`/`organico` sem acento, enquanto o banco grava `indicação`/`orgânico` — então esses dois filtros provavelmente não retornam nada. Posso corrigir junto se você quiser.
