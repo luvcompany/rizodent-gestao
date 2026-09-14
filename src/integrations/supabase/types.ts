@@ -544,13 +544,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "ai_reply_suggestions_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       api4com_calls: {
@@ -618,13 +611,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "api4com_calls_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "api4com_calls_tenant_id_fkey"
@@ -858,13 +844,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bot_executions_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "bot_executions_started_by_automation_id_fkey"
@@ -1122,13 +1101,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "closer_pacientes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "closer_pacientes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -1303,13 +1275,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "crm_appointments_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "crm_appointments_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
@@ -1392,13 +1357,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_automation_executions_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       crm_automation_queue: {
@@ -1468,13 +1426,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_automation_queue_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -1565,13 +1516,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_broadcast_recipients_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -1705,13 +1649,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "crm_conversation_notes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "crm_conversation_notes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -1800,13 +1737,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_entregas_gestor_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: true
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       crm_fechamentos_agendados: {
@@ -1844,13 +1774,6 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_fechamentos_agendados_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: true
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -2029,13 +1952,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_followup_queue_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "crm_followup_queue_stage_id_fkey"
@@ -2219,13 +2135,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_lead_atribuicoes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       crm_lead_custom_values: {
@@ -2262,13 +2171,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_lead_custom_values_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       crm_lead_instagram_identities: {
@@ -2303,13 +2205,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_lead_instagram_identities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -2376,13 +2271,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "crm_lead_pacientes_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "crm_lead_pacientes_paciente_id_fkey"
             columns: ["paciente_id"]
             isOneToOne: false
@@ -2433,13 +2321,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_lead_stage_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "crm_lead_stage_history_stage_id_fkey"
@@ -2763,13 +2644,6 @@ export type Database = {
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "crm_notifications_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
         ]
       }
       crm_pesquisa_config: {
@@ -2852,13 +2726,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_pesquisa_respostas_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
         ]
       }
@@ -3305,13 +3172,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "crm_tasks_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "crm_tasks_tenant_id_fkey"
@@ -4362,13 +4222,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "messages_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "messages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -5197,13 +5050,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "whatsapp_call_permissions_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
-          },
-          {
             foreignKeyName: "whatsapp_call_permissions_whatsapp_number_id_fkey"
             columns: ["whatsapp_number_id"]
             isOneToOne: false
@@ -5313,13 +5159,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "crm_leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_calls_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "crm_leads_com_pagamento"
-            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "whatsapp_calls_whatsapp_number_id_fkey"
