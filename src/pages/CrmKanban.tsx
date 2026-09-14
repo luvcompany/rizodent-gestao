@@ -5,7 +5,7 @@ import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
-import { contaComoFaturamento } from "@/lib/reportKit";
+import { contaComoFaturamento, leadSourceMatchesFilter } from "@/lib/reportKit";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { executeStageAutomations } from "@/lib/automationUtils";
