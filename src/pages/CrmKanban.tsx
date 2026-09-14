@@ -1201,14 +1201,9 @@ export default function CrmKanban() {
       if (kanbanFilters.assignedTo && l.assigned_to !== kanbanFilters.assignedTo) return false;
       if (kanbanFilters.tags.length && !kanbanFilters.tags.some((t) => l.tags?.includes(t))) return false;
       if (kanbanFilters.source) {
-        if (kanbanFilters.source === "anuncio") {
-          const s = (l.source || "").toLowerCase();
-          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
-        } else if (kanbanFilters.source === "google_ads") {
-          const s = (l.source || "").toLowerCase();
-          if (s !== "google_ads" && s !== "google") return false;
-        } else if (l.source?.toLowerCase() !== kanbanFilters.source.toLowerCase()) return false;
+        if (!leadSourceMatchesFilter(l.source, kanbanFilters.source)) return false;
       }
+
       if (kanbanFilters.cidade && (l.cidade || "") !== kanbanFilters.cidade) return false;
       if (kanbanFilters.servicoInteresse && ((l as any).servico_interesse || "") !== kanbanFilters.servicoInteresse) return false;
       if (kanbanFilters.adAccountId && (l.ad_account_id || "") !== kanbanFilters.adAccountId) return false;
