@@ -5,6 +5,7 @@ import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
+import { contaComoFaturamento } from "@/lib/reportKit";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { executeStageAutomations } from "@/lib/automationUtils";
@@ -488,7 +489,11 @@ export const invalidateKanbanCache = () => {
 
 // ── localStorage: persiste o cache entre reloads de página ──────────────────
 // v4: armazena somente uma fatia pequena por coluna + totais, evitando reidratar milhares de cards.
-const KANBAN_LS_KEY = "crm:kanban_cache_v4";
+// v5 (14/09/2026): "Vendas concluídas" passou a usar a régua de faturamento de
+// marketing. A versão SOBE junto com a mudança de régua — senão o navegador de
+// quem já usou a tela continuaria mostrando o total antigo até o cache vencer,
+// e pareceria que o conserto não foi feito.
+const KANBAN_LS_KEY = "crm:kanban_cache_v5";
 const KANBAN_LS_TTL = 15 * 60_000;
 
 function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheEntry | null {
@@ -786,15 +791,25 @@ export default function CrmKanban() {
     const allTimeMap = new Map<string, number>();
     const paidLeadIds = new Set<string>();
 
-    // Total de vendas do mês: soma TODOS os pagamentos da clínica no período,
-    // independente do pipeline atual. Leads movidos para pós-venda continuam
-    // sendo contabilizados. O RLS garante o escopo da clínica.
+    // Total de vendas do mês: pagamentos da clínica no período, independente do
+    // pipeline atual — lead movido para pós-venda continua sendo contabilizado.
+    // O RLS garante o escopo da clínica.
+    //
+    // A régua é a MESMA do Dashboard principal e dos relatórios
+    // (contaComoFaturamento): fora manutenção de ortodontia e pagamento marcado
+    // como não-marketing. Duas razões: "venda concluída" não é mensalidade de
+    // paciente antigo de orto, e antes disto este card mostrava R$ 92.742,44
+    // enquanto o Dashboard mostrava R$ 79.212,44 no MESMO mês — R$ 13.530,00 de
+    // diferença sem nenhuma tela explicando qual era qual (decisão do dono em
+    // 14/09/2026: um número só no sistema inteiro).
     const { data: allMonthPags } = await supabase
       .from("pagamentos")
-      .select("valor")
+      .select("valor, recorrencia_orto, nao_marketing")
       .gte("data_pagamento", monthStart)
       .lte("data_pagamento", monthEnd);
-    vendasConcluidasVal = (allMonthPags || []).reduce((sum: number, pg: any) => sum + Number(pg.valor || 0), 0);
+    vendasConcluidasVal = (allMonthPags || [])
+      .filter(contaComoFaturamento)
+      .reduce((sum: number, pg: any) => sum + Number(pg.valor || 0), 0);
 
     if (leadIds.length > 0) {
       // Monta mapa paciente→lead usando o campo direto dos leads (não precisa de .in() grande)

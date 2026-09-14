@@ -23,7 +23,7 @@ import { toastDbError } from "@/lib/appointmentActions";
 import { useAuth } from "@/contexts/AuthContext";
 // Fundação canônica: datas em America/Bahia (fuso da clínica, não do navegador)
 // e paginação com ORDER BY estável que lança erro em vez de truncar silenciosamente.
-import { fetchAllPaged, rangeBahia, todayBahia } from "@/lib/reportKit";
+import { fetchAllPaged, rangeBahia, todayBahia, contaComoFaturamento } from "@/lib/reportKit";
 
 type Task = {
   id: string;
@@ -68,7 +68,10 @@ const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: 
   userId: null, data: null, ts: 0,
 };
 const DASH_CACHE_TTL = 5 * 60_000; // 5 min — navegação volta instantânea
-const DASH_LS_KEY = "crm:dashboard_cache_v2";
+// v3 (14/09/2026): "Faturamento do mês" passou a usar a régua de faturamento de
+// marketing (mesma do Dashboard principal). Versão nova para o cache antigo não
+// continuar mostrando o total bruto.
+const DASH_LS_KEY = "crm:dashboard_cache_v3";
 const DASH_LS_TTL = 15 * 60_000;
 // Janela de dados de tarefas/agendamentos: ±60 dias a partir de hoje (explicitada na UI)
 const DASH_WINDOW_DAYS = 60;
@@ -133,7 +136,14 @@ async function loadDashboardData(
     fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
     fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
     supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso),
-    fetchAllPaged<{ valor: number | string | null }>(() => supabase.from("pagamentos").select("valor").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd), "id"),
+    // As duas marcas vêm junto com o valor porque é o que separa faturamento de
+    // MARKETING do caixa bruto (ver contaComoFaturamento). Sem elas o card
+    // mostrava R$ 92.742 onde o Dashboard principal mostrava R$ 79.212 — o
+    // mesmo mês, dois números, e nenhum dos dois dizia qual era qual.
+    fetchAllPaged<{ valor: number | string | null; recorrencia_orto: boolean | null; nao_marketing: boolean | null }>(
+      () => supabase.from("pagamentos").select("valor, recorrencia_orto, nao_marketing").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+      "id",
+    ),
   ]);
   if (leadsCountRes.error || leadsCountRes.count === null) {
     throw new Error(`contagem de leads de hoje falhou: ${leadsCountRes.error?.message ?? "count nulo"}`);
@@ -168,8 +178,13 @@ async function loadDashboardData(
   });
   appointments.forEach((a) => (a.lead_name = nameMap.get(a.lead_id) || "Lead"));
 
-  // Faturamento do mês = soma direta de TODOS os pagamentos (mesma fonte do Dashboard principal)
-  const faturamentoMes = pagamentosAll.reduce((s, p) => s + Number(p.valor || 0), 0);
+  // Faturamento do mês = a MESMA régua do Dashboard principal e dos relatórios
+  // (contaComoFaturamento): fora manutenção de ortodontia e pagamento marcado
+  // como não-marketing. Antes somava tudo, e o card divergia do Dashboard em
+  // R$ 13.530,00 no mês (decisão do dono em 14/09/2026: um número só).
+  const faturamentoMes = pagamentosAll
+    .filter(contaComoFaturamento)
+    .reduce((s, p) => s + Number(p.valor || 0), 0);
 
   return { tasks, appointments, leadsToday: leadsCountRes.count, faturamentoMes };
 }
