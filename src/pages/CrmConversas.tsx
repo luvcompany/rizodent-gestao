@@ -16,6 +16,7 @@ const semAcento = (t: string) =>
   (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 import { useAuth } from "@/contexts/AuthContext";
 import { ehPapelSdr, rotuloDesfecho, type PapelUsuario } from "@/lib/desfechoLabel";
+import { leadSourceMatchesFilter } from "@/lib/reportKit";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
@@ -1184,14 +1185,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         if (!filters.labelIds.some((id) => leadLabelIds.includes(id))) return false;
       }
       if (filters.source) {
-        if (filters.source === "anuncio") {
-          const s = (l.source || "").toLowerCase();
-          if (!s.includes("_ad") && s !== "anuncio" && s !== "anúncio") return false;
-        } else if (filters.source === "google_ads") {
-          const s = (l.source || "").toLowerCase();
-          if (s !== "google_ads" && s !== "google") return false;
-        } else if (l.source?.toLowerCase() !== filters.source.toLowerCase()) return false;
+        if (!leadSourceMatchesFilter(l.source, filters.source)) return false;
       }
+
       if (filters.cidade && (l.cidade || "") !== filters.cidade) return false;
       if (filters.servicoInteresse && ((l as any).servico_interesse || "") !== filters.servicoInteresse) return false;
       if (filters.adAccountId && ((l as any).ad_account_id || "") !== filters.adAccountId) return false;
