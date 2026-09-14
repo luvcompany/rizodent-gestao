@@ -1404,19 +1404,32 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                   </Badge>
                                 )}
                               </span>
-                              <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Última mensagem">
-                                {(() => {
-                                  const ts = lead.last_message_at || lead.created_at;
-                                  if (!ts) return "";
-                                  const d = new Date(ts);
-                                  const today = new Date();
-                                  const yest = new Date(Date.now() - 86400000);
-                                  if (d.toDateString() === today.toDateString())
-                                    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-                                  if (d.toDateString() === yest.toDateString()) return "Ontem";
-                                  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-                                })()}
-                              </span>
+                              {(() => {
+                                // Na busca, o horário é o da MENSAGEM ENCONTRADA.
+                                // Fora dela, o da última mensagem da conversa.
+                                const termo = search.trim();
+                                const achada = termo.length >= 3 ? messageMatchTimes?.get(lead.id) : null;
+                                const ts = achada || lead.last_message_at || lead.created_at;
+                                if (!ts) return null;
+                                const d = new Date(ts);
+                                const today = new Date();
+                                const yest = new Date(Date.now() - 86400000);
+                                let texto: string;
+                                if (d.toDateString() === today.toDateString())
+                                  texto = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                else if (d.toDateString() === yest.toDateString()) texto = "Ontem";
+                                else texto = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                return (
+                                  <span
+                                    className="text-[10px] text-muted-foreground whitespace-nowrap"
+                                    title={achada
+                                      ? `Mensagem encontrada: ${d.toLocaleString("pt-BR")}`
+                                      : "Última mensagem"}
+                                  >
+                                    {texto}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               {lead.source && (
