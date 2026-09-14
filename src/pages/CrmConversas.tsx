@@ -375,6 +375,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Trecho da mensagem que casou com a busca, por lead. É o que explica na lista
   // POR QUE aquele lead apareceu quando o nome e o telefone não têm o termo.
   const [messageMatchSnippets, setMessageMatchSnippets] = useState<Map<string, string> | null>(null);
+  // Data/hora da mensagem que casou com a busca, por lead. Na busca, é ESTE
+  // horário que a lista mostra — não o da última mensagem da conversa.
+  const [messageMatchTimes, setMessageMatchTimes] = useState<Map<string, string> | null>(null);
   // A busca devolve no máximo 500 leads. Sem este aviso, "avaliação" mostra 500
   // de 2.412 e o contador ao lado de "Conversas" é lido como se fosse o total —
   // o mesmo sintoma que originou a correção da busca ("não puxa o geral").
