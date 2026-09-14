@@ -661,12 +661,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // registro por lead (o mais recente) com um trecho do texto em volta do termo.
   useEffect(() => {
     const term = search.trim();
-    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
-    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setBuscaNoTeto(false); return; }
+    if (!tenant.id) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setMessageMatchTimes(null); setBuscaNoTeto(false); return; }
+    if (term.length < 3) { setMessageMatchLeadIds(null); setMessageMatchSnippets(null); setMessageMatchTimes(null); setBuscaNoTeto(false); return; }
     let cancelled = false;
     const handle = setTimeout(async () => {
       const ids = new Set<string>();
       const trechos = new Map<string, string>();
+      const quandos = new Map<string, string>();
 
       // Caminho novo: a RPC. O termo vai CRU — quem escapa os curingas do LIKE
       // (%, _ e a barra invertida) é a função, para não escapar duas vezes.
@@ -678,10 +679,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       const TETO_BUSCA = 500;
       if (!erroRpc && Array.isArray(achados)) {
-        achados.forEach((r: { lead_id: string; trecho: string | null }) => {
+        achados.forEach((r: { lead_id: string; trecho: string | null; quando?: string | null }) => {
           if (!r?.lead_id) return;
           ids.add(r.lead_id);
           if (r.trecho) trechos.set(r.lead_id, r.trecho);
+          if (r.quando) quandos.set(r.lead_id, r.quando);
         });
         // Veio exatamente o teto: quase certamente há mais do que isto.
         setBuscaNoTeto(achados.length >= TETO_BUSCA);
@@ -693,19 +695,26 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         const safe = term.replace(/[%_\\]/g, (c) => `\\${c}`);
         const { data, error } = await supabase
           .from("messages")
-          .select("lead_id")
+          .select("lead_id, created_at")
           .eq("tenant_id", tenant.id)
           .not("lead_id", "is", null)
           .ilike("content", `%${safe}%`)
           .order("created_at", { ascending: false })
           .limit(500);
         if (cancelled || error) return;
-        (data ?? []).forEach((r: any) => { if (r.lead_id) ids.add(r.lead_id); });
+        // Vem ordenado do mais novo para o mais velho: o primeiro de cada lead
+        // é o horário da mensagem encontrada mais recente.
+        (data ?? []).forEach((r: any) => {
+          if (!r.lead_id) return;
+          ids.add(r.lead_id);
+          if (r.created_at && !quandos.has(r.lead_id)) quandos.set(r.lead_id, r.created_at);
+        });
       }
 
       if (cancelled) return;
       setMessageMatchLeadIds(ids);
       setMessageMatchSnippets(trechos.size ? trechos : null);
+      setMessageMatchTimes(quandos.size ? quandos : null);
 
       // Hidrata os leads que não estão na lista carregada, para eles aparecerem
       // no resultado. Sem teto de 100: o corte agora é o LIMIT da RPC (500
