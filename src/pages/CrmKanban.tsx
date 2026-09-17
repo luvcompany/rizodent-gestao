@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
 import { contaComoFaturamento, leadSourceMatchesFilter } from "@/lib/reportKit";
+import { useHidratarLeadsAvisados } from "@/hooks/useHidratarLeadsAvisados";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { executeStageAutomations } from "@/lib/automationUtils";
@@ -1000,6 +1001,74 @@ export default function CrmKanban() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── Lead que PASSOU A SER MEU e não está no quadro ─────────────────────────
+  //
+  // O DEFEITO (relato da SDR em 16/09/2026: "o lead ficou oculto e não apareceu
+  // pra ela"). Todo lead distribuído nasce sem dona e recebe a dona num UPDATE
+  // logo depois; para a SDR, portanto, a distribuição sempre chega como UPDATE
+  // de um lead que ela não tinha. O handler abaixo descartava esse caso
+  // (`if (!exists) return prev`) — só INSERT recarregava o quadro, e a SDR nem
+  // recebe o INSERT, porque na hora dele o lead ainda não é dela. Resultado:
+  // NENHUM lead distribuído aparecia no Kanban até recarregar a página.
+  //
+  // POR QUE NÃO SIMPLESMENTE RECARREGAR O QUADRO. As colunas carregam 20 cards e
+  // o resto ao rolar; qualquer mensagem nova num lead fora da página gera o
+  // mesmo UPDATE-de-lead-ausente. Recarregar a cada um viraria um laço, pior
+  // ainda para o gestor, que recebe os eventos da clínica inteira. Então só
+  // reage quando o lead É DA PRÓPRIA USUÁRIA, é do funil aberto, e não foi
+  // tentado há pouco — busca AQUELE lead e reconta só a coluna dele.
+  const pipelineIdRef = useRef<string | null>(null);
+  pipelineIdRef.current = pipeline?.id ?? null;
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
+  const leadsNoQuadroRef = useRef<Set<string>>(new Set());
+  useEffect(() => { leadsNoQuadroRef.current = new Set(leads.map(l => l.id)); }, [leads]);
+  const tentadosNoQuadroRef = useRef<Map<string, number>>(new Map());
+
+  const avisarLeadNoQuadro = useHidratarLeadsAvisados<Lead>(
+    async (ids) => {
+      const { data } = await supabase
+        .from("crm_leads")
+        .select(KANBAN_LEAD_COLS)
+        .in("id", ids)
+        .eq("is_blocked", false);
+      return (data as Lead[]) || [];
+    },
+    (novos) => {
+      const doFunil = novos.filter(n => n.pipeline_id === pipelineIdRef.current);
+      if (doFunil.length === 0) return;
+      setLeads(prev => {
+        const ja = new Set(prev.map(l => l.id));
+        const entram = doFunil.filter(n => !ja.has(n.id));
+        return entram.length ? [...entram, ...prev] : prev;
+      });
+      // O card entra mesmo com a coluna paginada...
+      setStageVisibleCounts(prev => {
+        const n = { ...prev };
+        doFunil.forEach(l => { n[l.stage_id] = (n[l.stage_id] || PAGE_SIZE) + 1; });
+        return n;
+      });
+      // ...e o contador da coluna é RECONTADO no banco, não somado de cabeça:
+      // não dá para saber daqui se o lead já estava contado.
+      const etapas: string[] = [...new Set(doFunil.map(l => String(l.stage_id)))];
+      void Promise.all(etapas.map(async (sid) => {
+        const { count } = await supabase
+          .from("crm_leads")
+          .select("id", { count: "exact", head: true })
+          .eq("stage_id", sid)
+          .eq("is_blocked", false);
+        return [sid, count] as const;
+      })).then((contagens) => {
+        setStageTotalCounts(prev => {
+          const n = { ...prev };
+          contagens.forEach(([sid, c]) => { if (typeof c === "number") n[sid] = c; });
+          return n;
+        });
+      });
+      invalidateKanbanCache();
+    },
+  );
+
   // ── Real-time: atualiza leads no kanban sem recarregar a página ────────────
   useEffect(() => {
     const channel = supabase
@@ -1009,11 +1078,21 @@ export default function CrmKanban() {
         { event: "UPDATE", schema: "public", table: "crm_leads" },
         (payload) => {
           const updated = payload.new as any;
-          setLeads(prev => {
-            const exists = prev.some(l => l.id === updated.id);
-            if (!exists) return prev;
-            return prev.map(l => l.id === updated.id ? { ...l, ...updated } : l);
-          });
+          if (!leadsNoQuadroRef.current.has(updated.id)) {
+            const agora = Date.now();
+            const ultimaTentativa = tentadosNoQuadroRef.current.get(updated.id) ?? 0;
+            if (
+              !updated.is_blocked &&
+              userIdRef.current && updated.assigned_to === userIdRef.current &&
+              updated.pipeline_id === pipelineIdRef.current &&
+              agora - ultimaTentativa > 60_000
+            ) {
+              tentadosNoQuadroRef.current.set(updated.id, agora);
+              avisarLeadNoQuadro(updated.id);
+            }
+            return;
+          }
+          setLeads(prev => prev.map(l => l.id === updated.id ? { ...l, ...updated } : l));
           // Invalida cache para próxima visita buscar dados frescos
           invalidateKanbanCache();
         }
@@ -1030,7 +1109,7 @@ export default function CrmKanban() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [fetchData]);
+  }, [fetchData, avisarLeadNoQuadro]);
 
   // Consome a flag de "voltou de uma conversa" — só vale uma vez por montagem
   useEffect(() => {

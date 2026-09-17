@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { usePresencaNaConversa } from "@/hooks/usePresencaNaConversa";
+import { useHidratarLeadsAvisados } from "@/hooks/useHidratarLeadsAvisados";
 
 /**
  * Compara ignorando acento, do mesmo jeito que a busca no banco faz desde
@@ -315,10 +316,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   // Lê localStorage uma vez no primeiro render — fallback quando módulo cache está frio (reload)
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
-  // Lead que o Realtime avisou existir mas que ainda não está na lista (tipicamente
-  // um lead que acabou de ser realocado para esta SDR). Guardamos só o id: quem
-  // busca a linha é o efeito de hidratação, no banco, onde a RLS vale.
-  const [leadParaHidratar, setLeadParaHidratar] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   // Identificação do "mundo" (conexão de WhatsApp) na lista. Só aparece quando o
   // tenant tem mais de um número ativo — com só o principal não poluímos a UI.
@@ -820,29 +817,69 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [selectedLeadId, leads]);
 
 
-  // Hidrata, do BANCO, o lead que o Realtime avisou existir e que não está na
-  // lista. É assim que o lead recém-realocado aparece para a nova dona sem ela
+  // Hidrata, do BANCO, os leads que o Realtime avisou existirem e que não estão
+  // na lista. É assim que o lead DISTRIBUÍDO para a SDR aparece para ela sem
   // recarregar a página. Se a RLS não devolver a linha, nada acontece — que é
   // exatamente o que deve acontecer quando o lead não é dela.
-  useEffect(() => {
-    if (!leadParaHidratar) return;
-    let cancelado = false;
-    (async () => {
+  //
+  // Fila, não um id só (ver src/hooks/useHidratarLeadsAvisados.ts): até
+  // 17/09/2026 isto era um useState de UM valor, e a abertura do expediente —
+  // que entrega o lote reservado de uma vez — deixava aparecer só o último lead
+  // do lote. Relato da SDR em 16/09: "o lead ficou oculto e não apareceu pra ela".
+  const leadsNaTelaRef = useRef<Set<string>>(new Set());
+  useEffect(() => { leadsNaTelaRef.current = new Set(leads.map((l) => l.id)); }, [leads]);
+
+  const avisarLeadAusente = useHidratarLeadsAvisados<LeadConversation>(
+    async (ids) => {
       const { data } = await supabase
         .from("crm_leads")
         .select(LEAD_LIST_COLS)
-        .eq("id", leadParaHidratar)
-        .maybeSingle();
-      if (cancelado) return;
-      setLeadParaHidratar(null);
-      if (!data || (data as any).is_blocked) return;
-      const novo = normalizeLead(data as any);
-      setLeads((prev) => prev.some((l) => l.id === (novo as any).id)
-        ? prev
-        : sortLeadsByLastActivity([novo as any, ...prev]));
-    })();
-    return () => { cancelado = true; };
-  }, [leadParaHidratar]);
+        .in("id", ids)
+        .eq("is_blocked", false);
+      return ((data as any[]) || []).map((d) => normalizeLead(d) as unknown as LeadConversation);
+    },
+    (novos) => {
+      setLeads((prev) => {
+        const ja = new Set(prev.map((l) => l.id));
+        const entram = novos.filter((n) => !ja.has(n.id));
+        return entram.length ? sortLeadsByLastActivity([...(entram as any[]), ...prev]) : prev;
+      });
+    },
+  );
+
+  // REDE DE SEGURANÇA, só para quem vê por DONA (SDR). A fila acima depende de
+  // o Realtime entregar o aviso; se o canal caiu, a aba dormiu ou o aviso chegou
+  // enquanto a lista ainda carregava, o lead só apareceria ao recarregar. Esta
+  // conferência pergunta ao banco "quais leads são meus" e busca os que faltam
+  // na tela. Roda: quando a lista termina de carregar, quando a aba volta a ficar
+  // visível, a cada 60 s com a aba visível, e quando o expediente é aberto
+  // (evento disparado por SdrExpediente). Custo: uma consulta de ids por índice.
+  useEffect(() => {
+    if (userRole !== "sdr" || !user?.id || !fullyLoaded) return;
+    let vivo = true;
+    const conferir = async () => {
+      if (!vivo || document.visibilityState !== "visible") return;
+      const { data, error } = await supabase
+        .from("crm_leads")
+        .select("id")
+        .eq("assigned_to", user.id)
+        .eq("is_blocked", false);
+      if (!vivo || error || !data) return;
+      data.forEach((r: { id: string }) => {
+        if (!leadsNaTelaRef.current.has(r.id)) avisarLeadAusente(r.id);
+      });
+    };
+    void conferir();
+    const t = window.setInterval(conferir, 60_000);
+    document.addEventListener("visibilitychange", conferir);
+    window.addEventListener("crm:leads-da-sdr-mudaram", conferir);
+    return () => {
+      vivo = false;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", conferir);
+      window.removeEventListener("crm:leads-da-sdr-mudaram", conferir);
+    };
+  }, [userRole, user?.id, fullyLoaded, avisarLeadAusente]);
 
   // PRESENÇA NA CONVERSA. Enquanto esta conversa estiver aberta e a aba visível,
   // Presença nesta conversa (ver src/hooks/usePresencaNaConversa.ts): segura o
@@ -851,6 +888,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   usePresencaNaConversa(selectedLeadId);
 
   // Realtime - leads list
+  //
+  // O canal é criado UMA vez. Antes ele dependia de [selectedLeadId] e era
+  // desmontado e remontado a cada conversa que a SDR abria — e o aviso de lead
+  // distribuído que chegasse nesse intervalo simplesmente se perdia. O id da
+  // conversa aberta é lido por ref.
+  const selectedLeadIdRef = useRef(selectedLeadId);
+  selectedLeadIdRef.current = selectedLeadId;
+
   useEffect(() => {
     const channel = supabase
       .channel("conv-leads-realtime")
@@ -868,27 +913,27 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             setLeads((prev) => prev.filter((l) => l.id !== updated.id));
             return;
           }
-          setLeads((prev) => {
-            const exists = prev.some((l) => l.id === updated.id);
-            // LEAD QUE AINDA NÃO ESTÁ NA LISTA: não entra pelo payload.
-            //
-            // É o caso da realocação por silêncio — o lead passa a ser desta SDR
-            // e precisa aparecer sem ela recarregar a página (relato do dono em
-            // 11/09). Só que inserir o payload cru tem dois problemas: ele não
-            // passou pela consulta da lista (que traz derivados e recortes) e,
-            // sobretudo, o evento de Realtime chega antes de qualquer conferência
-            // de permissão do lado do cliente — confiar nele para montar a lista
-            // é confiar no que veio pela rede.
-            //
-            // Então o evento serve só de AVISO: quem busca é o efeito abaixo, no
-            // banco, onde a RLS decide. Se a linha não for dela, nada aparece.
-            if (!exists) {
-              setLeadParaHidratar(updated.id as string);
-              return prev;
-            }
-            return sortLeadsByLastActivity(prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l));
-          });
-          if (updated.id === selectedLeadId) {
+          // LEAD QUE AINDA NÃO ESTÁ NA LISTA: não entra pelo payload.
+          //
+          // É o caso de TODA distribuição para a SDR: o lead nasce sem dona
+          // (INSERT) e a dona é gravada logo depois num UPDATE — então para ela
+          // o lead distribuído sempre chega aqui como "lead que eu não tinha".
+          // Inserir o payload cru tem dois problemas: ele não passou pela
+          // consulta da lista (que traz derivados e recortes) e, sobretudo, o
+          // evento de Realtime chega antes de qualquer conferência de permissão
+          // do lado do cliente — confiar nele é confiar no que veio pela rede.
+          //
+          // Então o evento serve só de AVISO, e vai para a FILA fora do
+          // setState (efeito colateral dentro de updater pode rodar duas vezes).
+          // Quem busca é o banco, onde a RLS decide.
+          if (!leadsNaTelaRef.current.has(updated.id as string)) {
+            avisarLeadAusente(updated.id as string);
+            return;
+          }
+          setLeads((prev) =>
+            sortLeadsByLastActivity(prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l)),
+          );
+          if (updated.id === selectedLeadIdRef.current) {
             setSelectedLead((prev) => prev ? { ...prev, ...updated } : prev);
           }
         } else if (payload.eventType === "DELETE") {
@@ -898,7 +943,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [selectedLeadId]);
+    // avisarLeadAusente é estável (useCallback sem dependências mutáveis); o id
+    // da conversa aberta vem por ref. O canal não é refeito a cada conversa.
+  }, [avisarLeadAusente]);
 
   const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
     if (!selectedLeadId || !selectedLead) return;

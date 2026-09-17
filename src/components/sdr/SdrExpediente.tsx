@@ -340,6 +340,12 @@ export default function SdrExpediente() {
   const abrir = async () => {
     const r = await acao("ponto_abrir", undefined, "abrir o expediente");
     if (!r) return;
+    // Abrir o expediente aplica o lote reservado de uma vez — é o momento em que
+    // mais lead chega junto. A lista de conversas escuta este evento e confere no
+    // banco quais leads da SDR ainda não estão na tela (ver CrmConversas.tsx).
+    // Até 17/09/2026 a mensagem abaixo dizia "Você recebeu 12 leads" e só o
+    // último do lote aparecia.
+    window.dispatchEvent(new Event("crm:leads-da-sdr-mudaram"));
     const n = r.leads_desde_ultimo_encerramento ?? 0;
     toast.success(
       n === 0
@@ -402,7 +408,14 @@ export default function SdrExpediente() {
     void pausar(m, null);
   };
 
-  const retomar = () => acao("ponto_retomar", undefined, "retomar");
+  // Ao voltar da pausa, lead pode ter sido distribuído para ela nesse meio-tempo
+  // (entrega imediata quando ninguém mais estava presente). Mesma conferência da
+  // abertura do expediente.
+  const retomar = async () => {
+    const r = await acao("ponto_retomar", undefined, "retomar");
+    if (r) window.dispatchEvent(new Event("crm:leads-da-sdr-mudaram"));
+    return r;
+  };
   // Encerrar na mão continua sendo um botão do cartão: o dono foi explícito —
   // "mesmo podendo encerrar sozinho ainda tem que ter o botão de encerrar".
   const encerrar = async () => {
