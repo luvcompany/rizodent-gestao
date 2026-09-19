@@ -674,15 +674,24 @@ Deno.serve(async (req) => {
             .eq("id", lead_id)
             .maybeSingle()
             .then(({ data }) => data),
+          // A consulta que o modelo anuncia é a PRÓXIMA (hoje em diante). Antes
+          // pegava a mais antiga ainda sem desfecho — e, desde 17/09/2026, a
+          // presença é marcada à mão: consulta passada esquecida em 'confirmed'
+          // faria a confirmação de um agendamento NOVO sair com a data velha.
+          // Sem consulta futura, vale a mais recente.
           supabase
             .from("crm_appointments")
             .select("scheduled_date, scheduled_time")
             .eq("lead_id", lead_id)
             .in("status", ["confirmed", "pending"])
             .order("scheduled_date", { ascending: true })
-            .limit(1)
-            .maybeSingle()
-            .then(({ data }) => data),
+            .order("scheduled_time", { ascending: true })
+            .limit(20)
+            .then(({ data }) => {
+              const lista = (data || []) as { scheduled_date: string; scheduled_time: string | null }[];
+              const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia" }).format(new Date());
+              return lista.find((a) => a.scheduled_date >= hoje) || lista[lista.length - 1] || null;
+            }),
         ]);
 
         if (!tplRow) {
@@ -700,11 +709,17 @@ Deno.serve(async (req) => {
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
 
+          // {{2}} dos modelos = "Sábado, 19/09 às 09:00". O dia da semana foi
+          // pedido pelo dono em 19/09/2026 ("a idéia é que o template envie o dia
+          // da semana também"); o dia é calculado da DATA da consulta, em UTC
+          // puro, para o fuso do servidor não empurrar a data para o dia vizinho.
           let formattedApptDate: string | null = null;
           if (nextAppt?.scheduled_date) {
             const [y, m, d] = nextAppt.scheduled_date.split("-");
+            const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+            const diaSemana = DIAS[new Date(Date.UTC(Number(y), Number(m) - 1, Number(d))).getUTCDay()];
             const timePart = nextAppt.scheduled_time ? ` às ${nextAppt.scheduled_time.slice(0, 5)}` : "";
-            formattedApptDate = `${d}/${m}/${y}${timePart}`;
+            formattedApptDate = `${diaSemana}, ${d}/${m}${timePart}`;
           }
           const fallbackValues = buildTemplateFallbacks(tplLead || null, formattedApptDate);
 
