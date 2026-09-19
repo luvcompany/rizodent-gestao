@@ -41,6 +41,12 @@ BEGIN
   -- O texto real dentro da definição (sem o escape duplo do bloco DO).
   alvo := 'WHERE COALESCE(a.status, '''') <> ''cancelled''';
 
+  -- Já aplicada (o Lovable grava uma cópia desta migration com outro carimbo):
+  -- rodar de novo não pode falhar nem trocar duas vezes.
+  IF position('remarcada.created_at' IN d) > 0 THEN
+    RETURN;
+  END IF;
+
   IF position(alvo IN d) = 0 THEN
     RAISE EXCEPTION 'relatorio_sdr_calc: âncora de "cancelled" não encontrada — a função mudou; revise a migration antes de aplicar';
   END IF;
