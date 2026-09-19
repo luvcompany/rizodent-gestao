@@ -4148,6 +4148,27 @@ export type Database = {
           },
         ]
       }
+      mensagens_template_historico: {
+        Row: {
+          criado_em: string
+          message_id: string
+          snapshot: Json
+          tenant_id: string | null
+        }
+        Insert: {
+          criado_em?: string
+          message_id: string
+          snapshot: Json
+          tenant_id?: string | null
+        }
+        Update: {
+          criado_em?: string
+          message_id?: string
+          snapshot?: Json
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           ad_account_id: string | null
@@ -4178,6 +4199,7 @@ export type Database = {
           reply_to_message_id: string | null
           sender_id: string | null
           status: string
+          template_snapshot: Json | null
           tenant_id: string | null
           transcription: string | null
           type: string
@@ -4213,6 +4235,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          template_snapshot?: Json | null
           tenant_id?: string | null
           transcription?: string | null
           type?: string
@@ -4248,6 +4271,7 @@ export type Database = {
           reply_to_message_id?: string | null
           sender_id?: string | null
           status?: string
+          template_snapshot?: Json | null
           tenant_id?: string | null
           transcription?: string | null
           type?: string
@@ -6001,6 +6025,22 @@ export type Database = {
           servico: string
           similarity: number
         }[]
+      }
+      modelo_data_formato_antigo: {
+        Args: { p_data: string; p_hora: string }
+        Returns: string
+      }
+      modelo_data_formato_semana: {
+        Args: { p_data: string; p_hora: string }
+        Returns: string
+      }
+      modelo_reconstroi_snapshot: {
+        Args: { p_message_id: string }
+        Returns: Json
+      }
+      modelo_snapshots_historico_lote: {
+        Args: { p_limite?: number }
+        Returns: number
       }
       normaliza_nome_etapa: { Args: { p_nome: string }; Returns: string }
       notify_dashboard_event: {
