@@ -42,7 +42,9 @@ async function motivoDoErro(error: any, data: any): Promise<string> {
 
 const TEMPLATE_VARIABLES: { index: number; label: string; sample: string; hint: string }[] = [
   { index: 1, label: "Nome do lead", sample: "Maria Silva", hint: "lead.name (fallback: cliente)" },
-  { index: 2, label: "Data e hora do agendamento", sample: "20/05/2026 às 14:00", hint: "próximo agendamento (fallback: data a confirmar)" },
+  // Formato do servidor desde 19/09/2026 (_shared/modeloEnviado.ts): com o dia
+  // da semana; depois de "às" vai só a hora, depois de "hoje"/"amanhã", "às 14:00".
+  { index: 2, label: "Data e hora do agendamento", sample: "Quarta, 20/05 às 14:00", hint: "próximo agendamento — depois de \"às\" vai só a hora; depois de \"hoje\"/\"amanhã\", \"às 14:00\" (fallback: data a confirmar)" },
   { index: 3, label: "Serviço de interesse", sample: "Implante dentário", hint: "lead.servico_interesse (fallback: consulta)" },
   { index: 4, label: "Telefone do lead", sample: "(11) 99999-9999", hint: "lead.phone" },
   { index: 5, label: "Origem do lead", sample: "Anúncio", hint: "lead.source" },
@@ -662,9 +664,17 @@ export default function CrmModelos() {
   // Render preview substituindo {{N}} pelos valores de exemplo
   const renderPreviewBody = (text: string) => {
     if (!text) return "Corpo da mensagem...";
-    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => {
+    return text.replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n, pos: number) => {
       const v = TEMPLATE_VARIABLES.find(v => v.index === Number(n));
-      return v ? v.sample : `{{${n}}}`;
+      if (!v) return `{{${n}}}`;
+      // Mesma regra do servidor (_shared/modeloEnviado.ts) para {{2}}: depois de
+      // "às" vai só a hora; depois de "hoje"/"amanhã", "às 14:00".
+      if (Number(n) === 2) {
+        const antes = text.slice(0, pos).replace(/\s+$/u, "").toLowerCase();
+        if (/(^|\s)às$/u.test(antes)) return "14:00";
+        if (/(^|\s)(hoje|amanhã|amanha)$/u.test(antes)) return "às 14:00";
+      }
+      return v.sample;
     });
   };
 

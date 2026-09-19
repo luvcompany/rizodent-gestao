@@ -532,6 +532,13 @@ export function useChatConversation(leadId: string | null | undefined) {
   const handleMessageSuccess = useCallback((tempId: string, confirmedMessage?: ChatMessage) => {
     setMessages((prev) => {
       const normalizedConfirmed = confirmedMessage ? normalizeOutboundStatus(confirmedMessage) : null;
+      // Se o Realtime já trouxe a mensagem gravada, some com a temporária em vez de duplicar.
+      if (normalizedConfirmed && prev.some((m) => m.id === normalizedConfirmed.id && m.id !== tempId)) {
+        const semTemp = prev.filter((m) => m.id !== tempId);
+        const leadAtual = activeLeadRef.current;
+        if (leadAtual) messageCache.set(leadAtual, { messages: semTemp, timestamp: Date.now() });
+        return semTemp;
+      }
       const updated = prev.map((m) => {
         if (m.id !== tempId) return m;
         if (normalizedConfirmed) return normalizedConfirmed;
@@ -592,11 +599,17 @@ export function useChatConversation(leadId: string | null | undefined) {
         },
       });
       if (error || data?.error) {
-        handleMessageError(tempId);
-        toast.error("Erro ao enviar template");
+        // Recusa da Meta: o servidor grava a tentativa (status "failed", com o
+        // texto que ia sair). Mostrar essa linha em vez do balão otimista.
+        if (data?.message) handleMessageSuccess(tempId, data.message);
+        else handleMessageError(tempId);
+        toast.error(data?.error ? `Erro ao enviar template: ${data.error}` : "Erro ao enviar template");
         return;
       }
-      handleMessageSuccess(tempId);
+      // A resposta traz a mensagem gravada — com template_snapshot, o texto exato
+      // que o paciente recebeu. Trocar já evita o balão "Enviando…" esperar o
+      // Realtime (que ignora a duplicata pelo id).
+      handleMessageSuccess(tempId, data?.message ?? undefined);
       toast.success("Template enviado");
     } catch {
       handleMessageError(tempId);

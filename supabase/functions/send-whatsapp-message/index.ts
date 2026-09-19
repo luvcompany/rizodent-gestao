@@ -6,6 +6,7 @@ import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoLead, escopoDoNumero } from "../_shared/wabaEscopo.ts";
+import { formatarDataDoModelo, registroDoModeloEnviado, textoAntesDoMarcador } from "../_shared/modeloEnviado.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,7 +44,8 @@ const extensionFromMime = (mimeType: string) => {
   return mimeMap[mimeType.toLowerCase()] || "bin";
 };
 
-const TEMPLATE_SELECT = "id, name, body_text, header_type, header_content, status, updated_at, created_at";
+// footer_text e buttons entram no registro do que foi enviado (messages.template_snapshot).
+const TEMPLATE_SELECT = "id, name, body_text, header_type, header_content, footer_text, buttons, status, updated_at, created_at";
 
 const cleanTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/i, "");
 
@@ -615,6 +617,8 @@ Deno.serve(async (req) => {
 
     let finalType = type;
     let sentTemplateName = template_name || null;
+    // O que o paciente recebeu, exatamente — gravado com a mensagem (ver _shared/modeloEnviado.ts).
+    let templateSnapshot: Record<string, unknown> | null = null;
     let waBody: any = { messaging_product: "whatsapp", to };
 
     if (resolvedWamid) {
@@ -709,18 +713,14 @@ Deno.serve(async (req) => {
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
 
-          // {{2}} dos modelos = "Sábado, 19/09 às 09:00". O dia da semana foi
-          // pedido pelo dono em 19/09/2026 ("a idéia é que o template envie o dia
-          // da semana também"); o dia é calculado da DATA da consulta, em UTC
-          // puro, para o fuso do servidor não empurrar a data para o dia vizinho.
-          let formattedApptDate: string | null = null;
-          if (nextAppt?.scheduled_date) {
-            const [y, m, d] = nextAppt.scheduled_date.split("-");
-            const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-            const diaSemana = DIAS[new Date(Date.UTC(Number(y), Number(m) - 1, Number(d))).getUTCDay()];
-            const timePart = nextAppt.scheduled_time ? ` às ${nextAppt.scheduled_time.slice(0, 5)}` : "";
-            formattedApptDate = `${diaSemana}, ${d}/${m}${timePart}`;
-          }
+          // {{2}} = data e hora da consulta, escrita conforme a frase do modelo
+          // ("Sábado, 19/09 às 09:00"; só "09:00" depois de "às"; "às 09:00"
+          // depois de "hoje"/"amanhã"). Regra e porquê em _shared/modeloEnviado.ts.
+          const formattedApptDate = formatarDataDoModelo(
+            nextAppt,
+            textoAntesDoMarcador(bodyText, placeholderIndexes[1]),
+            new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia" }).format(new Date()),
+          );
           const fallbackValues = buildTemplateFallbacks(tplLead || null, formattedApptDate);
 
           if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType) && tplRow.header_content) {
@@ -791,6 +791,11 @@ Deno.serve(async (req) => {
           }
 
           console.log(`[send-whatsapp] Resolved ${resolvedComponents.length} component(s) for template ${resolvedTemplateName}`, JSON.stringify(resolvedComponents));
+
+          // Congela o que vai para a Meta. O chat mostra ISTO, e nunca mais
+          // remonta o texto com os dados de hoje (dono, 19/09/2026: remarcar a
+          // consulta mudava a data no balão de uma mensagem já enviada).
+          templateSnapshot = registroDoModeloEnviado({ ...tplRow, name: resolvedTemplateName }, resolvedComponents);
         }
       }
 
@@ -1012,6 +1017,7 @@ Deno.serve(async (req) => {
         media_url: media_url || null,
         status: "failed",
         error_reason: friendlyError,
+        template_snapshot: templateSnapshot,
         reply_to_message_id: reply_to_message_id || null,
         // A tentativa humana também conta como "respondeu" (mesma regra do envio ok).
         sender_id: caller.userId ?? null,
@@ -1035,6 +1041,7 @@ Deno.serve(async (req) => {
       media_url: media_url || null,
       status: initialStatus,
       whatsapp_message_id: sentWamid,
+      template_snapshot: templateSnapshot,
       reply_to_message_id: reply_to_message_id || null,
       // Quem mandou: usuário logado (SDR/CRC) ou ninguém (bot, automação,
       // cron). É o que separa "respondido por humano" de "respondido pelo

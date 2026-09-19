@@ -157,15 +157,51 @@ type ChatMessage = {
   media_url: string | null;
   transcription?: string | null;
   created_at?: string | null;
+  status?: string | null;
+  /** Modelo como FOI ENVIADO (gravado pelo send-whatsapp-message). */
+  template_snapshot?: TemplateSnapshot | null;
 };
 
-type TemplateData = {
-  header_type: string | null;
-  header_content: string | null;
-  body_text: string | null;
-  footer_text: string | null;
-  buttons: { type: string; text: string; url?: string }[] | null;
+/**
+ * Modelo do WhatsApp como o paciente o RECEBEU.
+ *
+ * origem "envio"        → gravado pelo servidor na hora do envio (exato);
+ * origem "reconstruido" → mensagem anterior a 19/09/2026, reconstruída uma vez
+ *                         pelo histórico (consulta como estava no dia do envio;
+ *                         o nome do lead é o de hoje — não há histórico de nome);
+ * origem "sem_modelo"/"erro" → só o nome do modelo.
+ */
+type TemplateSnapshot = {
+  v?: number;
+  origem?: "envio" | "reconstruido" | "sem_modelo" | "erro" | string;
+  nome?: string | null;
+  header_type?: string | null;
+  header_content?: string | null;
+  body?: string | null;
+  footer?: string | null;
+  buttons?: { type: string; text: string; url?: string }[] | null;
+  variaveis_reconstruidas?: boolean;
+  /** só no reconstruído: de onde veio a data ({{2}}) */
+  data_certeza?: "auditoria" | "nota" | "estimada" | "sem_consulta" | "desconhecida" | string | null;
+  /** só no reconstruído: o nome veio do cadastro da consulta da época (senão, o nome atual) */
+  nome_da_epoca?: boolean;
 };
+
+/** Registro do histórico é imutável: guarda na memória para não buscar de novo. */
+const historicoDoModelo = new Map<string, TemplateSnapshot | null>();
+
+const MIDIA_DA_META = /(^|\.)(whatsapp\.net|fbsbx\.com|fbcdn\.net)(\/|$)/i;
+
+/** Aviso visível do que foi reconstruído (mensagens de antes de 19/09/2026). */
+function avisoDeReconstrucao(r: TemplateSnapshot): string | null {
+  if (r.origem !== "reconstruido" || !r.variaveis_reconstruidas) return null;
+  const partes: string[] = [];
+  if (r.data_certeza === "estimada") partes.push("data estimada pelo histórico");
+  else if (r.data_certeza === "desconhecida") partes.push("a data enviada não pôde ser recuperada");
+  else partes.push("texto reconstruído pelo histórico");
+  if (!r.nome_da_epoca) partes.push("nome do cadastro atual");
+  return `Enviado antes de 19/09/2026 · ${partes.join(" · ")}`;
+}
 
 const isMediaUrl = (mediaUrl: string | null) => Boolean(mediaUrl?.startsWith("http"));
 
@@ -180,185 +216,174 @@ const getDocumentLabel = (message: ChatMessage) => {
   }
 };
 
-const formatAppointmentLabel = (scheduledDate?: string | null, scheduledTime?: string | null) => {
-  if (!scheduledDate) return "data e horário a confirmar";
-
-  const [year, month, day] = scheduledDate.split("-");
-  const timeLabel = scheduledTime ? ` às ${scheduledTime.slice(0, 5)}` : "";
-  return `${day}/${month}/${year}${timeLabel}`;
-};
-
-function replaceTemplatePlaceholders(
-  text: string,
-  values: {
-    leadName: string;
-    appointmentLabel?: string | null;
-    serviceLabel?: string | null;
-  },
-): string {
-  if (!text) return text;
-
-  const safeLeadName = values.leadName.trim() || "cliente";
-  const safeAppointmentLabel = values.appointmentLabel?.trim() || "data e horário a confirmar";
-  const safeServiceLabel = values.serviceLabel?.trim() || "consulta";
-
-  return text
-    .replace(/\{\{\s*1\s*\}\}/g, safeLeadName)
-    .replace(/\{\{\s*2\s*\}\}/g, safeAppointmentLabel)
-    .replace(/\{\{\s*3\s*\}\}/g, safeServiceLabel)
-    .replace(/\[primeiro nome\]/gi, safeLeadName)
-    .replace(/\[nome\]/gi, safeLeadName)
-    .replace(/\[data e horário\]/gi, safeAppointmentLabel)
-    .replace(/\[data e horario\]/gi, safeAppointmentLabel)
-    .replace(/\[data\]/gi, safeAppointmentLabel)
-    .replace(/\[serviço\]/gi, safeServiceLabel)
-    .replace(/\[servico\]/gi, safeServiceLabel);
-}
-
+/**
+ * O balão do modelo mostra O QUE FOI ENVIADO — e nada mais.
+ *
+ * Até 19/09/2026 este componente remontava o texto a cada abertura da conversa,
+ * com o nome ATUAL do lead, a consulta mais próxima entre as que existem HOJE e
+ * o texto ATUAL do modelo, num formato próprio. Resultado (relato do dono):
+ * remarcou a consulta e recarregou a página → o balão passou a mostrar a data
+ * nova, que o paciente nunca recebeu. Agora:
+ *   1. mensagem nova: o texto vem de messages.template_snapshot (gravado no envio);
+ *   2. mensagem antiga: vem de mensagens_template_historico (reconstruído uma vez);
+ *   3. sem nenhum dos dois: mostra só o nome do modelo — NUNCA completa com dados
+ *      de hoje, porque isso é mostrar uma mensagem que não foi enviada.
+ */
 function TemplateMessageBubble({
   templateName,
-  leadName,
-  leadId,
-  messageCreatedAt,
+  messageId,
+  snapshot,
+  enviando,
+  falhou,
 }: {
   templateName: string;
-  leadName?: string;
-  leadId?: string;
-  messageCreatedAt?: string | null;
+  messageId?: string;
+  snapshot?: TemplateSnapshot | null;
+  enviando?: boolean;
+  falhou?: boolean;
 }) {
-  const [template, setTemplate] = useState<TemplateData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [registro, setRegistro] = useState<TemplateSnapshot | null>(snapshot ?? null);
+  const [loading, setLoading] = useState(!snapshot && !enviando && !!messageId);
   const [headerSignedUrl, setHeaderSignedUrl] = useState<string | null>(null);
-  const [resolvedLeadName, setResolvedLeadName] = useState<string>(leadName?.trim() || "");
-  const [resolvedAppointmentLabel, setResolvedAppointmentLabel] = useState<string>("data e horário a confirmar");
-  const [resolvedServiceLabel, setResolvedServiceLabel] = useState<string>("consulta");
+  const [erroDeCarga, setErroDeCarga] = useState(false);
+  const [midiaFalhou, setMidiaFalhou] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-
-    if (!leadId) {
-      setResolvedLeadName(leadName?.trim() || "");
-      return () => {
-        isMounted = false;
-      };
+    if (snapshot) {
+      setRegistro(snapshot);
+      setLoading(false);
+      return;
     }
-
-    Promise.all([
-      supabase
-        .from("crm_leads")
-        .select("name, servico_interesse")
-        .eq("id", leadId)
-        .maybeSingle(),
-      supabase
-        .from("crm_appointments")
-        .select("scheduled_date, scheduled_time, status, created_at")
-        .eq("lead_id", leadId)
-        .order("scheduled_date", { ascending: false })
-        .order("scheduled_time", { ascending: false }),
-    ]).then(([leadResult, appointmentResult]) => {
-      if (!isMounted) return;
-
-      const fetchedLeadName = leadResult.data?.name?.trim() || leadName?.trim() || "";
-      const fetchedService = leadResult.data?.servico_interesse?.trim() || "consulta";
-
-      const appts = appointmentResult.data || [];
-      let chosen: { scheduled_date: string | null; scheduled_time: string | null } | null = null;
-
-      if (appts.length > 0) {
-        const msgTime = messageCreatedAt ? new Date(messageCreatedAt).getTime() : null;
-        const scoreDistance = (a: typeof appts[number]) => {
-          if (!a.scheduled_date || msgTime == null) return Number.POSITIVE_INFINITY;
-          const t = new Date(`${a.scheduled_date}T${a.scheduled_time || "00:00:00"}`).getTime();
-          return Math.abs(t - msgTime);
-        };
-
-        const active = appts.filter((a) => a.status === "confirmed" || a.status === "pending");
-        const pool = active.length > 0 ? active : appts;
-
-        if (msgTime != null) {
-          chosen = [...pool].sort((a, b) => scoreDistance(a) - scoreDistance(b))[0];
-        } else {
-          chosen = pool[0];
+    if (enviando || !messageId) {
+      setLoading(false);
+      return;
+    }
+    if (historicoDoModelo.has(messageId)) {
+      setRegistro(historicoDoModelo.get(messageId) ?? null);
+      setLoading(false);
+      return;
+    }
+    let vivo = true;
+    setLoading(true);
+    setErroDeCarga(false);
+    // A tabela é nova e ainda não está nos tipos gerados do Supabase.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("mensagens_template_historico")
+      .select("snapshot")
+      .eq("message_id", messageId)
+      .maybeSingle()
+      .then(({ data, error }: { data: { snapshot: TemplateSnapshot } | null; error: unknown }) => {
+        if (!vivo) return;
+        if (error) {
+          // Falha de rede não é "não registrado": não guarda na memória e avisa.
+          setErroDeCarga(true);
+          setLoading(false);
+          return;
         }
-      }
-
-      const appointmentLabel = chosen
-        ? formatAppointmentLabel(chosen.scheduled_date, chosen.scheduled_time)
-        : "data e horário a confirmar";
-
-      setResolvedLeadName(fetchedLeadName);
-      setResolvedServiceLabel(fetchedService);
-      setResolvedAppointmentLabel(appointmentLabel);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [leadId, leadName, messageCreatedAt]);
-
-  useEffect(() => {
-    supabase
-      .from("crm_whatsapp_templates")
-      .select("header_type, header_content, body_text, footer_text, buttons")
-      .eq("name", templateName)
-      .limit(1)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setTemplate({
-            ...data,
-            buttons: data.buttons as TemplateData["buttons"],
-          });
-
-          // Busca URL para qualquer header que seja uma URL (IMAGE, VIDEO, ou type incorreto)
-          if (data.header_content?.startsWith("http")) {
-            const storagePath = extractStoragePath(data.header_content);
-            if (storagePath) {
-              getSignedMediaUrl(data.header_content).then(setHeaderSignedUrl);
-            } else {
-              setHeaderSignedUrl(data.header_content);
-            }
-          }
-        }
+        const r = data?.snapshot ?? null;
+        // Só guarda o que existe: a reconstrução ainda pode estar rodando.
+        if (r) historicoDoModelo.set(messageId, r);
+        setRegistro(r);
         setLoading(false);
       });
-  }, [templateName]);
+    return () => {
+      vivo = false;
+    };
+  }, [messageId, snapshot, enviando]);
 
+  // Mídia do cabeçalho: o registro guarda o ponteiro do arquivo; a URL assinada
+  // é feita na hora de mostrar (assinatura expira, o arquivo não).
+  useEffect(() => {
+    const conteudo = registro?.header_content;
+    setMidiaFalhou(false);
+    if (!conteudo?.startsWith("http")) {
+      setHeaderSignedUrl(null);
+      return;
+    }
+    if (extractStoragePath(conteudo)) {
+      getSignedMediaUrl(conteudo).then(setHeaderSignedUrl);
+      return;
+    }
+    let vivo = true;
+    let host = "";
+    try { host = new URL(conteudo).hostname; } catch { /* URL inválida */ }
+    if (MIDIA_DA_META.test(host) && registro?.nome) {
+      // Link da CDN da Meta vence em ~30 dias. A mídia do cabeçalho é fixa do
+      // modelo (não é variável do paciente): mostra a cópia atual do Storage.
+      supabase
+        .from("crm_whatsapp_templates")
+        .select("header_content")
+        .eq("name", registro.nome)
+        .limit(1)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!vivo) return;
+          const atual = data?.header_content || "";
+          if (atual && extractStoragePath(atual)) getSignedMediaUrl(atual).then((u) => vivo && setHeaderSignedUrl(u));
+          else setHeaderSignedUrl(conteudo);
+        });
+    } else {
+      setHeaderSignedUrl(conteudo);
+    }
+    return () => {
+      vivo = false;
+    };
+  }, [registro?.header_content, registro?.nome]);
+
+  const nomeLimpo = cleanTemplateName(registro?.nome || templateName);
+
+  if (enviando) {
+    return <p className="text-sm text-muted-foreground italic">📋 Enviando o modelo {nomeLimpo}…</p>;
+  }
   if (loading) {
-    return <p className="text-sm text-muted-foreground italic">Carregando template...</p>;
+    return <p className="text-sm text-muted-foreground italic">Carregando modelo...</p>;
   }
-
-  if (!template) {
-    return <p className="text-sm whitespace-pre-wrap">📋 Template: {cleanTemplateName(templateName)}</p>;
+  if (!registro || !registro.body || registro.origem === "sem_modelo" || registro.origem === "erro") {
+    return (
+      <p className="text-sm whitespace-pre-wrap">
+        📋 Modelo: {nomeLimpo}
+        {erroDeCarga ? (
+          <span className="block text-[11px] text-muted-foreground mt-0.5">
+            Não foi possível carregar o texto enviado agora. Recarregue a conversa.
+          </span>
+        ) : !registro ? (
+          <span className="block text-[11px] text-muted-foreground mt-0.5">
+            O texto exato enviado ainda não foi registrado para esta mensagem.
+          </span>
+        ) : registro.origem === "sem_modelo" ? (
+          <span className="block text-[11px] text-muted-foreground mt-0.5">
+            O modelo foi apagado e o texto enviado não foi guardado.
+          </span>
+        ) : null}
+      </p>
+    );
   }
-
-  const resolvedBodyText = template.body_text
-    ? replaceTemplatePlaceholders(template.body_text, {
-        leadName: resolvedLeadName || "cliente",
-        appointmentLabel: resolvedAppointmentLabel,
-        serviceLabel: resolvedServiceLabel,
-      })
-    : null;
 
   // Detecta tipo do header de forma robusta:
   // – compara header_type case-insensitivo
   // – usa extensão da URL como fallback (caso header_type esteja errado no banco)
-  const hType = (template.header_type || "").toUpperCase();
-  const hUrl = headerSignedUrl || "";
+  const hType = (registro.header_type || "").toUpperCase();
+  const hUrl = midiaFalhou ? "" : headerSignedUrl || "";
   const isVideoByUrl = /\.(mp4|mov|webm|3gpp?)(\?|#|$)/i.test(hUrl);
   const isHeaderVideo = hType === "VIDEO" || (hType === "IMAGE" && isVideoByUrl);
   const isHeaderImage = hType === "IMAGE" && !isVideoByUrl;
   const isHeaderText = hType === "TEXT";
+  const botoes = Array.isArray(registro.buttons) ? registro.buttons : [];
 
   return (
     <div className="min-w-[220px]">
-      {template.header_type && template.header_content && (
+      {falhou && (
+        <p className="text-[11px] font-medium text-destructive mb-1">Modelo não enviado — o paciente não recebeu esta mensagem.</p>
+      )}
+      {registro.header_type && registro.header_content && (
         <div className="mb-1">
           {isHeaderImage ? (
-            headerSignedUrl ? (
+            hUrl ? (
               <img
                 src={headerSignedUrl}
-                alt="Template header"
+                alt="Imagem do modelo"
+                onError={() => setMidiaFalhou(true)}
                 className="rounded-t-lg max-h-[160px] w-full object-cover"
               />
             ) : (
@@ -367,10 +392,11 @@ function TemplateMessageBubble({
               </div>
             )
           ) : isHeaderVideo ? (
-            headerSignedUrl ? (
+            hUrl ? (
               <video
                 src={headerSignedUrl}
                 controls
+                onError={() => setMidiaFalhou(true)}
                 className="rounded-t-lg max-h-[200px] w-full"
               />
             ) : (
@@ -379,23 +405,24 @@ function TemplateMessageBubble({
               </div>
             )
           ) : isHeaderText ? (
-            <p className="text-sm font-bold text-foreground">{template.header_content}</p>
+            <p className="text-sm font-bold text-foreground">{registro.header_content}</p>
           ) : null}
         </div>
       )}
-      {resolvedBodyText && (
-        <p className="text-sm whitespace-pre-wrap text-foreground">{resolvedBodyText}</p>
+      <p className="text-sm whitespace-pre-wrap text-foreground">{registro.body}</p>
+      {registro.footer && (
+        <p className="text-[11px] text-muted-foreground mt-1">{registro.footer}</p>
       )}
-      {template.footer_text && (
-        <p className="text-[11px] text-muted-foreground mt-1">{template.footer_text}</p>
+      {avisoDeReconstrucao(registro) && (
+        <p className="text-[10.5px] text-muted-foreground mt-1 italic">{avisoDeReconstrucao(registro)}</p>
       )}
-      {template.buttons && template.buttons.length > 0 && (
+      {botoes.length > 0 && (
         <div className="mt-2 -mx-3 -mb-2 border-t border-border/50">
-          {template.buttons.map((btn, i) => (
+          {botoes.map((btn, i) => (
             <div
               key={i}
               className={`text-center text-xs font-medium text-primary py-2.5 cursor-default select-none ${
-                i < template.buttons!.length - 1 ? "border-b border-border/50" : ""
+                i < botoes.length - 1 ? "border-b border-border/50" : ""
               }`}
             >
               {btn.text}
@@ -523,7 +550,15 @@ export default function ChatMessageContent({
       ? message.content?.replace("📋 Template: ", "").trim() || ""
       : message.content?.replace("📋 Template: ", "").trim() || "";
     if (name) {
-      return <TemplateMessageBubble templateName={name} leadName={leadName} leadId={message.lead_id} messageCreatedAt={message.created_at} />;
+      return (
+        <TemplateMessageBubble
+          templateName={name}
+          messageId={message.id}
+          snapshot={message.template_snapshot ?? null}
+          enviando={message.status === "sending"}
+          falhou={message.status === "error" || message.status === "failed"}
+        />
+      );
     }
   }
 

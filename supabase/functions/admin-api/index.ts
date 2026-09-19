@@ -1396,6 +1396,27 @@ async function templatesCreate(tenantId: string, body: any) {
   });
 }
 
+async function templatesDelete(tenantId: string, p: URLSearchParams) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: p.get("phone_number_id"),
+    integrationKey: p.get("integration_key"),
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  const name = p.get("name");
+  if (!name) return json({ error: "name é obrigatório." }, 400);
+  const metaRes = await fetch(
+    `https://graph.facebook.com/v25.0/${creds.wabaId}/message_templates?name=${encodeURIComponent(name)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${creds.token}` } },
+  );
+  const metaData = await metaRes.json().catch(() => ({}));
+  await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "delete", template_name: name, waba_id: creds.wabaId, response_body: metaData, http_status: metaRes.status });
+  if (!metaRes.ok) return json({ error: "Erro na API da Meta", details: metaData }, metaRes.status);
+  const { data: removidos } = await admin.from("crm_whatsapp_templates")
+    .delete().eq("tenant_id", tenantId).eq("waba_id", creds.wabaId).eq("name", name).select("id");
+  return json({ success: true, removidos_local: removidos?.length ?? 0 });
+}
+
 async function templatesList(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
     phoneNumberId: p.get("phone_number_id"),
@@ -1652,6 +1673,7 @@ Deno.serve(async (req) => {
           "POST /sync-comparecimento  { from, to, dryRun (default true) }  → resumo por unidade",
           "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
+          "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
 
         ],
       });
@@ -1694,6 +1716,7 @@ Deno.serve(async (req) => {
       if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
       if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);
       if (!parts[1] && req.method === "GET") return await templatesList(tenantId, p);
+      if (!parts[1] && req.method === "DELETE") return await templatesDelete(tenantId, p);
     }
     if (parts[0] === "sync-dontus" && req.method === "POST") {
       // Só Rizodent (tenant do Dontus real) pode acionar.
