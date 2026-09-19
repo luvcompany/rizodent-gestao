@@ -125,7 +125,11 @@ export async function iniciarReagendamento(leadId: string): Promise<boolean> {
   if (!movedStageId) return false;
   await systemMessage(
     leadId,
-    "🔁 Aguardando reagendamento — sem novo horário até o fim do expediente, vira falta (Não compareceu)",
+    // A varredura das 18:30 que virava falta sozinha está DESLIGADA desde
+    // 17/09/2026 (o dono tirou toda decisão automática de comparecimento). O
+    // texto não pode mais prometer uma falta que não vai acontecer: quem marca
+    // "Não compareceu" agora é a SDR ou a gestão.
+    "🔁 Aguardando reagendamento — o lead fica em espera até alguém marcar o novo horário ou registrar \"Não compareceu\"",
   );
   toast.success("Lead movido para Reagendar — registre o novo horário quando ele responder");
   return true;

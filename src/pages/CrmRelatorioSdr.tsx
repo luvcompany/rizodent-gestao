@@ -68,9 +68,9 @@ const COLUNAS: Coluna[] = [
   {
     chave: "agendamentos",
     titulo: "Agendamentos",
-    dica: "Consultas que ela MARCOU no período, menos as canceladas. Conta pelo dia em que ela agendou, não pelo dia da consulta — o trabalho dela acontece quando marca.",
+    dica: "Consultas que ela MARCOU no período. Cancelada continua contando (o paciente avisou que não vinha) — só sai da conta quando ele remarcou. Conta pelo dia em que ela agendou, não pelo dia da consulta — o trabalho dela acontece quando marca.",
     render: (l) => fmtInt(l.agendamentos),
-    apoio: (l) => (l.agend_cancelados > 0 ? `${fmtInt(l.agend_cancelados)} cancelados` : null),
+    apoio: (l) => (l.agend_cancelados > 0 ? `${fmtInt(l.agend_cancelados)} cancelados (dentro da conta)` : null),
   },
   {
     chave: "compareceram",

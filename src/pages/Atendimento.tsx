@@ -276,76 +276,18 @@ const Atendimento = () => {
     setEntries((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   };
 
-  // Após registrar pagamento, move leads vinculados ao paciente para etapa "contratado"
-  const moveLinkedLeadsToContratado = async (pacienteId: string) => {
-    try {
-      // Busca leads vinculados a este paciente
-      const { data: links } = await supabase
-        .from("crm_lead_pacientes")
-        .select("lead_id")
-        .eq("paciente_id", pacienteId);
-
-      if (!links || links.length === 0) return;
-
-      const leadIds = links.map((l: any) => l.lead_id);
-
-      // Busca stage e pipeline de cada lead
-      const { data: leadsData } = await supabase
-        .from("crm_leads")
-        .select("id, stage_id, pipeline_id")
-        .in("id", leadIds);
-
-      if (!leadsData || leadsData.length === 0) return;
-
-      // Agrupa leads por pipeline para minimizar queries
-      const pipelineMap = new Map<string, { leadId: string; stageId: string | null }[]>();
-      for (const l of leadsData as any[]) {
-        if (!l.pipeline_id) continue;
-        const arr = pipelineMap.get(l.pipeline_id) || [];
-        arr.push({ leadId: l.id, stageId: l.stage_id });
-        pipelineMap.set(l.pipeline_id, arr);
-      }
-
-      for (const [pipelineId, leads] of pipelineMap.entries()) {
-        const { data: stages } = await supabase
-          .from("crm_stages")
-          .select("id, name, position")
-          .eq("pipeline_id", pipelineId)
-          .order("position");
-
-        if (!stages || stages.length === 0) continue;
-
-        const contratadoStage = (stages as any[]).find((s) => /contrat/i.test(s.name));
-        if (!contratadoStage) continue;
-
-        for (const lead of leads) {
-          const currentStage = (stages as any[]).find((s) => s.id === lead.stageId);
-          const currentPos = currentStage?.position ?? -1;
-          if (currentPos >= contratadoStage.position) continue; // já está em etapa igual ou posterior
-
-          // Update barrado pela RLS não devolve erro — devolve ZERO linhas.
-          // Sem o `.select()`, a tela anunciava "Pagamento registrado" e o lead
-          // ficava para trás em silêncio.
-          const { data: moved, error: moveError } = await supabase
-            .from("crm_leads")
-            .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
-            .eq("id", lead.leadId)
-            .select("id");
-          if (moveError) throw moveError;
-          if (!moved || moved.length === 0) {
-            toast.error("O pagamento foi salvo, mas seu perfil não tem permissão para mover o lead para Contratado.");
-          }
-        }
-      }
-    } catch (err: any) {
-      // O pagamento já foi salvo — avisa que só a movimentação do lead falhou,
-      // sem derrubar o fluxo de sucesso do lançamento.
-      toast.error(
-        "O pagamento foi salvo, mas não foi possível mover o lead para Contratado: " +
-          (err?.message || "erro desconhecido")
-      );
-    }
-  };
+  // O lead vinculado NÃO é mais movido por esta tela.
+  //
+  // Até 17/09/2026 salvar um pagamento aqui movia na hora todo lead do paciente
+  // para "Contratado". O dono mandou esperar 24 h ("Pode já contar o
+  // faturamento, mas só move pra contratado ou não contratado depois de 24 hs"),
+  // e a etapa Contratado é oculta para a SDR — mover na hora tirava o lead da
+  // tela dela antes de ela marcar a presença.
+  //
+  // O pagamento continua sendo gravado na hora (o faturamento não muda). Quem
+  // cuida da etapa é o banco: o gatilho trg_zz_contratado_apos_pagamento põe o
+  // lead na fila e o cron 'contratado-apos-carencia' move quando a espera
+  // vencer — ou na hora, se a clínica não tiver espera configurada.
 
   const resetForm = () => {
     setTelefone("");
@@ -467,9 +409,6 @@ const Atendimento = () => {
         } as any);
         if (pagError) throw pagError;
       }
-
-      // Move leads vinculados ao paciente para etapa "contratado" automaticamente
-      await moveLinkedLeadsToContratado(pacienteId!);
 
       toast.success(
         entries.length > 1

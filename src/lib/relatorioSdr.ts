@@ -18,8 +18,12 @@
 //     entrega do lead (se já havia mensagem esperando) ou da 1ª mensagem
 //     recebida depois; crédito para a DONA do lead, não para quem digitou;
 //   • agendamentos/comparecimentos = régua canônica (reportKit.kpiAgendamentos):
-//     agendamentos = total − cancelados − a linha substituída por uma remarcação
-//     da mesma janela; compareceram = contratados + não contratados. Desde
+//     agendamentos = tudo que ela marcou na janela, menos a linha substituída
+//     por uma remarcação da mesma janela e menos a consulta CANCELADA que o
+//     paciente remarcou. Cancelada sem remarcação CONTA (dono, 17/09/2026:
+//     "cancelados são pacientes que avisaram que não viriam mais... conta ainda
+//     como agendamento... caso eles não reagendem"); compareceram = contratados
+//     + não contratados. Desde
 //     11/09/2026 a janela é por crm_appointments.created_at — O DIA EM QUE A SDR
 //     MARCOU, não a data da consulta (decisão do dono: "tem que contar pela data
 //     que a sdr agendou"). A linha virou uma coorte: os desfechos acompanham as

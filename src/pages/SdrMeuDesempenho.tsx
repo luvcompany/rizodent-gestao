@@ -144,7 +144,7 @@ export default function SdrMeuDesempenho() {
                 <Linha rotulo="Reagendamentos" valor={typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"} apoio="pelo dia em que você remarcou" />
                 <Linha rotulo="Reagendou e faltou" valor={typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"} apoio="faltou de novo depois de remarcar" />
                 <Linha rotulo="Leads com 2+ faltas" valor={typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"} />
-                <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="fora da conta" />
+                <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="avisaram que não viriam — contam como agendamento" />
               </Painel>
 
               <Painel titulo="Ligações">

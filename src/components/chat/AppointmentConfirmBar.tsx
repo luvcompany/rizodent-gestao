@@ -466,7 +466,8 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   // (handleAguardarReagendamento) — porque o caso mais comum da vida real é o
   // paciente desmarcar SEM dar data nova, e sem essa saída o lead ficaria em
   // "Agendado" recebendo os três lembretes de uma consulta que não existe mais.
-  // A varredura das 18:30 que vira falta segue intacta. Um lead que já esteja na
+  // A varredura das 18:30 que virava falta está DESLIGADA desde 17/09/2026
+  // (decisão do dono: quem diz se compareceu é a SDR). Um lead que já esteja na
   // espera cai neste mesmo seletor, só que com o rótulo "Novo horário" (e sem o
   // link, que ali não teria para onde mover).
 
@@ -953,7 +954,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
           type="button"
           className="w-full text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
           disabled={pickerSaving}
-          title="Sem novo horário: o lead para de receber os lembretes desta consulta e, se o dia terminar sem data, vira falta."
+          title="Sem novo horário: o lead para de receber os lembretes desta consulta e fica em espera até alguém marcar a nova data ou registrar Não compareceu."
           onClick={handleAguardarReagendamento}
         >
           Ainda sem data? Aguardar reagendamento
@@ -1045,7 +1046,7 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
               <div className="space-y-2">
                 {isAwaitingReschedule && (
                   <p className="text-[11px] text-blue-600">
-                    Aguardando novo horário — sem reagendamento até o fim do expediente, vira falta.
+                    Aguardando novo horário — marque a nova data quando o paciente responder, ou registre "Não compareceu".
                   </p>
                 )}
                 <div className="grid grid-cols-2 gap-2">

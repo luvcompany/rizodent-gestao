@@ -136,60 +136,10 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       if (!error && updated && updated.length > 0) onLeadUpdated({ value: paid });
     }
 
-    // Mover lead para etapa "contratado" automaticamente quando há pagamento
-    if (paid > 0) {
-      await autoMoveToContratado();
-    }
-  };
-
-  const autoMoveToContratado = async () => {
-    // Busca pipeline e stage atuais do lead
-    const { data: leadData } = await supabase
-      .from("crm_leads")
-      .select("stage_id, pipeline_id")
-      .eq("id", lead.id)
-      .single();
-
-    if (!leadData?.pipeline_id) return;
-
-    // Busca todas as etapas do pipeline, ordenadas por posição
-    const { data: stages } = await supabase
-      .from("crm_stages")
-      .select("id, name, position")
-      .eq("pipeline_id", leadData.pipeline_id)
-      .order("position");
-
-    if (!stages || stages.length === 0) return;
-
-    const contratadoStage = stages.find((s: any) => /contrat/i.test(s.name));
-    if (!contratadoStage) return;
-
-    const currentStage = stages.find((s: any) => s.id === leadData.stage_id);
-    const currentPos = currentStage?.position ?? -1;
-
-    // Só avança — não regride se já estiver em etapa igual ou posterior
-    if (currentPos >= contratadoStage.position) return;
-
-    const { data: moved, error } = await supabase
-      .from("crm_leads")
-      .update({ stage_id: contratadoStage.id, updated_at: new Date().toISOString() })
-      .eq("id", lead.id)
-      .select("id");
-
-    // Movimento automático: se o banco recusar (erro ou RLS com zero linhas),
-    // não move o card nem anuncia — o toast só sai com a gravação confirmada.
-    // E a recusa deixou de ser muda: quem lançou o pagamento precisa saber que
-    // o lead ficou onde estava, para pedir a movimentação a quem pode.
-    if (!error && moved && moved.length > 0) {
-      onLeadUpdated({ stage_id: contratadoStage.id } as any);
-      toast.success("Lead movido para Contratado 🎉");
-      return;
-    }
-    toast.error(
-      error?.message
-        ? `O pagamento foi salvo, mas o lead não foi para Contratado: ${error.message}`
-        : "O pagamento foi salvo, mas seu perfil não tem permissão para mover o lead para Contratado.",
-    );
+    // Pagamento não move mais o lead daqui. Desde 17/09/2026 quem muda a etapa
+    // é o banco, e só depois da espera de 24 h (fila crm_contratado_pendente +
+    // cron 'contratado-apos-carencia'): abrir o painel do lead não pode tirá-lo
+    // da tela da SDR antes de ela marcar a presença.
   };
 
   const addPacienteLink = async (pacienteId: string, makePrimary: boolean) => {

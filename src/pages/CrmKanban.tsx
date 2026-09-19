@@ -885,60 +885,18 @@ export default function CrmKanban() {
     setLeadAllTimeValueMap(allTimeMap);
     setLeadsWithPagamento(paidLeadIds);
 
-    // ── Auto-move: leads com pagamento que ainda estão antes de "Contratado" ─
-    if (paidLeadIds.size > 0) {
-      // Identifica etapa de ganho via flag `is_won`, com FALLBACK ao regex de nome.
-      const contratadoStage =
-        finalStages.find((s: any) => s.is_won) ||
-        finalStages.find((s: any) => /contrat/i.test(s.name) && !/n[aã]o/i.test(s.name));
-      if (contratadoStage) {
-        const leadsToMove = finalLeads.filter(l => {
-          if (!paidLeadIds.has(l.id)) return false;
-          const currentStage = finalStages.find((s: any) => s.id === l.stage_id);
-          return (currentStage?.position ?? -1) < contratadoStage.position;
-        });
-        if (leadsToMove.length > 0) {
-          const now = new Date().toISOString();
-          // Atualiza estado local imediatamente
-          setLeads(prev => prev.map(l =>
-            leadsToMove.some(m => m.id === l.id)
-              ? { ...l, stage_id: contratadoStage.id }
-              : l
-          ));
-          // Persiste no banco em paralelo. Update barrado pela RLS não devolve
-          // erro — devolve ZERO linhas; o `.select()` permite conferir o que
-          // realmente gravou.
-          const moveResults = await Promise.all(leadsToMove.map(l =>
-            supabase.from("crm_leads")
-              .update({ stage_id: contratadoStage.id, updated_at: now })
-              .eq("id", l.id)
-              .select("id")
-          ));
-          // Reverte no estado local os cards que o banco recusou — sem isso o
-          // Kanban mostrava em "Contratado" um lead que nunca foi gravado lá.
-          const failedIds = new Set(
-            leadsToMove
-              .filter((l, i) => {
-                const r = moveResults[i];
-                return !!r.error || !r.data || r.data.length === 0;
-              })
-              .map(l => l.id)
-          );
-          if (failedIds.size > 0) {
-            setLeads(prev => prev.map(l => {
-              if (!failedIds.has(l.id)) return l;
-              const original = leadsToMove.find(m => m.id === l.id);
-              return original ? { ...l, stage_id: original.stage_id } : l;
-            }));
-            // O card voltar sozinho sem explicação é o mesmo mistério que esta
-            // reforma veio eliminar — diz o motivo.
-            toast.error(
-              `${failedIds.size} lead(s) com pagamento não puderam ser movidos para "Contratado" pelo seu perfil.`,
-            );
-          }
-        }
-      }
-    }
+    // ── Pagamento NÃO move mais o card daqui ────────────────────────────────
+    //
+    // Até 17/09/2026 esta tela movia sozinha para "Contratado" todo lead com
+    // pagamento — quem abrisse o Kanban executava a movimentação. Isso brigava
+    // com a ordem do dono ("aguarde 24 horas pra mover pra contratado"): o lead
+    // sumia da tela da SDR no instante em que alguém da gestão abrisse o quadro.
+    //
+    // Quem move agora é o banco, depois da espera: o gatilho do pagamento põe o
+    // lead na fila crm_contratado_pendente e o cron 'contratado-apos-carencia'
+    // muda a etapa (e entrega o lead da SDR ao administrador no mesmo passo).
+    // A bolinha de "tem pagamento" (leadsWithPagamento) continua, para o card
+    // mostrar a venda mesmo antes de mudar de etapa.
 
     // ── Fase 3: métricas de tarefas com dados reais de crm_tasks ─────────────
     // due_date é um datetime — usar range de dia inteiro no fuso de Brasília (UTC-3)

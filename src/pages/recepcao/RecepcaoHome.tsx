@@ -51,6 +51,21 @@ type Consulta = {
   notes: string | null;
 };
 
+/**
+ * Consulta que já passou da hora e continua sem ninguém dizer se o paciente
+ * veio. Desde 17/09/2026 NENHUM robô decide isso (o dono desligou a passada
+ * automática do Dontus, que marcava falta pelo relógio e errou 13 dos 61 casos
+ * de setembro). Quem marca é a SDR — então ela precisa ver a lista, senão a
+ * consulta fica sem desfecho e o relatório dela some com o comparecimento.
+ */
+type PresencaPendente = {
+  id: string;
+  lead_id: string;
+  scheduled_date: string;
+  scheduled_time: string | null;
+  lead_name: string | null;
+};
+
 const MIN = 60_000;
 
 function esperaMs(l: Fila): number {
@@ -124,6 +139,7 @@ export default function RecepcaoHome() {
   const [carregando, setCarregando] = useState(true);
   const [agora, setAgora] = useState(Date.now());
   const [confirmando, setConfirmando] = useState<string | null>(null);
+  const [presencas, setPresencas] = useState<PresencaPendente[]>([]);
 
   useEffect(() => {
     const carregar = async () => {
@@ -166,6 +182,40 @@ export default function RecepcaoHome() {
     const tick = window.setInterval(() => setAgora(Date.now()), 30_000);
     return () => { supabase.removeChannel(ch); window.clearInterval(tick); };
   }, []);
+
+  // Presença para marcar — só da SDR. A RLS (sdr_escopo_crm_appointments) já
+  // limita às consultas dos leads dela; o filtro por papel evita montar a
+  // consulta para quem não marca presença (recepção e closer).
+  useEffect(() => {
+    if (userRole !== "sdr") { setPresencas([]); return; }
+    let vivo = true;
+    const carregarPresencas = async () => {
+      const hoje = new Date();
+      const iso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const desde = new Date(hoje.getTime() - 7 * 24 * 60 * MIN);
+      const { data } = await supabase
+        .from("crm_appointments")
+        .select("id, lead_id, scheduled_date, scheduled_time, lead_name")
+        .in("status", ["confirmed", "pending"])
+        .gte("scheduled_date", iso(desde))
+        .lte("scheduled_date", iso(hoje))
+        .order("scheduled_date", { ascending: false })
+        .limit(50);
+      if (!vivo) return;
+      const agora = Date.now();
+      // Só o que JÁ ACONTECEU: consulta das 15h não entra na lista às 9h.
+      setPresencas(
+        ((data ?? []) as PresencaPendente[]).filter((c) => {
+          const hora = (c.scheduled_time ?? "23:59").slice(0, 5);
+          return new Date(`${c.scheduled_date}T${hora}:00`).getTime() <= agora;
+        }),
+      );
+    };
+    carregarPresencas();
+    const t = window.setInterval(carregarPresencas, 5 * MIN);
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [userRole]);
 
   const fila = useMemo(() => {
     void agora; // recalcula a espera a cada tique
@@ -385,6 +435,52 @@ export default function RecepcaoHome() {
 
           {/* coluna lateral */}
           <div className="flex flex-col gap-4">
+            {presencas.length > 0 && (
+              <section className="overflow-hidden rounded-2xl border-2 border-orange-500/40 bg-orange-500/5 shadow-sm">
+                <div className="flex items-center gap-2.5 px-[18px] pb-3 pt-[17px]">
+                  <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400">
+                    <CheckCircle2 size={16} />
+                  </span>
+                  <h2 className="text-base font-bold tracking-tight text-foreground">Marcar presença</h2>
+                  <span className="ml-auto rounded-full bg-orange-500/15 px-2.5 py-0.5 text-[12px] font-bold text-orange-600 dark:text-orange-400">
+                    {presencas.length}
+                  </span>
+                </div>
+                <p className="px-[18px] pb-2 text-[12.5px] text-muted-foreground">
+                  Estas consultas já aconteceram e ninguém disse se o paciente veio. Abra a conversa e
+                  registre "Compareceu" ou "Não compareceu" — o sistema não decide mais isso sozinho.
+                </p>
+                <ul className="px-[18px] pb-4">
+                  {presencas.slice(0, 8).map((c, i) => (
+                    <li
+                      key={c.id}
+                      className={`grid grid-cols-[76px_1fr_auto] items-center gap-3 py-3 ${i > 0 ? "border-t border-orange-500/20" : ""}`}
+                    >
+                      <span className="font-mono text-[12.5px] font-semibold tabular-nums text-muted-foreground">
+                        {c.scheduled_date.slice(8, 10)}/{c.scheduled_date.slice(5, 7)}{" "}
+                        {(c.scheduled_time ?? "").slice(0, 5)}
+                      </span>
+                      <span className="truncate text-sm font-semibold text-foreground">
+                        {c.lead_name || "Sem nome"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/crm/conversa/${c.lead_id}`)}
+                        className="whitespace-nowrap rounded-full bg-orange-600 px-3 py-1 text-[11.5px] font-semibold text-white transition-colors hover:bg-orange-700"
+                      >
+                        Marcar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {presencas.length > 8 && (
+                  <div className="border-t border-orange-500/20 px-[18px] py-3 text-[12.5px] text-muted-foreground">
+                    e mais {presencas.length - 8} consulta(s) esperando.
+                  </div>
+                )}
+              </section>
+            )}
+
             <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               <div className="flex items-center gap-2.5 px-[18px] pb-3 pt-[17px]">
                 <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400">

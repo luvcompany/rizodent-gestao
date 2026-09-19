@@ -819,14 +819,22 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
           targetByPipeline.set(l.pipeline_id, tgt);
         }
         if (!tgt) continue;
-        const upd = await admin.from("crm_leads").update({ stage_id: tgt })
-          .eq("id", l.id).eq("stage_id", l.stage_id);
-        if (upd.error) continue;
+        // A rede de segurança também passou a respeitar a espera: quem manda na
+        // hora da mudança de etapa é a fila do banco (contratado_agendar), não
+        // esta função. Chamada idempotente — lead já na fila devolve 'ja_agendado'.
+        const { data: ag, error: agErr } = await admin.rpc("contratado_agendar", {
+          p_lead_id: l.id, p_origem: "reconciliacao_nao_contratado",
+        });
+        if (agErr) continue;
+        const resultado = String((ag as any)?.resultado || "");
+        if (resultado !== "agendado" && !resultado.startsWith("movido")) continue;
         if (fallbackUser) {
           await admin.from("crm_notifications").insert({
             user_id: l.assigned_to || fallbackUser, lead_id: l.id,
             title: "Venda reconciliada automaticamente",
-            body: `Lead ${l.name} tinha pagamento mas estava em "Não contratado" — movido para Contratado pela rede de segurança. Conferir.`,
+            body: resultado === "agendado"
+              ? `Lead ${l.name} tem pagamento e estava em "Não contratado" — vai para Contratado quando a espera vencer. Conferir.`
+              : `Lead ${l.name} tinha pagamento mas estava em "Não contratado" — movido para Contratado pela rede de segurança. Conferir.`,
             type: "reconcile_contratado", dedupe_key: `reconcile:${l.id}`,
           }).then((r: any) => r, () => {});
         }
@@ -1049,10 +1057,12 @@ async function sweepPagamentosApagadosNoDontus(
 
 async function executePlan(admin: any, plan: PlanItem[]): Promise<{
   importados: number; adotados: number; leads_criados: number;
-  movidos: number; notificacoes: number; erros: number; erros_det: any[];
+  movidos: number; contratado_na_fila: number; notificacoes: number; erros: number; erros_det: any[];
   orto_corrigidos: number;
 }> {
-  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, notificacoes: 0, erros: 0, erros_det: [] as any[], orto_corrigidos: 0 };
+  // `movidos` só cresce em cliente SEM carência (contratado_apos_min = 0).
+  // Na Rizodent a espera é de 24 h, então o número que interessa é o da fila.
+  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, contratado_na_fila: 0, notificacoes: 0, erros: 0, erros_det: [] as any[], orto_corrigidos: 0 };
   const fallbackUser = await resolveFallbackUser(admin);
   let mainPipeline: { pipeline_id: string; stage_id: string } | null = null;
   const movedLeads = new Set<string>();
@@ -1318,30 +1328,32 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         }
       }
 
-      // --- move para Contratado (uma vez por lead) ---
+      // --- Contratado: agora ESPERA a carência (uma vez por lead) ---
+      //
+      // Até 17/09/2026 o lead ia para "Contratado" NESTE MINUTO. Como Contratado
+      // é etapa oculta para a SDR, o lead sumia da tela dela antes de ela poder
+      // marcar a presença — foi isso que o dono mandou parar ("aguarde 24 horas
+      // pra mover pra contratado. Pode já contar o faturamento").
+      //
+      // Quem decide agora é o banco: contratado_agendar põe o lead na fila
+      // crm_contratado_pendente e o cron 'contratado-apos-carencia' move quando
+      // a espera vencer (crm_rodizio_config.contratado_apos_min; 0 = na hora,
+      // que é o comportamento antigo para quem não ligou a espera). O gatilho
+      // trg_zz_contratado_apos_pagamento faz o mesmo para pagamento lançado por
+      // qualquer outra porta; a chamada aqui é idempotente e preserva a régua
+      // deste plano (nada de família, nada de recorrência de orto).
       if (item.move_to_contratado && leadId && !movedLeads.has(leadId)) {
         movedLeads.add(leadId);
-        const { data: lead } = await admin.from("crm_leads")
-          .select("id, pipeline_id, stage_id").eq("id", leadId).maybeSingle();
-        if (lead?.pipeline_id) {
-          const { data: curStg } = await admin.from("crm_stages")
-            .select("id, name").eq("id", lead.stage_id).maybeSingle();
-          if (!isWonContratadoStage(curStg?.name)) {
-            const { data: tgtRows } = await admin.from("crm_stages")
-              .select("id, name").eq("pipeline_id", lead.pipeline_id)
-              .ilike("name", "%contratado%");
-            const tgt = (tgtRows || []).find((s: any) => isWonContratadoStage(s.name)) || null;
-            if (tgt?.id) {
-              const upd = await admin.from("crm_leads")
-                .update({ stage_id: tgt.id }).eq("id", leadId);
-              if (upd.error) throw upd.error;
-              await admin.from("crm_lead_stage_history").insert({
-                lead_id: leadId, stage_id: tgt.id, from_stage_id: lead.stage_id,
-              });
-              c.movidos++;
-            }
-          }
-        }
+        const { data: ag, error: agErr } = await admin.rpc("contratado_agendar", {
+          p_lead_id: leadId, p_origem: "pagamento_dontus",
+        });
+        if (agErr) throw agErr;
+        const resultado = String((ag as any)?.resultado || "");
+        // 'ja_agendado' = o gatilho do pagamento (que roda antes, no INSERT) já
+        // pôs este lead na fila. Conta como fila do mesmo jeito: o número do run
+        // é "quantos leads vão para Contratado por causa desta passada".
+        if (resultado === "agendado" || resultado === "ja_agendado") c.contratado_na_fila++;
+        else if (resultado.startsWith("movido")) c.movidos++;
       }
 
       // --- notificação ---
@@ -1879,7 +1891,7 @@ async function syncClinica(
   // para gravar contadores reais.
   let exec: {
     importados: number; adotados: number; leads_criados: number;
-    movidos: number; notificacoes: number; erros: number; erros_det: any[];
+    movidos: number; contratado_na_fila: number; notificacoes: number; erros: number; erros_det: any[];
     orto_corrigidos: number;
   } | null = null;
   let reconciliacaoRemovidos = 0;
@@ -1892,6 +1904,7 @@ async function syncClinica(
       leads_criados: exec.leads_criados,
       sem_telefone_sem_lead: (exec as any).sem_telefone_sem_lead || 0,
       movidos_contratado: exec.movidos,
+      contratado_na_fila: exec.contratado_na_fila,
       notificacoes: exec.notificacoes,
       orto_corrigidos: exec.orto_corrigidos,
       erros: exec.erros,
@@ -2937,6 +2950,33 @@ function chunkArr<T>(arr: T[], size: number): T[][] {
 
 
 
+/**
+ * A clínica decidiu quem diz se o paciente compareceu: o sistema ou uma pessoa.
+ *
+ * crm_rodizio_config.comparecimento_automatico = false (Rizodent, decisão do
+ * dono em 17/09/2026) desliga as passadas que decidiam sozinhas — inclusive a
+ * que marcava falta pelo RELÓGIO, que errou 13 dos 61 casos de setembro
+ * conferidos contra a planilha da gestão. Os crons já estão pausados; esta
+ * trava existe porque as rotas do admin-api (/sync-comparecimento e
+ * /sync-reagendar-expirado) podem chamar estes modos à mão.
+ *
+ * Dry-run continua liberado: ler o Dontus e comparar não muda nada no CRClin.
+ */
+async function comparecimentoAutomaticoLigado(admin: any, tenantId: string): Promise<boolean> {
+  const { data } = await admin.from("crm_rodizio_config")
+    .select("comparecimento_automatico").eq("tenant_id", tenantId).maybeSingle();
+  return data?.comparecimento_automatico !== false;
+}
+
+function recusaComparecimentoManual(corsHeaders: Record<string, string>, modo: string): Response {
+  return new Response(JSON.stringify({
+    modo,
+    recusado: "comparecimento_manual",
+    mensagem: "Esta clínica marca a presença à mão (comparecimento_automatico = false). " +
+      "Rode com dry_run para conferir, ou ligue a coluna em crm_rodizio_config para voltar a decidir automaticamente.",
+  }, null, 2), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -2969,7 +3009,11 @@ Deno.serve(async (req) => {
 
   // Varredura de fim de expediente da etapa "Reagendar" (não consulta o Dontus).
   if (String(body.mode || "") === "reagendar_expirado") {
-    const out = await sweepReagendarExpirado(admin, body.dry_run !== false);
+    const dryReag = body.dry_run !== false;
+    if (!dryReag && !(await comparecimentoAutomaticoLigado(admin, RIZODENT_TENANT_ID))) {
+      return recusaComparecimentoManual(corsHeaders, "reagendar_expirado");
+    }
+    const out = await sweepReagendarExpirado(admin, dryReag);
     return new Response(JSON.stringify(out, null, 2), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -3003,6 +3047,9 @@ Deno.serve(async (req) => {
 
   // Passada NOVA e independente: comparecimento (não roda o sync de pagamentos).
   if (String(body.mode || "") === "comparecimento") {
+    if (!dryRun && !(await comparecimentoAutomaticoLigado(admin, RIZODENT_TENANT_ID))) {
+      return recusaComparecimentoManual(corsHeaders, "comparecimento");
+    }
     const hojeBahia = todayBahia();
     const to = String(body.to || hojeBahia);
     const from = String(body.from || addDays(to, -1));
