@@ -750,3 +750,71 @@ do conserto: os agendamentos `fa542549` e `bc29f777`, do lead LUCIANO SILVA
 PESSOA, inseridos pela Bia, creditados ao CRC. O conserto impede que volte a
 acontecer, mas não reescreve o passado — e reescrever dado de `crm_appointments`
 precisa da palavra do dono.
+
+## Item 18 — 17 a 19/09: presença marcada à mão, Contratado espera 24 h, conferência com a planilha
+
+### O pedido
+
+> "Preciso que desabilite a função automática que diz se o cliente compareceu ou
+> não compareceu, deixa que a própria sdr faz isso manualmente. Então aguarde 24
+> horas pra mover pra contratado. Pode já contar o faturamento, mas só move pra
+> contratado ou não contratado depois de 24 hs." — dono, 17/09/2026
+
+### Por que pausar os crons não bastou
+
+O mapeamento (5 frentes + crítico de completude) mostrou que a decisão automática
+tinha várias portas além das passadas do Dontus (crons 30–34):
+
+- a importação de pagamento (crons 28/29, de hora em hora) movia o lead para
+  Contratado no mesmo minuto — 85 de 86 entradas em Contratado em 30 dias — e
+  Contratado é etapa oculta para a SDR;
+- o gatilho `auto_confirm_appointments_on_contracted` gravava "contratado" na
+  consulta a cada entrada em Contratado, ou seja, dizia sozinho que o paciente veio;
+- o Kanban, o painel de orçamento e a tela Novo Atendimento moviam o card no
+  navegador de quem abrisse;
+- a varredura dos 3 dias (cron 36) escondia em "Relacionamento" o lead com consulta
+  passada sem desfecho.
+
+### Como ficou (migration `20260917150000`, aplicada em 19/09 como `20260919150232`)
+
+- Pagamento entra na hora (faturamento igual) e o lead vai para a fila
+  `crm_contratado_pendente`; o cron `contratado-apos-carencia` move depois de
+  `crm_rodizio_config.contratado_apos_min` (Rizodent 1440; cliente novo 0 = na hora).
+- Nenhum caminho automático grava "compareceu": o pagamento só acrescenta contrato
+  a uma consulta que uma PESSOA marcou como compareceu, dentro da janela do sync
+  (pagamento entre consulta−3 e consulta+30).
+- `auto_confirm` só vale para movimento humano, consulta já acontecida e dos
+  últimos 7 dias.
+- Se alguém da gestão (ou a SDR, com "Não compareceu") muda a etapa durante a
+  espera, a fila não desmente: sai e avisa o gestor.
+- Pagamento do Dontus: quem enfileira é o `dontus-sync` (escolhe o lead certo);
+  pagamento manual: gatilho `trg_zz_contratado_apos_pagamento` (um lead só).
+- `dontus-sync` recusa os modos `comparecimento`/`reagendar_expirado` sem dry-run
+  quando `comparecimento_automatico = false`.
+- Início da SDR ganhou a lista "Marcar presença" (consultas que já passaram, sem
+  desfecho, dos leads dela).
+
+Revisão adversarial antes de aplicar: 33 revisores, 29 achados, 15 confirmados —
+entre eles um erro de sintaxe meu que derrubaria o `dontus-sync` (pagamento pararia
+de entrar) e a promoção por pagamento que ainda decidia presença em consulta não
+marcada. Todos corrigidos antes de publicar.
+
+### Conferência com a planilha da gestão (17–19/09)
+
+- Régua do dono: cancelado (paciente avisou) conta como agendamento, salvo se
+  remarcou; casal/acompanhante conta 2. Migration `20260917160000` muda o
+  relatório da SDR (11–17/09: Bia 65→71, Kelly 15→16, Fabíola 3→3).
+- Lucas Santos Teles e Zenilto: a PLANILHA conta cada um duas vezes; o CRClin está
+  certo (auditoria + conversa).
+- Roseli: consulta de 14/09 08:40 combinada em 02/09 e nunca lançada → lançada.
+- Kaliane: falta a consulta de 14/09; aguardando o dono dizer de quem é o crédito.
+- 15 desfechos de comparecimento corrigidos com autorização literal do dono
+  (`outcome_source = 'correcao_planilha'`, nota em cada consulta).
+
+### Modelos de agendamento com dia da semana (19/09)
+
+`agendamentovca`, `agendamentoipiau`, `agendamentoitabuna`, `agendamentoguanambi`
+(UTILITY, botões "Sim, confirmo" / "Preciso reagendar"). `{{2}}` virou
+"Sábado, 19/09 às 09:00" no `send-whatsapp-message`, que também passou a anunciar a
+PRÓXIMA consulta, não a mais antiga sem desfecho. Ipiaú: o modelo antigo dizia
+Praça Ruy Barbosa 112; o cadastro e o site dizem 122.
