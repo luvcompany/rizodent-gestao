@@ -1602,6 +1602,41 @@ export type Database = {
           },
         ]
       }
+      crm_contratado_pendente: {
+        Row: {
+          criado_em: string
+          lead_id: string
+          mover_em: string
+          origem: string
+          tenant_id: string
+          tentativas: number
+        }
+        Insert: {
+          criado_em?: string
+          lead_id: string
+          mover_em: string
+          origem?: string
+          tenant_id: string
+          tentativas?: number
+        }
+        Update: {
+          criado_em?: string
+          lead_id?: string
+          mover_em?: string
+          origem?: string
+          tenant_id?: string
+          tentativas?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_contratado_pendente_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_conversation_notes: {
         Row: {
           after_message_id: string | null
@@ -2913,6 +2948,8 @@ export type Database = {
       crm_rodizio_config: {
         Row: {
           auto_encerrar: string
+          comparecimento_automatico: boolean
+          contratado_apos_min: number
           corte_ate: string
           corte_tolerancia_min: number
           entrada_todas_etapas: boolean
@@ -2936,6 +2973,8 @@ export type Database = {
         }
         Insert: {
           auto_encerrar?: string
+          comparecimento_automatico?: boolean
+          contratado_apos_min?: number
           corte_ate?: string
           corte_tolerancia_min?: number
           entrada_todas_etapas?: boolean
@@ -2959,6 +2998,8 @@ export type Database = {
         }
         Update: {
           auto_encerrar?: string
+          comparecimento_automatico?: boolean
+          contratado_apos_min?: number
           corte_ate?: string
           corte_tolerancia_min?: number
           entrada_todas_etapas?: boolean
@@ -5443,6 +5484,19 @@ export type Database = {
         }
         Returns: string
       }
+      contratado_agendar: {
+        Args: { p_lead_id: string; p_origem?: string }
+        Returns: Json
+      }
+      contratado_mover_agora: {
+        Args: { p_apos_carencia?: boolean; p_lead_id: string; p_origem: string }
+        Returns: string
+      }
+      contratado_pendentes: { Args: never; Returns: number }
+      contratado_promove_consulta: {
+        Args: { p_data_pagamento: string; p_lead_id: string }
+        Returns: string
+      }
       conversa_estou_aqui: { Args: { p_lead_id: string }; Returns: Json }
       conversa_fechar: {
         Args: { p_enviar_pesquisa?: boolean; p_lead_id: string }
@@ -5743,6 +5797,7 @@ export type Database = {
         Returns: undefined
       }
       equipe_sdr_exclusiva: { Args: { p_user_id: string }; Returns: string }
+      etapa_e_contratado: { Args: { p_nome: string }; Returns: boolean }
       etapa_em_funil_meu: { Args: { _stage_id: string }; Returns: boolean }
       etapa_equivalente_no_funil: {
         Args: { _pipeline_id: string; _stage_id: string }
@@ -5916,9 +5971,17 @@ export type Database = {
         Args: { _lead_id: string }
         Returns: boolean
       }
+      lead_tem_pagamento_de_contrato: {
+        Args: { p_ate?: string; p_desde: string; p_lead_id: string }
+        Returns: boolean
+      }
       lead_transferir_autorizado: {
         Args: { p_lead_id: string; p_payload: Json }
         Returns: number
+      }
+      lead_ultimo_pagamento_de_contrato: {
+        Args: { p_lead_id: string }
+        Returns: string
       }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
