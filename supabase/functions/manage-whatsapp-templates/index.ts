@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
       for (const tmpl of templates) {
         const { data: existingRows } = await supabase
           .from("crm_whatsapp_templates")
-          .select("id, owner_role, whatsapp_number_id")
+          .select("id, owner_role, whatsapp_number_id, header_content")
           .eq("meta_template_id", tmpl.meta_template_id)
           .eq("tenant_id", callerTenantId)
           .eq("waba_id", WABA_ID)
@@ -283,6 +283,14 @@ Deno.serve(async (req) => {
             buttons: tmpl.buttons,
             updated_at: new Date().toISOString(),
           };
+          // Mesma regra do sync-whatsapp-templates-cron: a mídia já guardada no
+          // nosso Storage NÃO é trocada pelo link da CDN da Meta. Esse link expira
+          // em dias (e às vezes vem cortado em 1 MB): o envio passava a falhar com
+          // 131053 — foi o que derrubou o endereco_rizodent_ipiau em 20/09/2026.
+          const midiaAtual = String(existing.header_content || "");
+          if (midiaAtual.includes("/storage/v1/object/public/") || midiaAtual.includes("/storage/v1/object/sign/")) {
+            delete patch.header_content;
+          }
           // Repara o registro órfão: sem isto, um modelo gravado sem dono ficava
           // invisível para o dono do número PARA SEMPRE — sincronizar de novo
           // atualizava o texto e o status, e nunca o carimbo.
