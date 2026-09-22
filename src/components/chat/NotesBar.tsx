@@ -103,12 +103,25 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                       <>
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm text-foreground flex-1">{n.text}</p>
-                          <div className="flex gap-1 opacity-0 group-hover/note:opacity-100 transition-opacity flex-shrink-0">
-                            <button onClick={() => handleEdit(i)} className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
-                              <Pencil size={12} />
+                          {/* Sempre visíveis: escondidos atrás do hover, ninguém
+                              achava os botões (e em tela de toque não aparecem
+                              nunca) — relato da gestão em 22/09/2026. */}
+                          <div className="flex gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => handleEdit(i)}
+                              title="Editar nota"
+                              aria-label="Editar nota"
+                              className="p-1.5 rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                            >
+                              <Pencil size={13} />
                             </button>
-                            <button onClick={() => handleDelete(i)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
-                              <Trash2 size={12} />
+                            <button
+                              onClick={() => handleDelete(i)}
+                              title="Excluir nota"
+                              aria-label="Excluir nota"
+                              className="p-1.5 rounded border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            >
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         </div>
