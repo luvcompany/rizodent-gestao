@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FILTRO_LEAD_NOVO } from "@/lib/leadNovo";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,7 +52,9 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
     (async () => {
       const { data: st } = await supabase.from("crm_stages")
         .select("id,name,position,color,is_won,is_lost").eq("pipeline_id", pid).order("position");
-      let lq = supabase.from("crm_leads").select("id,stage_id,value,created_at").eq("pipeline_id", pid);
+      // Coorte de leads novos: fora os criados pela conciliação do Dontus, que
+      // já nascem em Contratado (leadNovo.ts).
+      let lq = supabase.from("crm_leads").select("id,stage_id,value,created_at").eq("pipeline_id", pid).or(FILTRO_LEAD_NOVO);
       if (range) lq = lq.gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString());
       const { data: ld } = await lq;
       const leadIds = (ld || []).map((l: any) => l.id);

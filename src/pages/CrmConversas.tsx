@@ -947,13 +947,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     // da conversa aberta vem por ref. O canal não é refeito a cada conversa.
   }, [avisarLeadAusente]);
 
-  const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
+  const handleStageChange = useCallback(async (stageId: string, pipelineId: string, motivo?: string) => {
     if (!selectedLeadId || !selectedLead) return;
     const previousStageId = selectedLead.stage_id;
     await chat.handleStageChange(stageId, previousStageId, (newStageId, newPipelineId) => {
       setSelectedLead((prev) => prev ? { ...prev, stage_id: newStageId, pipeline_id: newPipelineId || prev.pipeline_id } : prev);
       setLeads((prev) => prev.map((l) => l.id === selectedLeadId ? { ...l, stage_id: newStageId, pipeline_id: newPipelineId || l.pipeline_id } : l));
-    }, pipelineId);
+    }, pipelineId, motivo);
   }, [selectedLeadId, selectedLead, chat]);
 
   const handleSaveNotes = useCallback(async (updatedNotes: string) => {
@@ -2056,7 +2056,18 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   />
                 )}
 
-                <AppointmentConfirmBar leadId={selectedLead.id} />
+                <AppointmentConfirmBar
+                  leadId={selectedLead.id}
+                  onLeadStageChanged={(stageId, pipelineId) => {
+                    const alvo = selectedLead.id;
+                    setSelectedLead((prev) =>
+                      prev && prev.id === alvo && (prev.stage_id !== stageId || (pipelineId && prev.pipeline_id !== pipelineId))
+                        ? { ...prev, stage_id: stageId, pipeline_id: pipelineId || prev.pipeline_id }
+                        : prev,
+                    );
+                    setLeads((prev) => prev.map((l) => (l.id === alvo && l.stage_id !== stageId ? { ...l, stage_id: stageId, pipeline_id: pipelineId || l.pipeline_id } : l)));
+                  }}
+                />
 
                 <TaskPanel leadId={selectedLead.id} />
 

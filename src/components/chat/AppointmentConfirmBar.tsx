@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { avisarQueLeadMudou } from "@/lib/kanbanFresco";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,7 +117,25 @@ function terminalSourceLabel(t: TerminalAppointment): string {
   return hora ? `desfecho registrado${sufixo}` : "";
 }
 
-export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
+export default function AppointmentConfirmBar({
+  leadId,
+  onLeadStageChanged,
+}: {
+  leadId: string;
+  /**
+   * Avisa a tela quando a etapa do lead mudou por uma ação desta barra
+   * (desfecho, reagendamento...). A página de conversa única não tinha como
+   * saber: o cabeçalho continuava em "Agendado" depois do "Não compareceu"
+   * (relato de 21/09/2026).
+   */
+  onLeadStageChanged?: (stageId: string, pipelineId: string | null) => void;
+}) {
+  // Última etapa lida DESTE lead (a barra é reaproveitada ao trocar de conversa).
+  const etapaVistaRef = useRef<{ leadId: string; stageId: string } | null>(null);
+  // Callback em ref: a tela passa uma função nova a cada render e ela não pode
+  // entrar nas dependências dos efeitos de busca (viraria um laço de buscas).
+  const onLeadStageChangedRef = useRef(onLeadStageChanged);
+  onLeadStageChangedRef.current = onLeadStageChanged;
   const { userRole } = useAuth();
   const isManager = userRole === "gerente" || userRole === "superadmin";
   // Quem o BANCO aceita nas RPCs sdr_corrigir_desfecho / sdr_excluir_agendamento:
@@ -220,7 +239,15 @@ export default function AppointmentConfirmBar({ leadId }: { leadId: string }) {
   const [outcomeSaving, setOutcomeSaving] = useState<string | null>(null);
 
   const checkRescheduleMode = useCallback(async () => {
-    const { data: leadData } = await supabase.from("crm_leads").select("stage_id").eq("id", leadId).single();
+    const { data: leadData } = await supabase.from("crm_leads").select("stage_id, pipeline_id").eq("id", leadId).single();
+    const vista = etapaVistaRef.current;
+    if (leadData?.stage_id && (vista?.leadId !== leadId || vista.stageId !== leadData.stage_id)) {
+      // A 1ª leitura do lead só registra; depois disso, etapa diferente é
+      // mudança feita por uma ação desta barra.
+      if (vista?.leadId === leadId) avisarQueLeadMudou();
+      etapaVistaRef.current = { leadId, stageId: leadData.stage_id };
+      onLeadStageChangedRef.current?.(leadData.stage_id, (leadData as any).pipeline_id ?? null);
+    }
     if (leadData?.stage_id) {
       const { data: stageData } = await supabase.from("crm_stages").select("name").eq("id", leadData.stage_id).single();
       const sn = stageData?.name?.toLowerCase() || "";

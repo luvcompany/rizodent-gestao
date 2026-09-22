@@ -10,6 +10,10 @@ import { useHidratarLeadsAvisados } from "@/hooks/useHidratarLeadsAvisados";
 import { toast } from "sonner";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { executeStageAutomations } from "@/lib/automationUtils";
+import { cacheDoKanbanVale } from "@/lib/kanbanFresco";
+import { contaComoLeadNovo } from "@/lib/leadNovo";
+import { ehEtapaDesqualificado, gravarMotivoDesqualificacao } from "@/lib/desqualificacao";
+import MotivoDesqualificacaoDialog from "@/components/crm/MotivoDesqualificacaoDialog";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -512,6 +516,8 @@ function loadKanbanCacheFromLS(userId: string, pipelineId: string): KanbanCacheE
     if (!raw) return null;
     const { entry, ts } = JSON.parse(raw);
     if (Date.now() - ts > KANBAN_LS_TTL) return null;
+    // Lead mudou numa conversa depois que este quadro foi salvo: não serve.
+    if (!cacheDoKanbanVale(ts)) return null;
     return {
       ...entry,
       stageTotalCounts: entry.stageTotalCounts || {},
@@ -680,7 +686,10 @@ export default function CrmKanban() {
       kanbanDataCache.entry &&
       kanbanDataCache.userId === (user?.id ?? null) &&
       kanbanDataCache.pipelineId === (targetPipelineId ?? null) &&
-      Date.now() - kanbanDataCache.timestamp < KANBAN_CACHE_TTL
+      Date.now() - kanbanDataCache.timestamp < KANBAN_CACHE_TTL &&
+      // Lead mudou numa conversa (desfecho, troca de etapa) depois do cache:
+      // servir o cache mostraria o card na coluna antiga.
+      cacheDoKanbanVale(kanbanDataCache.timestamp)
     ) {
       const e = kanbanDataCache.entry;
       setPipelines(e.pipelines);
@@ -1098,7 +1107,21 @@ export default function CrmKanban() {
     }
   }, [viewMode, searchTerm, kanbanFilters, hydrateAllStageLeads]);
 
+  // Soltar em "Desqualificado" espera o motivo; cancelar deixa o card onde estava.
+  const [desqualificarDrop, setDesqualificarDrop] = useState<DropResult | null>(null);
+
   const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const destino = stages.find(s => s.id === result.destination!.droppableId);
+    const origem = leads.find(l => l.id === result.draggableId)?.stage_id;
+    if (destino && ehEtapaDesqualificado(destino.name) && origem !== destino.id) {
+      setDesqualificarDrop(result);
+      return;
+    }
+    await moverCard(result);
+  };
+
+  const moverCard = async (result: DropResult, motivo?: string) => {
     if (!result.destination) return;
     const leadId = result.draggableId;
     const newStageId = result.destination.droppableId;
@@ -1121,28 +1144,15 @@ export default function CrmKanban() {
       return;
     }
 
-    // Register stage history and system message (same as chat hook)
+    // Mensagem de sistema (mesma do chat). O histórico de etapa é escrito SÓ
+    // pelo gatilho sync_lead_stage_history: este trecho também inseria a
+    // passagem à mão e cada arrasto ficava registrado duas vezes (a do gatilho
+    // e esta, sem autor).
     if (previousStageId && previousStageId !== newStageId) {
-      // Close previous stage history entry
-      const { data: openEntry } = await supabase
-        .from("crm_lead_stage_history")
-        .select("id")
-        .eq("lead_id", leadId)
-        .eq("stage_id", previousStageId)
-        .is("exited_at", null)
-        .maybeSingle();
-
-      if (openEntry) {
-        await supabase.from("crm_lead_stage_history").update({ exited_at: new Date().toISOString() }).eq("id", openEntry.id);
+      if (motivo) {
+        const gravou = await gravarMotivoDesqualificacao(leadId, newStageId, motivo);
+        if (!gravou) toast.error("O lead foi desqualificado, mas o motivo não foi registrado no histórico.");
       }
-
-      // Insert new stage history entry (with from_stage_id)
-      await supabase.from("crm_lead_stage_history").insert({
-        lead_id: leadId,
-        stage_id: newStageId,
-        from_stage_id: previousStageId,
-        entered_at: new Date().toISOString(),
-      } as any);
 
       // Insert system message
       const fromName = stages.find(s => s.id === previousStageId)?.name || "?";
@@ -1151,7 +1161,7 @@ export default function CrmKanban() {
         lead_id: leadId,
         direction: "outbound",
         type: "system",
-        content: `📋 Etapa alterada: ${fromName} → ${toName}`,
+        content: `📋 Etapa alterada: ${fromName} → ${toName}${motivo ? ` · Motivo: ${motivo}` : ""}`,
         status: "system",
       });
 
@@ -1314,8 +1324,12 @@ export default function CrmKanban() {
   const overdue = myLeads.filter(l => taskOverdueLeadIds.has(l.id)).length;
   const today = toLocalDateISO();
   const yesterday = toLocalDateISO(new Date(Date.now() - 86400000));
-  const newToday = myLeads.filter(l => l.created_at.startsWith(today)).length;
-  const newYesterday = myLeads.filter(l => l.created_at.startsWith(yesterday)).length;
+  // Dia de criação no fuso local (created_at vem em UTC: comparar o texto
+  // jogava quem entrou depois das 21h para o dia seguinte). Lead criado pela
+  // conciliação do Dontus não é lead novo (ver leadNovo.ts).
+  const novoNoDia = (l: Lead, dia: string) => contaComoLeadNovo(l) && toLocalDateISO(new Date(l.created_at)) === dia;
+  const newToday = myLeads.filter(l => novoNoDia(l, today)).length;
+  const newYesterday = myLeads.filter(l => novoNoDia(l, yesterday)).length;
 
   // Modal de métrica
   const [metricModal, setMetricModal] = useState<{ title: string; leads: Lead[] } | null>(null);
@@ -1442,9 +1456,9 @@ export default function CrmKanban() {
         <MetricBadge icon={<AlertTriangle size={14} />} label="Com tarefas atrasadas" value={overdue} variant="destructive"
           onClick={() => openMetricModal("Com tarefas atrasadas", l => taskOverdueLeadIds.has(l.id))} />
         <MetricBadge icon={<Clock size={14} />} label="Novo hoje" value={newToday} variant="success"
-          onClick={() => openMetricModal("Novos leads hoje", l => l.created_at.startsWith(today))} />
+          onClick={() => openMetricModal("Novos leads hoje", l => novoNoDia(l, today))} />
         <MetricBadge icon={<Clock size={14} />} label="Ontem" value={newYesterday} variant="success"
-          onClick={() => openMetricModal("Novos leads ontem", l => l.created_at.startsWith(yesterday))} />
+          onClick={() => openMetricModal("Novos leads ontem", l => novoNoDia(l, yesterday))} />
         <MetricBadge icon={<TrendingUp size={14} />} label="Vendas concluídas (mês)" value={formatCurrency(vendasConcluidas)} variant="primary"
           onClick={() => openMetricModal("Leads com vendas no mês", l => leadsWithPagamento.has(l.id))} />
       </div>
@@ -1455,6 +1469,16 @@ export default function CrmKanban() {
           style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}
           className="p-2 lg:p-4 snap-x snap-mandatory lg:snap-none"
         >
+          <MotivoDesqualificacaoDialog
+            open={!!desqualificarDrop}
+            nomeDoLead={desqualificarDrop ? leads.find(l => l.id === desqualificarDrop.draggableId)?.name : null}
+            onCancelar={() => setDesqualificarDrop(null)}
+            onConfirmar={(motivo) => {
+              const drop = desqualificarDrop;
+              setDesqualificarDrop(null);
+              if (drop) moverCard(drop, motivo);
+            }}
+          />
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex gap-3 h-full min-w-max">
               {stages.map((stage, idx) => {

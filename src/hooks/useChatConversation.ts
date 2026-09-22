@@ -3,6 +3,8 @@ import { deduplicateTemplates } from "@/lib/templateUtils";
 import { sortTemplatesByUsage } from "@/lib/templateUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { executeStageAutomations } from "@/lib/automationUtils";
+import { gravarMotivoDesqualificacao } from "@/lib/desqualificacao";
+import { avisarQueLeadMudou } from "@/lib/kanbanFresco";
 import { toast } from "sonner";
 import { batchSignMediaUrls } from "@/lib/mediaUtils";
 import { useTenant } from "@/contexts/TenantContext";
@@ -402,7 +404,7 @@ export function useChatConversation(leadId: string | null | undefined) {
   }, []);
 
   // ─── Stage change ───
-  const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string, pipelineId?: string) => void, newPipelineId?: string) => {
+  const handleStageChange = useCallback(async (newStageId: string, currentStageId: string, onSuccess?: (stageId: string, pipelineId?: string) => void, newPipelineId?: string, motivo?: string) => {
     if (!leadId) return;
 
     const updatePayload: { stage_id: string; updated_at: string; pipeline_id?: string } = { stage_id: newStageId, updated_at: new Date().toISOString() };
@@ -450,11 +452,18 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     // Histórico de etapa é escrito SÓ pelo gatilho sync_lead_stage_history
     // (front + gatilho gravavam a mesma passagem duas vezes).
+    avisarQueLeadMudou();
+
+    // Motivo da desqualificação vai na passagem que o gatilho acabou de abrir.
+    if (motivo && stageGravado === newStageId) {
+      const gravou = await gravarMotivoDesqualificacao(leadId, stageGravado, motivo);
+      if (!gravou) toast.error("O lead foi desqualificado, mas o motivo não foi registrado no histórico.");
+    }
 
     // Insert system message
     const fromName = stages.find(s => s.id === currentStageId)?.name || "?";
     const toName = stages.find(s => s.id === stageGravado)?.name || "?";
-    const systemContent = `📋 Etapa alterada: ${fromName} → ${toName}`;
+    const systemContent = `📋 Etapa alterada: ${fromName} → ${toName}${motivo ? ` · Motivo: ${motivo}` : ""}`;
     await supabase.from("messages").insert({
       lead_id: leadId,
       direction: "outbound",

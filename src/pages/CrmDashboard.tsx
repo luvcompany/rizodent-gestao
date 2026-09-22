@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FILTRO_LEAD_NOVO } from "@/lib/leadNovo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -135,7 +136,8 @@ async function loadDashboardData(
   const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
     fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
     fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
-    supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso),
+    // Lead criado pela conciliação do Dontus não é lead novo (leadNovo.ts).
+    supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso).or(FILTRO_LEAD_NOVO),
     // As duas marcas vêm junto com o valor porque é o que separa faturamento de
     // MARKETING do caixa bruto (ver contaComoFaturamento). Sem elas o card
     // mostrava R$ 92.742 onde o Dashboard principal mostrava R$ 79.212 — o

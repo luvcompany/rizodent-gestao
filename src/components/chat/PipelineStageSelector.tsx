@@ -2,11 +2,14 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertTriangle } from "lucide-react";
+import MotivoDesqualificacaoDialog from "@/components/crm/MotivoDesqualificacaoDialog";
+import { ehEtapaDesqualificado } from "@/lib/desqualificacao";
 
 interface PipelineStageSelectorProps {
   stages: { id: string; name: string; color: string; pipeline_id: string }[];
   currentStageId: string;
-  onStageChange: (stageId: string, pipelineId: string) => void;
+  /** `motivo` só vem quando a etapa de destino é Desqualificado (a pessoa escolheu no diálogo). */
+  onStageChange: (stageId: string, pipelineId: string, motivo?: string) => void;
   /**
    * Funil em que o lead está AGORA, direto da linha do lead. É opcional porque
    * nem toda tela passa, mas é a única fonte confiável: a etapa atual pode não
@@ -28,6 +31,8 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState("");
   const pipelinesCarregados = useRef(false);
+  // Destino Desqualificado espera o motivo antes de mover.
+  const [desqualificarPara, setDesqualificarPara] = useState<{ stageId: string; pipelineId: string } | null>(null);
 
   // Funil do lead: a prop manda; a etapa atual é só o plano B (e falha quando a
   // etapa está oculta para o perfil).
@@ -92,7 +97,14 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
         </label>
         <Select
           value={etapaAtualVisivel ? currentStageId : ""}
-          onValueChange={(val) => onStageChange(val, selectedPipelineId)}
+          onValueChange={(val) => {
+            const destino = stages.find((s) => s.id === val);
+            if (destino && ehEtapaDesqualificado(destino.name) && val !== currentStageId) {
+              setDesqualificarPara({ stageId: val, pipelineId: selectedPipelineId });
+              return;
+            }
+            onStageChange(val, selectedPipelineId);
+          }}
           disabled={etapasDoFunilEscolhido.length === 0}
         >
           <SelectTrigger className="bg-secondary border-border h-8 text-sm">
@@ -110,6 +122,16 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           </SelectContent>
         </Select>
       </div>
+
+      <MotivoDesqualificacaoDialog
+        open={!!desqualificarPara}
+        onCancelar={() => setDesqualificarPara(null)}
+        onConfirmar={(motivo) => {
+          const destino = desqualificarPara;
+          setDesqualificarPara(null);
+          if (destino) onStageChange(destino.stageId, destino.pipelineId, motivo);
+        }}
+      />
 
       {/* Lista vazia tem motivo e o motivo precisa aparecer: antes o combo só
           ficava mudo e a pessoa achava que o funil tinha sido trocado. */}

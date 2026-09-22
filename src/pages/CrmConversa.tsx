@@ -1,10 +1,11 @@
-import { Suspense, lazy, useState, useCallback, useEffect } from "react";
+import { Suspense, lazy, useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { usePresencaNaConversa } from "@/hooks/usePresencaNaConversa";
 import { toast } from "sonner";
+import { avisarQueLeadMudou } from "@/lib/kanbanFresco";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -233,12 +234,12 @@ export default function CrmConversa() {
     }
   }, [lead, id, profiles, chat]);
 
-  const handleStageChange = useCallback(async (stageId: string, pipelineId: string) => {
+  const handleStageChange = useCallback(async (stageId: string, pipelineId: string, motivo?: string) => {
     if (!lead) return;
     const prevStageId = lead.stage_id;
     await chat.handleStageChange(stageId, prevStageId, (newStageId, newPipelineId) => {
       setLead((prev) => prev ? { ...prev, stage_id: newStageId, pipeline_id: newPipelineId || prev.pipeline_id } : prev);
-    }, pipelineId);
+    }, pipelineId, motivo);
   }, [lead, chat]);
 
   const handleSaveNotes = useCallback(async (updatedNotes: string) => {
@@ -302,6 +303,44 @@ export default function CrmConversa() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id, checkExecution]);
+
+  const leadRef = useRef(lead);
+  leadRef.current = lead;
+
+  // Etapa, dona e fechamento do lead mudam fora desta tela (desfecho da
+  // consulta, automações, outra pessoa no Kanban). Sem ouvir o banco, o
+  // cabeçalho ficava na etapa de quando a conversa abriu — em 21/09/2026 a SDR
+  // marcou "Não compareceu", o lead foi movido e aqui continuou "Agendado".
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`conversa-lead-${id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "crm_leads",
+        filter: `id=eq.${id}`,
+      }, (payload) => {
+        const novo = payload.new as Partial<Lead>;
+        const campos = ["stage_id", "pipeline_id", "assigned_to", "name", "conversa_fechada_em", "conversa_fechada_por", "cidade", "servico_interesse", "value", "tags"] as const;
+        const mudancas: Partial<Lead> = {};
+        campos.forEach((c) => { if (c in novo) (mudancas as any)[c] = (novo as any)[c]; });
+        // Só etapa, funil ou dona tiram o card do lugar no Kanban; a hora da
+        // última mensagem muda a cada mensagem e não pode derrubar o cache dele.
+        const atual = leadRef.current;
+        if (atual && (
+          ("stage_id" in novo && novo.stage_id !== atual.stage_id) ||
+          ("pipeline_id" in novo && novo.pipeline_id !== atual.pipeline_id) ||
+          ("assigned_to" in novo && novo.assigned_to !== atual.assigned_to)
+        )) avisarQueLeadMudou();
+        setLead((prev) => {
+          if (!prev || prev.id !== id) return prev;
+          return { ...prev, ...mudancas };
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
 
   const handleStopBot = async () => {
     if (!activeExecution) return;
@@ -754,7 +793,16 @@ export default function CrmConversa() {
         )}
 
         {/* Appointment Confirmation */}
-        <AppointmentConfirmBar leadId={lead.id} />
+        <AppointmentConfirmBar
+          leadId={lead.id}
+          onLeadStageChanged={(stageId, pipelineId) =>
+            setLead((prev) =>
+              prev && prev.id === lead.id && (prev.stage_id !== stageId || (pipelineId && prev.pipeline_id !== pipelineId))
+                ? { ...prev, stage_id: stageId, pipeline_id: pipelineId || prev.pipeline_id }
+                : prev,
+            )
+          }
+        />
 
         {/* Task Panel */}
         <TaskPanel leadId={lead.id} />

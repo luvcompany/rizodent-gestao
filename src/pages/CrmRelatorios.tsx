@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import FunilTab from "@/components/relatorios/FunilTab";
+import { contaComoLeadNovo } from "@/lib/leadNovo";
 import CompararFunisTab from "@/components/relatorios/CompararFunisTab";
 import CrmMetricas from "@/pages/CrmMetricas";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +53,7 @@ import {
 //  Separadamente, métricas de ATIVIDADE DA EQUIPE usam created_at:
 //  - "Agendamentos criados no dia" = COUNT(appts) WHERE created_at = dia
 //  - "Novos leads no dia"          = COUNT(leads) WHERE created_at = dia
+//                                     (fora os criados pela conciliação do Dontus)
 //  - "Leads que conversaram"       = DISTINCT lead_id com inbound no dia
 //  Dias sempre calculados em America/Bahia (dayKeyBahia).
 // ============================================================================
@@ -60,6 +62,7 @@ import {
 type Pipeline = { id: string; name: string };
 type Lead = {
   id: string; name: string; pipeline_id: string; stage_id: string; cidade: string | null;
+  source: string | null;
   created_at: string; last_inbound_at: string | null; first_inbound_at: string | null;
 };
 type Appointment = {
@@ -210,7 +213,7 @@ export default function CrmRelatorios() {
           fetchAllPaged<Lead>(() =>
             supabase
               .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .select("id, name, pipeline_id, stage_id, cidade, source, created_at, last_inbound_at, first_inbound_at")
               .gte("created_at", startISO)
               .lte("created_at", endISO),
             "id"
@@ -218,7 +221,7 @@ export default function CrmRelatorios() {
           fetchAllPaged<Lead>(() =>
             supabase
               .from("crm_leads")
-              .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+              .select("id, name, pipeline_id, stage_id, cidade, source, created_at, last_inbound_at, first_inbound_at")
               .gte("last_inbound_at", startISO)
               .lte("last_inbound_at", endISO),
             "id"
@@ -254,7 +257,7 @@ export default function CrmRelatorios() {
             fetchAllPaged<Lead>(() =>
               supabase
                 .from("crm_leads")
-                .select("id, name, pipeline_id, stage_id, cidade, created_at, last_inbound_at, first_inbound_at")
+                .select("id, name, pipeline_id, stage_id, cidade, source, created_at, last_inbound_at, first_inbound_at")
                 .in("id", chunk),
               "id"
             )
@@ -324,9 +327,10 @@ export default function CrmRelatorios() {
     return d >= Date.parse(bahiaBounds.gteIso) && d <= Date.parse(bahiaBounds.lteIso);
   };
 
-  // Coorte: leads criados no período (todos os pipelines)
+  // Coorte: leads criados no período (todos os pipelines). Lead criado pela
+  // conciliação do Dontus já nasce contratado e não é lead novo (leadNovo.ts).
   const cohort = useMemo(
-    () => leads.filter(l => inRange(l.created_at)),
+    () => leads.filter(l => inRange(l.created_at) && contaComoLeadNovo(l)),
     [leads, range]
   );
   // ============= MÉTRICAS DO CALENDÁRIO (régua canônica) =============

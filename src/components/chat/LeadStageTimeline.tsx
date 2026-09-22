@@ -9,6 +9,8 @@ type StageHistory = {
   stage_id: string;
   entered_at: string;
   exited_at: string | null;
+  /** Motivo escolhido ao desqualificar (só nas passagens para Desqualificado). */
+  motivo?: string | null;
 };
 
 type Stage = {
@@ -146,7 +148,8 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
               : Date.now() - new Date(h.entered_at).getTime();
 
             return (
-              <div key={h.id} className="flex items-center gap-2 text-xs">
+              <div key={h.id} className="text-xs">
+              <div className="flex items-center gap-2">
                 <span
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: getStageColor(h.stage_id) }}
@@ -160,6 +163,10 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
                 {!h.exited_at && (
                   <span className="text-primary text-[10px] font-semibold">(atual)</span>
                 )}
+              </div>
+              {h.motivo && (
+                <p className="ml-4 text-[11px] text-muted-foreground">Motivo: {h.motivo}</p>
+              )}
               </div>
             );
           })}
