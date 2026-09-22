@@ -89,11 +89,11 @@ export default function ConversationInlineNote({ note, authorName, onDeleted, on
             encontrava editar/excluir. */}
         {!editing && (
           <div className="flex gap-1 flex-shrink-0">
-            <button onClick={() => setEditing(true)} title="Editar nota" aria-label="Editar nota" className="p-1.5 rounded border border-amber-500/30 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-              <Pencil size={13} />
+            <button onClick={() => setEditing(true)} title="Editar nota" className="flex items-center gap-1 rounded border border-amber-500/30 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+              <Pencil size={12} /> Editar
             </button>
-            <button onClick={handleDelete} title="Excluir nota" aria-label="Excluir nota" className="p-1.5 rounded border border-amber-500/30 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
-              <Trash2 size={13} />
+            <button onClick={handleDelete} title="Excluir nota" className="flex items-center gap-1 rounded border border-amber-500/30 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+              <Trash2 size={12} /> Excluir
             </button>
           </div>
         )}

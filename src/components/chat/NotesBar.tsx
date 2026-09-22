@@ -110,18 +110,16 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                             <button
                               onClick={() => handleEdit(i)}
                               title="Editar nota"
-                              aria-label="Editar nota"
-                              className="p-1.5 rounded border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                             >
-                              <Pencil size={13} />
+                              <Pencil size={12} /> Editar
                             </button>
                             <button
                               onClick={() => handleDelete(i)}
                               title="Excluir nota"
-                              aria-label="Excluir nota"
-                              className="p-1.5 rounded border border-border text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={12} /> Excluir
                             </button>
                           </div>
                         </div>
