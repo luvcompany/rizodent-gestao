@@ -2322,6 +2322,7 @@ export type Database = {
           from_stage_id: string | null
           id: string
           lead_id: string
+          motivo: string | null
           stage_id: string
         }
         Insert: {
@@ -2331,6 +2332,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id: string
+          motivo?: string | null
           stage_id: string
         }
         Update: {
@@ -2340,6 +2342,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id?: string
+          motivo?: string | null
           stage_id?: string
         }
         Relationships: [
