@@ -793,28 +793,41 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     loadSpecialFilters();
   }, [urlGhost, urlAppointmentStatus, urlInactiveDays]);
 
+  // A lista muda a cada evento de Realtime (mensagem nova em QUALQUER conversa).
+  // Este efeito roda junto — por isso ele MISTURA a versão da lista no lead
+  // aberto em vez de trocá-lo. Trocando, os campos que a lista não traz
+  // (notes/value/conversa_fechada_em) voltavam a ficar indefinidos a cada
+  // atualização: a barra de notas sumia no meio da edição e o "Todas as Notas"
+  // fechava sozinho (relato da gestão, 22/09/2026 — "não consigo editar/
+  // excluir as notas de alguns leads").
   useEffect(() => {
     if (!selectedLeadId) {
       setSelectedLead(null);
       return;
     }
-    const lead = leads.find((l) => l.id === selectedLeadId) || null;
-    setSelectedLead(lead);
-    // Hidrata campos pesados ausentes na lista (notes/value) sob demanda.
-    if (lead && ((lead as any).notes === undefined || (lead as any).value === undefined || lead.conversa_fechada_em === undefined)) {
-      let cancelled = false;
-      supabase
-        .from("crm_leads")
-        .select("id, notes, value, conversa_fechada_em")
-        .eq("id", selectedLeadId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (cancelled || !data) return;
-          setSelectedLead((prev) => prev && prev.id === selectedLeadId ? { ...prev, ...(data as any) } : prev);
-        });
-      return () => { cancelled = true; };
-    }
+    const daLista = leads.find((l) => l.id === selectedLeadId) || null;
+    if (!daLista) return; // ainda não chegou na lista: quem abriu por URL já hidratou
+    setSelectedLead((prev) =>
+      prev && prev.id === selectedLeadId ? ({ ...prev, ...daLista } as LeadConversation) : daLista,
+    );
   }, [selectedLeadId, leads]);
+
+  // Campos pesados (notes/value/conversa_fechada_em) ficam fora da lista: busca
+  // UMA vez por lead aberto.
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    let cancelled = false;
+    supabase
+      .from("crm_leads")
+      .select("id, notes, value, conversa_fechada_em")
+      .eq("id", selectedLeadId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setSelectedLead((prev) => prev && prev.id === selectedLeadId ? { ...prev, ...(data as any) } : prev);
+      });
+    return () => { cancelled = true; };
+  }, [selectedLeadId]);
 
 
   // Hidrata, do BANCO, os leads que o Realtime avisou existirem e que não estão
