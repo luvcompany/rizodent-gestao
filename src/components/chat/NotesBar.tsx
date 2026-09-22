@@ -101,8 +101,13 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                       </div>
                     ) : (
                       <>
+                        {/* min-w-0 + quebra em qualquer ponto: nota com texto
+                            longo sem espaço (o gclid do lead vindo do site)
+                            esticava a linha, e os botões Editar/Excluir ficavam
+                            FORA da janela, recortados — parecia que a opção não
+                            existia (relato da gestão, 22/09/2026). */}
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-foreground flex-1">{n.text}</p>
+                          <p className="text-sm text-foreground flex-1 min-w-0 [overflow-wrap:anywhere]">{n.text}</p>
                           {/* Sempre visíveis: escondidos atrás do hover, ninguém
                               achava os botões (e em tela de toque não aparecem
                               nunca) — relato da gestão em 22/09/2026. */}

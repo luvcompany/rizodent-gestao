@@ -77,7 +77,7 @@ export default function ConversationInlineNote({ note, authorName, onDeleted, on
             </div>
           ) : (
             <>
-              <p className="text-sm text-foreground whitespace-pre-wrap">{note.content}</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap [overflow-wrap:anywhere]">{note.content}</p>
               <p className="text-[10px] text-muted-foreground mt-1">
                 {authorName && <span>{authorName} · </span>}
                 {ts}
