@@ -5,7 +5,17 @@ diga ao Claude Code "pode aplicar o item N". Publicar no CRClin são sempre 3
 caminhos separados (migration, redeploy de cada edge function alterada, publish
 do site) e o merge no GitHub não aplica nenhum deles.
 
-## API de Conversões da Meta — 23/09/2026
+## API de Conversões da Meta — passos 1 a 3 APLICADOS em 23/09/2026 01:35 UTC
+
+Migration aplicada (cópia do Lovable `20260923013435`; original idempotente),
+`meta-capi-worker` e `whatsapp-webhook` redeployadas, site publicado
+(`index-57DAMr05.js`, chunk `CrmConfiguracoes-9VKpC5L2.js`). Cron do worker
+respondendo 200 de minuto em minuto. Linha de configuração da Rizodent
+pré-preenchida (dataset 1616335282799813, WABA 893372606594069, código de
+teste TEST85932), **desligada e sem token**. **Falta o passo 4** (o dono).
+
+### Roteiro original (mantido para referência)
+
 
 O que muda: o CRM passa a guardar o `ctwa_clid` (clique no anúncio de WhatsApp)
 e a devolver à Meta os eventos LeadSubmitted / QualifiedLead (agendou) /
