@@ -1605,6 +1605,88 @@ async function mmLiteLigar(tenantId: string, body: any) {
   return json({ ok: true, integration_key: creds.integrationKey, mm_lite: ativo });
 }
 
+async function templatesEditar(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: body?.phone_number_id ?? null,
+    integrationKey: body?.integration_key ?? null,
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+
+  const nome = String(body?.name || "").trim();
+  if (!nome) return json({ error: "name é obrigatório." }, 400);
+
+  // A Meta edita por ID do template; nome, idioma e categoria NÃO mudam aqui.
+  const { data: alvoRows } = await admin
+    .from("crm_whatsapp_templates")
+    .select("id, name, meta_template_id, body_text, footer_text, buttons, header_type, header_content")
+    .eq("tenant_id", tenantId)
+    .eq("waba_id", creds.wabaId)
+    .eq("name", nome)
+    .limit(1);
+  const alvo = (alvoRows || [])[0] as any;
+  if (!alvo?.meta_template_id) return json({ error: "Modelo não encontrado nesta WABA (ou sem id na Meta)." }, 404);
+
+  const corpo = body?.body_text !== undefined ? String(body.body_text) : String(alvo.body_text || "");
+  if (!corpo) return json({ error: "body_text vazio." }, 400);
+  const botoes = body?.buttons !== undefined ? body.buttons : alvo.buttons;
+  const rodape = body?.footer_text !== undefined ? body.footer_text : alvo.footer_text;
+
+  const componentes: any[] = [];
+  const HT = String(alvo.header_type || "").toUpperCase();
+  if (HT === "TEXT" && alvo.header_content) {
+    componentes.push({ type: "HEADER", format: "TEXT", text: alvo.header_content });
+  }
+  const variaveis = corpo.match(/\{\{\d+\}\}/g) || [];
+  const bodyComponent: any = { type: "BODY", text: corpo };
+  if (variaveis.length > 0) {
+    bodyComponent.example = { body_text: [variaveis.map((_: string, i: number) => `exemplo${i + 1}`)] };
+  }
+  componentes.push(bodyComponent);
+  if (rodape) componentes.push({ type: "FOOTER", text: rodape });
+  if (Array.isArray(botoes) && botoes.length > 0) {
+    componentes.push({
+      type: "BUTTONS",
+      buttons: botoes.map((b: any) => {
+        const tipo = String(b?.type || "").toUpperCase();
+        if (tipo === "URL") return { type: "URL", text: b.text, url: b.url };
+        if (tipo === "FLOW") {
+          const flow: any = { type: "FLOW", text: b.text, flow_id: String(b.flow_id) };
+          if (b.navigate_screen) flow.navigate_screen = b.navigate_screen;
+          if (b.flow_action) flow.flow_action = b.flow_action;
+          return flow;
+        }
+        return { type: "QUICK_REPLY", text: b.text };
+      }),
+    });
+  }
+
+  const payload = { components: componentes };
+  await admin.from("whatsapp_template_logs").insert({
+    tenant_id: tenantId, action: "edit_request", template_name: nome,
+    waba_id: creds.wabaId, request_payload: payload,
+  });
+  const res = await fetch(`https://graph.facebook.com/v25.0/${alvo.meta_template_id}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const dados = await res.json().catch(() => ({}));
+  await admin.from("whatsapp_template_logs").insert({
+    tenant_id: tenantId, action: "edit_response", template_name: nome,
+    waba_id: creds.wabaId, response_body: dados, http_status: res.status,
+  });
+  if (!res.ok) return json({ error: "Erro na API da Meta", details: dados }, res.status);
+
+  // Edição volta o modelo para análise: o status local acompanha.
+  await admin
+    .from("crm_whatsapp_templates")
+    .update({ body_text: corpo, footer_text: rodape ?? null, buttons: botoes ?? null, status: "PENDING", updated_at: new Date().toISOString() })
+    .eq("id", alvo.id);
+
+  return json({ ok: true, name: nome, meta_template_id: alvo.meta_template_id, status: "PENDING" });
+}
+
 async function templatesDelete(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
     phoneNumberId: p.get("phone_number_id"),
@@ -1883,6 +1965,7 @@ Deno.serve(async (req) => {
           "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
           "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
+          "POST /templates/editar  { name, body_text?, buttons?, footer_text? }  (edita o modelo aprovado; volta para análise)",
           "POST /flows/confirmacao  (cria e publica o Flow de confirmação + o template que o abre)",
           "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
           "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
@@ -1938,6 +2021,7 @@ Deno.serve(async (req) => {
       if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);
       if (!parts[1] && req.method === "GET") return await templatesList(tenantId, p);
       if (!parts[1] && req.method === "DELETE") return await templatesDelete(tenantId, p);
+      if (parts[1] === "editar" && req.method === "POST") return await templatesEditar(tenantId, body);
     }
     if (parts[0] === "sync-dontus" && req.method === "POST") {
       // Só Rizodent (tenant do Dontus real) pode acionar.
