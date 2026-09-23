@@ -1571,6 +1571,22 @@ async function flowsListar(tenantId: string, p: URLSearchParams) {
   const dados = await res.json().catch(() => ({}));
   if (!res.ok) return json({ error: "Erro ao listar flows", details: dados }, res.status);
 
+  // ?bruto=<flow_id> devolve o JSON publicado daquele formulário. É o único
+  // jeito de conferir, de fora, QUAL versão está no ar depois de publicar.
+  const bruto = (p.get("bruto") || "").trim();
+  if (bruto) {
+    const assetsRes = await fetch(
+      `https://graph.facebook.com/v25.0/${encodeURIComponent(bruto)}/assets?access_token=${encodeURIComponent(creds.token)}`,
+    );
+    const assets = await assetsRes.json().catch(() => ({}));
+    const link = ((assets as any)?.data || []).find(
+      (a: any) => String(a?.asset_type || "").toUpperCase() === "FLOW_JSON",
+    )?.download_url;
+    if (!link) return json({ error: "Formulário sem JSON publicado", details: assets }, 404);
+    const conteudo = await (await fetch(String(link))).text();
+    return json({ flow_id: bruto, flow_json: conteudo });
+  }
+
   const flows = [];
   for (const f of ((dados as any)?.data || [])) {
     const telas = await lerTelasDoFlow(String(f.id), creds.token);
