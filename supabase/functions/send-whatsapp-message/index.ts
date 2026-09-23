@@ -52,6 +52,29 @@ const cleanTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/i, ""
 
 const resolvedTemplateNameParaLog = (nome: string | null) => nome || "(sem nome)";
 
+/**
+ * Dias que o formulário oferece para remarcar: os próximos dias úteis
+ * (segunda a sábado), cada um com manhã e tarde. Vai em flow_action_data no
+ * envio — é assim que um Flow sem servidor mostra data de verdade.
+ * O horário exato continua com a recepção: o CRClin ainda não tem agenda de vagas.
+ */
+function diasParaRemarcar(quantos = 4): Array<{ id: string; title: string }> {
+  const fusoBahia = "America/Bahia";
+  const diaSemana = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  const hojeIso = new Intl.DateTimeFormat("en-CA", { timeZone: fusoBahia }).format(new Date());
+  const [ano, mes, dia] = hojeIso.split("-").map(Number);
+  const opcoes: Array<{ id: string; title: string }> = [];
+  for (let passo = 1; opcoes.length < quantos * 2 && passo <= 14; passo++) {
+    const d = new Date(Date.UTC(ano, mes - 1, dia + passo));
+    if (d.getUTCDay() === 0) continue; // domingo fechado
+    const iso = d.toISOString().slice(0, 10);
+    const rotulo = `${diaSemana[d.getUTCDay()]}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+    opcoes.push({ id: `${iso}|manha`, title: `${rotulo} de manhã` });
+    opcoes.push({ id: `${iso}|tarde`, title: `${rotulo} à tarde` });
+  }
+  return opcoes;
+}
+
 const getTemplatePlaceholderIndexes = (content: string | null | undefined): number[] => {
   if (!content) return [];
 
@@ -793,7 +816,11 @@ Deno.serve(async (req) => {
                 parameters: [
                   {
                     type: "action",
-                    action: { flow_token: `${lead_id}|${(nextAppt as any)?.id ?? ""}`, flow_action_data: {} },
+                    action: {
+                      flow_token: `${lead_id}|${(nextAppt as any)?.id ?? ""}`,
+                      // A 1ª tela declara `dias`; sem mandar aqui, o Flow não abre.
+                      flow_action_data: { dias: diasParaRemarcar() },
+                    },
                   },
                 ],
               });

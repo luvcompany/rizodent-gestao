@@ -1397,17 +1397,32 @@ async function templatesCreate(tenantId: string, body: any) {
 }
 
 
-/** Flow JSON da confirmação de consulta — uma tela, sem servidor por trás. */
+/**
+ * Flow JSON da confirmação de consulta — duas telas, sem servidor por trás.
+ *
+ * Tela 1: vem, precisa remarcar ou desistiu (+ motivo).
+ * Tela 2 (só quem escolheu remarcar): dia e turno preferidos. A lista de dias
+ * NÃO é fixa: ela chega em flow_action_data no momento do envio, montada com
+ * os próximos dias úteis (ver send-whatsapp-message). Horário exato continua
+ * com a recepção — a agenda real ainda não está no CRClin.
+ */
 function flowJsonConfirmacao(): string {
+  const exemploDias = [
+    { id: "2026-09-24|manha", title: "Quarta, 24/09 de manhã" },
+    { id: "2026-09-24|tarde", title: "Quarta, 24/09 à tarde" },
+  ];
+  const tipoDias = {
+    type: "array",
+    items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" } } },
+    __example__: exemploDias,
+  };
   return JSON.stringify({
     version: "7.1",
     screens: [
       {
         id: "CONFIRMACAO",
         title: "Sua consulta",
-        terminal: true,
-        success: true,
-        data: {},
+        data: { dias: tipoDias },
         layout: {
           type: "SingleColumnLayout",
           children: [
@@ -1435,11 +1450,74 @@ function flowJsonConfirmacao(): string {
                   "helper-text": "Opcional",
                 },
                 {
+                  type: "If",
+                  condition: "${form.presenca == 'remarcar'}",
+                  then: [
+                    {
+                      type: "Footer",
+                      label: "Escolher novo dia",
+                      "on-click-action": {
+                        name: "navigate",
+                        next: { type: "screen", name: "ESCOLHA" },
+                        payload: {
+                          dias: "${data.dias}",
+                          presenca: "${form.presenca}",
+                          motivo: "${form.motivo}",
+                        },
+                      },
+                    },
+                  ],
+                  else: [
+                    {
+                      type: "Footer",
+                      label: "Enviar",
+                      "on-click-action": {
+                        name: "complete",
+                        payload: { presenca: "${form.presenca}", motivo: "${form.motivo}" },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        id: "ESCOLHA",
+        title: "Novo dia",
+        terminal: true,
+        success: true,
+        data: {
+          dias: tipoDias,
+          presenca: { type: "string", __example__: "remarcar" },
+          motivo: { type: "string", __example__: "" },
+        },
+        layout: {
+          type: "SingleColumnLayout",
+          children: [
+            { type: "TextBody", text: "Quando fica melhor para você? A recepção confirma o horário exato." },
+            {
+              type: "Form",
+              name: "form_quando",
+              children: [
+                {
+                  type: "RadioButtonsGroup",
+                  name: "quando",
+                  label: "Escolha o dia e o turno",
+                  required: true,
+                  "data-source": "${data.dias}",
+                },
+                {
                   type: "Footer",
                   label: "Enviar",
                   "on-click-action": {
                     name: "complete",
-                    payload: { presenca: "${form.presenca}", motivo: "${form.motivo}" },
+                    payload: {
+                      presenca: "${data.presenca}",
+                      motivo: "${data.motivo}",
+                      quando: "${form.quando}",
+                    },
                   },
                 },
               ],
@@ -1519,6 +1597,28 @@ async function flowsConfirmacao(tenantId: string, body: any) {
     { type: "BUTTONS", buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }] },
   ];
   const metaPayload = { name: nomeTemplate, language: "pt_BR", category: "UTILITY", components: componentes };
+
+  // Template já existe? Então é troca de versão do Flow: edita o botão (criar de
+  // novo daria nome duplicado, e apagar travaria o nome por 4 semanas).
+  const { data: jaExiste } = await admin
+    .from("crm_whatsapp_templates")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("waba_id", creds.wabaId)
+    .eq("name", nomeTemplate)
+    .maybeSingle();
+  if (jaExiste) {
+    const edicao = await templatesEditar(tenantId, {
+      name: nomeTemplate,
+      body_text: corpo,
+      buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }],
+      phone_number_id: body?.phone_number_id ?? null,
+      integration_key: body?.integration_key ?? null,
+    });
+    const respostaEdicao = await edicao.json().catch(() => ({}));
+    if (!edicao.ok) return json({ error: "Erro ao apontar o template para o flow novo", details: respostaEdicao, etapas, flow_id: flow.id }, edicao.status);
+    return json({ ok: true, flow_id: flow.id, template: nomeTemplate, status_template: "PENDING", etapas: { ...etapas, template_editado: true } });
+  }
 
   await admin.from("whatsapp_template_logs").insert({
     tenant_id: tenantId, action: "create_request", template_name: nomeTemplate,

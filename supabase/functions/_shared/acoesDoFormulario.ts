@@ -21,9 +21,25 @@ const normalizar = (s: string) =>
 export type RespostaDoFormulario = {
   presenca: string | null;
   motivo: string | null;
+  /** Preferência de remarcação: "AAAA-MM-DD|manha" ou "...|tarde". */
+  quando: string | null;
   /** lead_id|appointment_id montado no envio. */
   flowToken: string | null;
 };
+
+const DIA_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+/** "2026-09-25|manha" → "Quinta, 25/09 de manhã". */
+export function rotuloDoQuando(valor: string | null | undefined): string | null {
+  const bruto = String(valor || "").trim();
+  if (!bruto) return null;
+  const [data, turno] = bruto.split("|");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data || "")) return bruto;
+  const d = new Date(`${data}T12:00:00Z`);
+  const dia = DIA_SEMANA[d.getUTCDay()] ?? "";
+  const periodo = turno === "tarde" ? "à tarde" : turno === "manha" ? "de manhã" : "";
+  return `${dia}, ${data.slice(8, 10)}/${data.slice(5, 7)}${periodo ? " " + periodo : ""}`;
+}
 
 /** Lê o response_json do nfm_reply sem nunca quebrar. */
 export function lerRespostaDoFormulario(responseJson: unknown): RespostaDoFormulario & { extras: Record<string, unknown> } {
@@ -35,13 +51,14 @@ export function lerRespostaDoFormulario(responseJson: unknown): RespostaDoFormul
   }
   const extras: Record<string, unknown> = {};
   for (const [chave, valor] of Object.entries(bruto || {})) {
-    if (["presenca", "motivo", "flow_token"].includes(chave)) continue;
+    if (["presenca", "motivo", "flow_token", "quando"].includes(chave)) continue;
     if (valor === null || valor === undefined || valor === "") continue;
     extras[chave] = valor;
   }
   return {
     presenca: bruto?.presenca ? String(bruto.presenca) : null,
     motivo: bruto?.motivo ? String(bruto.motivo).trim() : null,
+    quando: bruto?.quando ? String(bruto.quando) : null,
     flowToken: bruto?.flow_token ? String(bruto.flow_token) : null,
     extras,
   };
@@ -160,6 +177,8 @@ export async function aplicarRespostaDoFormulario(
     }
 
     if (escolha === "remarcar") {
+      const preferencia = rotuloDoQuando(resposta.quando);
+      const detalhes = [preferencia ? `prefere ${preferencia}` : null, resposta.motivo].filter(Boolean).join(" · ");
       const destino = await etapaReagendar(supabase, leadId);
       if (destino) {
         const { data } = await supabase
@@ -172,15 +191,15 @@ export async function aplicarRespostaDoFormulario(
           supabase,
           leadId,
           moveu
-            ? `🔁 Pediu para remarcar pelo formulário${resposta.motivo ? ` — ${resposta.motivo}` : ""} · lead em espera na etapa Reagendar`
-            : `🔁 Pediu para remarcar pelo formulário${resposta.motivo ? ` — ${resposta.motivo}` : ""}`,
+            ? `🔁 Pediu para remarcar pelo formulário${detalhes ? ` — ${detalhes}` : ""} · lead em espera na etapa Reagendar`
+            : `🔁 Pediu para remarcar pelo formulário${detalhes ? ` — ${detalhes}` : ""}`,
         );
         return moveu ? "movido para Reagendar" : "não consegui mover";
       }
       await nota(
         supabase,
         leadId,
-        `🔁 Pediu para remarcar pelo formulário${resposta.motivo ? ` — ${resposta.motivo}` : ""} (funil sem etapa "Reagendar")`,
+        `🔁 Pediu para remarcar pelo formulário${detalhes ? ` — ${detalhes}` : ""} (funil sem etapa "Reagendar")`,
       );
       return "sem etapa Reagendar";
     }

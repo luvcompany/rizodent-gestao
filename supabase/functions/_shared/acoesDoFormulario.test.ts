@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { aplicarRespostaDoFormulario, lerRespostaDoFormulario } from "./acoesDoFormulario.ts";
+import { aplicarRespostaDoFormulario, lerRespostaDoFormulario, rotuloDoQuando } from "./acoesDoFormulario.ts";
 
 /**
  * O que estes testes protegem: a resposta do paciente não pode virar desfecho
@@ -11,6 +11,9 @@ Deno.test("lê a resposta como string JSON, e aguenta lixo", () => {
   assertEquals(r.presenca, "remarcar");
   assertEquals(r.motivo, "trabalho");
   assertEquals(r.flowToken, "L|A");
+  assertEquals(rotuloDoQuando("2026-09-25|manha"), "Sexta, 25/09 de manhã");
+  assertEquals(rotuloDoQuando("2026-09-26|tarde"), "Sábado, 26/09 à tarde");
+  assertEquals(rotuloDoQuando(null), null);
   assertEquals(r.extras, { extra: "x" });
 
   const vazio = lerRespostaDoFormulario("não é json");
@@ -55,7 +58,7 @@ Deno.test("confirmo: confirma a consulta pendente e anota", async () => {
   const db = bancoFalso({ consulta: { id: "a1", status: "pending", scheduled_date: "2026-09-25", scheduled_time: "09:00:00" } });
   const feito = await aplicarRespostaDoFormulario(db as any, {
     leadId: "l1",
-    resposta: { presenca: "confirmo", motivo: null, flowToken: "l1|a1" },
+    resposta: { presenca: "confirmo", motivo: null, quando: null, flowToken: "l1|a1" },
   });
   assertEquals(feito, "consulta confirmada");
   const atualizou = db.chamadas.find((c) => c.tabela === "crm_appointments" && c.op === "update");
@@ -66,7 +69,7 @@ Deno.test("desistir: NÃO dá desfecho — só anota e notifica", async () => {
   const db = bancoFalso({ consulta: { id: "a1", status: "confirmed", scheduled_date: "2026-09-25", scheduled_time: null } });
   const feito = await aplicarRespostaDoFormulario(db as any, {
     leadId: "l1",
-    resposta: { presenca: "desistir", motivo: "achei caro", flowToken: "l1|a1" },
+    resposta: { presenca: "desistir", motivo: "achei caro", quando: null, flowToken: "l1|a1" },
   });
   assertEquals(feito, "desistência registrada");
   // nada de update em consulta nem em lead
@@ -78,7 +81,7 @@ Deno.test("remarcar sem etapa Reagendar: anota e não move", async () => {
   const db = bancoFalso({ consulta: null, etapas: [{ id: "s1", name: "Agendado" }], funis: [] });
   const feito = await aplicarRespostaDoFormulario(db as any, {
     leadId: "l1",
-    resposta: { presenca: "remarcar", motivo: null, flowToken: null },
+    resposta: { presenca: "remarcar", motivo: null, quando: "2026-09-25|manha", flowToken: null },
   });
   assertEquals(feito, "sem etapa Reagendar");
   assertEquals(db.chamadas.some((c) => c.tabela === "crm_leads" && c.op === "update"), false);
@@ -87,12 +90,12 @@ Deno.test("remarcar sem etapa Reagendar: anota e não move", async () => {
 Deno.test("escolha desconhecida ou banco quebrado não lança", async () => {
   const db = bancoFalso();
   assertEquals(
-    await aplicarRespostaDoFormulario(db as any, { leadId: "l1", resposta: { presenca: "outra", motivo: null, flowToken: null } }),
+    await aplicarRespostaDoFormulario(db as any, { leadId: "l1", resposta: { presenca: "outra", motivo: null, quando: null, flowToken: null } }),
     "escolha desconhecida: outra",
   );
   const quebrado = { from: () => { throw new Error("banco caiu"); } };
   assertEquals(
-    await aplicarRespostaDoFormulario(quebrado as any, { leadId: "l1", resposta: { presenca: "confirmo", motivo: null, flowToken: null } }),
+    await aplicarRespostaDoFormulario(quebrado as any, { leadId: "l1", resposta: { presenca: "confirmo", motivo: null, quando: null, flowToken: null } }),
     "erro",
   );
 });

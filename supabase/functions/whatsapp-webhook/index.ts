@@ -3,7 +3,7 @@ import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
 import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
 import { avisarLidaEDigitando } from "../_shared/digitando.ts";
-import { aplicarRespostaDoFormulario, lerRespostaDoFormulario } from "../_shared/acoesDoFormulario.ts";
+import { aplicarRespostaDoFormulario, lerRespostaDoFormulario, rotuloDoQuando } from "../_shared/acoesDoFormulario.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -991,6 +991,8 @@ Deno.serve(async (req) => {
                   if (respostaDoFormulario.presenca) {
                     linhas.push(`Presença: ${rotulos[respostaDoFormulario.presenca] || respostaDoFormulario.presenca}`);
                   }
+                  const preferenciaFlow = rotuloDoQuando(respostaDoFormulario.quando);
+                  if (preferenciaFlow) linhas.push(`Prefere: ${preferenciaFlow}`);
                   if (respostaDoFormulario.motivo) linhas.push(`Motivo: ${respostaDoFormulario.motivo}`);
                   for (const [chave, valor] of Object.entries(respostaDoFormulario.extras || {})) {
                     linhas.push(`${chave}: ${typeof valor === "string" ? valor : JSON.stringify(valor)}`);
