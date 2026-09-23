@@ -207,9 +207,6 @@ async function montarEvento(ev: Evento, lead: Lead, modo: Modo, waba: string | n
     event_time: unix(ev.event_time),
     event_id: ev.event_id,
   };
-  // Conjunto de dados em categoria restrita (saúde) bloqueia evento de servidor
-  // sem event_source_url — regra da empresa, vista no Diagnóstico em 23/09.
-  if (cfg.event_source_url) evento.event_source_url = cfg.event_source_url;
   const custom: Record<string, unknown> = {};
   if (ev.event_name === "Purchase" || (ev.value != null && Number(ev.value) > 0)) {
     custom.currency = ev.currency || "BRL";
@@ -227,6 +224,11 @@ async function montarEvento(ev: Evento, lead: Lead, modo: Modo, waba: string | n
     evento.user_data = ud;
   } else {
     evento.action_source = "system_generated";
+    // Conjunto de dados em categoria restrita (saúde) bloqueia evento de servidor
+    // sem event_source_url — regra da empresa, vista no Diagnóstico em 23/09.
+    // SÓ no modo CRM: a Meta recusa event_source_url em business_messaging
+    // (subcódigo 2804064, visto no primeiro lead real).
+    if (cfg.event_source_url) evento.event_source_url = cfg.event_source_url;
     custom.event_source = "crm";
     custom.lead_event_source = "CRClin";
     evento.user_data = await userDataCrm(lead);
