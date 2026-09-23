@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoNumero, escopoLegado, filtrarWaba, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
+import { lerTelasDoFlow } from "../_shared/flowTelas.ts";
 
 
 const corsHeaders = {
@@ -213,6 +214,37 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "WhatsApp não configurado para este número (token/WABA ausentes na integração)." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // ACTION: LIST_FLOWS — formulários publicados desta WABA, com as telas de
+    // cada um, para a tela de Modelos oferecer a escolha em vez de pedir um id.
+    if (action === "list_flows") {
+      const res = await fetch(
+        `https://graph.facebook.com/v25.0/${WABA_ID}/flows?fields=id,name,status&access_token=${encodeURIComponent(WHATSAPP_TOKEN)}`,
+      );
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return new Response(
+          JSON.stringify({ error: (dados as any)?.error?.message || `HTTP ${res.status}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const publicados = ((dados as any)?.data || []).filter(
+        (f: any) => String(f?.status || "").toUpperCase() === "PUBLISHED",
+      );
+      const flows = [];
+      for (const f of publicados) {
+        const telas = await lerTelasDoFlow(String(f.id), WHATSAPP_TOKEN);
+        flows.push({
+          id: String(f.id),
+          name: String(f.name || f.id),
+          status: String(f.status || ""),
+          telas: (telas || []).map((t) => ({ id: t.id, title: t.title })),
+        });
+      }
+      return new Response(JSON.stringify({ flows }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // ACTION: LIST - Fetch all templates from Meta API
@@ -463,10 +495,31 @@ Deno.serve(async (req) => {
         components.push({ type: "FOOTER", text: footer_text });
       }
 
+      const flowSemDestino = (buttons || []).find(
+        (b: any) => String(b?.type || "").toUpperCase() === "FLOW" && (!b?.flow_id || !b?.navigate_screen),
+      );
+      if (flowSemDestino) {
+        return new Response(
+          JSON.stringify({ error: "Botão de formulário sem formulário escolhido (flow_id/tela de entrada)." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       if (buttons && Array.isArray(buttons) && buttons.length > 0) {
         const metaButtons = buttons.map((btn: any) => {
           if (btn.type === "URL") {
             return { type: "URL", text: btn.text, url: btn.url };
+          }
+          // Botão de formulário (Flow): sem flow_id + navigate_screen a Meta
+          // recusa (2388202) — e virar "resposta rápida" calado era pior ainda,
+          // porque o modelo nascia parecendo certo e sem abrir nada.
+          if (btn.type === "FLOW") {
+            return {
+              type: "FLOW",
+              text: btn.text,
+              flow_id: String(btn.flow_id),
+              flow_action: btn.flow_action || "navigate",
+              navigate_screen: btn.navigate_screen,
+            };
           }
           return { type: "QUICK_REPLY", text: btn.text };
         });

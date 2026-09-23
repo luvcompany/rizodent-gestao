@@ -50,6 +50,24 @@ const TEMPLATE_VARIABLES: { index: number; label: string; sample: string; hint: 
   { index: 5, label: "Origem do lead", sample: "Anúncio", hint: "lead.source" },
 ];
 
+/**
+ * Botão de modelo. Além de link e resposta rápida, existe o de FORMULÁRIO
+ * (Flow): ele carrega o id do formulário e a tela onde abre. Esses dois campos
+ * andavam junto com o botão sem ninguém saber — e sumiam na primeira edição
+ * feita por aqui, deixando o modelo sem abrir nada.
+ */
+type BotaoModelo = {
+  type: string;
+  text: string;
+  url?: string;
+  flow_id?: string | number;
+  flow_action?: string;
+  navigate_screen?: string;
+};
+
+/** Formulário publicado na Meta, com as telas que ele tem. */
+type FormularioDaMeta = { id: string; name: string; status: string; telas: { id: string; title: string }[] };
+
 
 type WhatsAppTemplate = {
   id: string; name: string; category: string; language: string; status: string;
@@ -180,6 +198,10 @@ export default function CrmModelos() {
   const [submitting, setSubmitting] = useState(false);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selectedIntegration, setSelectedIntegration] = useState<string>("");
+  // Formulários (Flows) publicados na conexão escolhida — carregados só quando
+  // o editor abre, porque a Meta cobra uma chamada por formulário.
+  const [formularios, setFormularios] = useState<FormularioDaMeta[]>([]);
+  const [carregandoFormularios, setCarregandoFormularios] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [migrating, setMigrating] = useState(false);
@@ -188,7 +210,7 @@ export default function CrmModelos() {
   const [form, setForm] = useState({
     id: "", name: "", category: "UTILITY", language: "pt_BR", header_type: "" as string,
     header_content: "", body_text: "", footer_text: "",
-    buttons: [] as { type: string; text: string; url?: string }[],
+    buttons: [] as BotaoModelo[],
     hasHeader: false,
   });
 
@@ -249,7 +271,7 @@ export default function CrmModelos() {
       header_content: string | null;
       body_text: string;
       footer_text: string | null;
-      buttons: { type: string; text: string; url?: string }[] | null;
+      buttons: BotaoModelo[] | null;
     };
   }[] = [
     {
@@ -449,7 +471,7 @@ export default function CrmModelos() {
       id: t.id, name: t.name, category: t.category, language: t.language,
       header_type: t.header_type || "", header_content: t.header_content || "",
       body_text: t.body_text || "", footer_text: t.footer_text || "",
-      buttons: (t.buttons as { type: string; text: string; url?: string }[]) || [],
+      buttons: (t.buttons as BotaoModelo[]) || [],
       hasHeader: !!t.header_type,
     });
     setModalOpen(true);
@@ -527,6 +549,19 @@ export default function CrmModelos() {
     if (!form.body_text) {
       toast.error("O corpo da mensagem é obrigatório");
       return;
+    }
+    // Botão de formulário: sem id e sem tela de entrada o modelo é aceito aqui
+    // e não abre nada no celular. A Meta também não deixa misturar com outros.
+    const botoesDeFormulario = form.buttons.filter(b => b.type === "FLOW");
+    if (botoesDeFormulario.length > 0) {
+      if (botoesDeFormulario.some(b => !b.flow_id || !b.navigate_screen)) {
+        toast.error("Escolha qual formulário o botão abre.");
+        return;
+      }
+      if (form.buttons.length > 1) {
+        toast.error("Modelo com formulário só aceita esse botão sozinho.");
+        return;
+      }
     }
     if (submit) {
       setSubmitting(true);
@@ -631,6 +666,21 @@ export default function CrmModelos() {
     resetForm();
     fetchTemplates();
   };
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    let cancelado = false;
+    setCarregandoFormularios(true);
+    supabase.functions
+      .invoke("manage-whatsapp-templates", { body: { action: "list_flows", integration_key: selectedIntegration } })
+      .then(({ data, error }) => {
+        if (cancelado) return;
+        if (error) { setFormularios([]); return; }
+        setFormularios(((data as any)?.flows ?? []) as FormularioDaMeta[]);
+      })
+      .finally(() => { if (!cancelado) setCarregandoFormularios(false); });
+    return () => { cancelado = true; };
+  }, [modalOpen, selectedIntegration]);
 
   const addButton = () => {
     if (form.buttons.length >= 3) return;
@@ -967,13 +1017,24 @@ export default function CrmModelos() {
                   <Label>Botões (máx 3)</Label>
                   {form.buttons.length < 3 && <button onClick={addButton} className="text-xs text-primary hover:underline">+ Botão</button>}
                 </div>
-                {form.buttons.map((btn, i) => (
-                  <div key={i} className="flex gap-2 mt-1 items-center">
+                {form.buttons.map((btn, i) => {
+                  const formularioDoBotao = formularios.find(f => String(f.id) === String(btn.flow_id ?? ""));
+                  return (
+                  <div key={i} className="mt-1 space-y-1">
+                    <div className="flex gap-2 items-center">
                     <select className="text-sm border border-border rounded px-2 py-1 bg-secondary text-foreground" value={btn.type} onChange={e => {
-                      const nb = [...form.buttons]; nb[i] = { ...nb[i], type: e.target.value }; setForm(p => ({ ...p, buttons: nb }));
+                      const tipo = e.target.value;
+                      const nb = [...form.buttons];
+                      // Sair de "Formulário" leva junto o id e a tela: um botão
+                      // de link com flow_id pendurado é recusado pela Meta.
+                      nb[i] = tipo === "FLOW"
+                        ? { ...nb[i], type: tipo }
+                        : { type: tipo, text: nb[i].text, url: nb[i].url };
+                      setForm(p => ({ ...p, buttons: nb }));
                     }}>
                       <option value="QUICK_REPLY">Resposta rápida</option>
                       <option value="URL">URL</option>
+                      <option value="FLOW">Formulário</option>
                     </select>
                     <Input className="flex-1 text-sm" placeholder="Texto" value={btn.text} onChange={e => {
                       const nb = [...form.buttons]; nb[i] = { ...nb[i], text: e.target.value }; setForm(p => ({ ...p, buttons: nb }));
@@ -982,8 +1043,63 @@ export default function CrmModelos() {
                       const nb = [...form.buttons]; nb[i] = { ...nb[i], url: e.target.value }; setForm(p => ({ ...p, buttons: nb }));
                     }} />}
                     <button onClick={() => setForm(p => ({ ...p, buttons: p.buttons.filter((_, j) => j !== i) }))}><Trash2 size={14} className="text-destructive" /></button>
+                    </div>
+                    {btn.type === "FLOW" && (
+                      <div className="flex gap-2 items-center pl-1">
+                        <select
+                          className="text-sm border border-border rounded px-2 py-1 bg-secondary text-foreground flex-1"
+                          value={String(btn.flow_id ?? "")}
+                          onChange={e => {
+                            const escolhido = formularios.find(f => String(f.id) === e.target.value);
+                            const nb = [...form.buttons];
+                            nb[i] = {
+                              ...nb[i],
+                              flow_id: e.target.value,
+                              flow_action: "navigate",
+                              // Tela de entrada: a primeira do formulário, que é
+                              // o que a Meta exige no botão (erro 2388202).
+                              navigate_screen: escolhido?.telas?.[0]?.id ?? "",
+                            };
+                            setForm(p => ({ ...p, buttons: nb }));
+                          }}
+                        >
+                          <option value="">
+                            {carregandoFormularios ? "Carregando formulários…" : "Escolha o formulário"}
+                          </option>
+                          {/* Formulário que o modelo já usa mas não veio na lista
+                              (outra conexão, ou despublicado): mantém a escolha. */}
+                          {btn.flow_id && !formularioDoBotao && (
+                            <option value={String(btn.flow_id)}>Formulário {String(btn.flow_id)} (atual)</option>
+                          )}
+                          {formularios.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                        {formularioDoBotao && formularioDoBotao.telas.length > 1 && (
+                          <select
+                            className="text-sm border border-border rounded px-2 py-1 bg-secondary text-foreground"
+                            value={btn.navigate_screen ?? ""}
+                            onChange={e => {
+                              const nb = [...form.buttons];
+                              nb[i] = { ...nb[i], navigate_screen: e.target.value };
+                              setForm(p => ({ ...p, buttons: nb }));
+                            }}
+                          >
+                            {formularioDoBotao.telas.map(t => (
+                              <option key={t.id} value={t.id}>Abre em: {t.title}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
+                {form.buttons.some(b => b.type === "FLOW") && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    O formulário precisa estar publicado na Meta. Modelo com formulário só aceita esse botão sozinho.
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-2 pt-2">

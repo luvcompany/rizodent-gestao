@@ -10,6 +10,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { safeEqual } from "../_shared/authz.ts";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
+import { lerTelasDoFlow } from "../_shared/flowTelas.ts";
 import {
   BAHIA_TZ,
   addDays,
@@ -1363,7 +1364,22 @@ async function templatesCreate(tenantId: string, body: any) {
   components.push(bodyComponent);
   if (footer_text) components.push({ type: "FOOTER", text: footer_text });
   if (buttons && Array.isArray(buttons) && buttons.length > 0) {
-    components.push({ type: "BUTTONS", buttons: buttons.map((btn: any) => btn.type === "URL" ? { type: "URL", text: btn.text, url: btn.url } : { type: "QUICK_REPLY", text: btn.text }) });
+    components.push({
+      type: "BUTTONS",
+      buttons: buttons.map((btn: any) => {
+        if (btn.type === "URL") return { type: "URL", text: btn.text, url: btn.url };
+        if (btn.type === "FLOW") {
+          return {
+            type: "FLOW",
+            text: btn.text,
+            flow_id: String(btn.flow_id),
+            flow_action: btn.flow_action || "navigate",
+            navigate_screen: btn.navigate_screen,
+          };
+        }
+        return { type: "QUICK_REPLY", text: btn.text };
+      }),
+    });
   }
   const metaPayload = { name, language: lang, category: cat, components };
   await admin.from("whatsapp_template_logs").insert({ tenant_id: tenantId, action: "create_request", template_name: name, waba_id: creds.wabaId, request_payload: metaPayload });
@@ -1535,6 +1551,34 @@ function flowJsonConfirmacao(): string {
       },
     ],
   });
+}
+
+/** Formulários publicados na WABA, com as telas e os dados que cada uma pede. */
+async function flowsListar(tenantId: string, p: URLSearchParams) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: p.get("phone_number_id"),
+    integrationKey: p.get("integration_key"),
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+
+  const res = await fetch(
+    `https://graph.facebook.com/v25.0/${creds.wabaId}/flows?fields=id,name,status&access_token=${encodeURIComponent(creds.token)}`,
+  );
+  const dados = await res.json().catch(() => ({}));
+  if (!res.ok) return json({ error: "Erro ao listar flows", details: dados }, res.status);
+
+  const flows = [];
+  for (const f of ((dados as any)?.data || [])) {
+    const telas = await lerTelasDoFlow(String(f.id), creds.token);
+    flows.push({
+      id: String(f.id),
+      name: String(f.name || f.id),
+      status: String(f.status || ""),
+      telas: telas === null ? null : telas.map((t) => ({ id: t.id, title: t.title, dados: Object.keys(t.dados) })),
+    });
+  }
+  return json({ flows, waba_id: creds.wabaId });
 }
 
 /**
@@ -2142,6 +2186,7 @@ Deno.serve(async (req) => {
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
           "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
           "POST /templates/editar  { name, body_text?, buttons?, footer_text? }  (edita o modelo aprovado; volta para análise)",
+          "GET /flows  (formulários da WABA, com as telas e os dados que cada uma exige)",
           "POST /flows/confirmacao  (cria e publica o Flow de confirmação + o template que o abre)",
           "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
           "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
@@ -2185,6 +2230,7 @@ Deno.serve(async (req) => {
     }
     if (parts[0] === "flows") {
       if (parts[1] === "confirmacao" && req.method === "POST") return await flowsConfirmacao(tenantId, body);
+      if (!parts[1] && req.method === "GET") return await flowsListar(tenantId, p);
     }
 
     if (parts[0] === "mmlite") {

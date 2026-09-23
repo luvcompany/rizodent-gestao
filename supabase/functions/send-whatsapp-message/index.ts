@@ -8,6 +8,7 @@ import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoLead, escopoDoNumero } from "../_shared/wabaEscopo.ts";
 import { formatarDataDoModelo, registroDoModeloEnviado, textoAntesDoMarcador } from "../_shared/modeloEnviado.ts";
 import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
+import { dadosDaTelaInicial } from "../_shared/flowTelas.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -809,20 +810,34 @@ Deno.serve(async (req) => {
               (c: any) => String(c?.type || "").toLowerCase() === "button" && String(c?.sub_type || "").toLowerCase() === "flow",
             );
             if (!jaTem) {
+              const botaoFlow = botoesDoModelo[indiceFlow] ?? {};
+              const acao: Record<string, unknown> = {
+                flow_token: `${lead_id}|${(nextAppt as any)?.id ?? ""}`,
+              };
+              // A tela de entrada do flow diz o que ela exige; mandar de menos
+              // (ou de mais) faz a Meta recusar o envio. Ler o próprio JSON é o
+              // que permite criar formulários novos sem mexer neste arquivo.
+              const exigidos = await dadosDaTelaInicial(
+                String(botaoFlow.flow_id || ""),
+                whatsappToken,
+                botaoFlow.navigate_screen ?? null,
+              );
+              if (exigidos === null) {
+                // Não deu para ler o flow (rede, token): mantém o que já roda
+                // hoje em produção em vez de mandar o botão pelado.
+                acao.flow_action_data = { dias: diasParaRemarcar() };
+              } else if (Object.keys(exigidos).length > 0) {
+                const dados: Record<string, unknown> = {};
+                for (const [chave, exemplo] of Object.entries(exigidos)) {
+                  dados[chave] = chave === "dias" ? diasParaRemarcar() : exemplo;
+                }
+                acao.flow_action_data = dados;
+              }
               resolvedComponents.push({
                 type: "button",
                 sub_type: "flow",
                 index: String(indiceFlow),
-                parameters: [
-                  {
-                    type: "action",
-                    action: {
-                      flow_token: `${lead_id}|${(nextAppt as any)?.id ?? ""}`,
-                      // A 1ª tela declara `dias`; sem mandar aqui, o Flow não abre.
-                      flow_action_data: { dias: diasParaRemarcar() },
-                    },
-                  },
-                ],
+                parameters: [{ type: "action", action: acao }],
               });
             }
           }
