@@ -5194,6 +5194,51 @@ export type Database = {
           },
         ]
       }
+      whatsapp_bloqueios: {
+        Row: {
+          acao: string
+          criado_em: string
+          erro_codigo: number | null
+          erro_texto: string | null
+          feito_por: string | null
+          id: string
+          lead_id: string | null
+          phone_number_id: string
+          sucesso: boolean
+          telefone: string
+          tenant_id: string
+          wa_id: string | null
+        }
+        Insert: {
+          acao: string
+          criado_em?: string
+          erro_codigo?: number | null
+          erro_texto?: string | null
+          feito_por?: string | null
+          id?: string
+          lead_id?: string | null
+          phone_number_id: string
+          sucesso: boolean
+          telefone: string
+          tenant_id: string
+          wa_id?: string | null
+        }
+        Update: {
+          acao?: string
+          criado_em?: string
+          erro_codigo?: number | null
+          erro_texto?: string | null
+          feito_por?: string | null
+          id?: string
+          lead_id?: string | null
+          phone_number_id?: string
+          sucesso?: boolean
+          telefone?: string
+          tenant_id?: string
+          wa_id?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_call_permissions: {
         Row: {
           approved_at: string | null
