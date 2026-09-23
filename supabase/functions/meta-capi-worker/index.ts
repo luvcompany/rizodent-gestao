@@ -313,8 +313,13 @@ async function processar(admin: any) {
       let corpo = await montarEvento(ev, lead as Lead, modo, waba, cfg);
       let resp = await enviar(cfg, corpo);
 
-      // ctwa_clid recusado (expirado/inválido): cai para o casamento por telefone.
+      // ctwa_clid recusado (expirado/inválido) ou conjunto sem WhatsApp: cai para
+      // o casamento por telefone. O erro do modo WhatsApp fica registrado na
+      // resposta (bm_erro) para a tela mostrar por que não foi como mensagem.
+      let bmErro: string | null = null;
       if (!resp.ok && modo === "business_messaging" && erroDaMeta(resp).ctwaInvalido && cfg.send_crm_events) {
+        bmErro = erroDaMeta(resp).mensagem;
+        console.warn(`[meta-capi] ${ev.event_id}: modo WhatsApp recusado (${bmErro}); tentando como CRM`);
         modo = "crm";
         corpo = await montarEvento(ev, lead as Lead, modo, null, cfg);
         resp = await enviar(cfg, corpo);
@@ -323,10 +328,10 @@ async function processar(admin: any) {
       if (resp.ok) {
         relatorio.enviados++;
         await marcar({
-          status: "sent", modo, sent_at: new Date().toISOString(), last_error: null,
+          status: "sent", modo, sent_at: new Date().toISOString(), last_error: bmErro ? `WhatsApp recusado, foi como CRM: ${bmErro}` : null,
           attempts: (ev.attempts || 0) + 1,
           response: { events_received: resp.body?.events_received ?? null, fbtrace_id: resp.body?.fbtrace_id ?? null,
-            messages: resp.body?.messages ?? null, teste: !!cfg.test_event_code },
+            messages: resp.body?.messages ?? null, teste: !!cfg.test_event_code, bm_erro: bmErro },
         });
         continue;
       }
