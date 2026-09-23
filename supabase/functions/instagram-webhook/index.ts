@@ -615,6 +615,36 @@ Deno.serve(async (req: Request) => {
 
         const messagingArr = Array.isArray(entry?.messaging) ? entry.messaging : [];
         for (const m of messagingArr) {
+          // Pergunta pronta (ice breaker) ou item do menu fixo: a Meta manda um
+          // `postback`. A pergunta escolhida TAMBÉM entra na conversa como
+          // mensagem do paciente, então aqui só deixamos a escolha registrada —
+          // gravar outra mensagem duplicaria a linha na tela da SDR.
+          if (!m?.message && m?.postback) {
+            try {
+              const escolhaSender = String(m?.sender?.id ?? "");
+              const titulo = String(m?.postback?.title ?? "").trim();
+              if (escolhaSender && escolhaSender !== accountId && titulo) {
+                const { data: vinculo } = await supabase
+                  .from("crm_lead_instagram_identities")
+                  .select("lead_id")
+                  .eq("ig_account_id", acc.id)
+                  .eq("ig_scoped_user_id", escolhaSender)
+                  .maybeSingle();
+                if ((vinculo as any)?.lead_id) {
+                  await supabase.from("messages").insert({
+                    lead_id: (vinculo as any).lead_id,
+                    direction: "outbound",
+                    type: "system",
+                    content: `💬 Escolheu no Direct: ${titulo}`,
+                    status: "system",
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn(`[IG-WEBHOOK] postback ignorado: ${err instanceof Error ? err.message : String(err)}`);
+            }
+            continue;
+          }
           if (!m?.message || m?.message?.is_echo) continue;
           const senderId = String(m?.sender?.id ?? "");
           if (!senderId || senderId === accountId) continue;

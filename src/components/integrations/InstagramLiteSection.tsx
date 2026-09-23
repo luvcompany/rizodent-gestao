@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import InstagramPerguntasDialog from "@/components/integrations/InstagramPerguntasDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,8 @@ export default function InstagramLiteSection() {
   };
 
   const [testingId, setTestingId] = useState<string | null>(null);
+  // Conta cujo Direct (perguntas prontas + menu fixo) está sendo configurado.
+  const [contaDoDirect, setContaDoDirect] = useState<IgAccount | null>(null);
 
   const handleAdd = async () => {
     const cleanUser = cleanUsername(username);
@@ -385,6 +388,15 @@ export default function InstagramLiteSection() {
                           <Button
                             size="sm"
                             variant="ghost"
+                            className="h-8 px-2 text-xs"
+                            title="Perguntas prontas e menu fixo do Direct"
+                            onClick={() => setContaDoDirect(acc)}
+                          >
+                            Direct
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
                             className="text-destructive hover:text-destructive h-8 w-8 p-0"
                             onClick={() => handleDelete(acc)}
                           >
@@ -490,6 +502,14 @@ export default function InstagramLiteSection() {
           </div>
         </DialogContent>
       </Dialog>
+      {contaDoDirect && (
+        <InstagramPerguntasDialog
+          contaId={contaDoDirect.id}
+          usuario={contaDoDirect.username || contaDoDirect.ig_user_id}
+          open={!!contaDoDirect}
+          onOpenChange={(aberto) => { if (!aberto) setContaDoDirect(null); }}
+        />
+      )}
     </div>
   );
 }
