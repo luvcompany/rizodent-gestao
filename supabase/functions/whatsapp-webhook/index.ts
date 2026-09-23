@@ -3,6 +3,7 @@ import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
 import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
 import { avisarLidaEDigitando } from "../_shared/digitando.ts";
+import { aplicarRespostaDoFormulario, lerRespostaDoFormulario } from "../_shared/acoesDoFormulario.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -939,6 +940,10 @@ Deno.serve(async (req) => {
             let replyOptionId: string | null = null;
             let mediaId: string | null = null;
 
+            // Resposta de formulário (Flow), quando houver: as ações
+            // automáticas rodam depois que a mensagem e o lead existem.
+            let respostaDoFormulario: ReturnType<typeof lerRespostaDoFormulario> | null = null;
+
             switch (msgType) {
               case "text":
                 content = msg.text?.body || "";
@@ -974,32 +979,24 @@ Deno.serve(async (req) => {
                   replyOptionId = msg.interactive.list_reply?.id || null;
                 } else if (msg.interactive?.type === "nfm_reply") {
                   // Resposta de FORMULÁRIO (WhatsApp Flow). response_json é uma
-                  // STRING com JSON dentro; o flow_token é o que amarra a
-                  // resposta ao lead e à consulta (montado no envio).
-                  let respostaFlow: any = {};
-                  try {
-                    respostaFlow = JSON.parse(msg.interactive?.nfm_reply?.response_json || "{}");
-                  } catch (erroFlow) {
-                    console.warn(`[WEBHOOK] nfm_reply ilegível: ${erroFlow instanceof Error ? erroFlow.message : String(erroFlow)}`);
-                  }
+                  // STRING com JSON dentro; o flow_token amarra a resposta ao
+                  // lead e à consulta (montado no envio).
+                  respostaDoFormulario = lerRespostaDoFormulario(msg.interactive?.nfm_reply?.response_json);
                   const rotulos: Record<string, string> = {
                     confirmo: "Confirmo, vou estar lá",
                     remarcar: "Preciso remarcar",
                     desistir: "Não vou mais fazer",
                   };
-                  const presencaBruta = String(respostaFlow?.presenca ?? "").trim();
-                  const motivoFlow = String(respostaFlow?.motivo ?? "").trim();
                   const linhas = ["📋 Resposta do formulário"];
-                  if (presencaBruta) linhas.push(`Presença: ${rotulos[presencaBruta] || presencaBruta}`);
-                  if (motivoFlow) linhas.push(`Motivo: ${motivoFlow}`);
-                  // Campos extras de formulários futuros (anamnese) entram como estão.
-                  for (const [chave, valor] of Object.entries(respostaFlow || {})) {
-                    if (["presenca", "motivo", "flow_token"].includes(chave)) continue;
-                    if (valor === null || valor === undefined || valor === "") continue;
+                  if (respostaDoFormulario.presenca) {
+                    linhas.push(`Presença: ${rotulos[respostaDoFormulario.presenca] || respostaDoFormulario.presenca}`);
+                  }
+                  if (respostaDoFormulario.motivo) linhas.push(`Motivo: ${respostaDoFormulario.motivo}`);
+                  for (const [chave, valor] of Object.entries(respostaDoFormulario.extras || {})) {
                     linhas.push(`${chave}: ${typeof valor === "string" ? valor : JSON.stringify(valor)}`);
                   }
                   content = linhas.join("\n");
-                  replyOptionId = String(respostaFlow?.flow_token ?? "") || null;
+                  replyOptionId = respostaDoFormulario.flowToken;
                 } else {
                   content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
                 }
@@ -1638,6 +1635,18 @@ Deno.serve(async (req) => {
               await supabase.from("crm_leads").update(leadUpdate).eq("id", lead.id);
 
               console.log(`[WEBHOOK] Message received from ${from}, lead ${lead.id}, type: ${msgType}, media_url: ${mediaUrl}`);
+
+              // Ações automáticas do formulário: confirmar a consulta, pôr em
+              // espera para remarcar, ou avisar a dona do lead na desistência.
+              // Nunca decide comparecimento e nunca derruba o webhook
+              // (ver _shared/acoesDoFormulario.ts).
+              if (respostaDoFormulario?.presenca) {
+                const feito = await aplicarRespostaDoFormulario(supabase, {
+                  leadId: lead.id,
+                  resposta: respostaDoFormulario,
+                });
+                console.log(`[WEBHOOK] formulário lead=${lead.id} escolha=${respostaDoFormulario.presenca} => ${feito}`);
+              }
 
               // Sugestão da Bia agora é estritamente sob demanda (clique em "Sugerir resposta").
               // Removido o disparo automático no webhook para evitar consumo de créditos sem necessidade.
