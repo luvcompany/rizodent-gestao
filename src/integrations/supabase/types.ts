@@ -4320,6 +4320,7 @@ export type Database = {
           created_at: string
           dataset_id: string | null
           enabled: boolean
+          event_source_url: string | null
           partner_agent: string
           send_crm_events: boolean
           send_lead_event: boolean
@@ -4333,6 +4334,7 @@ export type Database = {
           created_at?: string
           dataset_id?: string | null
           enabled?: boolean
+          event_source_url?: string | null
           partner_agent?: string
           send_crm_events?: boolean
           send_lead_event?: boolean
@@ -4346,6 +4348,7 @@ export type Database = {
           created_at?: string
           dataset_id?: string | null
           enabled?: boolean
+          event_source_url?: string | null
           partner_agent?: string
           send_crm_events?: boolean
           send_lead_event?: boolean
