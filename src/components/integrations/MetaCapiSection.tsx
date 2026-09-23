@@ -85,6 +85,9 @@ function fmt(iso: string | null | undefined): string {
 
 export default function MetaCapiSection() {
   const [cfg, setCfg] = useState<Config | null>(null);
+  // Cópia do que veio do servidor: "Salvar" manda só o que mudou nesta tela, para
+  // um formulário aberto há tempo não sobrescrever o que outro lugar alterou.
+  const [original, setOriginal] = useState<Config | null>(null);
   const [status, setStatus] = useState<StatusFila | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +103,7 @@ export default function MetaCapiSection() {
       toast.error(`API de Conversões: ${c.error.message}`);
     } else {
       setCfg(c.data as Config);
+      setOriginal(c.data as Config);
     }
     if (!s.error) setStatus(s.data as StatusFila);
     setLoading(false);
@@ -110,20 +114,22 @@ export default function MetaCapiSection() {
   const salvar = async () => {
     if (!cfg) return;
     setSaving(true);
-    const p: Record<string, unknown> = {
-      enabled: cfg.enabled,
-      dataset_id: cfg.dataset_id,
-      waba_id: cfg.waba_id,
-      test_event_code: cfg.test_event_code,
-      event_source_url: cfg.event_source_url,
-      send_crm_events: cfg.send_crm_events,
-      send_lead_event: cfg.send_lead_event,
-    };
+    const campos = ["enabled", "dataset_id", "waba_id", "test_event_code", "event_source_url", "send_crm_events", "send_lead_event"] as const;
+    const p: Record<string, unknown> = {};
+    for (const k of campos) {
+      if (!original || cfg[k] !== original[k]) p[k] = cfg[k];
+    }
     if (token.trim()) p.access_token = token.trim();
+    if (Object.keys(p).length === 0) {
+      setSaving(false);
+      toast.info("Nada mudou nesta tela");
+      return;
+    }
     const { data, error } = await rpc("meta_capi_config_salvar", { p });
     setSaving(false);
     if (error) { toast.error(`Erro ao salvar: ${error.message}`); return; }
     setCfg(data as Config);
+    setOriginal(data as Config);
     setToken("");
     toast.success("Configuração da API de Conversões salva");
   };
@@ -133,6 +139,7 @@ export default function MetaCapiSection() {
     const { data, error } = await rpc("meta_capi_config_salvar", { p: { access_token: "__limpar__" } });
     if (error) { toast.error(error.message); return; }
     setCfg(data as Config);
+    setOriginal(data as Config);
     toast.success("Token apagado");
   };
 
