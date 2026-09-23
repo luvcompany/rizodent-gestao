@@ -150,7 +150,11 @@ function erroDaMeta(resp: RespostaGraph): { mensagem: string; transiente: boolea
     err.error_subcode ? `sub ${err.error_subcode}` : null]
     .filter(Boolean).join(" — ") || `HTTP ${resp.http}`;
   const transiente = resp.http === 0 || resp.http === 429 || resp.http >= 500 || err.is_transient === true;
-  const ctwaInvalido = err.error_subcode === 2804087 || /ctwa/i.test(String(err.error_user_title || err.message || ""));
+  // 2804087 = ctwa_clid inválido/expirado; 2804132 = o conjunto de dados não
+  // tem conta do WhatsApp vinculada (o evento de mensagem não cabe ali). Nos
+  // dois casos o evento ainda vale como evento de CRM casado por telefone.
+  const ctwaInvalido = err.error_subcode === 2804087 || err.error_subcode === 2804132
+    || /ctwa/i.test(String(err.error_user_title || err.message || ""));
   return { mensagem: mensagem.slice(0, 500), transiente, ctwaInvalido };
 }
 
