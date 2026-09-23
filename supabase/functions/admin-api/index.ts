@@ -1406,6 +1406,9 @@ async function templatesCreate(tenantId: string, body: any) {
  * os próximos dias úteis (ver send-whatsapp-message). Horário exato continua
  * com a recepção — a agenda real ainda não está no CRClin.
  */
+/** Tela onde o botão do template abre o formulário. */
+const TELA_INICIAL = "CONFIRMACAO";
+
 function flowJsonConfirmacao(): string {
   const exemploDias = [
     { id: "2026-09-24|manha", title: "Quarta, 24/09 de manhã" },
@@ -1620,7 +1623,19 @@ async function flowsConfirmacao(tenantId: string, body: any) {
   );
   const componentes: any[] = [
     { type: "BODY", text: corpo, example: { body_text: [["Maria", "Quinta, 25/09 às 09:00"]] } },
-    { type: "BUTTONS", buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }] },
+    {
+      type: "BUTTONS",
+      buttons: [
+        {
+          type: "FLOW",
+          text: String(body?.button_text || "Confirmar presença"),
+          flow_id: String(flow.id),
+          // Com mais de uma tela a Meta exige dizer onde o botão abre.
+          flow_action: "navigate",
+          navigate_screen: TELA_INICIAL,
+        },
+      ],
+    },
   ];
   const metaPayload = { name: nomeTemplate, language: "pt_BR", category: "UTILITY", components: componentes };
 
@@ -1637,7 +1652,15 @@ async function flowsConfirmacao(tenantId: string, body: any) {
     const edicao = await templatesEditar(tenantId, {
       name: nomeTemplate,
       body_text: corpo,
-      buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }],
+      buttons: [
+        {
+          type: "FLOW",
+          text: String(body?.button_text || "Confirmar presença"),
+          flow_id: String(flow.id),
+          flow_action: "navigate",
+          navigate_screen: TELA_INICIAL,
+        },
+      ],
       phone_number_id: body?.phone_number_id ?? null,
       integration_key: body?.integration_key ?? null,
     });
@@ -1666,7 +1689,15 @@ async function flowsConfirmacao(tenantId: string, body: any) {
     tenant_id: tenantId,
     name: nomeTemplate, language: "pt_BR", category: "UTILITY",
     body_text: corpo,
-    buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }],
+    buttons: [
+      {
+        type: "FLOW",
+        text: String(body?.button_text || "Confirmar presença"),
+        flow_id: String(flow.id),
+        flow_action: "navigate",
+        navigate_screen: TELA_INICIAL,
+      },
+    ],
     meta_template_id: (tpl as any).id, status: (tpl as any).status || "PENDING",
     waba_id: creds.wabaId, whatsapp_number_id: creds.numberId,
     owner_role: creds.numberId ? await papelDonoDoNumero(admin, creds.numberId) : null,
