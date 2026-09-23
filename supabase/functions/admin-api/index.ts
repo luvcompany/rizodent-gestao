@@ -1396,6 +1396,61 @@ async function templatesCreate(tenantId: string, body: any) {
   });
 }
 
+async function mmLiteStatus(tenantId: string, p: URLSearchParams) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: p.get("phone_number_id"),
+    integrationKey: p.get("integration_key"),
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+
+  // Situação do onboarding do MM Lite na WABA (ELIGIBLE / TERM_OF_SERVICE_SIGNED
+  // / ONBOARDED / REQUEST_SENT / NOT_STARTED). Só leitura.
+  const res = await fetch(
+    `https://graph.facebook.com/v25.0/${creds.wabaId}?fields=marketing_messages_onboarding_status&access_token=${encodeURIComponent(creds.token)}`,
+  );
+  const dados = await res.json().catch(() => ({}));
+
+  // Flag local: é ela que manda o envio usar /marketing_messages.
+  const { data: intg } = await admin
+    .from("integrations")
+    .select("key, config")
+    .eq("tenant_id", tenantId)
+    .eq("key", creds.integrationKey)
+    .maybeSingle();
+
+  return json({
+    waba_id: creds.wabaId,
+    integration_key: creds.integrationKey,
+    onboarding_meta: (dados as any)?.marketing_messages_onboarding_status ?? null,
+    erro_meta: (dados as any)?.error?.message ?? null,
+    mm_lite_ligado_no_crclin: ((intg as any)?.config ?? {}).mm_lite === true,
+  });
+}
+
+async function mmLiteLigar(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: body?.phone_number_id ?? null,
+    integrationKey: body?.integration_key ?? null,
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+  const ativo = body?.ativo === true;
+
+  const { data: intg } = await admin
+    .from("integrations")
+    .select("id, config")
+    .eq("tenant_id", tenantId)
+    .eq("key", creds.integrationKey)
+    .maybeSingle();
+  if (!intg) return json({ error: `Integração ${creds.integrationKey} não encontrada.` }, 404);
+
+  const novaConfig = { ...(((intg as any).config ?? {}) as Record<string, unknown>), mm_lite: ativo };
+  const { error } = await admin.from("integrations").update({ config: novaConfig }).eq("id", (intg as any).id);
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, integration_key: creds.integrationKey, mm_lite: ativo });
+}
+
 async function templatesDelete(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
     phoneNumberId: p.get("phone_number_id"),
@@ -1674,6 +1729,8 @@ Deno.serve(async (req) => {
           "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
           "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
+          "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
+          "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
 
         ],
       });
@@ -1712,6 +1769,11 @@ Deno.serve(async (req) => {
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
       if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
     }
+    if (parts[0] === "mmlite") {
+      if (req.method === "GET") return await mmLiteStatus(tenantId, p);
+      if (req.method === "POST") return await mmLiteLigar(tenantId, body);
+    }
+
     if (parts[0] === "templates") {
       if (parts[1] === "upload-media" && req.method === "POST") return await templatesUploadMedia(tenantId, body);
       if (!parts[1] && req.method === "POST") return await templatesCreate(tenantId, body);

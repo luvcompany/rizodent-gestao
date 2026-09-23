@@ -7,6 +7,7 @@ const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoLead, escopoDoNumero } from "../_shared/wabaEscopo.ts";
 import { formatarDataDoModelo, registroDoModeloEnviado, textoAntesDoMarcador } from "../_shared/modeloEnviado.ts";
+import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,9 +46,11 @@ const extensionFromMime = (mimeType: string) => {
 };
 
 // footer_text e buttons entram no registro do que foi enviado (messages.template_snapshot).
-const TEMPLATE_SELECT = "id, name, body_text, header_type, header_content, footer_text, buttons, status, updated_at, created_at";
+const TEMPLATE_SELECT = "id, name, category, body_text, header_type, header_content, footer_text, buttons, status, updated_at, created_at";
 
 const cleanTemplateName = (name: string) => name.replace(/_[a-z0-9]{4,10}$/i, "");
+
+const resolvedTemplateNameParaLog = (nome: string | null) => nome || "(sem nome)";
 
 const getTemplatePlaceholderIndexes = (content: string | null | undefined): number[] => {
   if (!content) return [];
@@ -331,6 +334,10 @@ Deno.serve(async (req) => {
     // JUNTOS da mesma config de integração (senão sai pelo número errado).
     let whatsappToken = "";
     let phoneNumberId = "";
+    // MM Lite (Marketing Messages API): canal separado só para templates de
+    // MARKETING. Liga por cliente/número, na própria config da integração
+    // (config.mm_lite = true), e exige os termos assinados no WhatsApp Manager.
+    let mmLiteLigado = false;
 
     const { data: leadData } = await supabase
       .from("crm_leads")
@@ -413,6 +420,7 @@ Deno.serve(async (req) => {
 
       phoneNumberId = cfgNumero.phone_number_id || waNum.phone_number_id;
       whatsappToken = tokenNumero;
+      mmLiteLigado = cfgNumero.mm_lite === true;
       resolvedCredentials = true;
       console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
     } else {
@@ -447,6 +455,7 @@ Deno.serve(async (req) => {
             if (resolvedToken && cfg.phone_number_id) {
               whatsappToken = resolvedToken;
               phoneNumberId = cfg.phone_number_id;
+              mmLiteLigado = cfg.mm_lite === true;
               resolvedCredentials = true;
             }
           }
@@ -471,6 +480,7 @@ Deno.serve(async (req) => {
         if (legacyToken && cfg.phone_number_id) {
           whatsappToken = legacyToken;
           phoneNumberId = cfg.phone_number_id;
+          mmLiteLigado = cfg.mm_lite === true;
           resolvedCredentials = true;
         }
       }
@@ -617,6 +627,8 @@ Deno.serve(async (req) => {
 
     let finalType = type;
     let sentTemplateName = template_name || null;
+    /** Envio por /marketing_messages (MM Lite) em vez de /messages. */
+    let rotaMarketingLite = false;
     // O que o paciente recebeu, exatamente — gravado com a mensagem (ver _shared/modeloEnviado.ts).
     let templateSnapshot: Record<string, unknown> | null = null;
     let waBody: any = { messaging_product: "whatsapp", to };
@@ -709,6 +721,9 @@ Deno.serve(async (req) => {
 
         if (tplRow) {
           resolvedTemplateName = tplRow.name;
+          // Só template de MARKETING vai pelo canal MM Lite; utilidade
+          // (agendamento, lembrete, endereço) continua pelo caminho de sempre.
+          rotaMarketingLite = mmLiteLigado && String((tplRow as any).category || "").toUpperCase() === "MARKETING";
           const headerType = (tplRow.header_type || "").toUpperCase();
           const bodyText = tplRow.body_text || "";
           const placeholderIndexes = getTemplatePlaceholderIndexes(bodyText);
@@ -969,8 +984,19 @@ Deno.serve(async (req) => {
 
     console.log(`[send-whatsapp] Sending to META phoneId=${phoneNumberId} tokenLen=${whatsappToken.length} type=${type} payload=${JSON.stringify(waBody)}`);
 
+    if (rotaMarketingLite) {
+      // Campos que só existem no canal de marketing. CLOUD_API_FALLBACK: se o
+      // onboarding do MM Lite não estiver completo, a Meta entrega pelo canal
+      // normal em vez de recusar — nenhuma campanha some por causa disto.
+      waBody.recipient_type = "individual";
+      waBody.product_policy = "CLOUD_API_FALLBACK";
+      waBody.message_activity_sharing = true;
+    }
+
     const waResponse = await fetch(
-      `https://graph.facebook.com/v25.0/${phoneNumberId}/messages`,
+      rotaMarketingLite
+        ? `${BASE_GRAPH_META}/${phoneNumberId}/marketing_messages`
+        : `${BASE_GRAPH_META}/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
@@ -982,6 +1008,14 @@ Deno.serve(async (req) => {
     );
 
     const waData = await waResponse.json();
+
+    if (rotaMarketingLite) {
+      // accepted | held_for_quality_assessment | paused — só o MM Lite devolve.
+      const situacao = waData?.messages?.[0]?.message_status;
+      if (situacao && situacao !== "accepted") {
+        console.warn(`[send-whatsapp][mm-lite] ${resolvedTemplateNameParaLog(sentTemplateName)} devolveu ${situacao}`);
+      }
+    }
 
     if (!waResponse.ok) {
       const metaError = waData?.error?.message || waData?.error?.error_user_msg || JSON.stringify(waData?.error || waData);
