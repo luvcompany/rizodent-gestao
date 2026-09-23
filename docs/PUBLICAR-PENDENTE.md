@@ -14,6 +14,15 @@ respondendo 200 de minuto em minuto. Linha de configuração da Rizodent
 pré-preenchida (dataset 1616335282799813, WABA 893372606594069, código de
 teste TEST85932), **desligada e sem token**. **Falta o passo 4** (o dono).
 
+Atualização 23/09 02:20 UTC: migration `20260923110000` (event_source_url) e
+worker `d31d18bf` publicados. O conjunto do CRM passou a ser o ligado à conta do
+WhatsApp dos anúncios, **Rizodent Oficial Event Data (2329203107905222)**, criado
+via `POST /{WABA}/dataset` porque a Meta recusa evento de mensagem em conjunto
+sem WABA (2804132). O pixel do site (v2) está em categoria restrita (saúde,
+análise rejeitada) e bloqueia evento de servidor — não serve para o CRM. Falta
+o dono gerar o token NESSE conjunto e colar na aba (o token do Pixel 1616 não
+tem acesso ao novo).
+
 ### Roteiro original (mantido para referência)
 
 
