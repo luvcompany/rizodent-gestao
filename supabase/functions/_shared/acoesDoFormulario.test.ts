@@ -99,3 +99,17 @@ Deno.test("escolha desconhecida ou banco quebrado não lança", async () => {
     "erro",
   );
 });
+
+Deno.test("remarcar duas vezes: diz que já estava em espera, não 'sem etapa'", async () => {
+  const db = bancoFalso({
+    consulta: null,
+    etapas: [{ id: "s9", name: "Reagendar" }],
+    lead: { pipeline_id: "p1", tenant_id: "t1", stage_id: "s9", assigned_to: "u1", name: "Ana" },
+  });
+  const feito = await aplicarRespostaDoFormulario(db as any, {
+    leadId: "l1",
+    resposta: { presenca: "remarcar", motivo: null, quando: "2026-09-25|tarde", flowToken: null },
+  });
+  assertEquals(feito, "já estava em Reagendar");
+  assertEquals(db.chamadas.some((c) => c.tabela === "crm_leads" && c.op === "update"), false);
+});

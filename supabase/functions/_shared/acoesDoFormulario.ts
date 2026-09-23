@@ -94,13 +94,16 @@ async function consultaDaResposta(
 }
 
 /** Etapa de espera "Reagendar" do funil do lead (ou do Funil Principal). */
-async function etapaReagendar(supabase: any, leadId: string): Promise<string | null> {
+async function etapaReagendar(
+  supabase: any,
+  leadId: string,
+): Promise<{ id: string | null; jaEsta: boolean }> {
   const { data: lead } = await supabase
     .from("crm_leads")
     .select("pipeline_id, tenant_id, stage_id")
     .eq("id", leadId)
     .maybeSingle();
-  if (!lead) return null;
+  if (!lead) return { id: null, jaEsta: false };
 
   const procurar = async (pipelineId: string | null) => {
     if (!pipelineId) return null;
@@ -120,8 +123,9 @@ async function etapaReagendar(supabase: any, leadId: string): Promise<string | n
     const principal = ((funis || []) as any[]).find((f) => /funil principal/i.test(f.name));
     destino = await procurar(principal?.id ?? null);
   }
-  if (!destino || destino === (lead as any).stage_id) return null;
-  return destino;
+  if (!destino) return { id: null, jaEsta: false };
+  // Já está lá (pediu para remarcar duas vezes): não é "funil sem etapa".
+  return { id: destino, jaEsta: destino === (lead as any).stage_id };
 }
 
 async function nota(supabase: any, leadId: string, texto: string) {
@@ -179,7 +183,15 @@ export async function aplicarRespostaDoFormulario(
     if (escolha === "remarcar") {
       const preferencia = rotuloDoQuando(resposta.quando);
       const detalhes = [preferencia ? `prefere ${preferencia}` : null, resposta.motivo].filter(Boolean).join(" · ");
-      const destino = await etapaReagendar(supabase, leadId);
+      const { id: destino, jaEsta } = await etapaReagendar(supabase, leadId);
+      if (jaEsta) {
+        await nota(
+          supabase,
+          leadId,
+          `🔁 Pediu para remarcar pelo formulário${detalhes ? ` — ${detalhes}` : ""} · já estava em espera na etapa Reagendar`,
+        );
+        return "já estava em Reagendar";
+      }
       if (destino) {
         const { data } = await supabase
           .from("crm_leads")

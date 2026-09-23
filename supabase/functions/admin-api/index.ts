@@ -1475,7 +1475,10 @@ function flowJsonConfirmacao(): string {
                 },
                 {
                   type: "If",
-                  condition: "${form.presenca == 'remarcar'}",
+                  // Operador FORA do ${}: "${form.x} == 'y'". Com ele dentro
+                  // ("${form.x == 'y'}") a Meta publica sem reclamar e a
+                  // condição nunca é verdadeira — foi o que escondeu a 2ª tela.
+                  condition: "${form.presenca} == 'remarcar'",
                   then: [
                     {
                       type: "Footer",
