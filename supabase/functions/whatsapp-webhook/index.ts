@@ -972,6 +972,34 @@ Deno.serve(async (req) => {
                 } else if (msg.interactive?.type === "list_reply") {
                   content = msg.interactive.list_reply?.title || msg.interactive.list_reply?.description || "";
                   replyOptionId = msg.interactive.list_reply?.id || null;
+                } else if (msg.interactive?.type === "nfm_reply") {
+                  // Resposta de FORMULÁRIO (WhatsApp Flow). response_json é uma
+                  // STRING com JSON dentro; o flow_token é o que amarra a
+                  // resposta ao lead e à consulta (montado no envio).
+                  let respostaFlow: any = {};
+                  try {
+                    respostaFlow = JSON.parse(msg.interactive?.nfm_reply?.response_json || "{}");
+                  } catch (erroFlow) {
+                    console.warn(`[WEBHOOK] nfm_reply ilegível: ${erroFlow instanceof Error ? erroFlow.message : String(erroFlow)}`);
+                  }
+                  const rotulos: Record<string, string> = {
+                    confirmo: "Confirmo, vou estar lá",
+                    remarcar: "Preciso remarcar",
+                    desistir: "Não vou mais fazer",
+                  };
+                  const presencaBruta = String(respostaFlow?.presenca ?? "").trim();
+                  const motivoFlow = String(respostaFlow?.motivo ?? "").trim();
+                  const linhas = ["📋 Resposta do formulário"];
+                  if (presencaBruta) linhas.push(`Presença: ${rotulos[presencaBruta] || presencaBruta}`);
+                  if (motivoFlow) linhas.push(`Motivo: ${motivoFlow}`);
+                  // Campos extras de formulários futuros (anamnese) entram como estão.
+                  for (const [chave, valor] of Object.entries(respostaFlow || {})) {
+                    if (["presenca", "motivo", "flow_token"].includes(chave)) continue;
+                    if (valor === null || valor === undefined || valor === "") continue;
+                    linhas.push(`${chave}: ${typeof valor === "string" ? valor : JSON.stringify(valor)}`);
+                  }
+                  content = linhas.join("\n");
+                  replyOptionId = String(respostaFlow?.flow_token ?? "") || null;
                 } else {
                   content = msg.interactive?.body?.text || JSON.stringify(msg.interactive || {});
                 }

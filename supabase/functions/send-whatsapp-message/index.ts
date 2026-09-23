@@ -697,14 +697,14 @@ Deno.serve(async (req) => {
           // Sem consulta futura, vale a mais recente.
           supabase
             .from("crm_appointments")
-            .select("scheduled_date, scheduled_time")
+            .select("id, scheduled_date, scheduled_time")
             .eq("lead_id", lead_id)
             .in("status", ["confirmed", "pending"])
             .order("scheduled_date", { ascending: true })
             .order("scheduled_time", { ascending: true })
             .limit(20)
             .then(({ data }) => {
-              const lista = (data || []) as { scheduled_date: string; scheduled_time: string | null }[];
+              const lista = (data || []) as { id: string; scheduled_date: string; scheduled_time: string | null }[];
               const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia" }).format(new Date());
               return lista.find((a) => a.scheduled_date >= hoje) || lista[lista.length - 1] || null;
             }),
@@ -773,6 +773,30 @@ Deno.serve(async (req) => {
             const headerComponent = stableHeaderLink ? buildMediaHeaderComponent(headerType, stableHeaderLink) : null;
             if (headerComponent) {
               resolvedComponents.unshift(headerComponent);
+            }
+          }
+
+          // Template com botão de formulário (Flow): o flow_token é a única
+          // amarração de volta — sem ele a resposta chega solta, sem saber de
+          // quem é nem de qual consulta.
+          const botoesDoModelo = Array.isArray((tplRow as any).buttons) ? (tplRow as any).buttons : [];
+          const indiceFlow = botoesDoModelo.findIndex((b: any) => String(b?.type || "").toUpperCase() === "FLOW");
+          if (indiceFlow >= 0) {
+            const jaTem = resolvedComponents.some(
+              (c: any) => String(c?.type || "").toLowerCase() === "button" && String(c?.sub_type || "").toLowerCase() === "flow",
+            );
+            if (!jaTem) {
+              resolvedComponents.push({
+                type: "button",
+                sub_type: "flow",
+                index: String(indiceFlow),
+                parameters: [
+                  {
+                    type: "action",
+                    action: { flow_token: `${lead_id}|${(nextAppt as any)?.id ?? ""}`, flow_action_data: {} },
+                  },
+                ],
+              });
             }
           }
 

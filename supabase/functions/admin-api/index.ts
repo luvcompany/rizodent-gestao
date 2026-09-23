@@ -1396,6 +1396,160 @@ async function templatesCreate(tenantId: string, body: any) {
   });
 }
 
+
+/** Flow JSON da confirmação de consulta — uma tela, sem servidor por trás. */
+function flowJsonConfirmacao(): string {
+  return JSON.stringify({
+    version: "7.1",
+    screens: [
+      {
+        id: "CONFIRMACAO",
+        title: "Sua consulta",
+        terminal: true,
+        success: true,
+        data: {},
+        layout: {
+          type: "SingleColumnLayout",
+          children: [
+            { type: "TextHeading", text: "Você vem no horário marcado?" },
+            {
+              type: "Form",
+              name: "form_confirmacao",
+              children: [
+                {
+                  type: "RadioButtonsGroup",
+                  name: "presenca",
+                  label: "Sua resposta",
+                  required: true,
+                  "data-source": [
+                    { id: "confirmo", title: "Confirmo, vou estar lá" },
+                    { id: "remarcar", title: "Preciso remarcar" },
+                    { id: "desistir", title: "Não vou mais fazer" },
+                  ],
+                },
+                {
+                  type: "TextArea",
+                  name: "motivo",
+                  label: "Quer contar o motivo?",
+                  required: false,
+                  "helper-text": "Opcional",
+                },
+                {
+                  type: "Footer",
+                  label: "Enviar",
+                  "on-click-action": {
+                    name: "complete",
+                    payload: { presenca: "${form.presenca}", motivo: "${form.motivo}" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Cria (ou reaproveita) o Flow de confirmação de consulta e o template que o
+ * abre. Tudo reversível: o Flow pode ser depreciado e o template apagado.
+ */
+async function flowsConfirmacao(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: body?.phone_number_id ?? null,
+    integrationKey: body?.integration_key ?? null,
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+
+  const nomeFlow = String(body?.flow_name || "confirmacao_consulta");
+  const nomeTemplate = String(body?.template_name || "confirmacao_consulta");
+  const base = `https://graph.facebook.com/v25.0`;
+  const etapas: Record<string, unknown> = {};
+
+  // 1) Flow existente com esse nome?
+  const listaRes = await fetch(
+    `${base}/${creds.wabaId}/flows?fields=id,name,status&access_token=${encodeURIComponent(creds.token)}`,
+  );
+  const lista = await listaRes.json().catch(() => ({}));
+  if (!listaRes.ok) return json({ error: "Erro ao listar flows", details: lista }, listaRes.status);
+  let flow = ((lista as any)?.data || []).find((f: any) => f?.name === nomeFlow) ?? null;
+  etapas.flow_existente = flow ? `${flow.id} (${flow.status})` : "não";
+
+  // 2) Criar quando não existe
+  if (!flow) {
+    const criaRes = await fetch(`${base}/${creds.wabaId}/flows`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: nomeFlow,
+        categories: ["APPOINTMENT_BOOKING"],
+        flow_json: flowJsonConfirmacao(),
+        publish: false,
+      }),
+    });
+    const cria = await criaRes.json().catch(() => ({}));
+    if (!criaRes.ok) return json({ error: "Erro ao criar o flow", details: cria, etapas }, criaRes.status);
+    flow = { id: (cria as any).id, name: nomeFlow, status: "DRAFT" };
+    etapas.flow_criado = flow.id;
+    if (Array.isArray((cria as any)?.validation_errors) && (cria as any).validation_errors.length > 0) {
+      return json({ error: "Flow criado com erro de validação", details: (cria as any).validation_errors, etapas }, 400);
+    }
+  }
+
+  // 3) Publicar (só DRAFT publica; PUBLISHED já está pronto)
+  if (String(flow.status || "").toUpperCase() !== "PUBLISHED") {
+    const pubRes = await fetch(`${base}/${flow.id}/publish`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}` },
+    });
+    const pub = await pubRes.json().catch(() => ({}));
+    if (!pubRes.ok) return json({ error: "Erro ao publicar o flow", details: pub, etapas }, pubRes.status);
+    etapas.flow_publicado = true;
+  }
+
+  // 4) Template que abre o Flow
+  const corpo = String(
+    body?.body_text ||
+      "Oi, {{1}}! Sua consulta na Rizodent está marcada:\n\n🗓️ {{2}}\n🦷 Check-up odontológico\n\nToque no botão para confirmar ou remarcar.",
+  );
+  const componentes: any[] = [
+    { type: "BODY", text: corpo, example: { body_text: [["Maria", "Quinta, 25/09 às 09:00"]] } },
+    { type: "BUTTONS", buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }] },
+  ];
+  const metaPayload = { name: nomeTemplate, language: "pt_BR", category: "UTILITY", components: componentes };
+
+  await admin.from("whatsapp_template_logs").insert({
+    tenant_id: tenantId, action: "create_request", template_name: nomeTemplate,
+    waba_id: creds.wabaId, request_payload: metaPayload,
+  });
+  const tplRes = await fetch(`${base}/${creds.wabaId}/message_templates`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(metaPayload),
+  });
+  const tpl = await tplRes.json().catch(() => ({}));
+  await admin.from("whatsapp_template_logs").insert({
+    tenant_id: tenantId, action: "create_response", template_name: nomeTemplate,
+    waba_id: creds.wabaId, response_body: tpl, http_status: tplRes.status,
+  });
+  if (!tplRes.ok) return json({ error: "Erro ao criar o template do flow", details: tpl, etapas, flow_id: flow.id }, tplRes.status);
+
+  await admin.from("crm_whatsapp_templates").insert({
+    tenant_id: tenantId,
+    name: nomeTemplate, language: "pt_BR", category: "UTILITY",
+    body_text: corpo,
+    buttons: [{ type: "FLOW", text: String(body?.button_text || "Confirmar presença"), flow_id: String(flow.id) }],
+    meta_template_id: (tpl as any).id, status: (tpl as any).status || "PENDING",
+    waba_id: creds.wabaId, whatsapp_number_id: creds.numberId,
+    owner_role: creds.numberId ? await papelDonoDoNumero(admin, creds.numberId) : null,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  });
+
+  return json({ ok: true, flow_id: flow.id, template: nomeTemplate, status_template: (tpl as any).status || "PENDING", etapas });
+}
+
 async function mmLiteStatus(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
     phoneNumberId: p.get("phone_number_id"),
@@ -1729,6 +1883,7 @@ Deno.serve(async (req) => {
           "POST /sync-reagendar-expirado  { dryRun (default true) }  → fim de expediente da etapa Reagendar",
           "POST /templates  { name, language, category, header_type:'VIDEO'|'IMAGE'|'TEXT', header_content, body_text, footer_text?, buttons? }",
           "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
+          "POST /flows/confirmacao  (cria e publica o Flow de confirmação + o template que o abre)",
           "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
           "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
 
@@ -1769,6 +1924,10 @@ Deno.serve(async (req) => {
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
       if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
     }
+    if (parts[0] === "flows") {
+      if (parts[1] === "confirmacao" && req.method === "POST") return await flowsConfirmacao(tenantId, body);
+    }
+
     if (parts[0] === "mmlite") {
       if (req.method === "GET") return await mmLiteStatus(tenantId, p);
       if (req.method === "POST") return await mmLiteLigar(tenantId, body);
