@@ -1586,8 +1586,10 @@ async function flowsConfirmacao(tenantId: string, body: any) {
       etapas.rascunho_apagado = flow.id;
       return json({ error: "Flow criado com erro de validação", details: (cria as any).validation_errors, etapas }, 400);
     }
-  } else if (String(flow.status || "").toUpperCase() === "DRAFT") {
-    // Rascunho que já existe: sobe o JSON atual antes de publicar.
+  } else {
+    // Já existe: sobe o JSON atual. Vale para rascunho e para flow publicado —
+    // atualizar um publicado é o que evita ter de reapontar o botão do template
+    // (a Meta só deixa editar um modelo aprovado uma vez a cada 24 horas).
     const arquivo = new FormData();
     arquivo.append("name", "flow.json");
     arquivo.append("asset_type", "FLOW_JSON");
@@ -1643,12 +1645,29 @@ async function flowsConfirmacao(tenantId: string, body: any) {
   // novo daria nome duplicado, e apagar travaria o nome por 4 semanas).
   const { data: jaExiste } = await admin
     .from("crm_whatsapp_templates")
-    .select("id, name")
+    .select("id, name, status, buttons")
     .eq("tenant_id", tenantId)
     .eq("waba_id", creds.wabaId)
     .eq("name", nomeTemplate)
     .maybeSingle();
   if (jaExiste) {
+    // Já aponta para este flow, nesta tela? Então não há o que editar — e a
+    // Meta nem deixaria (uma edição a cada 24 h em modelo aprovado).
+    const botaoAtual = (Array.isArray((jaExiste as any).buttons) ? (jaExiste as any).buttons : [])
+      .find((b: any) => String(b?.type || "").toUpperCase() === "FLOW");
+    if (
+      botaoAtual &&
+      String(botaoAtual.flow_id) === String(flow.id) &&
+      String(botaoAtual.navigate_screen || "") === TELA_INICIAL
+    ) {
+      return json({
+        ok: true,
+        flow_id: flow.id,
+        template: nomeTemplate,
+        status_template: (jaExiste as any).status ?? null,
+        etapas: { ...etapas, template_ja_aponta: true },
+      });
+    }
     const edicao = await templatesEditar(tenantId, {
       name: nomeTemplate,
       body_text: corpo,
