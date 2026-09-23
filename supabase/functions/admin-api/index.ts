@@ -1651,8 +1651,10 @@ async function flowsConfirmacao(tenantId: string, body: any) {
     etapas.flow_atualizado = true;
   }
 
-  // 3) Publicar (só DRAFT publica; PUBLISHED já está pronto)
-  if (String(flow.status || "").toUpperCase() !== "PUBLISHED") {
+  // 3) Publicar. Atenção: subir JSON novo num flow PUBLICADO devolve ele para
+  // DRAFT (a versão no ar continua sendo a antiga até publicar de novo). Por
+  // isso o que manda aqui é "atualizei o JSON?", e não o status lido lá em cima.
+  if (etapas.flow_atualizado || String(flow.status || "").toUpperCase() !== "PUBLISHED") {
     const pubRes = await fetch(`${base}/${flow.id}/publish`, {
       method: "POST",
       headers: { Authorization: `Bearer ${creds.token}` },
