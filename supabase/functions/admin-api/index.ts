@@ -1422,6 +1422,11 @@ function flowJsonConfirmacao(): string {
       {
         id: "CONFIRMACAO",
         title: "Sua consulta",
+        // Terminal porque quem confirma ou desiste encerra AQUI (a Meta só
+        // aceita a ação 'complete' em tela terminal). Quem vai remarcar segue
+        // para ESCOLHA.
+        terminal: true,
+        success: true,
         data: { dias: tipoDias },
         layout: {
           type: "SingleColumnLayout",
@@ -1572,8 +1577,29 @@ async function flowsConfirmacao(tenantId: string, body: any) {
     flow = { id: (cria as any).id, name: nomeFlow, status: "DRAFT" };
     etapas.flow_criado = flow.id;
     if (Array.isArray((cria as any)?.validation_errors) && (cria as any).validation_errors.length > 0) {
+      // Rascunho inválido não pode ficar para trás: ele travaria o nome na
+      // próxima tentativa. DELETE só funciona em DRAFT — que é o caso aqui.
+      await fetch(`${base}/${flow.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${creds.token}` } });
+      etapas.rascunho_apagado = flow.id;
       return json({ error: "Flow criado com erro de validação", details: (cria as any).validation_errors, etapas }, 400);
     }
+  } else if (String(flow.status || "").toUpperCase() === "DRAFT") {
+    // Rascunho que já existe: sobe o JSON atual antes de publicar.
+    const arquivo = new FormData();
+    arquivo.append("name", "flow.json");
+    arquivo.append("asset_type", "FLOW_JSON");
+    arquivo.append("file", new Blob([flowJsonConfirmacao()], { type: "application/json" }), "flow.json");
+    const upRes = await fetch(`${base}/${flow.id}/assets`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}` },
+      body: arquivo,
+    });
+    const up = await upRes.json().catch(() => ({}));
+    if (!upRes.ok) return json({ error: "Erro ao atualizar o flow", details: up, etapas }, upRes.status);
+    if (Array.isArray((up as any)?.validation_errors) && (up as any).validation_errors.length > 0) {
+      return json({ error: "Flow atualizado com erro de validação", details: (up as any).validation_errors, etapas }, 400);
+    }
+    etapas.flow_atualizado = true;
   }
 
   // 3) Publicar (só DRAFT publica; PUBLISHED já está pronto)
