@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { MessageCircle, Loader2 } from "lucide-react";
+import { META_GRAPH_VERSION } from "@/lib/metaVersao";
 
 type WaConfig = { app_id: string; config_id: string; redirect_uri: string; api_version: string };
 
@@ -71,7 +72,7 @@ export default function WhatsAppEmbeddedSignupButton({
       }
       const state = (stateRow as any).state as string;
 
-      const oauthUrl = new URL(`https://www.facebook.com/${cfg.api_version || "v21.0"}/dialog/oauth`);
+      const oauthUrl = new URL(`https://www.facebook.com/${cfg.api_version || META_GRAPH_VERSION}/dialog/oauth`);
       oauthUrl.searchParams.set("client_id", cfg.app_id);
       oauthUrl.searchParams.set("config_id", cfg.config_id);
       oauthUrl.searchParams.set("redirect_uri", cfg.redirect_uri);

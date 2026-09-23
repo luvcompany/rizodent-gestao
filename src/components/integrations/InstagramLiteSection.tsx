@@ -27,6 +27,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { BASE_GRAPH_INSTAGRAM, META_GRAPH_VERSION } from "@/lib/metaVersao";
 
 /**
  * Valida um token IG/FB chamando a Graph API. Retorna { ok, username?, error? }.
@@ -40,8 +41,8 @@ async function validateIgToken(igUserId: string, accessToken: string): Promise<{
 }> {
   const isIgLite = accessToken.startsWith("IGAA");
   const base = isIgLite
-    ? "https://graph.instagram.com/v21.0"
-    : "https://graph.facebook.com/v25.0";
+    ? BASE_GRAPH_INSTAGRAM
+    : `https://graph.facebook.com/${META_GRAPH_VERSION}`;
   try {
     const url = `${base}/${igUserId}?fields=username,name&access_token=${encodeURIComponent(
       accessToken

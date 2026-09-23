@@ -4,6 +4,7 @@
 // Auth: requires service role bearer or any authenticated user (admin-like).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { BASE_GRAPH_INSTAGRAM, BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 
 const corsHeaders = {
@@ -18,7 +19,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function fetchPostInfo(postId: string, accessToken: string) {
   const isIgLite = accessToken.startsWith("IGAA");
-  const base = isIgLite ? "https://graph.instagram.com/v21.0" : "https://graph.facebook.com/v25.0";
+  const base = isIgLite ? BASE_GRAPH_INSTAGRAM : BASE_GRAPH_META;
   const url = `${base}/${postId}?fields=media_type,media_url,thumbnail_url,permalink&access_token=${encodeURIComponent(accessToken)}`;
   try {
     const r = await fetch(url);

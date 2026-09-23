@@ -5,6 +5,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { resolveWhatsAppCreds } from "../_shared/tenantCredentials.ts";
+import { META_GRAPH_VERSION } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +19,7 @@ const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const REDIRECT_URI = Deno.env.get("WHATSAPP_REDIRECT_URI") ?? "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") ?? "https://crclin.com.br";
-const API_VERSION = "v21.0";
+const API_VERSION = META_GRAPH_VERSION;
 // Coexistência entrou depois da v21 — as chamadas específicas dela (status do
 // número, sync) exigem versão mais nova. Mantida à parte para não mexer no
 // fluxo clássico, que roda em produção nesta versão.

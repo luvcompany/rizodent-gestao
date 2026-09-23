@@ -3,6 +3,7 @@
 // env WHATSAPP_TOKEN as last resort). Tolerant to per-ad failures.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 
 const corsHeaders = {
@@ -102,7 +103,7 @@ Deno.serve(async (req) => {
       for (const token of tokens) {
         try {
           const res = await fetch(
-            `https://graph.facebook.com/v21.0/${adId}?fields=name&access_token=${token}`,
+            `${BASE_GRAPH_META}/${adId}?fields=name&access_token=${token}`,
           );
           if (!res.ok) {
             await res.text().catch(() => {});

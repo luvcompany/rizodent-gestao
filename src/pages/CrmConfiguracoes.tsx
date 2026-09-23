@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
+import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -259,6 +260,7 @@ function NotificationsTab() {
    Leads Bloqueados
    ═══════════════════════════════════════════════════ */
 function BlockedTab() {
+  const { userRole } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -290,6 +292,9 @@ function BlockedTab() {
       return;
     }
     toast.success("Lead desbloqueado");
+    // Se o número foi bloqueado na Meta, desbloqueia lá também — senão o
+    // paciente continuaria sem conseguir escrever para a clínica.
+    if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(id, "desbloquear");
     setLeads(prev => prev.filter(l => l.id !== id));
   };
 

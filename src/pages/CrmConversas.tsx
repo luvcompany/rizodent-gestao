@@ -16,6 +16,7 @@ import { useHidratarLeadsAvisados } from "@/hooks/useHidratarLeadsAvisados";
 const semAcento = (t: string) =>
   (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 import { useAuth } from "@/contexts/AuthContext";
+import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 import { ehPapelSdr, rotuloDesfecho, type PapelUsuario } from "@/lib/desfechoLabel";
 import { leadSourceMatchesFilter } from "@/lib/reportKit";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
@@ -1591,6 +1592,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                 setLeads(prev => prev.filter(l => l.id !== lead.id));
                                 if (selectedLeadId === lead.id) setSelectedLead(null as any);
                                 toast.success("Lead bloqueado");
+                                if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(lead.id, "bloquear");
                               }}
                             >
                               <Ban size={14} className="mr-2" /> Bloquear lead

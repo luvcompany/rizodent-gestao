@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { resolveCaller, denyForSdr } from '../_shared/authz.ts'
+import { BASE_GRAPH_INSTAGRAM, BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -147,8 +148,8 @@ Deno.serve(async (req: Request) => {
   // IGAA-prefixed tokens are Instagram Login API (Lite) and must use graph.instagram.com
   const isIgLiteToken = typeof account.token === 'string' && account.token.startsWith('IGAA')
   const apiBase = isIgLiteToken
-    ? 'https://graph.instagram.com/v21.0'
-    : 'https://graph.facebook.com/v21.0'
+    ? BASE_GRAPH_INSTAGRAM
+    : BASE_GRAPH_META
 
   let apiUrl = ''
   let payload: Record<string, unknown> = {}

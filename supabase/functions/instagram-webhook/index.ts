@@ -7,6 +7,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
+import { BASE_GRAPH_INSTAGRAM, BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +70,7 @@ async function fetchIgProfile(igUserId: string, accessToken: string) {
   if (profileCache.has(igUserId)) return profileCache.get(igUserId)!;
   let out = { name: null as string | null, username: null as string | null, profile_pic: null as string | null };
   const isIgLite = accessToken.startsWith("IGAA");
-  const base = isIgLite ? "https://graph.instagram.com/v21.0" : "https://graph.facebook.com/v25.0";
+  const base = isIgLite ? BASE_GRAPH_INSTAGRAM : BASE_GRAPH_META;
   const tryFetch = async (fields: string) => {
     try {
       const r = await fetch(`${base}/${igUserId}?fields=${fields}&access_token=${encodeURIComponent(accessToken)}`);
@@ -352,7 +353,7 @@ async function persistMessage(opts: {
   if (opts.messageType === "comment" && opts.postId) {
     try {
       const isIgLite = opts.account.access_token.startsWith("IGAA");
-      const base = isIgLite ? "https://graph.instagram.com/v21.0" : "https://graph.facebook.com/v25.0";
+      const base = isIgLite ? BASE_GRAPH_INSTAGRAM : BASE_GRAPH_META;
       const r = await fetch(
         `${base}/${opts.postId}?fields=media_type,media_url,thumbnail_url,permalink&access_token=${encodeURIComponent(opts.account.access_token)}`,
       );

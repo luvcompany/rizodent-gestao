@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Pencil, Trash2, X, Plus, Link2, Unlink, Video, Ban, MessageCircle, Send, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 
 type Lead = {
   id: string;
@@ -726,6 +727,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>
             <AlertDialogDescription>
               As mensagens recebidas de "{lead.name}" serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.
+              {papelBloqueiaNaMeta(userRole) && " Como você é da gestão, o número também será bloqueado na Meta: ele deixa de conseguir enviar mensagem para a clínica."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -747,6 +749,8 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                   return;
                 }
                 toast.success("Lead bloqueado");
+                // Bloqueio na Meta é só da gestão e nunca derruba o local.
+                if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(lead.id, "bloquear");
                 onLeadDeleted();
               }}
             >

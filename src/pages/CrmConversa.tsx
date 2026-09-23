@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, useCallback, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 import { useDestinosTransferenciaSdr } from "@/hooks/useDestinosTransferenciaSdr";
 import { usePresencaNaConversa } from "@/hooks/usePresencaNaConversa";
 import { toast } from "sonner";
@@ -492,6 +493,7 @@ export default function CrmConversa() {
                 <AlertDialogTitle>Bloquear este lead?</AlertDialogTitle>
                 <AlertDialogDescription>
                   As mensagens recebidas deste lead serão descartadas e ele não aparecerá mais no Kanban nem na lista de conversas. Você pode desbloqueá-lo depois em Configurações → Bloqueados.
+                  {papelBloqueiaNaMeta(userRole) && " Como você é da gestão, o número também será bloqueado na Meta."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -514,6 +516,7 @@ export default function CrmConversa() {
                       return;
                     }
                     toast.success("Lead bloqueado");
+                    if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(id, "bloquear");
                     navigate("/crm");
                   }}
                 >

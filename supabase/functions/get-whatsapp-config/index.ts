@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveWhatsAppCreds, extractSlugFromUrl } from "../_shared/tenantCredentials.ts";
+import { META_GRAPH_VERSION } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,7 +67,7 @@ Deno.serve(async (req: Request) => {
   }
 
   return new Response(
-    JSON.stringify({ app_id, config_id, redirect_uri, api_version: "v21.0" }),
+    JSON.stringify({ app_id, config_id, redirect_uri, api_version: META_GRAPH_VERSION }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });

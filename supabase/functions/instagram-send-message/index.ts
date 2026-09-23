@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { resolveCaller, assertLeadInTenant, denyForSdr } from "../_shared/authz.ts";
+import { BASE_GRAPH_INSTAGRAM, BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -294,8 +295,8 @@ Deno.serve(async (req: Request) => {
     // Other tokens (Page access tokens via Facebook Login) hit graph.facebook.com.
     const isIgLiteToken = token.startsWith("IGAA");
     const apiBase = isIgLiteToken
-      ? "https://graph.instagram.com/v21.0"
-      : "https://graph.facebook.com/v25.0";
+      ? BASE_GRAPH_INSTAGRAM
+      : BASE_GRAPH_META;
 
     if (message_type !== "comment") {
       const messagePayload: Record<string, unknown> = {};
