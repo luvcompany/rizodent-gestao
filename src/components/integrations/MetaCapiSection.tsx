@@ -23,6 +23,7 @@ type Config = {
   dataset_id: string;
   waba_id: string;
   test_event_code: string;
+  event_source_url: string;
   send_crm_events: boolean;
   send_lead_event: boolean;
   tem_token: boolean;
@@ -114,6 +115,7 @@ export default function MetaCapiSection() {
       dataset_id: cfg.dataset_id,
       waba_id: cfg.waba_id,
       test_event_code: cfg.test_event_code,
+      event_source_url: cfg.event_source_url,
       send_crm_events: cfg.send_crm_events,
       send_lead_event: cfg.send_lead_event,
     };
@@ -238,6 +240,15 @@ export default function MetaCapiSection() {
           <p className="text-xs text-muted-foreground mt-1">
             Gerenciador de Eventos → conjunto de dados → Configurações → API de Conversões → Gerar token de acesso.
             O token fica só no servidor e nunca volta para esta tela.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="capi-url">Site do cliente (event_source_url)</Label>
+          <Input id="capi-url" inputMode="url" value={cfg.event_source_url}
+            onChange={(e) => setCfg({ ...cfg, event_source_url: e.target.value })} placeholder="https://rizodent.com.br/" className="font-mono text-xs" />
+          <p className="text-xs text-muted-foreground mt-1">
+            Vai em todo evento. Conjunto de dados em categoria restrita (saúde) bloqueia evento de servidor sem URL.
           </p>
         </div>
 

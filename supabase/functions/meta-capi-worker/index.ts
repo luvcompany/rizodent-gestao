@@ -45,6 +45,7 @@ type Config = {
   access_token: string | null;
   waba_id: string | null;
   test_event_code: string | null;
+  event_source_url?: string | null;
   send_crm_events: boolean;
   send_lead_event: boolean;
   partner_agent: string | null;
@@ -202,6 +203,9 @@ async function montarEvento(ev: Evento, lead: Lead, modo: Modo, waba: string | n
     event_time: unix(ev.event_time),
     event_id: ev.event_id,
   };
+  // Conjunto de dados em categoria restrita (saúde) bloqueia evento de servidor
+  // sem event_source_url — regra da empresa, vista no Diagnóstico em 23/09.
+  if (cfg.event_source_url) evento.event_source_url = cfg.event_source_url;
   const custom: Record<string, unknown> = {};
   if (ev.event_name === "Purchase" || (ev.value != null && Number(ev.value) > 0)) {
     custom.currency = ev.currency || "BRL";
