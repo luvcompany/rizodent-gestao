@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
 import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
+import { avisarLidaEDigitando } from "../_shared/digitando.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1870,6 +1871,17 @@ Deno.serve(async (req) => {
                       await supabase.from("crm_leads").update({ stage_id: raCfg.target_stage_id }).eq("id", lead.id);
                     }
 
+                    // "Digitando…" só quando uma resposta vai sair de verdade
+                    // (a doc da Meta pede exatamente isso). Nunca derruba o fluxo.
+                    if (String(ra.action_type || "").startsWith("send")) {
+                      await avisarLidaEDigitando({
+                        phoneNumberId: incomingPhoneNumberId,
+                        token: whatsappToken,
+                        wamid: msg?.id,
+                        origem: `automacao:${ra.action_type}`,
+                      });
+                    }
+
                     // Execute the action with await to prevent runtime shutdown
                     await executeWebhookAction(supabase, supabaseUrlVal, serviceKeyVal, ra.action_type, raCfg, lead.id, currentLeadData.phone);
 
@@ -1991,6 +2003,13 @@ Deno.serve(async (req) => {
                     console.log(`[WEBHOOK] Bot execution ${botExec.id} cancelled — time_window closed (lead ${lead.id}, bot ${botExec.bot_id})`);
                   } else {
                     console.log(`[WEBHOOK] Bot execution ${botExec.id} waiting for reply, triggering continue`);
+                    // O bot vai responder: marca como lida e mostra "digitando…".
+                    await avisarLidaEDigitando({
+                      phoneNumberId: incomingPhoneNumberId,
+                      token: whatsappToken,
+                      wamid: msg?.id,
+                      origem: "bot:continue",
+                    });
                     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
                     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
                     try {
