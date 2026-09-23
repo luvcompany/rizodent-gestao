@@ -2385,6 +2385,8 @@ export type Database = {
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
+          ctwa_clid: string | null
+          ctwa_clid_at: string | null
           descricao_anuncio: string | null
           distribuido_em: string | null
           em_atendimento_em: string | null
@@ -2440,6 +2442,8 @@ export type Database = {
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
           descricao_anuncio?: string | null
           distribuido_em?: string | null
           em_atendimento_em?: string | null
@@ -2495,6 +2499,8 @@ export type Database = {
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
           descricao_anuncio?: string | null
           distribuido_em?: string | null
           em_atendimento_em?: string | null
@@ -4184,6 +4190,7 @@ export type Database = {
           channel: string
           content: string | null
           created_at: string
+          ctwa_clid: string | null
           deleted_at: string | null
           direction: string
           error_reason: string | null
@@ -4220,6 +4227,7 @@ export type Database = {
           channel?: string
           content?: string | null
           created_at?: string
+          ctwa_clid?: string | null
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
@@ -4256,6 +4264,7 @@ export type Database = {
           channel?: string
           content?: string | null
           created_at?: string
+          ctwa_clid?: string | null
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
@@ -4301,6 +4310,134 @@ export type Database = {
             columns: ["whatsapp_number_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_capi_config: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          dataset_id: string | null
+          enabled: boolean
+          partner_agent: string
+          send_crm_events: boolean
+          send_lead_event: boolean
+          tenant_id: string
+          test_event_code: string | null
+          updated_at: string
+          waba_id: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          dataset_id?: string | null
+          enabled?: boolean
+          partner_agent?: string
+          send_crm_events?: boolean
+          send_lead_event?: boolean
+          tenant_id: string
+          test_event_code?: string | null
+          updated_at?: string
+          waba_id?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          dataset_id?: string | null
+          enabled?: boolean
+          partner_agent?: string
+          send_crm_events?: boolean
+          send_lead_event?: boolean
+          tenant_id?: string
+          test_event_code?: string | null
+          updated_at?: string
+          waba_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_capi_events: {
+        Row: {
+          attempts: number
+          created_at: string
+          currency: string
+          event_id: string
+          event_name: string
+          event_time: string
+          id: string
+          last_error: string | null
+          lead_id: string
+          modo: string | null
+          next_attempt_at: string
+          origem: string | null
+          response: Json | null
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          currency?: string
+          event_id: string
+          event_name: string
+          event_time?: string
+          id?: string
+          last_error?: string | null
+          lead_id: string
+          modo?: string | null
+          next_attempt_at?: string
+          origem?: string | null
+          response?: Json | null
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          currency?: string
+          event_id?: string
+          event_name?: string
+          event_time?: string
+          id?: string
+          last_error?: string | null
+          lead_id?: string
+          modo?: string | null
+          next_attempt_at?: string
+          origem?: string | null
+          response?: Json | null
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_capi_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_capi_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -5547,6 +5684,8 @@ export type Database = {
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
+          ctwa_clid: string | null
+          ctwa_clid_at: string | null
           descricao_anuncio: string | null
           distribuido_em: string | null
           em_atendimento_em: string | null
@@ -5879,6 +6018,8 @@ export type Database = {
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
+          ctwa_clid: string | null
+          ctwa_clid_at: string | null
           descricao_anuncio: string | null
           distribuido_em: string | null
           em_atendimento_em: string | null
@@ -6028,6 +6169,55 @@ export type Database = {
           servico: string
           similarity: number
         }[]
+      }
+      meta_capi_claim: {
+        Args: { p_limite?: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          currency: string
+          event_id: string
+          event_name: string
+          event_time: string
+          id: string
+          last_error: string | null
+          lead_id: string
+          modo: string | null
+          next_attempt_at: string
+          origem: string | null
+          response: Json | null
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          value: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "meta_capi_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      meta_capi_config_ler: { Args: never; Returns: Json }
+      meta_capi_config_salvar: { Args: { p: Json }; Returns: Json }
+      meta_capi_enfileirar: {
+        Args: {
+          p_event_name: string
+          p_event_time?: string
+          p_lead_id: string
+          p_origem: string
+          p_tenant_id: string
+          p_value?: number
+        }
+        Returns: boolean
+      }
+      meta_capi_eventos_status: { Args: { p_dias?: number }; Returns: Json }
+      meta_capi_pode_gerir: { Args: never; Returns: boolean }
+      meta_capi_reenviar: { Args: { p_event_id: string }; Returns: boolean }
+      meta_capi_valor_contrato: {
+        Args: { p_paciente_id: string; p_ref: string; p_tenant_id: string }
+        Returns: number
       }
       modelo_data_formato_antigo: {
         Args: { p_data: string; p_hora: string }
