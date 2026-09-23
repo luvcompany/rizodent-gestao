@@ -5,6 +5,48 @@ diga ao Claude Code "pode aplicar o item N". Publicar no CRClin são sempre 3
 caminhos separados (migration, redeploy de cada edge function alterada, publish
 do site) e o merge no GitHub não aplica nenhum deles.
 
+## API de Conversões da Meta — 23/09/2026
+
+O que muda: o CRM passa a guardar o `ctwa_clid` (clique no anúncio de WhatsApp)
+e a devolver à Meta os eventos LeadSubmitted / QualifiedLead (agendou) /
+InitiateCheckout (compareceu) / Purchase (pagou, com valor), por cliente, via
+fila `meta_capi_events` + worker de minuto em minuto. Nasce DESLIGADO: só
+enfileira para tenant com `meta_capi_config.enabled = true`, que o dono liga na
+aba **Configurações → Conversões Meta** (conjunto de dados + token colados lá).
+
+### Passo 1 — migration
+
+```
+Aplicar a migration que já está no repositório (branch main), sem alterar nenhum arquivo: supabase/migrations/20260923100000_meta_capi_conversoes.sql. Ela acrescenta crm_leads.ctwa_clid/ctwa_clid_at e messages.ctwa_clid, cria as tabelas meta_capi_config e meta_capi_events (só service_role), as funções meta_capi_* (enfileirar, claim, config_ler, config_salvar, eventos_status, reenviar), 4 gatilhos trg_zz*_meta_capi_* e 2 crons (meta-capi-worker de minuto em minuto; meta-capi-limpeza diário). Nenhuma policy existente é editada e nenhuma tabela nova tem policy (acesso só por RPC). Aplique o arquivo inteiro como está; se algum comando falhar, pare e me diga o erro. Depois rode o bloco de verificação em comentário no fim do arquivo e me devolva os resultados.
+```
+
+### Passo 2 — redeploy das edge functions
+
+```
+Faça o deploy destas edge functions a partir do código atual do repositório (branch main), sem alterar nenhum arquivo: meta-capi-worker (nova) e whatsapp-webhook (passou a gravar referral.ctwa_clid em crm_leads e messages). Me diga quais subiram.
+```
+
+Ordem importa: a migration antes do webhook (a coluna `ctwa_clid` precisa
+existir quando a função nova subir).
+
+### Passo 3 — publicar o site
+
+Deploy do main. Conferir no bundle publicado a aba "Conversões Meta"
+(`grep -c "meta_capi_config_ler"` no chunk de CrmConfiguracoes).
+
+### Passo 4 — o dono liga (aba Configurações → Conversões Meta)
+
+1. Gerenciador de Eventos → conjunto de dados escolhido → Configurações → API de
+   Conversões → **Gerar token de acesso**; colar na aba e salvar.
+2. Preencher o conjunto de dados (ou usar "Achar conjunto ligado ao WhatsApp").
+   A conta do WhatsApp Business do número dos anúncios precisa estar ligada ao
+   conjunto de dados no Gerenciador de Eventos.
+3. Preencher o código de teste, clicar "Enviar evento de teste" e conferir na
+   aba Eventos de teste. Depois **apagar o código** para os envios valerem.
+4. Ligar a chave.
+
+---
+
 ## Já aplicado em 08/09/2026 (não repetir)
 
 - **Limpeza do histórico de etapas** — `20260908030100`. Restaram 49.846 linhas,

@@ -1028,6 +1028,13 @@ Deno.serve(async (req) => {
             let adImageUrl = referral?.image_url || null;
             let adSourceUrl = referral?.source_url || null;
             let adSourceId = referral?.source_id || null;
+            // ctwa_clid = identificador do clique no anúncio de clique-para-WhatsApp.
+            // É o que a API de Conversões da Meta exige para devolver "agendou/
+            // contratou" ao anúncio certo. Só vem na primeira mensagem do clique.
+            const ctwaClid: string | null = referral?.ctwa_clid ? String(referral.ctwa_clid) : null;
+            const ctwaClidAt: string = msg.timestamp && Number(msg.timestamp) > 0
+              ? new Date(Number(msg.timestamp) * 1000).toISOString()
+              : new Date().toISOString();
 
             let adAccountId: string | null = null;
             let adAccountName: string | null = null;
@@ -1271,7 +1278,7 @@ Deno.serve(async (req) => {
               continue;
             }
 
-            const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id";
+            const LEAD_COLS = "id, name, source, is_blocked, ad_id, ad_account_id, ad_account_name, cidade, whatsapp_number_id, ctwa_clid";
             let lead: any = null;
             // Cada número é um mundo: contato que escreve para um número cadastrado
             // em whatsapp_numbers vira lead PRÓPRIO desse número, mesmo que a mesma
@@ -1371,6 +1378,10 @@ Deno.serve(async (req) => {
                     if (adSourceId) insertData.ad_id = adSourceId;
                     if (adAccountId) insertData.ad_account_id = adAccountId;
                     if (adAccountName) insertData.ad_account_name = adAccountName;
+                    if (ctwaClid) {
+                      insertData.ctwa_clid = ctwaClid;
+                      insertData.ctwa_clid_at = ctwaClidAt;
+                    }
                     // Resolução determinística de cidade via ad_account_map (defensiva: nunca trava o insert).
                     let inferredCidade: string | null = null;
                     try {
@@ -1491,6 +1502,12 @@ Deno.serve(async (req) => {
                 if (adSourceId && !lead.ad_id) updates.ad_id = adSourceId;
                 if (adAccountId && !lead.ad_account_id) updates.ad_account_id = adAccountId;
                 if (adAccountName && !lead.ad_account_name) updates.ad_account_name = adAccountName;
+                // ctwa_clid: clique NOVO vence (a Meta atribui a conversão ao último
+                // clique). Reentrega do mesmo webhook traz o mesmo valor e não muda nada.
+                if (ctwaClid && ctwaClid !== lead.ctwa_clid) {
+                  updates.ctwa_clid = ctwaClid;
+                  updates.ctwa_clid_at = ctwaClidAt;
+                }
                 // Preencher cidade automaticamente apenas se o lead ainda não tiver cidade definida (preserva alteração manual)
                 let inferredCidade: string | null = null;
                 try {
@@ -1562,6 +1579,7 @@ Deno.serve(async (req) => {
                 ad_source_id: adSourceId || null,
                 ad_account_id: adAccountId || null,
                 ad_account_name: adAccountName || null,
+                ctwa_clid: ctwaClid,
               };
               const { data: savedMsg, error: insertErr } = await supabase.from("messages").insert(insertPayload).select().single();
 

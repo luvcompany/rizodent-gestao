@@ -2385,6 +2385,8 @@ export type Database = {
           conversa_fechada_em: string | null
           conversa_fechada_por: string | null
           created_at: string
+          ctwa_clid: string | null
+          ctwa_clid_at: string | null
           descricao_anuncio: string | null
           distribuido_em: string | null
           em_atendimento_em: string | null
@@ -2440,6 +2442,8 @@ export type Database = {
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
           descricao_anuncio?: string | null
           distribuido_em?: string | null
           em_atendimento_em?: string | null
@@ -2495,6 +2499,8 @@ export type Database = {
           conversa_fechada_em?: string | null
           conversa_fechada_por?: string | null
           created_at?: string
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
           descricao_anuncio?: string | null
           distribuido_em?: string | null
           em_atendimento_em?: string | null
@@ -4184,6 +4190,7 @@ export type Database = {
           channel: string
           content: string | null
           created_at: string
+          ctwa_clid: string | null
           deleted_at: string | null
           direction: string
           error_reason: string | null
@@ -4220,6 +4227,7 @@ export type Database = {
           channel?: string
           content?: string | null
           created_at?: string
+          ctwa_clid?: string | null
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
@@ -4256,6 +4264,7 @@ export type Database = {
           channel?: string
           content?: string | null
           created_at?: string
+          ctwa_clid?: string | null
           deleted_at?: string | null
           direction?: string
           error_reason?: string | null
@@ -6012,6 +6021,11 @@ export type Database = {
       }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
+      meta_capi_config_ler: { Args: Record<PropertyKey, never>; Returns: Json }
+      meta_capi_config_salvar: { Args: { p: Json }; Returns: Json }
+      meta_capi_eventos_status: { Args: { p_dias?: number }; Returns: Json }
+      meta_capi_pode_gerir: { Args: Record<PropertyKey, never>; Returns: boolean }
+      meta_capi_reenviar: { Args: { p_event_id: string }; Returns: boolean }
       match_good_examples: {
         Args: {
           filter_cidade?: string

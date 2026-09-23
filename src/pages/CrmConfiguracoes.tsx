@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare, Clock } from "lucide-react";
+import { Upload, Bell, CheckCircle2, Ban, RotateCcw, Trash2, MessageSquare, Clock, Share2 } from "lucide-react";
+import MetaCapiSection from "@/components/integrations/MetaCapiSection";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -635,6 +636,9 @@ function HorarioComercialTab() {
 }
 
 export default function CrmConfiguracoes() {
+  const { userRole } = useAuth();
+  // API de Conversões: só gestão (mesma régua da RPC meta_capi_pode_gerir).
+  const podeGerirMeta = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Configurações</h1>
@@ -646,12 +650,14 @@ export default function CrmConfiguracoes() {
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
           <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
+          {podeGerirMeta && <TabsTrigger value="meta-capi"><Share2 size={14} className="mr-1" /> Conversões Meta</TabsTrigger>}
         </TabsList>
         <TabsContent value="horario"><HorarioComercialTab /></TabsContent>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>
         <TabsContent value="blocked"><BlockedTab /></TabsContent>
         <TabsContent value="lixeira"><LixeiraTab /></TabsContent>
+        {podeGerirMeta && <TabsContent value="meta-capi"><MetaCapiSection /></TabsContent>}
       </Tabs>
     </div>
   );
