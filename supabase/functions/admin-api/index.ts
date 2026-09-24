@@ -1471,12 +1471,14 @@ function flowJsonConfirmacao(): string {
                   type: "If",
                   condition: "${form.presenca} == 'remarcar'",
                   then: [
+                    // RadioButtonsGroup NÃO aceita "helper-text" (a Meta recusa
+                    // com INVALID_PROPERTY_KEY) — o aviso vai num texto acima.
+                    { type: "TextBody", text: "A recepção confirma o horário exato." },
                     {
                       type: "RadioButtonsGroup",
                       name: "quando",
                       label: "Quando fica melhor?",
                       required: true,
-                      "helper-text": "A recepção confirma o horário exato",
                       "data-source": "${data.dias}",
                     },
                   ],
