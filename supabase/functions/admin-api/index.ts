@@ -1414,14 +1414,101 @@ async function templatesCreate(tenantId: string, body: any) {
 
 
 /**
- * Flow JSON da confirmação de consulta — duas telas, sem servidor por trás.
+ * Flow JSON da confirmação de consulta — UMA tela, sem servidor por trás.
  *
- * Tela 1: vem, precisa remarcar ou desistiu (+ motivo).
- * Tela 2 (só quem escolheu remarcar): dia e turno preferidos. A lista de dias
- * NÃO é fixa: ela chega em flow_action_data no momento do envio, montada com
- * os próximos dias úteis (ver send-whatsapp-message). Horário exato continua
- * com a recepção — a agenda real ainda não está no CRClin.
+ * Por que uma só: a Meta exige `terminal: true` para usar a ação `complete`
+ * (quem confirma encerra ali) e, ao mesmo tempo, PROÍBE navegar a partir de
+ * uma tela terminal. As duas regras não cabem na mesma tela, então a escolha
+ * do dia virou um bloco que aparece na própria tela quando a pessoa marca
+ * "Preciso remarcar" — um toque a menos para todo mundo.
+ *
+ * A lista de dias NÃO é fixa: chega em flow_action_data no momento do envio,
+ * montada com os próximos dias úteis (ver send-whatsapp-message). Horário
+ * exato continua com a recepção — a agenda real ainda não está no CRClin.
  */
+function flowJsonConfirmacao(): string {
+  const exemploDias = [
+    { id: "2026-09-24|manha", title: "Quarta, 24/09 de manhã" },
+    { id: "2026-09-24|tarde", title: "Quarta, 24/09 à tarde" },
+  ];
+  return JSON.stringify({
+    version: "7.1",
+    screens: [
+      {
+        id: "CONFIRMACAO",
+        title: "Sua consulta",
+        terminal: true,
+        success: true,
+        data: {
+          dias: {
+            type: "array",
+            items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" } } },
+            __example__: exemploDias,
+          },
+        },
+        layout: {
+          type: "SingleColumnLayout",
+          children: [
+            { type: "TextHeading", text: "Você vem no horário marcado?" },
+            {
+              type: "Form",
+              name: "form_confirmacao",
+              children: [
+                {
+                  type: "RadioButtonsGroup",
+                  name: "presenca",
+                  label: "Sua resposta",
+                  required: true,
+                  "data-source": [
+                    { id: "confirmo", title: "Confirmo, vou estar lá" },
+                    { id: "remarcar", title: "Preciso remarcar" },
+                    { id: "desistir", title: "Não vou mais fazer" },
+                  ],
+                },
+                {
+                  // Operador FORA do ${}: "${form.x} == 'y'". Com ele dentro
+                  // a Meta publica sem reclamar e a condição nunca é verdadeira.
+                  type: "If",
+                  condition: "${form.presenca} == 'remarcar'",
+                  then: [
+                    {
+                      type: "RadioButtonsGroup",
+                      name: "quando",
+                      label: "Quando fica melhor?",
+                      required: true,
+                      "helper-text": "A recepção confirma o horário exato",
+                      "data-source": "${data.dias}",
+                    },
+                  ],
+                },
+                {
+                  type: "TextArea",
+                  name: "motivo",
+                  label: "Quer contar o motivo?",
+                  required: false,
+                  "helper-text": "Opcional",
+                },
+                {
+                  type: "Footer",
+                  label: "Enviar",
+                  "on-click-action": {
+                    name: "complete",
+                    payload: {
+                      presenca: "${form.presenca}",
+                      motivo: "${form.motivo}",
+                      quando: "${form.quando}",
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  });
+}
+
 /** Tela onde o botão do template abre o formulário. */
 const TELA_INICIAL = "CONFIRMACAO";
 
