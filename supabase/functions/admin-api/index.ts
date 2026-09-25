@@ -1514,6 +1514,46 @@ function flowJsonConfirmacao(): string {
 /** Tela onde o botão do template abre o formulário. */
 const TELA_INICIAL = "CONFIRMACAO";
 
+/**
+ * Deprecia um formulário na Meta. IRREVERSÍVEL: flow depreciado não volta e
+ * não pode ser usado por template nenhum. Por isso a rota RECUSA enquanto
+ * algum modelo do cliente ainda apontar para ele.
+ */
+async function flowsDepreciar(tenantId: string, body: any) {
+  const creds = await resolveWhatsAppCreds(tenantId, {
+    phoneNumberId: body?.phone_number_id ?? null,
+    integrationKey: body?.integration_key ?? null,
+  });
+  if (credsErro(creds)) return json({ error: creds.erro }, creds.status);
+  if (!creds) return json({ error: "WhatsApp não conectado para este tenant." }, 400);
+
+  const flowId = String(body?.flow_id || "").trim();
+  if (!flowId) return json({ error: "flow_id é obrigatório" }, 400);
+
+  // Quem ainda aponta para este formulário? (a trava que evita apagar o certo)
+  const { data: modelos } = await admin
+    .from("crm_whatsapp_templates")
+    .select("name, buttons")
+    .eq("tenant_id", tenantId)
+    .eq("waba_id", creds.wabaId);
+  const emUso = (modelos || []).filter((t: any) =>
+    (Array.isArray(t.buttons) ? t.buttons : []).some(
+      (b: any) => String(b?.type || "").toUpperCase() === "FLOW" && String(b?.flow_id) === flowId,
+    ),
+  ).map((t: any) => t.name);
+  if (emUso.length > 0) {
+    return json({ error: "Formulário em uso — depreciar deixaria o modelo sem abrir nada", modelos: emUso }, 409);
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${encodeURIComponent(flowId)}/deprecate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${creds.token}` },
+  });
+  const dados = await res.json().catch(() => ({}));
+  if (!res.ok) return json({ error: "Erro ao depreciar o flow", details: dados }, res.status);
+  return json({ ok: true, flow_id: flowId, depreciado: true });
+}
+
 /** Formulários publicados na WABA, com as telas e os dados que cada uma pede. */
 async function flowsListar(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
@@ -2166,6 +2206,7 @@ Deno.serve(async (req) => {
           "DELETE /templates?name=&phone_number_id=  (apaga o modelo na Meta e no CRClin)",
           "POST /templates/editar  { name, body_text?, buttons?, footer_text? }  (edita o modelo aprovado; volta para análise)",
           "GET /flows  (formulários da WABA, com as telas e os dados que cada uma exige)",
+          "POST /flows/depreciar  { flow_id }  (IRREVERSÍVEL; recusa se algum modelo ainda usa)",
           "POST /flows/confirmacao  (cria e publica o Flow de confirmação + o template que o abre)",
           "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
           "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
@@ -2209,6 +2250,7 @@ Deno.serve(async (req) => {
     }
     if (parts[0] === "flows") {
       if (parts[1] === "confirmacao" && req.method === "POST") return await flowsConfirmacao(tenantId, body);
+      if (parts[1] === "depreciar" && req.method === "POST") return await flowsDepreciar(tenantId, body);
       if (!parts[1] && req.method === "GET") return await flowsListar(tenantId, p);
     }
 
