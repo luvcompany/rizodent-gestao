@@ -1789,6 +1789,25 @@ async function flowsConfirmacao(tenantId: string, body: any) {
   return json({ ok: true, flow_id: flow.id, template: nomeTemplate, status_template: (tpl as any).status || "PENDING", etapas });
 }
 
+/**
+ * Vigia das automações, sob demanda. A função no banco é a mesma que o cron
+ * diário chama — uma régua só, para a consulta e o aviso nunca divergirem.
+ */
+async function saudeDasAutomacoes(tenantId: string) {
+  const { data, error } = await admin.rpc("automacoes_saude", { _tenant: tenantId });
+  if (error) return json({ error: "Erro ao ler a saúde das automações", details: error.message }, 500);
+  const achados = (data as any[]) || [];
+  return json({
+    tudo_certo: achados.length === 0,
+    achados,
+    legenda: {
+      followup_atrasado: "lead que as regras mandam cobrar e não foi cobrado",
+      bot_fora_da_etapa: "bot rodando com o lead já em outra etapa",
+      bot_sem_origem: "execução sem automação de origem (a trava de etapa não alcança)",
+    },
+  });
+}
+
 async function mmLiteStatus(tenantId: string, p: URLSearchParams) {
   const creds = await resolveWhatsAppCreds(tenantId, {
     phoneNumberId: p.get("phone_number_id"),
@@ -2208,6 +2227,7 @@ Deno.serve(async (req) => {
           "GET /flows  (formulários da WABA, com as telas e os dados que cada uma exige)",
           "POST /flows/depreciar  { flow_id }  (IRREVERSÍVEL; recusa se algum modelo ainda usa)",
           "POST /flows/confirmacao  (cria e publica o Flow de confirmação + o template que o abre)",
+          "GET /saude  (vigia das automações: follow-up atrasado, bot fora da etapa; vazio = tudo certo)",
           "GET /mmlite  (situação do MM Lite na Meta + se o envio está usando o canal)",
           "POST /mmlite  { ativo: true|false }  (liga/desliga o canal de marketing MM Lite)",
 
@@ -2253,6 +2273,8 @@ Deno.serve(async (req) => {
       if (parts[1] === "depreciar" && req.method === "POST") return await flowsDepreciar(tenantId, body);
       if (!parts[1] && req.method === "GET") return await flowsListar(tenantId, p);
     }
+
+    if (parts[0] === "saude" && req.method === "GET") return await saudeDasAutomacoes(tenantId);
 
     if (parts[0] === "mmlite") {
       if (req.method === "GET") return await mmLiteStatus(tenantId, p);
