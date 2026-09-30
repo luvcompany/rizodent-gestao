@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions } from "../_shared/automationConditions.ts";
 import { etapaDestinoRespeitandoFunil } from "../_shared/etapaDoFunilDoLead.ts";
+import { decidirFollowUp, MAX_NUNCA_RESPONDEU_POR_RODADA } from "../_shared/reguaFollowUp.ts";
 
 // Returns true if lead passes the optional conditions in config.conditions
 async function passesConditions(supabase: any, leadId: string, config: Record<string, any>): Promise<boolean> {
@@ -161,25 +162,30 @@ Deno.serve(async (req) => {
       );
 
 
+      let cobradosSemResposta = 0;
+
       for (const lead of leads || []) {
         if (!(await passesConditions(supabase, lead.id, config))) continue;
-        // "Sem resposta" = o LEAD não respondeu à NOSSA última mensagem por X tempo.
-        // Requisitos:
-        //  1) O lead já enviou pelo menos uma mensagem (temos com quem falar).
-        //  2) NÓS já enviamos algo depois da última mensagem dele (SDR ou automação/bot
-        //     respondeu). Se ainda não respondemos, não faz sentido "follow-up" —
-        //     o pendente é responder, não cobrar retorno do lead.
-        //  3) Passou X tempo desde a nossa última mensagem sem retorno do lead.
-        const lastInboundMs = lead.last_inbound_at ? new Date(lead.last_inbound_at).getTime() : 0;
-        const lastOutboundMs = lead.last_outbound_at ? new Date(lead.last_outbound_at).getTime() : 0;
+        // Régua única em _shared/reguaFollowUp.ts (com testes): cobra quem
+        // recebeu a NOSSA última mensagem e não voltou no prazo — tenha ele
+        // respondido antes ou NUNCA respondido. Quem falou por último não é
+        // cobrado: ali a dívida é responder, não cobrar retorno.
+        const decisao = decidirFollowUp(
+          { lastInboundAt: lead.last_inbound_at, lastOutboundAt: lead.last_outbound_at },
+          nowMs,
+          thresholdMs,
+        );
+        if (!decisao.cobrar) continue;
 
-        if (!lastInboundMs) continue;
-        if (lastOutboundMs <= lastInboundMs) {
-          // Ainda não respondemos ao lead — não disparar follow-up.
-          continue;
+        // Quem nunca respondeu entrou na régua em 30/09/2026 e traz um passivo
+        // de leads parados há semanas: escoa por lote, para a mudança não virar
+        // rajada de dezenas de mensagens no mesmo minuto.
+        if (decisao.nuncaRespondeu) {
+          if (cobradosSemResposta >= MAX_NUNCA_RESPONDEU_POR_RODADA) continue;
+          cobradosSemResposta++;
         }
 
-        const referenceTime = lastOutboundMs;
+        const referenceTime = decisao.referencia;
 
         const { data: currentStageEntry } = await supabase
           .from("crm_lead_stage_history")
@@ -198,9 +204,8 @@ Deno.serve(async (req) => {
           ? new Date(currentStageEntry.entered_at).getTime()
           : new Date(lead.updated_at || lead.created_at).getTime();
 
-        // Trigger fires when elapsed time is GREATER THAN OR EQUAL to threshold
+        // O prazo já foi conferido pela régua (decidirFollowUp); aqui é só o log.
         const elapsed = nowMs - referenceTime;
-        if (elapsed < thresholdMs) continue;
 
         // Check for duplicate — must match automation_id + lead_id + action_type (so config changes allow re-fire)
         const { data: existing } = await supabase

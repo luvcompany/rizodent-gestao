@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+import { botDeveParar, CHAVE_ETAPA_DO_BOT } from "../_shared/etapaDoBot.ts";
 
 
 const corsHeaders = {
@@ -515,6 +516,42 @@ Deno.serve(async (req) => {
         .single();
 
       if (!execution) return json({ skipped: true, reason: "no_waiting_execution" });
+
+      // O lead ainda está na etapa que começou este bot? Se saiu (a SDR moveu,
+      // o cron moveu, o gestor devolveu), a continuação por TEMPO para aqui —
+      // era o defeito de 30/09/2026: follow-up chegando a quem já tinha saído
+      // da etapa de follow-up. Quem RESPONDE (trigger "message") segue normal.
+      {
+        const { data: leadDaTrava } = await supabase
+          .from("crm_leads")
+          .select("stage_id")
+          .eq("id", execution.lead_id)
+          .maybeSingle();
+        let stageDaAutomacao: string | null = null;
+        if ((execution as any).started_by_automation_id) {
+          const { data: autoOrigem } = await supabase
+            .from("crm_automations")
+            .select("stage_id")
+            .eq("id", (execution as any).started_by_automation_id)
+            .maybeSingle();
+          stageDaAutomacao = (autoOrigem as any)?.stage_id ?? null;
+        }
+        const stageDoBot = ((execution as any).variables ?? {})[CHAVE_ETAPA_DO_BOT] ?? null;
+        if (botDeveParar({
+          stageAtual: (leadDaTrava as any)?.stage_id ?? null,
+          stageDaAutomacao,
+          stageDoBot,
+        })) {
+          console.log(
+            `[bot-engine] execução ${executionId} cancelada: lead ${execution.lead_id} saiu da etapa ${stageDaAutomacao} (está em ${(leadDaTrava as any)?.stage_id})`,
+          );
+          await supabase
+            .from("bot_executions")
+            .update({ status: "cancelled", completed_at: new Date().toISOString(), timeout_at: null })
+            .eq("id", executionId);
+          return json({ skipped: true, reason: "lead_mudou_de_etapa" });
+        }
+      }
 
       // bot e lead precisam ser do MESMO tenant (vale também para service_role).
       {
@@ -1451,7 +1488,9 @@ async function executeNode(
           status: "sent",
         });
       }
-      return {};
+      // Carimba para onde o PRÓPRIO bot mandou o lead: sem isso a trava de
+      // etapa (no timeout) mataria todo fluxo que muda de etapa no meio.
+      return { variables: { [CHAVE_ETAPA_DO_BOT]: destinoStageId } };
     }
 
 
