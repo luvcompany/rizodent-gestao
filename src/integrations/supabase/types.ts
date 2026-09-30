@@ -5606,6 +5606,16 @@ export type Database = {
         Args: { _tenant: string }
         Returns: undefined
       }
+      automacoes_saude: {
+        Args: { _tenant?: string }
+        Returns: {
+          achado: string
+          detalhe: string
+          onde: string
+          quantos: number
+        }[]
+      }
+      automacoes_saude_vigia: { Args: never; Returns: Json }
       backup_list_tables: {
         Args: never
         Returns: {
