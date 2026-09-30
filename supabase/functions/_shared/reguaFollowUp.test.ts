@@ -31,3 +31,19 @@ Deno.test("respondeu antes e nós falamos depois: cobra só depois do prazo", ()
 Deno.test("data podre não vira cobrança", () => {
   assertEquals(decidirFollowUp({ lastInboundAt: null, lastOutboundAt: "não é data" }, AGORA, UMA_HORA).cobrar, false);
 });
+
+Deno.test("nunca respondeu e parado há mais de 30 dias: NÃO cobra", () => {
+  const d = decidirFollowUp({ lastInboundAt: null, lastOutboundAt: iso(24 * 45) }, AGORA, 24 * UMA_HORA);
+  assertEquals(d.cobrar, false);
+  assertEquals(d.motivo, "parado demais");
+});
+
+Deno.test("o teto de idade vale SÓ para quem nunca respondeu", () => {
+  // respondeu em algum momento, nossa última mensagem foi há 45 dias: cobra
+  const d = decidirFollowUp(
+    { lastInboundAt: iso(24 * 46), lastOutboundAt: iso(24 * 45) },
+    AGORA,
+    24 * UMA_HORA,
+  );
+  assertEquals(d.cobrar, true);
+});

@@ -25,7 +25,7 @@ export type DecisaoFollowUp = {
   referencia: number;
   /** Para log e para o teto de lote: é alguém que nunca respondeu? */
   nuncaRespondeu: boolean;
-  motivo: "sem conversa" | "a vez é nossa" | "prazo não venceu" | "cobrar";
+  motivo: "sem conversa" | "a vez é nossa" | "prazo não venceu" | "parado demais" | "cobrar";
 };
 
 export function decidirFollowUp(
@@ -47,6 +47,15 @@ export function decidirFollowUp(
   if (agoraMs - saida < prazoMs) {
     return { cobrar: false, referencia: saida, nuncaRespondeu, motivo: "prazo não venceu" };
   }
+  // Teto de idade SÓ para quem nunca respondeu: são leads cuja janela de 24 h
+  // nunca abriu. Medido em 30/09/2026: dos 57 alcançados, 32 tinham menos de
+  // 30 dias e 25 estavam parados há MAIS DE 90 (um desde 16/04). Cutucar quem
+  // sumiu há meses rende pouco e cobra caro — bloqueio derruba a qualidade do
+  // número na Meta. Entre 30 e 90 dias não havia ninguém, então 30 é o corte
+  // natural. Para incluir os antigos, é só aumentar este número.
+  if (nuncaRespondeu && agoraMs - saida > IDADE_MAXIMA_SEM_RESPOSTA_DIAS * 24 * 60 * 60 * 1000) {
+    return { cobrar: false, referencia: saida, nuncaRespondeu, motivo: "parado demais" };
+  }
   return { cobrar: true, referencia: saida, nuncaRespondeu, motivo: "cobrar" };
 }
 
@@ -57,3 +66,6 @@ export function decidirFollowUp(
  * escoa aos poucos e dá para acompanhar o resultado antes de continuar.
  */
 export const MAX_NUNCA_RESPONDEU_POR_RODADA = 15;
+
+/** Quem nunca respondeu só é cobrado se a nossa última mensagem for recente. */
+export const IDADE_MAXIMA_SEM_RESPOSTA_DIAS = 30;
