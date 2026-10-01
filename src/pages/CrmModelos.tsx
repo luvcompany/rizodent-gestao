@@ -87,10 +87,10 @@ const ROLE_BADGE_COLOR: Record<string, string> = {
   gerente: "bg-info-soft text-info-soft-foreground",
   crc: "bg-purple-soft text-purple-soft-foreground",
   posvenda: "bg-success-soft text-success-soft-foreground",
-  recepcao: "bg-amber-900/30 text-amber-400",
-  closer: "bg-amber-900/30 text-amber-400",
-  sdr: "bg-teal-900/30 text-teal-400",
-  superadmin: "bg-red-900/30 text-red-400",
+  recepcao: "bg-warning-soft text-warning-soft-foreground",
+  closer: "bg-warning-soft text-warning-soft-foreground",
+  sdr: "bg-info-soft text-info-soft-foreground",
+  superadmin: "bg-destructive-soft text-destructive-soft-foreground",
 };
 
 type Integration = {
@@ -735,6 +735,7 @@ export default function CrmModelos() {
   const statusBadge = (s: string) => {
     if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="cursor-help rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-xs font-medium text-success-soft-foreground">Aprovado</span>;
     if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="cursor-help rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-soft-foreground">Pendente</span>;
+    if (s === "PAUSED") return <span className="rounded-full border border-purple/30 bg-purple-soft px-2.5 py-1 text-xs font-medium text-purple-soft-foreground">Pausado</span>;
     if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="rounded-full border border-slate/30 bg-slate-soft px-2.5 py-1 text-xs font-medium text-slate-soft-foreground">Rascunho</span>;
     return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="cursor-help rounded-full border border-destructive/30 bg-destructive-soft px-2.5 py-1 text-xs font-medium text-destructive-soft-foreground">Rejeitado</span>;
   };

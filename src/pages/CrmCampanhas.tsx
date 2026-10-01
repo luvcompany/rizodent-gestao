@@ -137,6 +137,13 @@ export default function CrmCampanhas() {
     failed: "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground",
     paused: "border-purple/30 bg-purple-soft text-purple-soft-foreground",
   };
+  const statusLabel: Record<string, string> = {
+    draft: "Rascunho",
+    sending: "Enviando",
+    completed: "Concluído",
+    failed: "Falhou",
+    paused: "Pausado",
+  };
 
   return (
     <div className="space-y-5">
@@ -174,7 +181,7 @@ export default function CrmCampanhas() {
           {broadcasts.map(b => (
             <TableRow key={b.id}>
               <TableCell className="font-medium">{b.name}</TableCell>
-              <TableCell><Badge variant="outline" className={`whitespace-nowrap rounded-full px-2.5 py-1 ${statusStyle[b.status] || "border-slate/30 bg-slate-soft text-slate-soft-foreground"}`}>{b.status}</Badge></TableCell>
+              <TableCell><Badge variant="outline" className={`whitespace-nowrap rounded-full px-2.5 py-1 ${statusStyle[b.status] || "border-slate/30 bg-slate-soft text-slate-soft-foreground"}`}>{statusLabel[b.status] || b.status}</Badge></TableCell>
               <TableCell><OwnerRoleBadge ownerRole={(b.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>{b.total_leads}</TableCell>
               <TableCell>{b.sent_count}</TableCell>
