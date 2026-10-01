@@ -11,7 +11,7 @@ export function SectionCard({ title, icon: Icon, actions, children, className, c
       <CardHeader className="flex-row items-center justify-between space-y-0 p-5">
         <div className="flex min-w-0 items-center gap-3">
           {Icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><Icon className="h-4 w-4" /></span>}
-          <CardTitle className="truncate text-base font-semibold">{title}</CardTitle>
+          <CardTitle className="break-words text-base font-semibold leading-snug">{title}</CardTitle>
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </CardHeader>

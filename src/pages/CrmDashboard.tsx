@@ -2,13 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { FILTRO_LEAD_NOVO } from "@/lib/leadNovo";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
+  CalendarDays, CheckCircle2, AlertTriangle,
   Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
   AlertCircle, XCircle, Handshake
 } from "lucide-react";
@@ -18,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { EmptyState, KpiCard, PageHeader, PillTabs, SectionCard, StatusPill, type SemanticTone } from "@/components/crm-ui";
+import ThemedLoader from "@/components/ThemedLoader";
 // toastDbError mostra a mensagem que o gatilho do banco devolveu (em vez de um
 // "erro" genérico) quando o desfecho falha no meio do caminho.
 import { toastDbError } from "@/lib/appointmentActions";
@@ -55,6 +55,15 @@ const typeLabels: Record<string, string> = {
   ligacao: "Ligação",
   followup: "Follow-up",
   personalizado: "Personalizado",
+};
+
+const appointmentStatus = (status: string): { label: string; tone: SemanticTone } => {
+  if (status === "confirmed") return { label: "Confirmado", tone: "success" };
+  if (status === "cancelled") return { label: "Cancelado", tone: "destructive" };
+  if (status === "no_show") return { label: "Faltou", tone: "destructive" };
+  if (status === "contracted") return { label: "Contratou", tone: "success" };
+  if (status === "not_contracted") return { label: "Não contratou", tone: "slate" };
+  return { label: "Pendente", tone: "warning" };
 };
 
 // ── Cache stale-while-revalidate ─────────────────────────────────────────────
@@ -373,412 +382,257 @@ export default function CrmDashboard() {
   const dataWindowEnd = addDays(startOfDay(new Date()), DASH_WINDOW_DAYS);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando...</div>;
+    return <ThemedLoader fullScreen={false} />;
   }
 
-  // Falha de carregamento sem nenhum dado para exibir: estado de erro explícito (nunca zeros falsos)
   if (loadError && !dataLoaded) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-        <AlertTriangle size={32} className="text-destructive" />
-        <p className="text-sm">Não foi possível carregar os dados do dashboard.</p>
-        <Button variant="outline" size="sm" className="gap-1" onClick={() => { setLoading(true); fetchData(); }}>
-          <RefreshCw size={14} /> Tentar novamente
-        </Button>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Não foi possível carregar os dados do dashboard."
+        action={<Button variant="outline" onClick={() => { setLoading(true); fetchData(); }}><RefreshCw size={14} /> Tentar novamente</Button>}
+      />
     );
   }
 
+  const moneyLabel = faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  const countPill = (count: number, tone: SemanticTone = "slate") => <StatusPill tone={tone}>{count}</StatusPill>;
+
   return (
-    <div className="flex flex-col h-full -m-6 p-4 overflow-y-auto" style={{ height: "calc(100vh - 4rem)" }}>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard CRM</h1>
-          <p className="text-[11px] text-muted-foreground">
-            Tarefas e agendamentos dos últimos {DASH_WINDOW_DAYS} e próximos {DASH_WINDOW_DAYS} dias
-          </p>
-        </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <CalendarIcon size={14} />
-              {format(selectedDate, "dd/MM/yyyy")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="end">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={(d) => d && setSelectedDate(d)}
-              disabled={{ before: dataWindowStart, after: dataWindowEnd }}
-              locale={ptBR}
-              className="p-3 pointer-events-auto"
-            />
-            <p className="px-3 pb-2 text-center text-[11px] text-muted-foreground">
-              Somente datas dentro da janela de ±{DASH_WINDOW_DAYS} dias
-            </p>
-          </PopoverContent>
-        </Popover>
-      </div>
+    <div className="space-y-6 pb-8">
+      <PageHeader
+        title="Dashboard CRM"
+        subtitle={`Tarefas e agendamentos dos últimos ${DASH_WINDOW_DAYS} e próximos ${DASH_WINDOW_DAYS} dias`}
+        actions={
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <CalendarIcon size={16} />
+                {format(selectedDate, "dd/MM/yyyy")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={(d) => d && setSelectedDate(d)}
+                disabled={{ before: dataWindowStart, after: dataWindowEnd }}
+                locale={ptBR}
+                className="pointer-events-auto p-3"
+              />
+              <p className="px-3 pb-3 text-center text-xs text-muted-foreground">
+                Somente datas dentro da janela de ±{DASH_WINDOW_DAYS} dias
+              </p>
+            </PopoverContent>
+          </Popover>
+        }
+      />
 
       {loadError && dataLoaded && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertTriangle size={14} className="shrink-0" />
+        <div className="flex flex-wrap items-center gap-2 rounded-control border border-destructive/30 bg-destructive-soft px-4 py-3 text-sm text-destructive-soft-foreground">
+          <AlertTriangle size={16} className="shrink-0" />
           <span>Falha ao atualizar os dados — exibindo a última versão carregada.</span>
-          <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => fetchData()}>
-            Tentar novamente
-          </Button>
+          <Button variant="ghost" className="ml-auto" onClick={() => fetchData()}>Tentar novamente</Button>
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><DollarSign size={20} className="text-primary" /></div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold leading-tight truncate" title={faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}>{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Faturamento do mês</p>
-            </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(18rem,1.25fr)_minmax(0,2.75fr)]">
+        <Card className="flex min-h-40 flex-col justify-between overflow-hidden border-sidebar-border bg-sidebar p-5 text-sidebar-foreground shadow-float sm:p-6">
+          <span className="grid h-11 w-11 place-items-center rounded-control bg-sidebar-primary text-sidebar-primary-foreground">
+            <DollarSign className="h-5 w-5" />
+          </span>
+          <div className="mt-6 min-w-0">
+            <p className="text-sm font-medium text-sidebar-foreground/70">Faturamento do mês</p>
+            <p className="mt-1 break-words text-3xl font-bold tabular-nums text-sidebar-foreground sm:text-4xl" title={moneyLabel}>{moneyLabel}</p>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><ListTodo size={20} className="text-primary" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{todayTasks.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas {diaSelecionadoLabel}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-destructive/10 shrink-0"><AlertTriangle size={20} className="text-destructive" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{overdueTasks.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas atrasadas</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-green-500/10 shrink-0"><CalendarDays size={20} className="text-green-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{dayAppointments.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Agendamentos {diaSelecionadoLabel}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-orange-500/10 shrink-0"><Bell size={20} className="text-orange-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{pendingConfirmations.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Confirmações pendentes</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-blue-500/10 shrink-0"><Users size={20} className="text-blue-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{leadsToday}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Leads hoje</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-purple-500/10 shrink-0"><RefreshCw size={20} className="text-purple-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{rescheduledCount}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Reagendados no mês</p>
-            </div>
-          </div>
-        </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <KpiCard label={`Tarefas ${diaSelecionadoLabel}`} value={todayTasks.length} icon={ListTodo} tone="primary" />
+          <KpiCard label="Tarefas atrasadas" value={overdueTasks.length} icon={AlertTriangle} tone="destructive" />
+          <KpiCard label={`Agendamentos ${diaSelecionadoLabel}`} value={dayAppointments.length} icon={CalendarDays} tone="success" />
+          <KpiCard label="Confirmações pendentes" value={pendingConfirmations.length} icon={Bell} tone="warning" />
+          <KpiCard label="Leads hoje" value={leadsToday} icon={Users} tone="info" />
+          <KpiCard label="Reagendados no mês" value={rescheduledCount} icon={RefreshCw} tone="purple" />
+        </div>
       </div>
 
-      {/* 5 Columns: Aguardando | Tarefas | Confirmações | Agendamentos do dia | Próximos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-4 flex-1 min-h-0">
-        {/* Column 0: Awaiting outcome */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <AlertCircle size={14} className="text-orange-600" />
-              Aguardando resultado
-            </h2>
-            <Badge variant="outline" className="border-orange-500 text-orange-600">{awaitingOutcome.length}</Badge>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {awaitingOutcome.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento aguardando desfecho</p>
-            )}
-            {awaitingOutcome.map(appt => {
+      <div className="grid items-start gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <SectionCard title="Aguardando resultado" icon={AlertCircle} actions={countPill(awaitingOutcome.length, "warning")}>
+          <div className="space-y-3">
+            {awaitingOutcome.length === 0 && <EmptyState icon={ClipboardCheck} title="Nenhum agendamento aguardando desfecho" />}
+            {awaitingOutcome.map((appt) => {
               const apptDate = new Date(appt.scheduled_date + "T12:00:00");
               const step = outcomeStep[appt.id] || "init";
               const saving = outcomeSaving === appt.id;
               return (
-                <div key={appt.id} className="rounded-lg border-2 border-orange-500/40 bg-orange-500/5 p-3 space-y-2">
-                  <button
-                    onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}
-                    className="text-sm font-medium truncate text-foreground hover:text-primary text-left block w-full"
-                  >
-                    {appt.lead_name}
-                  </button>
-                  <p className="text-[11px] text-muted-foreground -mt-1">
-                    {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
-                  </p>
+                <div key={appt.id} className="space-y-3 rounded-control border border-warning/30 bg-warning-soft p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <Button variant="link" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)} className="h-auto min-w-0 whitespace-normal p-0 text-left font-semibold leading-snug">
+                      {appt.lead_name}
+                    </Button>
+                    <StatusPill tone="warning" className="shrink-0">Aguardando</StatusPill>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}</p>
                   {step === "init" ? (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "compareceu" }))}>
-                        <CheckCircle2 size={11} /> Compareceu
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={saving}
-                        className="h-7 text-[11px] gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
-                        onClick={() => handleOutcome(appt, "no_show")}>
-                        <XCircle size={11} /> Não veio
-                      </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button disabled={saving} onClick={() => setOutcomeStep((p) => ({ ...p, [appt.id]: "compareceu" }))}><CheckCircle2 size={14} /> Compareceu</Button>
+                      <Button variant="outline" disabled={saving} className="border-destructive/40 text-destructive hover:bg-destructive-soft" onClick={() => handleOutcome(appt, "no_show")}><XCircle size={14} /> Não veio</Button>
                     </div>
                   ) : (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-muted-foreground">Resultado da avaliação:</p>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
-                          onClick={() => handleOutcome(appt, "contracted")}>
-                          <Handshake size={11} /> Contratou
-                        </Button>
-                        <Button size="sm" variant="outline" disabled={saving} className="h-7 text-[11px]"
-                          onClick={() => handleOutcome(appt, "not_contracted")}>
-                          Não contratou
-                        </Button>
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Resultado da avaliação:</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button disabled={saving} onClick={() => handleOutcome(appt, "contracted")}><Handshake size={14} /> Contratou</Button>
+                        <Button variant="outline" disabled={saving} onClick={() => handleOutcome(appt, "not_contracted")}>Não contratou</Button>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-5 w-full text-[10px]"
-                        onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "init" }))}>
-                        ← Voltar
-                      </Button>
+                      <Button variant="ghost" className="w-full" onClick={() => setOutcomeStep((p) => ({ ...p, [appt.id]: "init" }))}>← Voltar</Button>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-        </Card>
+        </SectionCard>
 
-        {/* Column 1: Tasks */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Tarefas — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</h2>
-            <Badge variant="outline">{todayTasks.length}</Badge>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {todayTasks.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa para este dia</p>}
-            {todayTasks.map(t => (
-              <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border group">
-                <button onClick={() => handleMarkDone(t)} className="shrink-0">
-                  <Circle size={18} className="text-muted-foreground hover:text-green-500 transition-colors" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{t.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <span>{typeLabels[t.type] || t.type}</span>
-                    <span>·</span>
+        <SectionCard title={`Tarefas — ${format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}`} icon={ListTodo} actions={countPill(todayTasks.length, "primary")}>
+          <div className="space-y-3">
+            {todayTasks.length === 0 && <EmptyState icon={ListTodo} title="Nenhuma tarefa para este dia" />}
+            {todayTasks.map((t) => (
+              <div key={t.id} className="flex items-start gap-3 rounded-control border border-border/60 bg-surface-sunken p-4">
+                <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleMarkDone(t)} aria-label="Concluir tarefa"><Circle size={18} /></Button>
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold leading-snug">{t.title}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <StatusPill tone="slate">{typeLabels[t.type] || t.type}</StatusPill>
                     <span>{format(new Date(t.due_date), "HH:mm")}</span>
-                    <span>·</span>
-                    <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
+                    <Button variant="link" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="h-auto whitespace-normal p-0 text-left text-xs">{t.lead_name}</Button>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 text-xs" onClick={() => handleMarkDone(t)}>
-                  <CheckCircle2 size={14} className="mr-1" /> Concluir
-                </Button>
+                <Button variant="ghost" className="shrink-0" onClick={() => handleMarkDone(t)}><CheckCircle2 size={14} /> Concluir</Button>
               </div>
             ))}
-
-            {overdueTasks.length > 0 && (
-              <>
-                <div className="text-xs font-semibold text-destructive uppercase mt-4 mb-1">Atrasadas ({overdueTasks.length})</div>
-                {overdueTasks.slice(0, 5).map(t => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20 group">
-                    <AlertTriangle size={16} className="text-destructive shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span className="text-destructive font-medium">{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
-                        <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 text-xs" onClick={() => handleMarkDone(t)}>
-                      Concluir
-                    </Button>
-                  </div>
-                ))}
-              </>
-            )}
-
           </div>
-        </Card>
+        </SectionCard>
 
-        {/* Column 2: Pending Appointment Confirmations */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <Bell size={14} className="text-orange-600" />
-              Confirmações de Agendamento
-            </h2>
-            <Badge variant="outline" className="border-orange-500 text-orange-600">{pendingConfirmations.length}</Badge>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {pendingConfirmations.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma confirmação pendente</p>
-            )}
-            {pendingConfirmations
-              .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-              .map(t => {
-                const overdue = isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date));
-                return (
-                  <div key={t.id} className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg border group",
-                    overdue ? "bg-destructive/5 border-destructive/20" : "bg-orange-500/5 border-orange-500/20"
-                  )}>
-                    <div className={cn("p-2 rounded-lg shrink-0", overdue ? "bg-destructive/10" : "bg-orange-500/10")}>
-                      <Bell size={16} className={overdue ? "text-destructive" : "text-orange-600"} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span className={cn("font-medium", overdue && "text-destructive")}>
-                          {format(new Date(t.due_date), "dd/MM HH:mm")}
-                        </span>
-                        <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline truncate">{t.lead_name}</button>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)}>
-                      Ver
-                    </Button>
-                  </div>
-                );
-              })}
-          </div>
-        </Card>
-
-        {/* Column 3: Today's Appointments */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <CalendarDays size={14} className="text-green-600" />
-              Agendamentos — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}
-            </h2>
-            <Badge variant="outline" className="border-green-500 text-green-600">{dayAppointments.length}</Badge>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {dayAppointments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento para este dia</p>}
-            {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => {
-              const isReschedule = (appt as any).is_rescheduled === true;
-              return (
-              <div key={appt.id} className={cn(
-                "flex items-center gap-3 p-3 rounded-lg border",
-                isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-green-500/5 border-green-500/20"
-              )}>
-                <div className={cn("p-2 rounded-lg", isReschedule ? "bg-purple-500/10" : "bg-green-500/10")}>
-                  <CalendarDays size={16} className={isReschedule ? "text-purple-600" : "text-green-600"} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{appt.lead_name}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
-                    {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
-                    {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+        <SectionCard title="Tarefas atrasadas" icon={AlertTriangle} actions={countPill(overdueTasks.length, "destructive")}>
+          <div className="space-y-3">
+            {overdueTasks.length === 0 && <EmptyState icon={CheckCircle2} title="Nenhuma tarefa atrasada" />}
+            {overdueTasks.slice(0, 5).map((t) => (
+              <div key={t.id} className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive-soft p-4">
+                <AlertTriangle size={18} className="mt-1 shrink-0 text-destructive-soft-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold leading-snug">{t.title}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <StatusPill tone="destructive">{format(new Date(t.due_date), "dd/MM HH:mm")}</StatusPill>
+                    <Button variant="link" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="h-auto whitespace-normal p-0 text-left text-xs">{t.lead_name}</Button>
                   </div>
                 </div>
-                <Badge variant="outline" className={cn("text-[10px]", isReschedule ? "border-purple-500 text-purple-600" : "border-green-500 text-green-600")}>
-                  {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
-                </Badge>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
-                  Ver
-                </Button>
+                <Button variant="ghost" className="shrink-0" onClick={() => handleMarkDone(t)}>Concluir</Button>
               </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Confirmações de Agendamento" icon={Bell} actions={countPill(pendingConfirmations.length, "warning")}>
+          <div className="space-y-3">
+            {pendingConfirmations.length === 0 && <EmptyState icon={Bell} title="Nenhuma confirmação pendente" />}
+            {[...pendingConfirmations].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime()).map((t) => {
+              const overdue = isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date));
+              return (
+                <div key={t.id} className={cn("flex items-start gap-3 rounded-control border p-4", overdue ? "border-destructive/25 bg-destructive-soft" : "border-warning/25 bg-warning-soft")}>
+                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-control", overdue ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground")}><Bell size={16} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold leading-snug">{t.title}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <StatusPill tone={overdue ? "destructive" : "warning"}>{overdue ? "Atrasada" : "Pendente"}</StatusPill>
+                      <span>{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
+                      <Button variant="link" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="h-auto whitespace-normal p-0 text-left text-xs">{t.lead_name}</Button>
+                    </div>
+                  </div>
+                  <Button variant="ghost" className="shrink-0" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)}>Ver</Button>
+                </div>
               );
             })}
           </div>
-        </Card>
+        </SectionCard>
 
-        {/* Column 3: Upcoming Appointments */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Próximos Agendamentos</h2>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{upcomingAppointments.length}</Badge>
-              <Select value={upcomingDays} onValueChange={setUpcomingDays}>
-                <SelectTrigger className="h-7 text-xs w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">7 dias</SelectItem>
-                  <SelectItem value="14">14 dias</SelectItem>
-                  <SelectItem value="30">30 dias</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <SectionCard title={`Agendamentos — ${format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}`} icon={CalendarDays} actions={countPill(dayAppointments.length, "success")}>
+          <div className="space-y-3">
+            {dayAppointments.length === 0 && <EmptyState icon={CalendarDays} title="Nenhum agendamento para este dia" />}
+            {[...dayAppointments].sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map((appt) => {
+              const isReschedule = appt.is_rescheduled === true;
+              const status = appointmentStatus(appt.status);
+              return (
+                <div key={appt.id} className={cn("flex items-start gap-3 rounded-control border p-4", isReschedule ? "border-purple/25 bg-purple-soft" : "border-success/25 bg-success-soft")}>
+                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-control", isReschedule ? "bg-purple text-purple-foreground" : "bg-success text-success-foreground")}><CalendarDays size={16} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-semibold leading-snug">{appt.lead_name}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                      {isReschedule && <StatusPill tone="purple">Reagendado</StatusPill>}
+                      {appt.notes && <span className="break-words">{appt.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                    <Button variant="ghost" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>Ver</Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {upcomingAppointments.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento nos próximos {upcomingDays} dias</p>
-            )}
+        </SectionCard>
+
+        <SectionCard
+          title="Próximos Agendamentos"
+          icon={CalendarDays}
+          className="lg:col-span-2 xl:col-span-3"
+          actions={countPill(upcomingAppointments.length, "info")}
+        >
+          <PillTabs
+            value={upcomingDays}
+            onValueChange={setUpcomingDays}
+            items={[{ value: "7", label: "7 dias" }, { value: "14", label: "14 dias" }, { value: "30", label: "30 dias" }]}
+          />
+          <div className="mt-5 grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {upcomingAppointments.length === 0 && <div className="lg:col-span-2 xl:col-span-3"><EmptyState icon={CalendarDays} title={`Nenhum agendamento nos próximos ${upcomingDays} dias`} /></div>}
             {Array.from(groupedUpcoming.entries()).map(([dateStr, appts]) => {
               const date = new Date(dateStr + "T12:00:00");
               const isDateToday = isToday(date);
               return (
-                <div key={dateStr}>
-                  <div className={cn(
-                    "text-xs font-semibold uppercase mb-1.5 px-1",
-                    isDateToday ? "text-primary" : "text-muted-foreground"
-                  )}>
-                    {isDateToday ? "Hoje" : format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+                <section key={dateStr} className="overflow-hidden rounded-card border border-border/60 bg-surface-sunken">
+                  <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+                    <h3 className={cn("text-sm font-semibold capitalize", isDateToday ? "text-primary" : "text-foreground")}>{isDateToday ? "Hoje" : format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}</h3>
+                    <StatusPill tone={isDateToday ? "primary" : "slate"}>{appts.length}</StatusPill>
                   </div>
-                  <div className="space-y-1.5">
-                    {appts.map(appt => {
-                      const isReschedule = (appt as any).is_rescheduled === true;
+                  <div className="divide-y divide-border/60">
+                    {appts.map((appt) => {
+                      const isReschedule = appt.is_rescheduled === true;
+                      const status = appointmentStatus(appt.status);
                       return (
-                      <div key={appt.id} className={cn("flex items-center gap-3 p-3 rounded-lg border", isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-secondary/50 border-border")}>
-                        <div className={cn(
-                          "p-2 rounded-lg",
-                          isReschedule ? "bg-purple-500/10" :
-                          appt.status === "confirmed" ? "bg-green-500/10" : appt.status === "cancelled" ? "bg-destructive/10" : "bg-primary/10"
-                        )}>
-                          <CalendarDays size={16} className={cn(
-                            isReschedule ? "text-purple-600" :
-                            appt.status === "confirmed" ? "text-green-600" : appt.status === "cancelled" ? "text-destructive" : "text-primary"
-                          )} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{appt.lead_name}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                            <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
-                            {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
-                            {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
+                        <div key={appt.id} className="flex items-start gap-3 bg-card p-4">
+                          <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-control", isReschedule ? "bg-purple-soft text-purple-soft-foreground" : "bg-info-soft text-info-soft-foreground")}><CalendarDays size={16} /></span>
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-semibold leading-snug">{appt.lead_name}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
+                              {isReschedule && <StatusPill tone="purple">Reagendado</StatusPill>}
+                              {appt.notes && <span className="break-words">{appt.notes}</span>}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                            <Button variant="ghost" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>Ver</Button>
                           </div>
                         </div>
-                        <Badge variant="outline" className={cn(
-                          "text-[10px]",
-                          appt.status === "confirmed" && "border-green-500 text-green-600",
-                          appt.status === "cancelled" && "border-destructive text-destructive"
-                        )}>
-                          {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
-                        </Badge>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
-                          Ver
-                        </Button>
-                      </div>
                       );
                     })}
                   </div>
-                </div>
+                </section>
               );
             })}
           </div>
-        </Card>
+        </SectionCard>
       </div>
     </div>
   );
