@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
       try {
         const { data: lead } = await supabase
           .from("crm_leads")
-          .select("phone, is_blocked, last_inbound_at, automation_paused, whatsapp_number_id, tenant_id")
+          .select("phone, is_blocked, last_inbound_at, automation_paused, whatsapp_number_id, tenant_id, stage_id")
           .eq("id", item.lead_id)
           .maybeSingle();
 
@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
         if (item.automation_id) {
           const { data: auto } = await supabase
             .from("crm_automations")
-            .select("id, is_active, stage_id, tenant_id")
+            .select("id, is_active, stage_id, tenant_id, trigger_type")
             .eq("id", item.automation_id)
             .maybeSingle();
 
@@ -202,6 +202,18 @@ Deno.serve(async (req) => {
           }
           if ((auto as any).tenant_id && lead.tenant_id && (auto as any).tenant_id !== lead.tenant_id) {
             await cancelar("automação e lead de clientes diferentes");
+            return;
+          }
+
+          // Trava de etapa no momento do envio: automação de ENTRADA na etapa só
+          // dispara se o lead ainda está nela (ex.: follow-up agendado às 10h
+          // e lead movido para Agendado às 12h não recebe a mensagem das 14h).
+          if (
+            (auto as any).stage_id &&
+            ["on_enter", "on_create_or_enter"].includes((auto as any).trigger_type) &&
+            (lead as any).stage_id !== (auto as any).stage_id
+          ) {
+            await cancelar(`lead saiu da etapa ${(auto as any).stage_id} para ${(lead as any).stage_id ?? "nenhuma"}`);
             return;
           }
 
