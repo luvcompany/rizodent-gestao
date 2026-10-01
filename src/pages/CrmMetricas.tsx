@@ -322,11 +322,12 @@ const CrmMetricas = () => {
             value: kpis.botsTotal,
             sub: `${kpis.botsConcluidos.toLocaleString("pt-BR")} concluídas (${pctConcluidos}%)`,
             icon: Bot,
+            tone: "primary" as const,
           },
-          { label: "Sugestões e análises da IA", value: kpis.ia, sub: "sugestões regeneradas não contam", icon: Sparkles },
-          { label: "Transcrições de áudio", value: kpis.transcricoes, sub: "geradas automaticamente", icon: Mic },
-          { label: "Automações executadas", value: kpis.automacoes, icon: Zap },
-        ].map((k, index) => <KpiCard key={k.label} label={k.label} value={loading ? "…" : k.value.toLocaleString("pt-BR")} icon={k.icon} tone={(["primary", "purple", "info", "success"] as const)[index]} detail={k.sub && !loading ? k.sub : undefined} />)}
+          { label: "Sugestões e análises da IA", value: kpis.ia, sub: "sugestões regeneradas não contam", icon: Sparkles, tone: "purple" as const },
+          { label: "Transcrições de áudio", value: kpis.transcricoes, sub: "geradas automaticamente", icon: Mic, tone: "info" as const },
+          { label: "Automações executadas", value: kpis.automacoes, icon: Zap, tone: "success" as const },
+        ].map((k) => <KpiCard key={k.label} label={k.label} value={loading ? "…" : k.value.toLocaleString("pt-BR")} icon={k.icon} tone={k.tone} detail={k.sub && !loading ? k.sub : undefined} />)}
       </div>
 
       {/* Bots */}

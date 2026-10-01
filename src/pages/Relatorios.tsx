@@ -19,7 +19,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 import { useChartTheme } from "@/hooks/useChartTheme";
-import { PageHeader, SectionCard, crmChartColors } from "@/components/crm-ui";
+import { PageHeader, crmChartColors } from "@/components/crm-ui";
 
 const COLORS = crmChartColors;
 
@@ -1202,14 +1202,14 @@ const Relatorios = () => {
 
   return (
     <div className="animate-fade-in space-y-6" ref={reportRef}>
-      <PageHeader icon={FileBarChart} title="Relatórios" description="Selecione o tipo de relatório que deseja visualizar" actions={selectedReport ? (
+      <PageHeader title="Relatórios" subtitle="Selecione o tipo de relatório que deseja visualizar" actions={selectedReport ? (
           <Button variant="outline" size="sm" onClick={() => setSelectedReport(null)}>
             <ArrowLeft size={14} className="mr-1" /> Voltar
           </Button>
         ) : undefined} />
 
       {/* Filters */}
-      <SectionCard className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <Card className="flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-end">
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Clínica</span>
           <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
@@ -1228,7 +1228,7 @@ const Relatorios = () => {
           <span className="text-xs text-muted-foreground">Até</span>
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full bg-surface-sunken sm:w-[160px]" />
         </div>
-      </SectionCard>
+      </Card>
 
       {/* Report selection or content */}
       {!selectedReport ? (

@@ -12,7 +12,7 @@ import {
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import { AlertTriangle, BarChart3, Info, Loader2, RefreshCw, Users } from "lucide-react";
-import { EmptyState, PageHeader, SectionCard } from "@/components/crm-ui";
+import { EmptyState } from "@/components/crm-ui";
 
 /**
  * Relatório por SDR — visão do GESTOR da equipe (Fase 5 do rodízio).
@@ -194,12 +194,17 @@ export default function CrmRelatorioSdr() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5 pb-10">
-        <PageHeader icon={BarChart3} title="Relatório por SDR" description={
-          <>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><BarChart3 size={20} /></span>
+              <h1 className="text-3xl font-bold text-foreground">Relatório por SDR</h1>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
               Leads, respostas, agendamentos, pesquisa e expediente de cada SDR no período.{" "}
               <Link to="/crm/equipe" className="underline underline-offset-2 hover:text-foreground">Ver a equipe</Link>
-          </>
-        } actions={
+            </p>
+          </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <DateRangeFilter value={periodo} onChange={setPeriodo} excludePresets={["all", "multi"]} />
             <Button
@@ -209,9 +214,9 @@ export default function CrmRelatorioSdr() {
               <RefreshCw size={14} className={carregando ? "animate-spin" : ""} />
             </Button>
           </div>
-        } />
+        </header>
 
-        <SectionCard className="overflow-hidden p-0">
+        <section className="overflow-hidden rounded-card border border-border bg-card shadow-card">
           {estado.status === "error" ? (
             <div className="flex flex-wrap items-center gap-3 px-6 py-10">
               <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
@@ -285,7 +290,7 @@ export default function CrmRelatorioSdr() {
               </Table>
             </div>
           )}
-        </SectionCard>
+        </section>
 
         <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
           <Info size={14} className="mt-0.5 shrink-0" />
