@@ -992,9 +992,9 @@ export default function AppointmentConfirmBar({
   };
 
   return (
-    <div className="p-4 border-b border-border">
+    <section className="border-b border-border/60 px-5 py-5">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
           <CalendarCheck size={12} />
           Agendamento
         </h3>
@@ -1537,6 +1537,6 @@ export default function AppointmentConfirmBar({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

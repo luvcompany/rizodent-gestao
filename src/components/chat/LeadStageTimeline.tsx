@@ -121,18 +121,18 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
   const resolveStage = (stageId: string): Stage | undefined =>
     stages.find((s) => s.id === stageId) || extraStages[stageId];
   const getStageName = (stageId: string) => resolveStage(stageId)?.name || "Desconhecida";
-  const getStageColor = (stageId: string) => resolveStage(stageId)?.color || "#6366f1";
+  const getStageColor = (stageId: string) => resolveStage(stageId)?.color || "hsl(var(--slate))";
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center gap-2 mb-2">
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex items-center gap-2">
         <Clock size={14} className="text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground uppercase">Histórico de Etapas</span>
+        <h3 className="text-[15px] font-semibold text-foreground">Histórico de etapas</h3>
       </div>
 
       {/* Time since last inbound message */}
       {lastInboundAt && (
-        <div className="mb-3 p-2 bg-secondary/50 rounded text-sm">
+        <div className="mb-4 rounded-xl bg-surface-sunken p-3 text-sm">
           <span className="text-muted-foreground">Última msg do lead: </span>
           <span className="font-medium text-foreground">{formatRelativeTime(lastInboundAt)}</span>
         </div>
@@ -141,37 +141,37 @@ export default function LeadStageTimeline({ leadId, stages, lastInboundAt }: Pro
       {history.length === 0 ? (
         <p className="text-sm text-muted-foreground">Sem histórico de etapas.</p>
       ) : (
-        <div className="space-y-1">
+        <div className="relative space-y-0 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:w-px before:bg-border">
           {history.map((h, i) => {
             const duration = h.exited_at
               ? new Date(h.exited_at).getTime() - new Date(h.entered_at).getTime()
               : Date.now() - new Date(h.entered_at).getTime();
 
             return (
-              <div key={h.id} className="text-xs">
-              <div className="flex items-center gap-2">
+              <div key={h.id} className="relative pb-4 pl-6 text-xs last:pb-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  className="absolute left-0 top-1 h-3 w-3 flex-shrink-0 rounded-full ring-4 ring-card"
                   style={{ backgroundColor: getStageColor(h.stage_id) }}
                 />
-                <span className="font-medium text-foreground truncate">
+                <span className="break-words font-semibold text-foreground">
                   {getStageName(h.stage_id)}
                 </span>
                 <span className="text-muted-foreground">
                   {formatDuration(duration)}
                 </span>
                 {!h.exited_at && (
-                  <span className="text-primary text-[10px] font-semibold">(atual)</span>
+                  <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold text-primary-soft-foreground">(atual)</span>
                 )}
               </div>
               {h.motivo && (
-                <p className="ml-4 text-[11px] text-muted-foreground">Motivo: {h.motivo}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">Motivo: {h.motivo}</p>
               )}
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </section>
   );
 }

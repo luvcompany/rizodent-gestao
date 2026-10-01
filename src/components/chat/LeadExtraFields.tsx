@@ -60,7 +60,8 @@ export default function LeadExtraFields({ leadId, cidade, onUpdated }: Props) {
   };
 
   return (
-    <div className="p-4 border-b border-border space-y-2">
+    <section className="space-y-3 border-b border-border/60 px-5 py-5">
+      <h3 className="text-[15px] font-semibold text-foreground">Dados adicionais</h3>
       <div>
         <label className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
           <MapPin size={10} /> Cidade
@@ -69,7 +70,7 @@ export default function LeadExtraFields({ leadId, cidade, onUpdated }: Props) {
           value={cidadeValue}
           onChange={(e) => void handleCidadeChange(e.target.value)}
           disabled={saving}
-          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="none">Sem localização</option>
           {CIDADES.map((c) => (
@@ -77,6 +78,6 @@ export default function LeadExtraFields({ leadId, cidade, onUpdated }: Props) {
           ))}
         </select>
       </div>
-    </div>
+    </section>
   );
 }

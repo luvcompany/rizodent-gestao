@@ -139,7 +139,7 @@ export default function SendToPosvendaButton({
       onClick={send}
       disabled={loading}
       size="sm"
-      className="mt-3 w-full bg-primary hover:bg-primary/90"
+      className="h-10 w-full rounded-xl bg-primary shadow-primary hover:bg-primary/90"
     >
       {loading ? <Loader2 size={14} className="mr-2 animate-spin" /> : <ArrowRightLeft size={14} className="mr-2" />}
       Enviar para Pós-venda ({posvendaUser.nome})

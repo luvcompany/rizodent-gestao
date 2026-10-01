@@ -155,10 +155,10 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   };
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Tarefas</h3>
-        <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={openCreate}>
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-foreground">Tarefas</h3>
+        <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1" onClick={openCreate}>
           <Plus size={12} /> Adicionar
         </Button>
       </div>
@@ -170,10 +170,10 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           const st = getStatus(task);
           const Icon = typeIcons[task.type] || Clock;
           return (
-            <div key={task.id} className="flex items-start gap-2 p-2 rounded-md bg-secondary/50 text-xs group">
+            <div key={task.id} className="group flex items-start gap-2 rounded-xl border border-border/60 bg-surface-sunken p-3 text-xs">
               <button onClick={() => toggleDone(task)} className="mt-0.5 flex-shrink-0">
                 {st === "done" ? (
-                  <CheckCircle2 size={16} className="text-green-500" />
+                  <CheckCircle2 size={16} className="text-success" />
                 ) : st === "late" ? (
                   <AlertTriangle size={16} className="text-destructive" />
                 ) : (
@@ -272,6 +272,6 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

@@ -64,12 +64,12 @@ export default function LeadFollowUpPanel({ leadId }: Props) {
     : queue.disparo2_scheduled_at;
 
   return (
-    <div className="p-4 border-b border-border">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2 flex items-center gap-1">
-        <RefreshCw size={12} /> Follow Up
+    <section className="border-b border-border/60 px-5 py-5">
+      <h3 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-foreground">
+        <RefreshCw size={14} className="text-muted-foreground" /> Follow-up
       </h3>
-      <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 space-y-1">
-        <div className="flex items-center justify-between">
+      <div className="space-y-2 rounded-xl border border-warning/20 bg-warning-soft p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-medium text-foreground">Follow Up Ativo</span>
           <Badge variant="secondary" className="text-[10px]">
             {statusLabel[queue.status] || queue.status}
@@ -86,16 +86,16 @@ export default function LeadFollowUpPanel({ leadId }: Props) {
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 text-xs gap-1 px-2"
+          className="h-9 rounded-full text-xs gap-1 px-3"
           onClick={togglePause}
         >
           {queue.status === "paused" ? (
-            <><Play size={12} className="text-green-500" /> Retomar</>
+            <><Play size={12} className="text-success" /> Retomar</>
           ) : (
-            <><Pause size={12} className="text-amber-500" /> Pausar</>
+            <><Pause size={12} className="text-warning" /> Pausar</>
           )}
         </Button>
       </div>
-    </div>
+    </section>
   );
 }

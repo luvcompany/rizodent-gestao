@@ -59,31 +59,31 @@ export default function LeadResponseTimes({ messages }: Props) {
   if (messages.length < 2) return null;
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center gap-2 mb-2">
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex items-center gap-2">
         <Timer size={14} className="text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground uppercase">Tempo de Resposta Médio</span>
+        <h3 className="text-[15px] font-semibold text-foreground">Tempo de resposta médio</h3>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="p-2 bg-secondary/50 rounded text-center">
+        <div className="rounded-xl bg-info-soft p-3 text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
-            <ArrowDown size={12} className="text-blue-500" />
+            <ArrowDown size={12} className="text-info-soft-foreground" />
             <span className="text-[10px] text-muted-foreground uppercase">Lead</span>
           </div>
-          <span className="font-semibold text-sm text-foreground">
+          <span className="text-xl font-bold tabular-nums text-foreground">
             {avgLeadResponse >= 0 ? formatDuration(avgLeadResponse) : "—"}
           </span>
         </div>
-        <div className="p-2 bg-secondary/50 rounded text-center">
+        <div className="rounded-xl bg-success-soft p-3 text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
-            <ArrowUp size={12} className="text-green-500" />
+            <ArrowUp size={12} className="text-success-soft-foreground" />
             <span className="text-[10px] text-muted-foreground uppercase">Você</span>
           </div>
-          <span className="font-semibold text-sm text-foreground">
+          <span className="text-xl font-bold tabular-nums text-foreground">
             {avgUserResponse >= 0 ? formatDuration(avgUserResponse) : "—"}
           </span>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

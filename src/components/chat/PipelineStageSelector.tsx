@@ -69,11 +69,11 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
   const etapaAtualVisivel = etapasDoFunilEscolhido.some((s) => s.id === currentStageId);
 
   return (
-    <div className="mt-3 mb-3 space-y-2">
+    <div className="space-y-3">
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Funil</label>
         <Select value={selectedPipelineId} onValueChange={(val) => setSelectedPipelineId(val)}>
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
             <SelectValue placeholder="Selecione o funil" />
           </SelectTrigger>
           <SelectContent>
@@ -107,7 +107,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           }}
           disabled={etapasDoFunilEscolhido.length === 0}
         >
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
             <SelectValue placeholder={trocandoDeFunil ? "Escolha a etapa de destino" : "Selecione a etapa"} />
           </SelectTrigger>
           <SelectContent>
