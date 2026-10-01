@@ -112,14 +112,14 @@ export default function LeadServiceField({ leadId, servicoInteresse, onUpdated }
   };
 
   return (
-    <div className="mb-3 space-y-2">
+    <div className="space-y-2">
       <label className="text-xs text-muted-foreground mb-1 block">Serviço de Interesse</label>
       <Select
         value={selectValue}
         onValueChange={(val) => void handleChange(val)}
         disabled={saving}
       >
-        <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+        <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
           <SelectValue placeholder="Selecione..." />
         </SelectTrigger>
         <SelectContent>
@@ -136,7 +136,7 @@ export default function LeadServiceField({ leadId, servicoInteresse, onUpdated }
           onChange={(e) => setOutrosTexto(e.target.value)}
           placeholder="Especifique o serviço (restauração, extração, canal...)"
           disabled={saving}
-          className="bg-secondary border-border text-sm h-8"
+          className="h-10 rounded-xl bg-surface-sunken text-sm"
         />
       )}
     </div>

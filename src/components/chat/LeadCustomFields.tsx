@@ -149,7 +149,7 @@ export default function LeadCustomFields({ leadId }: Props) {
             type="number"
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="bg-secondary border-border text-sm h-8"
+            className="h-10 rounded-xl bg-surface-sunken text-sm"
           />
         );
       case "date":
@@ -158,13 +158,13 @@ export default function LeadCustomFields({ leadId }: Props) {
             type="date"
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="bg-secondary border-border text-sm h-8"
+            className="h-10 rounded-xl bg-surface-sunken text-sm"
           />
         );
       case "select":
         return (
           <Select value={val} onValueChange={(v) => saveValue(field.id, v)}>
-            <SelectTrigger className="bg-secondary border-border text-sm h-8">
+            <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
               <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
             <SelectContent>
@@ -179,7 +179,7 @@ export default function LeadCustomFields({ leadId }: Props) {
           <Input
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="bg-secondary border-border text-sm h-8"
+            className="h-10 rounded-xl bg-surface-sunken text-sm"
             placeholder="..."
           />
         );
@@ -187,10 +187,10 @@ export default function LeadCustomFields({ leadId }: Props) {
   };
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground uppercase">Campos Personalizados</span>
-        <button onClick={() => setManageOpen(true)} className="text-muted-foreground hover:text-foreground">
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-foreground">Campos personalizados</h3>
+        <button onClick={() => setManageOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground">
           <Settings2 size={14} />
         </button>
       </div>
@@ -260,6 +260,6 @@ export default function LeadCustomFields({ leadId }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

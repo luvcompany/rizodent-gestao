@@ -345,10 +345,10 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center gap-2 mb-2">
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex items-center gap-2">
         <DollarSign size={14} className="text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground uppercase">Orçamento & Valor</span>
+        <h3 className="text-[15px] font-semibold text-foreground">Orçamento e valor</h3>
       </div>
 
       {/* Cidade: pré-preenchida automaticamente, editável direto. */}
@@ -361,7 +361,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           value={cidade}
           onChange={(e) => void handleCidadeChange(e.target.value)}
           disabled={savingCity}
-          className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value={EMPTY_CITY_VALUE}>Sem localização</option>
           {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
@@ -373,7 +373,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           {/* List all linked patients */}
           <div className="space-y-1">
             {linkedPacientes.map((p) => (
-              <div key={p.link_id} className="p-2 bg-secondary/50 rounded text-sm group">
+              <div key={p.link_id} className="group rounded-xl border border-border/60 bg-surface-sunken p-3 text-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
@@ -424,7 +424,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           <div className="flex items-center justify-between pt-2 border-t border-border">
             <div>
               <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
-              <p className="text-primary font-bold text-lg">{formatCurrency(totalPaid)}</p>
+              <p className="text-2xl font-bold tabular-nums text-primary">{formatCurrency(totalPaid)}</p>
             </div>
           </div>
 
@@ -496,7 +496,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                   <select
                     value={cidade}
                     onChange={(e) => setCidade(e.target.value)}
-                    className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                    className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground"
                   >
                     <option value={EMPTY_CITY_VALUE}>Sem localização</option>
                     {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
@@ -550,6 +550,6 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

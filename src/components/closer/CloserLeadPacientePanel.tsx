@@ -426,7 +426,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
   if (carregando) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 border-b border-border/60 px-5 py-5 text-sm text-muted-foreground">
         <Loader2 size={14} className="animate-spin" /> Carregando paciente…
       </div>
     );
@@ -435,11 +435,11 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const pagamentosDe = (pacienteId: string) => pagamentos.filter((p) => p.paciente_id === pacienteId);
 
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <section className="space-y-3 border-b border-border/60 px-5 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-foreground">
           {pacientes.length > 1 ? `Pacientes (${pacientes.length})` : "Paciente"}
-        </span>
+        </h3>
       </div>
 
       {pacientes.length === 0 ? (
@@ -455,7 +455,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             const lista = pagamentosDe(p.id);
             const somaP = lista.reduce((s, x) => s + Number(x.valor), 0);
             return (
-              <div key={p.id} className="space-y-2 rounded-md border border-border/60 p-2">
+              <div key={p.id} className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-medium text-foreground">{p.nome}</p>
@@ -516,7 +516,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
           <div className="flex items-center justify-between border-t border-border pt-2">
             <span className="text-xs text-muted-foreground">Total desta conversa</span>
-            <span className="text-lg font-bold text-primary">{brl(total)}</span>
+            <span className="text-2xl font-bold tabular-nums text-primary">{brl(total)}</span>
           </div>
 
           {/* Mesma ideia do crc: familiar que usa o mesmo telefone. */}
@@ -692,6 +692,6 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

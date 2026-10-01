@@ -398,15 +398,15 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
 
   return (
     <>
-      <div className="flex flex-wrap gap-1">
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="h-9 rounded-full px-3" onClick={() => setEditOpen(true)}>
           <Pencil size={14} className="mr-1" /> Editar
         </Button>
         {isInstagramLead && (
           lead.phone ? (
             <Popover open={transferOpen} onOpenChange={(o) => { setTransferOpen(o); if (o) void loadTransferData(); }}>
               <PopoverTrigger asChild>
-                <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" title="Transferir o atendimento para o WhatsApp">
+                <Button type="button" size="sm" variant="outline" className="h-9 whitespace-nowrap rounded-full px-3" title="Transferir o atendimento para o WhatsApp">
                   <Send size={14} className="mr-1" /> Transferir p/ WhatsApp
                 </Button>
               </PopoverTrigger>
@@ -448,7 +448,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
               type="button"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap"
+              className="h-9 whitespace-nowrap rounded-full px-3"
               title="Preencha o telefone para transferir"
               onClick={() => { setEditOpen(true); toast.info("Preencha o telefone para transferir para o WhatsApp."); }}
             >
@@ -456,12 +456,12 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
             </Button>
           )
         )}
-        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
-          <Ban size={14} />
+        <Button size="sm" variant="outline" className="h-9 rounded-full px-3 text-destructive hover:text-destructive" title="Bloquear lead" onClick={() => setBlockOpen(true)}>
+          <Ban size={14} className="mr-1" /> Bloquear
         </Button>
         {podeExcluir && (
-          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
-            <Trash2 size={14} />
+          <Button size="sm" variant="outline" className="h-9 rounded-full px-3 text-destructive hover:text-destructive" title="Excluir lead" onClick={() => setDeleteOpen(true)}>
+            <Trash2 size={14} className="mr-1" /> Excluir
           </Button>
         )}
       </div>

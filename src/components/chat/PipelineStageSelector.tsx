@@ -69,11 +69,11 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
   const etapaAtualVisivel = etapasDoFunilEscolhido.some((s) => s.id === currentStageId);
 
   return (
-    <div className="mt-3 mb-3 space-y-2">
+    <div className="space-y-3">
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Funil</label>
         <Select value={selectedPipelineId} onValueChange={(val) => setSelectedPipelineId(val)}>
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
             <SelectValue placeholder="Selecione o funil" />
           </SelectTrigger>
           <SelectContent>
@@ -107,7 +107,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           }}
           disabled={etapasDoFunilEscolhido.length === 0}
         >
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
             <SelectValue placeholder={trocandoDeFunil ? "Escolha a etapa de destino" : "Selecione a etapa"} />
           </SelectTrigger>
           <SelectContent>
@@ -142,7 +142,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
         </p>
       )}
       {!!selectedPipelineId && etapasDoFunilEscolhido.length === 0 && (
-        <p className="text-xs text-amber-500 flex items-start gap-1.5">
+        <p className="flex items-start gap-1.5 text-xs text-warning-soft-foreground">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           <span>
             Nenhuma etapa de <strong>{nomeFunil(selectedPipelineId) || "deste funil"}</strong> está liberada para o seu

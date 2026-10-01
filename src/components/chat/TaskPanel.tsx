@@ -155,10 +155,10 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   };
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase">Tarefas</h3>
-        <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={openCreate}>
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-foreground">Tarefas</h3>
+        <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1" onClick={openCreate}>
           <Plus size={12} /> Adicionar
         </Button>
       </div>
@@ -170,10 +170,10 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           const st = getStatus(task);
           const Icon = typeIcons[task.type] || Clock;
           return (
-            <div key={task.id} className="flex items-start gap-2 p-2 rounded-md bg-secondary/50 text-xs group">
+            <div key={task.id} className="group flex items-start gap-2 rounded-xl border border-border/60 bg-surface-sunken p-3 text-xs">
               <button onClick={() => toggleDone(task)} className="mt-0.5 flex-shrink-0">
                 {st === "done" ? (
-                  <CheckCircle2 size={16} className="text-green-500" />
+                  <CheckCircle2 size={16} className="text-success" />
                 ) : st === "late" ? (
                   <AlertTriangle size={16} className="text-destructive" />
                 ) : (
@@ -207,12 +207,12 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           <div className="space-y-3">
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Título</label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Ligar para o lead" className="h-8 text-sm" />
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Ligar para o lead" className="h-10 rounded-xl text-sm" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="agendamento">Agendamento</SelectItem>
                   <SelectItem value="ligacao">Ligação</SelectItem>
@@ -226,7 +226,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
                 <label className="text-xs text-muted-foreground mb-1 block">Data</label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("h-8 text-sm w-full justify-start", !dueDate && "text-muted-foreground")}>
+                    <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-sm", !dueDate && "text-muted-foreground")}>
                       <CalendarIcon size={14} className="mr-1" />
                       {dueDate ? format(dueDate, "dd/MM/yyyy") : "Selecionar"}
                     </Button>
@@ -238,7 +238,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
               </div>
               <div className="w-24">
                 <label className="text-xs text-muted-foreground mb-1 block">Hora</label>
-                <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="h-8 text-sm" />
+                <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="h-10 rounded-xl text-sm" />
               </div>
             </div>
             <div>
@@ -248,7 +248,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Responsável</label>
               <Select value={assignedTo} onValueChange={setAssignedTo}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
                   {profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                 </SelectContent>
@@ -272,6 +272,6 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

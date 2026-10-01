@@ -1916,7 +1916,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
             {!isCrmMobile && <ResizableHandle className="bg-transparent" />}
             <ResizablePanel defaultSize={isCrmMobile ? 100 : 30} minSize={isCrmMobile ? 100 : 24} maxSize={isCrmMobile ? 100 : 34} className="min-w-0 overflow-hidden">
               <Suspense fallback={<SidePanelFallback />}>
-              <div className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto rounded-card border border-border/60 bg-card shadow-card">
+              <div className="lead-detail-panel flex h-full min-h-0 min-w-0 flex-col overflow-y-auto rounded-card border border-border/60 bg-card shadow-card">
                 {isCrmMobile && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
                     <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => isCrmMobile ? setMobileShowDetails(false) : setRightPanelVisible(false)}>
@@ -1924,19 +1924,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </Button>
                   </div>
                 )}
-                <div className="p-4 border-b border-border">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Avatar className="h-12 w-12">
+                <div className="border-b border-border/60 px-5 py-5">
+                  <div className="mb-4 flex min-w-0 items-center gap-4">
+                    <Avatar className="h-16 w-16 shrink-0 ring-4 ring-primary-soft">
                       {selectedLead.instagram_profile_pic_url && (
                         <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
                       )}
-                      <AvatarFallback className="bg-primary/20 text-primary text-lg font-bold">
+                      <AvatarFallback className="bg-primary-soft text-xl font-bold text-primary-soft-foreground">
                         {selectedLead.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <h2 className="font-bold text-foreground text-sm">{selectedLead.name}</h2>
-                      <p className="text-xs text-muted-foreground">
+                      <h2 className="break-words text-lg font-bold leading-tight text-foreground">{selectedLead.name}</h2>
+                      <p className="mt-1 break-words text-sm text-muted-foreground">
                         {selectedLead.instagram_username
                           ? `@${selectedLead.instagram_username}`
                           : selectedLead.phone
@@ -1955,12 +1955,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     onLeadDeleted={() => { setSelectedLeadId(null); setSelectedLead(null); }}
                   />
 
+                </div>
+
+                <section className="border-b border-border/60 px-5 py-5">
+                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Funil e etapa</h3>
                   <PipelineStageSelector
                     stages={chat.stages}
                     currentStageId={selectedLead.stage_id}
                     onStageChange={handleStageChange}
                   />
 
+                </section>
+
+                <section className="border-b border-border/60 px-5 py-5">
+                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Procedimento</h3>
                   <LeadServiceField
                     leadId={selectedLead.id}
                     servicoInteresse={(selectedLead as any).servico_interesse || null}
@@ -1970,9 +1978,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     }}
                   />
 
+                </section>
+
+                <section className="border-b border-border/60 px-5 py-5">
                   {/* Responsible User Assignment */}
-                  <div className="mt-3">
-                    <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">
+                  <div>
+                    <h3 className="mb-3 text-[15px] font-semibold text-foreground">Responsável</h3>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
                       <UserRoundCog size={12} className="inline mr-1" />
                       Responsável
                     </label>
@@ -1983,7 +1995,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         value={selectedLead.assigned_to || "unassigned"}
                         onValueChange={(val) => handleTransferLead(val)}
                       >
-                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                        <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
                           <SelectValue placeholder="Selecionar responsável" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2004,7 +2016,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         value={selectedLead.assigned_to || "unassigned"}
                         onValueChange={(val) => handleTransferLead(val)}
                       >
-                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
+                        <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
                           <SelectValue placeholder="Selecionar responsável" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2016,6 +2028,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     )}
                   </div>
 
+                </section>
+
+                <section className="border-b border-border/60 px-5 py-5">
+                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Enviar para pós-venda</h3>
                   <SendToPosvendaButton
                     leadId={selectedLead.id}
                     stageId={selectedLead.stage_id}
@@ -2037,7 +2053,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       chat.fetchMessages(true);
                     }}
                   />
-                </div>
+                </section>
 
                 <InlineTagsEditor
                   leadId={selectedLead.id}
@@ -2126,17 +2142,17 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 {getLeadChannel(selectedLead) !== "instagram" && <LeadFollowUpPanel leadId={selectedLead.id} />}
 
                 {/* Notes input */}
-                <div className="p-4 border-b border-border">
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
+                <div className="border-b border-border/60 px-5 py-5">
+                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Adicionar nota</h3>
                   <div className="flex gap-2">
                     <Input
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       placeholder="Adicionar nota..."
-                      className="bg-secondary border-border text-xs h-8"
+                      className="h-10 rounded-xl bg-surface-sunken text-sm"
                       onKeyDown={(e) => { if (e.key === "Enter" && newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }}
                     />
-                    <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()} className="h-8 px-2">
+                    <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()} className="h-10 rounded-xl px-3">
                       +
                     </Button>
                   </div>
