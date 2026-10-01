@@ -303,7 +303,7 @@ const CrmMetricas = () => {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </Card>
 
       {errorMsg && (
         <Card className="border-destructive/50">

@@ -685,7 +685,7 @@ export default function CrmRelatorios() {
                 <StatBox
                   label="Contratos na consulta"
                   value={kpisState.status === "ok" ? kpisState.data.contracted : "—"}
-                  color="text-emerald-600"
+                  color="text-success"
                   hint="Agendamentos com status 'contratado' no período (pode ficar desatualizado)"
                 />
                 <StatBox
@@ -697,7 +697,7 @@ export default function CrmRelatorios() {
                 <StatBox
                   label="Recebido desses pacientes"
                   value={brl.format(contratadosState.data.reduce((s, c) => s + c.valor_total_periodo, 0))}
-                  color="text-emerald-600"
+                  color="text-success"
                   hint="Soma dos pagamentos desses pacientes no período"
                 />
               </div>
@@ -729,9 +729,9 @@ export default function CrmRelatorios() {
             <div className="mt-6 border-t pt-4">
               <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <StatBox label="Faltas" value={calendario.faltas} color="text-red-500" />
-                <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-orange-500" />
-                <StatBox label="Pendentes (sem decisão)" value={calendario.pendentes} color="text-indigo-500" />
+                <StatBox label="Faltas" value={calendario.faltas} color="text-destructive" />
+                <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-warning" />
+                <StatBox label="Pendentes (sem decisão)" value={calendario.pendentes} color="text-warning" />
               </div>
             </div>
           </Card>
@@ -751,11 +751,11 @@ export default function CrmRelatorios() {
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                  <StatBox label="Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
-                  <StatBox label="Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
-                  <StatBox label="Agend. criados" value={dailyActivity.totals.agendamentosCriados} color="text-amber-600" />
-                  <StatBox label="Agend. do dia" value={dailyActivity.totals.agendamentosDoDia} color="text-sky-600" />
-                  <StatBox label="Contratos do dia" value={dailyActivity.totals.contratosDoDia} color="text-emerald-600" />
+                  <StatBox label="Leads conversaram" value={dailyActivity.totals.conversaram} color="text-purple" />
+                  <StatBox label="Novos leads" value={dailyActivity.totals.novos} color="text-info" />
+                  <StatBox label="Agend. criados" value={dailyActivity.totals.agendamentosCriados} color="text-warning" />
+                  <StatBox label="Agend. do dia" value={dailyActivity.totals.agendamentosDoDia} color="text-primary" />
+                  <StatBox label="Contratos do dia" value={dailyActivity.totals.contratosDoDia} color="text-success" />
                 </div>
                 <div className="max-h-[420px] overflow-auto rounded-control border border-border/60">
                   <Table>
@@ -777,9 +777,9 @@ export default function CrmRelatorios() {
                           </TableCell>
                           <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
-                          <TableCell className="text-right tabular-nums text-amber-600 font-semibold">{r.agendamentosCriados}</TableCell>
-                          <TableCell className="text-right tabular-nums text-sky-600 font-semibold">{r.agendamentosDoDia}</TableCell>
-                          <TableCell className="text-right tabular-nums text-emerald-600 font-semibold">{r.contratosDoDia}</TableCell>
+                          <TableCell className="text-right tabular-nums text-warning font-semibold">{r.agendamentosCriados}</TableCell>
+                          <TableCell className="text-right tabular-nums text-primary font-semibold">{r.agendamentosDoDia}</TableCell>
+                          <TableCell className="text-right tabular-nums text-success font-semibold">{r.contratosDoDia}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -803,8 +803,8 @@ export default function CrmRelatorios() {
                 <div className="grid grid-cols-2 gap-3">
                   <StatBox label="Média" value={fmtDias(tempoContratacao.media)} />
                   <StatBox label="Mediana" value={fmtDias(tempoContratacao.mediana)} />
-                  <StatBox label="Mais rápido" value={fmtDias(tempoContratacao.min)} color="text-green-600" />
-                  <StatBox label="Mais lento" value={fmtDias(tempoContratacao.max)} color="text-orange-500" />
+                  <StatBox label="Mais rápido" value={fmtDias(tempoContratacao.min)} color="text-success" />
+                  <StatBox label="Mais lento" value={fmtDias(tempoContratacao.max)} color="text-warning" />
                   <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
                     Baseado em {tempoContratacao.count} lead(s) contratado(s) no período
                   </div>
@@ -859,9 +859,9 @@ export default function CrmRelatorios() {
                     <TableRow key={r.cidade}>
                       <TableCell className="font-medium">{r.cidade}</TableCell>
                       <TableCell className="text-right">{r.agendamentos}</TableCell>
-                      <TableCell className="text-right text-green-600 font-semibold">{r.comparecimentos}</TableCell>
-                      <TableCell className="text-right text-emerald-600 font-semibold">{r.contratacoes}</TableCell>
-                      <TableCell className="text-right text-red-500 font-semibold">{r.faltas}</TableCell>
+                      <TableCell className="text-right text-success font-semibold">{r.comparecimentos}</TableCell>
+                      <TableCell className="text-right text-success font-semibold">{r.contratacoes}</TableCell>
+                      <TableCell className="text-right text-destructive font-semibold">{r.faltas}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="font-semibold border-t-2">
@@ -900,13 +900,13 @@ export default function CrmRelatorios() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                    <StatBox label="Sem resposta há +7 dias" value={inativosState.data.mais_7_dias} color="text-yellow-600" hover />
+                    <StatBox label="Sem resposta há +7 dias" value={inativosState.data.mais_7_dias} color="text-warning" hover />
                   </button>
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                    <StatBox label="Sem resposta há +15 dias" value={inativosState.data.mais_15_dias} color="text-orange-500" hover />
+                    <StatBox label="Sem resposta há +15 dias" value={inativosState.data.mais_15_dias} color="text-warning" hover />
                   </button>
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                    <StatBox label="Sem resposta há +30 dias" value={inativosState.data.mais_30_dias} color="text-red-500" hover />
+                    <StatBox label="Sem resposta há +30 dias" value={inativosState.data.mais_30_dias} color="text-destructive" hover />
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-3 text-center">
@@ -926,7 +926,7 @@ export default function CrmRelatorios() {
             </div>
             <p className="text-sm text-muted-foreground mb-4">Pares consecutivos de mensagens no período (ignora intervalos &gt; 7d).</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-blue-500" />
+              <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-info" />
               <StatBox label={`Resposta do Atendente (${tempoResposta.nCRC} amostras)`} value={fmtDuration(tempoResposta.crc)} color="text-primary" />
             </div>
           </Card>
@@ -1398,7 +1398,7 @@ function AcoesPorDiaTab({
 
       <Card className="p-6">
         <div className="flex items-center gap-2 mb-1">
-          <Activity className="w-5 h-5 text-orange-500" />
+          <Activity className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-semibold">Ações {isAggregated ? "—" : "de"} {rangeLabel}</h2>
         </div>
         <p className="text-sm text-muted-foreground mb-4">
@@ -1406,19 +1406,19 @@ function AcoesPorDiaTab({
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+          <div className="flex flex-col gap-2 rounded-control border border-primary/30 bg-primary-soft p-4">
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
             <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound {isAggregated ? "no período" : "no dia"}</span>
           </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+          <div className="flex flex-col gap-2 rounded-control border border-success/30 bg-success-soft p-4">
             <span className="text-sm text-muted-foreground">Agendamentos criados</span>
-            <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
+            <span className="text-4xl font-bold text-success">{agendadosDia}</span>
             <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados {isAggregated ? "no período" : "no dia"}</span>
           </div>
-          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+          <div className="flex flex-col gap-2 rounded-control border border-warning/30 bg-warning-soft p-4">
             <span className="text-sm text-muted-foreground">Reagendamentos</span>
-            <span className="text-4xl font-bold text-amber-600">{reagendadosDia}</span>
+            <span className="text-4xl font-bold text-warning">{reagendadosDia}</span>
             <span className="text-xs text-muted-foreground">Appts marcados como reagendados {isAggregated ? "no período" : "no dia"}</span>
           </div>
         </div>
@@ -1431,7 +1431,7 @@ function AcoesPorDiaTab({
               {conv7d.count} de {conv7d.total} leads que falaram{isAggregated ? " no período" : ""} agendaram em até 7 dias
             </p>
             {conv7d.imaturos > 0 && (
-              <p className="text-xs text-amber-600 mt-1">
+              <p className="text-xs text-warning mt-1">
                 ⏳ Parcial — {conv7d.imaturos} lead(s) ainda dentro da janela de 7 dias; o número tende a subir
               </p>
             )}
@@ -1455,17 +1455,17 @@ function AcoesPorDiaTab({
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
+            <div className="flex flex-col gap-2 rounded-control border border-primary/30 bg-primary-soft p-4">
               <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
               <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
             </div>
-            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
+            <div className="flex flex-col gap-2 rounded-control border border-success/30 bg-success-soft p-4">
               <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
-              <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
+              <span className="text-3xl font-bold text-success">{mediasMes.avgAgendados.toFixed(1)}</span>
             </div>
-            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}>
+            <div className="flex flex-col gap-2 rounded-control border border-warning/30 bg-warning-soft p-4">
               <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
-              <span className="text-3xl font-bold text-amber-600">{mediasMes.avgReagendados.toFixed(1)}</span>
+              <span className="text-3xl font-bold text-warning">{mediasMes.avgReagendados.toFixed(1)}</span>
             </div>
           </div>
 
