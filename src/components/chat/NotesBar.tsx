@@ -58,10 +58,10 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
       {/* Pinned latest note bar */}
       <button
         onClick={() => setAllOpen(true)}
-        className="flex-shrink-0 w-full border-b border-border bg-card px-4 py-2.5 flex items-start gap-3 text-left hover:bg-secondary/30 transition-colors"
+        className="flex w-full flex-shrink-0 items-start gap-3 border-b border-warning/25 bg-warning-soft px-4 py-2.5 text-left transition-colors hover:bg-warning-soft/80"
       >
-        <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-          <StickyNote size={14} className="text-muted-foreground" />
+        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning/15">
+          <StickyNote size={14} className="text-warning-soft-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           {latest.timestamp && (

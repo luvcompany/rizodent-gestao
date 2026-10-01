@@ -17,7 +17,7 @@ function formatDateLabel(date: Date): string {
 export default function ChatDateSeparator({ date }: Props) {
   return (
     <div className="flex items-center justify-center py-2 select-none">
-      <span className="text-[11px] text-muted-foreground bg-secondary/80 px-3 py-1 rounded-full capitalize">
+      <span className="rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium capitalize text-muted-foreground shadow-card">
         {formatDateLabel(date)}
       </span>
     </div>

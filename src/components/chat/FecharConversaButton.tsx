@@ -98,7 +98,7 @@ export function ConversaFechadaBadge({ fechadaEm }: { fechadaEm: string | null |
   const quando = new Date(fechadaEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+      className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-soft-foreground"
       title={`Fechada em ${quando}. Uma mensagem nova do lead reabre sozinha.`}
     >
       <CheckCircle2 size={11} /> Fechada

@@ -782,7 +782,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
 
   return (
-    <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
+    <div className="flex-shrink-0 border-t border-border/60 bg-card px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
       {/* Optimizing/uploading indicator */}
@@ -825,7 +825,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Sessão expirada — use um template"
-                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
+                className="min-h-[40px] max-h-[40px] resize-none bg-surface-sunken py-2 pr-10 opacity-50"
                 disabled
                 rows={1}
               />
@@ -1002,7 +1002,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                           : "Janela de Direct fechada — veja o aviso acima")
                       : "Digite / para atalhos ou uma mensagem..."
                   }
-                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2 disabled:opacity-60"
+                  className="min-h-[40px] max-h-[120px] resize-none bg-surface-sunken py-2 disabled:opacity-60"
                   disabled={optimizing || uploading || igDirectBloqueado}
                   rows={1}
                 />
