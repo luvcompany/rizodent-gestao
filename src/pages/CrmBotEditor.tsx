@@ -225,16 +225,16 @@ function BotEditorInner() {
     (params: Connection) => {
       const edgeStyle: Partial<Edge> = {};
       if (params.sourceHandle === "true") {
-        edgeStyle.style = { stroke: "#22c55e" };
+        edgeStyle.style = { stroke: "hsl(var(--success))" };
         edgeStyle.label = "Sim";
       } else if (params.sourceHandle === "false") {
-        edgeStyle.style = { stroke: "#ef4444" };
+        edgeStyle.style = { stroke: "hsl(var(--destructive))" };
         edgeStyle.label = "Não";
       } else if (params.sourceHandle === "reply") {
-        edgeStyle.style = { stroke: "#22c55e" };
+        edgeStyle.style = { stroke: "hsl(var(--success))" };
         edgeStyle.label = "Resposta";
       } else if (params.sourceHandle === "timeout") {
-        edgeStyle.style = { stroke: "#f97316" };
+        edgeStyle.style = { stroke: "hsl(var(--warning))" };
         edgeStyle.label = "Timeout";
       }
       setEdges((eds) => addEdge({ ...params, type: "deletable", animated: true, ...edgeStyle }, eds));

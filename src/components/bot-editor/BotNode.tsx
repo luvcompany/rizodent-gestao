@@ -51,27 +51,27 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const branchHandles: { id: string; label: string; color: string }[] = [];
 
   if (isCondition) {
-    branchHandles.push({ id: "true", label: "Sim", color: "#22c55e" });
-    branchHandles.push({ id: "false", label: "Não", color: "#ef4444" });
+    branchHandles.push({ id: "true", label: "Sim", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "false", label: "Não", color: "hsl(var(--destructive))" });
   } else if (isWaitReply) {
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendText) {
     if (hasTemplateButtons) {
       templateButtons.forEach((btn) => {
-        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "#3b82f6" });
+        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "hsl(var(--info))" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendMenu) {
     if (hasMenuButtons) {
       menuItems.forEach((btn) => {
-        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
+        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "hsl(var(--info))" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   }
 
   const hasBranching = branchHandles.length > 0;
