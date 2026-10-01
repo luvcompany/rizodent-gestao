@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
+  CalendarDays, CheckCircle2, AlertTriangle,
   Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
   AlertCircle, XCircle, Handshake
 } from "lucide-react";
@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import { EmptyState, KpiCard, PageHeader, PillTabs, SectionCard, StatusPill, type SemanticTone } from "@/components/crm-ui";
-import { ThemedLoader } from "@/components/ThemedLoader";
+import ThemedLoader from "@/components/ThemedLoader";
 // toastDbError mostra a mensagem que o gatilho do banco devolveu (em vez de um
 // "erro" genérico) quando o desfecho falha no meio do caminho.
 import { toastDbError } from "@/lib/appointmentActions";

@@ -9,7 +9,7 @@ import {
   buscarLigacoesSdr, buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento,
   type EstadoRpc, type LigacoesSdr, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
-import { AlertTriangle, CalendarCheck2, CheckCircle2, Clock3, Headphones, Info, Loader2, Phone, RefreshCw, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CheckCircle2, Clock3, Headphones, Info, Loader2, Phone, RefreshCw, Users } from "lucide-react";
 import { EmptyState, KpiCard, PageHeader, SectionCard } from "@/components/crm-ui";
 
 /**
@@ -77,7 +77,7 @@ export default function SdrMeuDesempenho() {
   const atendidas = lig?.ligacoes_atendidas ?? 0;
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div>
       <div className="mx-auto flex max-w-[1000px] flex-col gap-6 pb-10">
         <PageHeader
           title="Meu desempenho"
