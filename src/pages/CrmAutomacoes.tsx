@@ -1265,7 +1265,7 @@ export default function CrmAutomacoes() {
           <DialogHeader><DialogTitle>Excluir Etapa?</DialogTitle></DialogHeader>
           {deleteStageLeadCount > 0 ? (
             <div className="space-y-4">
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <div className="rounded-control border border-warning/40 bg-warning-soft p-3 text-sm text-warning-soft-foreground">
                 ⚠️ Existem <strong>{deleteStageLeadCount} lead(s)</strong> nesta etapa. O que deseja fazer?
               </div>
               <div className="space-y-2 text-sm">
