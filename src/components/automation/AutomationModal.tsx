@@ -421,16 +421,16 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto rounded-card p-0">
+        <DialogHeader className="border-b border-border/60 px-6 py-5">
           <DialogTitle className="flex items-center gap-2">
             <Zap size={16} className="text-primary" />
             Configurar Automação
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4 bg-surface-sunken/40 p-6">
           {/* EVENTO */}
-          <div>
+          <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
             <Label>Evento</Label>
             <Select value={autoForm.trigger_type} onValueChange={v => setAutoForm(p => ({ ...p, trigger_type: v, action_config: {} }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -745,7 +745,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
           {/* AÇÃO - only show for non-sequence triggers (sequences have their own actions) */}
           {!isSequenceTrigger && !isReengagement && !isBulkMove && !isBulkSend && (
             <>
-              <div>
+              <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
                 <Label>Ação</Label>
                 <Select value={autoForm.action_type} onValueChange={v => setAutoForm(p => ({ ...p, action_type: v, action_config: { ...p.action_config } }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -779,10 +779,12 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
           )}
 
           {/* CONDIÇÕES OPCIONAIS */}
-          <ConditionsBuilder
-            value={autoForm.action_config.conditions as ConditionsConfig | undefined}
-            onChange={(v) => updateConfig({ conditions: v })}
-          />
+          <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
+            <ConditionsBuilder
+              value={autoForm.action_config.conditions as ConditionsConfig | undefined}
+              onChange={(v) => updateConfig({ conditions: v })}
+            />
+          </div>
 
           {/* Checkbox: send to all existing - not applicable for bulk triggers */}
           {!isBulkMove && !isBulkSend && (

@@ -84,13 +84,13 @@ const ROLE_LABEL: Record<string, string> = {
   gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  gerente: "bg-blue-900/30 text-blue-400",
-  crc: "bg-purple-900/30 text-purple-400",
-  posvenda: "bg-green-900/30 text-green-400",
-  recepcao: "bg-amber-900/30 text-amber-400",
-  closer: "bg-amber-900/30 text-amber-400",
-  sdr: "bg-teal-900/30 text-teal-400",
-  superadmin: "bg-red-900/30 text-red-400",
+  gerente: "bg-info-soft text-info-soft-foreground",
+  crc: "bg-purple-soft text-purple-soft-foreground",
+  posvenda: "bg-success-soft text-success-soft-foreground",
+  recepcao: "bg-warning-soft text-warning-soft-foreground",
+  closer: "bg-warning-soft text-warning-soft-foreground",
+  sdr: "bg-info-soft text-info-soft-foreground",
+  superadmin: "bg-destructive-soft text-destructive-soft-foreground",
 };
 
 type Integration = {
@@ -733,19 +733,20 @@ export default function CrmModelos() {
 
 
   const statusBadge = (s: string) => {
-    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium cursor-help">Aprovado</span>;
-    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium cursor-help">Pendente</span>;
-    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full font-medium cursor-help">Rascunho</span>;
-    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium cursor-help">Rejeitado</span>;
+    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="cursor-help rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-xs font-medium text-success-soft-foreground">Aprovado</span>;
+    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="cursor-help rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-soft-foreground">Pendente</span>;
+    if (s === "PAUSED") return <span className="rounded-full border border-purple/30 bg-purple-soft px-2.5 py-1 text-xs font-medium text-purple-soft-foreground">Pausado</span>;
+    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="rounded-full border border-slate/30 bg-slate-soft px-2.5 py-1 text-xs font-medium text-slate-soft-foreground">Rascunho</span>;
+    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="cursor-help rounded-full border border-destructive/30 bg-destructive-soft px-2.5 py-1 text-xs font-medium text-destructive-soft-foreground">Rejeitado</span>;
   };
 
   const categoryBadge = (c: string) => {
     const colors: Record<string, string> = {
-      MARKETING: "bg-purple-900/30 text-purple-400",
-      UTILITY: "bg-blue-900/30 text-blue-400",
-      AUTHENTICATION: "bg-green-900/30 text-green-400",
+      MARKETING: "bg-purple-soft text-purple-soft-foreground border-purple/30",
+      UTILITY: "bg-info-soft text-info-soft-foreground border-info/30",
+      AUTHENTICATION: "bg-success-soft text-success-soft-foreground border-success/30",
     };
-    return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${colors[c] || "bg-secondary text-muted-foreground"}`}>{c === "MARKETING" ? "Marketing" : c === "UTILITY" ? "Utilidade" : "Autenticação"}</span>;
+    return <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${colors[c] || "border-slate/30 bg-slate-soft text-slate-soft-foreground"}`}>{c === "MARKETING" ? "Marketing" : c === "UTILITY" ? "Utilidade" : "Autenticação"}</span>;
   };
 
   const headerIcon = (type: string | null) => {
@@ -758,9 +759,10 @@ export default function CrmModelos() {
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+      <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 shadow-card">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><FileText size={20} /></div>
+          <h1 className="text-2xl font-bold text-foreground">Modelos de Mensagem</h1>
           {integrations.length > 0 && (
             <Select value={selectedIntegration} onValueChange={setSelectedIntegration}>
               <SelectTrigger className="w-[220px] h-8 text-sm">
@@ -797,12 +799,12 @@ export default function CrmModelos() {
       </div>
 
       {/* Tabs + Filters - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2">
+      <div className="flex-shrink-0 border-b border-border/60 bg-card px-4 py-3 sm:px-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex gap-1">
+          <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
             {["todos", "aprovados", "pendentes"].map(t => (
               <button key={t} onClick={() => { setTab(t); setPage(0); }}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${tab === t ? "bg-primary/20 text-primary font-medium" : "text-muted-foreground hover:bg-secondary"}`}>
+                className={`rounded-full px-3 py-1.5 text-sm transition-colors ${tab === t ? "bg-primary text-primary-foreground font-medium shadow-card" : "text-muted-foreground hover:bg-card"}`}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
@@ -822,14 +824,14 @@ export default function CrmModelos() {
         </div>
       </div>
 
-      {/* Grid - SCROLLABLE */}
+      {/* List - SCROLLABLE */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? <div className="text-center text-muted-foreground py-10">Carregando...</div> : paginated.length === 0 ? <div className="text-center text-muted-foreground py-10">Nenhum modelo encontrado</div> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card divide-y divide-border/60">
             {paginated.map(t => (
-              <div key={t.id} className="bg-card rounded-lg border border-border p-4 hover:border-primary/30 transition-all shadow-card">
-                <div className="flex items-start justify-between mb-2">
-                  <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{cleanTemplateName(t.name)}</div>
+              <div key={t.id} className="p-4 transition-colors hover:bg-primary-soft/20 sm:px-5">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0 break-words text-sm font-semibold text-foreground" title={t.name}>{cleanTemplateName(t.name)}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -839,8 +841,10 @@ export default function CrmModelos() {
                     ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE_COLOR[t.owner_role] || "bg-secondary text-muted-foreground"}`}>{ROLE_LABEL[t.owner_role]}</span>
                     : <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-secondary text-muted-foreground">Compartilhado</span>}
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-3 mb-3">{t.body_text || "Sem corpo"}</p>
-                <div className="flex items-center justify-between">
+                <div className="mb-3 max-w-2xl rounded-card rounded-bl-sm border border-border/60 bg-card px-4 py-3 text-sm text-foreground shadow-card">
+                  <p className="line-clamp-4 whitespace-pre-wrap break-words">{t.body_text || "Sem corpo"}</p>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
                   <div className="flex items-center gap-1">
                     {podeEditarItem(t) && (
@@ -896,11 +900,11 @@ export default function CrmModelos() {
 
       {/* Create/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{form.id ? "Editar Modelo" : "Novo Modelo"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-card p-0">
+          <DialogHeader className="border-b border-border/60 px-6 py-5"><DialogTitle>{form.id ? "Editar Modelo" : "Novo Modelo"}</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-1 gap-6 bg-surface-sunken/40 p-6 lg:grid-cols-2">
             {/* Left: Form */}
-            <div className="space-y-3">
+            <div className="space-y-4 rounded-card border border-border/60 bg-card p-5 shadow-card">
               <div>
                 <Label>Nome do modelo *</Label>
                 <Input className="font-mono text-sm" placeholder="boas_vindas_lead" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") }))} />
@@ -1104,15 +1108,15 @@ export default function CrmModelos() {
 
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" className="flex-1" onClick={() => handleSave(false)}>Salvar rascunho</Button>
-                <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleSave(true)}>Submeter para aprovação</Button>
+                <Button className="flex-1 bg-success text-success-foreground hover:bg-success/90" onClick={() => handleSave(true)}>Submeter para aprovação</Button>
               </div>
             </div>
 
             {/* Right: Preview */}
-            <div className="bg-secondary rounded-lg p-4 flex flex-col items-center">
+            <div className="flex flex-col items-center rounded-card border border-border/60 bg-surface-sunken p-5">
               <span className="text-xs text-muted-foreground mb-3">Preview</span>
               <div className="w-full max-w-[300px]">
-                <div className="bg-card rounded-lg shadow-card border border-border p-3 text-sm">
+                <div className="rounded-card rounded-bl-sm border border-border/60 bg-card p-4 text-sm shadow-float">
                   {form.hasHeader && form.header_content && (
                     <div className="font-semibold text-foreground mb-1 text-xs">
                       {form.header_type === "IMAGE" ? <div className="bg-secondary rounded h-20 flex items-center justify-center text-muted-foreground mb-1"><Image size={24} /></div> : null}

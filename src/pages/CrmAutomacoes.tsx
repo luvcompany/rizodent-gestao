@@ -784,9 +784,10 @@ export default function CrmAutomacoes() {
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header */}
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-2 flex-wrap overflow-hidden min-w-0">
+      <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap overflow-hidden min-w-0 shadow-card">
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
-          <h1 className="text-lg font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Bot size={21} /></div>
+          <h1 className="text-2xl font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
           {pipelines.length > 0 && (
             <div className="flex items-center gap-1">
               <select
@@ -864,8 +865,8 @@ export default function CrmAutomacoes() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel - Lead sources */}
-        <div className="w-[280px] bg-card border-r border-border p-4 flex-shrink-0 overflow-y-auto">
-          <h2 className="font-semibold text-sm text-foreground mb-4">Fontes de Lead</h2>
+        <div className="m-4 mr-0 w-[280px] flex-shrink-0 overflow-y-auto rounded-card border border-border/60 bg-card p-5 shadow-card">
+          <h2 className="mb-4 text-[15px] font-semibold text-foreground">Fontes de Lead</h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -914,14 +915,14 @@ export default function CrmAutomacoes() {
               </div>
             )}
             <hr className="border-border" />
-            <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
+            <div className="mb-2 text-xs font-semibold text-muted-foreground">Fontes conectadas</div>
             {channels.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
             ) : channels.map(ch => {
               const isWhatsapp = ch.channel_type === "whatsapp";
               const icons: Record<string, string> = { instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
               return (
-                <div key={ch.id} className="flex items-center justify-between py-1.5">
+                <div key={ch.id} className="flex items-center justify-between gap-2 rounded-control border border-border/60 px-3 py-2.5">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     {isWhatsapp ? (
                       <svg viewBox="0 0 32 32" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -934,7 +935,7 @@ export default function CrmAutomacoes() {
                     {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    <span className="whitespace-nowrap rounded-full border border-success/30 bg-success-soft px-2 py-1 text-xs font-medium text-success-soft-foreground">Ativo</span>
                     {podeMexerNasFontes && (
                     <button onClick={async () => {
                       const { data, error } = await supabase.from("funnel_channels").delete().eq("id", ch.id).select("id");
@@ -965,7 +966,7 @@ export default function CrmAutomacoes() {
                 toast.success("Fonte adicionada");
                 setChannels(prev => [...prev, data as FunnelChannel]);
               }}
-              className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
+              className="mt-2 flex h-10 w-full items-center justify-center gap-1 rounded-control bg-primary-soft text-sm font-medium text-primary-soft-foreground transition-colors hover:bg-primary-soft/70"
             >
               <Plus size={14} /> Adicionar fonte
             </button>
@@ -993,10 +994,10 @@ export default function CrmAutomacoes() {
                             <div
                               ref={prov.innerRef}
                               {...prov.draggableProps}
-                              className={`w-[240px] flex-shrink-0 bg-card rounded-lg border border-border overflow-hidden ${snap.isDragging ? "shadow-orange ring-2 ring-primary" : ""}`}
+                            className={`w-[280px] flex-shrink-0 overflow-hidden rounded-card border border-border/60 bg-card shadow-card ${snap.isDragging ? "shadow-float ring-2 ring-primary" : ""}`}
                             >
-                              <div className="h-1.5" style={{ backgroundColor: stage.color }} />
-                              <div className="p-3">
+                              <div className="h-1" style={{ backgroundColor: stage.color }} />
+                              <div className="p-4">
                               <div className="flex items-center justify-between mb-1">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
                                     {/* Arrastar reescreve a position de todas as etapas do funil; sem
@@ -1264,7 +1265,7 @@ export default function CrmAutomacoes() {
           <DialogHeader><DialogTitle>Excluir Etapa?</DialogTitle></DialogHeader>
           {deleteStageLeadCount > 0 ? (
             <div className="space-y-4">
-              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <div className="rounded-control border border-warning/40 bg-warning-soft p-3 text-sm text-warning-soft-foreground">
                 ⚠️ Existem <strong>{deleteStageLeadCount} lead(s)</strong> nesta etapa. O que deseja fazer?
               </div>
               <div className="space-y-2 text-sm">

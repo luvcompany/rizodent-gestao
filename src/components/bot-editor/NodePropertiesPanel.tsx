@@ -1119,13 +1119,13 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
   return (
     <div
-      className="w-[320px] border-l border-border bg-card flex flex-col h-full"
+      className="flex h-full w-[320px] flex-col border-l border-border/60 bg-card"
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between p-4 border-b border-border">
+      <div className="flex items-center justify-between border-b border-border/60 p-4">
         <div className="flex items-center gap-2">
           <span>{def?.icon}</span>
           <h3 className="font-semibold text-sm">{def?.label || "Propriedades"}</h3>
@@ -1135,11 +1135,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <div>
+      <div className="flex-1 space-y-4 overflow-y-auto bg-surface-sunken/40 p-4">
+        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
           <Label className="text-xs text-muted-foreground">Tipo: {def?.label || node.type}</Label>
         </div>
-        <div>
+        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
           <Label className="text-xs">Descrição do bloco (opcional)</Label>
           <Input
             value={(node.data.description as string) || ""}
@@ -1149,11 +1149,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           />
         </div>
 
-        {renderFields()}
+        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">{renderFields()}</div>
       </div>
 
       {node.type !== "start" && (
-        <div className="p-4 border-t border-border">
+        <div className="border-t border-border/60 bg-card p-4">
           <Button variant="destructive" size="sm" className="w-full gap-1.5" onClick={() => onDelete(node.id)}>
             <Trash2 size={14} /> Excluir bloco
           </Button>
