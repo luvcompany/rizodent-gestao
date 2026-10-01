@@ -188,10 +188,11 @@ const NotificationBell = () => {
             </div>
           ) : (
             notifications.map((n) => (
-              <button
+              <Button
+                variant="ghost"
                 key={n.id}
                 onClick={() => handleClick(n)}
-                className={`w-full border-b border-border/60 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-sunken ${
+                className={`h-auto w-full justify-start rounded-none border-b border-border/60 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-sunken ${
                   !n.is_read ? "bg-primary-soft/60" : "bg-popover"
                 }`}
               >
@@ -214,7 +215,7 @@ const NotificationBell = () => {
                     </p>
                   </div>
                 </div>
-              </button>
+              </Button>
             ))
           )}
         </ScrollArea>
