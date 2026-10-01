@@ -104,6 +104,7 @@ export default function ConversationFilters({
   ads = [],
   channel = "whatsapp",
   instagramAccounts = [],
+  triggerClassName,
 }: {
   stages: Stage[];
   profiles: Profile[];
@@ -115,6 +116,7 @@ export default function ConversationFilters({
   ads?: AdOption[];
   channel?: "whatsapp" | "instagram";
   instagramAccounts?: InstagramAccountOption[];
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
@@ -166,7 +168,7 @@ export default function ConversationFilters({
 
   return (
     <>
-      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleOpen}>
+      <Button variant="outline" className={`gap-1.5 ${triggerClassName || "h-8 text-xs"}`} onClick={handleOpen}>
         <Filter size={14} />
         Filtrar
         {activeCount > 0 && (
