@@ -107,7 +107,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
           <div ref={menuRef} className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="p-0.5 rounded hover:bg-white/20 transition-colors"
+              className="rounded p-0.5 transition-colors hover:bg-background/20"
             >
               <MoreVertical size={14} />
             </button>

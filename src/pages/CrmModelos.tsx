@@ -84,9 +84,9 @@ const ROLE_LABEL: Record<string, string> = {
   gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  gerente: "bg-blue-900/30 text-blue-400",
-  crc: "bg-purple-900/30 text-purple-400",
-  posvenda: "bg-green-900/30 text-green-400",
+  gerente: "bg-info-soft text-info-soft-foreground",
+  crc: "bg-purple-soft text-purple-soft-foreground",
+  posvenda: "bg-success-soft text-success-soft-foreground",
   recepcao: "bg-amber-900/30 text-amber-400",
   closer: "bg-amber-900/30 text-amber-400",
   sdr: "bg-teal-900/30 text-teal-400",
