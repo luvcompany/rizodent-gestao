@@ -34,9 +34,9 @@ function normPhone(p?: string | null) {
 }
 
 const STATUS_META: Record<PermStatus, { label: string; cls: string; icon: typeof Clock }> = {
-  approved: { label: "Aprovada", cls: "text-emerald-600 dark:text-emerald-500 bg-emerald-500/10 border-emerald-500/20", icon: CheckCircle2 },
-  pending: { label: "Aguardando resposta", cls: "text-amber-600 dark:text-amber-500 bg-amber-500/10 border-amber-500/20", icon: Clock },
-  denied: { label: "Rejeitada", cls: "text-destructive bg-destructive/10 border-destructive/20", icon: XCircle },
+  approved: { label: "Aprovada", cls: "border-success/30 bg-success-soft text-success-soft-foreground", icon: CheckCircle2 },
+  pending: { label: "Aguardando resposta", cls: "border-warning/30 bg-warning-soft text-warning-soft-foreground", icon: Clock },
+  denied: { label: "Rejeitada", cls: "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground", icon: XCircle },
   expired: { label: "Expirada", cls: "text-muted-foreground bg-muted border-border", icon: ShieldQuestion },
   revoked: { label: "Revogada", cls: "text-muted-foreground bg-muted border-border", icon: XCircle },
 };
@@ -166,10 +166,11 @@ export default function CallPermissionsPanel() {
     <div className="flex flex-col h-full min-h-0">
       <div className="px-4 md:px-6 py-3 flex flex-wrap gap-2 border-b bg-background">
         {FILTERS.map((f) => (
-          <button
+          <Button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+            variant="outline"
+            className={`h-9 rounded-full px-3 text-sm ${
               filter === f.key ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted border-border"
             }`}
           >
@@ -177,7 +178,7 @@ export default function CallPermissionsPanel() {
             <span className={`ml-1.5 text-xs ${filter === f.key ? "opacity-80" : "text-muted-foreground"}`}>
               {counts[f.key] ?? 0}
             </span>
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -197,13 +198,13 @@ export default function CallPermissionsPanel() {
               const val = validity(it);
               const canCall = it.status === "approved" && !!it.phone;
               return (
-                <li key={it.key} className="flex items-center gap-3 p-3 md:px-6 hover:bg-muted/40">
+                <li key={it.key} className="flex flex-wrap items-center gap-3 p-3 hover:bg-muted/40 md:flex-nowrap md:px-6">
                   <Avatar className="h-10 w-10 flex-shrink-0">
                     <AvatarFallback>{(it.name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-medium truncate">{it.name}</span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="break-words font-medium">{it.name}</span>
                       <span className={`inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full border whitespace-nowrap ${meta.cls}`}>
                         <Icon size={11} /> {meta.label}
                       </span>
@@ -214,12 +215,12 @@ export default function CallPermissionsPanel() {
                       {it.date && <span>· {formatDistanceToNow(new Date(it.date), { locale: ptBR, addSuffix: true })}</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="ml-auto flex flex-shrink-0 items-center gap-1">
                     {canCall ? (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                        className="text-success hover:bg-success-soft hover:text-success-soft-foreground"
                         disabled={callState.phase !== "idle"}
                         onClick={() => initiateCall({ toPhone: it.phone, leadId: it.leadId, leadName: it.name })}
                         title="Ligar via WhatsApp"

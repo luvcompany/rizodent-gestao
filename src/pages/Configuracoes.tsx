@@ -519,9 +519,9 @@ function BackupsTab() {
                         {isOpen ? <ChevronDown size={16} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={16} className="shrink-0 text-muted-foreground" />}
                         <span className="font-semibold text-foreground">{date}</span>
                         {man?.finished_at ? (
-                          <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> completo</span>
+                          <span className="flex items-center gap-1 text-xs text-success"><CheckCircle2 size={12} /> completo</span>
                         ) : man ? (
-                          <span className="text-xs text-amber-600">parcial</span>
+                          <span className="text-xs text-warning-soft-foreground">parcial</span>
                         ) : null}
                       </div>
                       {man?.total_rows != null && <span className="text-xs text-muted-foreground shrink-0">{fmt(man.total_rows)} linhas</span>}
@@ -550,7 +550,7 @@ function BackupsTab() {
                                         onClick={() => downloadTable(date, table)}>
                                         {downloading === `${date}/${table}` ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                                       </Button>
-                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700" title="Restaurar"
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-warning-soft-foreground hover:bg-warning-soft hover:text-warning-soft-foreground" title="Restaurar"
                                         onClick={() => { setRestoreMode("insert_missing"); setRestorePanel({ date, table, rows: v.rows }); }}>
                                         <RotateCcw size={12} />
                                       </Button>
@@ -560,8 +560,8 @@ function BackupsTab() {
                             </div>
 
                             {restorePanel && restorePanel.date === date && (
-                              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
-                                <div className="flex items-center gap-1.5 text-sm font-medium text-amber-700">
+                              <div className="space-y-2 rounded-xl border border-warning/40 bg-warning-soft p-3">
+                                <div className="flex items-center gap-1.5 text-sm font-medium text-warning-soft-foreground">
                                   <AlertTriangle size={14} /> Restaurar <span className="font-mono">{restorePanel.table}</span> ({fmt(restorePanel.rows)} linhas) do backup {date}
                                 </div>
                                 <div className="space-y-1.5">
@@ -575,13 +575,13 @@ function BackupsTab() {
                                   </label>
                                 </div>
                                 {RESTORE_SENSITIVE.has(restorePanel.table) && (
-                                  <p className="text-[11px] text-amber-700/90 leading-snug">
+                                  <p className="text-[11px] leading-snug text-warning-soft-foreground/90">
                                     Atenção: restaurar esta tabela pode re-disparar automações. Para recuperação completa do banco, use os backups gerenciados do Supabase.
                                   </p>
                                 )}
                                 <div className="flex gap-2 pt-1">
                                   <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => setRestorePanel(null)} disabled={restoring}>Cancelar</Button>
-                                  <Button size="sm" className="h-7 text-xs flex-1 bg-amber-600 hover:bg-amber-700 text-white" onClick={doRestore} disabled={restoring}>
+                                  <Button size="sm" className="h-7 flex-1 bg-warning text-xs text-warning-foreground hover:bg-warning/90" onClick={doRestore} disabled={restoring}>
                                     {restoring ? <><Loader2 size={12} className="animate-spin mr-1" /> Restaurando…</> : "Confirmar restauração"}
                                   </Button>
                                 </div>

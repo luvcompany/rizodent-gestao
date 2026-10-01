@@ -104,8 +104,8 @@ const rpc = (fn: string, args?: Record<string, unknown>) => (supabase as any).rp
 const ROTULO: Record<Modo, string> = { desligado: "Desligado", sombra: "Modo sombra", ligado: "Ligado" };
 const COR: Record<Modo, string> = {
   desligado: "bg-muted text-muted-foreground",
-  sombra: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  ligado: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  sombra: "border-warning/30 bg-warning-soft text-warning-soft-foreground",
+  ligado: "border-success/30 bg-success-soft text-success-soft-foreground",
 };
 const ESTADO_PONTO: Record<string, string> = {
   aberta: "Em expediente", pausada: "Em pausa", encerrada: "Encerrou o expediente",
@@ -474,7 +474,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
 
       <p className="mt-2 text-sm text-muted-foreground">{descricao[modo]}</p>
       {estado.reservas_aviso && (
-        <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">{estado.reservas_aviso}</p>
+        <p className="mt-1 text-sm text-warning-soft-foreground">{estado.reservas_aviso}</p>
       )}
 
       {estado.equipe.length > 0 && (
@@ -610,7 +610,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       <div className="mt-3 border-t border-border pt-3 text-sm">
         <p className="font-medium text-foreground">Funis que entram no rodízio</p>
         {!funisNoBanco && (
-          <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+          <p className="mt-1 text-xs text-warning-soft-foreground">
             Este banco ainda não devolve os funis do rodízio (migration pendente): a marcação só passa
             a valer depois de publicar as migrations.
           </p>

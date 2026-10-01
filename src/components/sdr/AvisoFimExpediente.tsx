@@ -392,7 +392,7 @@ export default function AvisoFimExpediente() {
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            <AlarmClock size={18} className="text-amber-500" /> Seu expediente vai encerrar
+            <AlarmClock size={18} className="text-warning" /> Seu expediente vai encerrar
           </AlertDialogTitle>
           <AlertDialogDescription>
             {erro ? (
