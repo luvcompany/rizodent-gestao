@@ -295,16 +295,16 @@ const CrmLayout = () => {
         onClick={() => setSidebarOpen(false)}
         aria-label={sidebarCollapsed ? item.label : undefined}
         className={({ isActive }) =>
-          `relative flex h-10 items-center rounded-control text-sm font-medium transition-colors ${
+          `relative flex h-11 items-center rounded-control text-[15px] font-medium transition-colors ${
             sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"
           } ${
             itemAtivo(item, isActive)
-              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-primary"
+              ? "bg-primary/35 text-sidebar-accent-foreground"
               : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           }`
         }
       >
-        <item.icon size={18} className="shrink-0" />
+        <item.icon size={19} className="shrink-0" />
         <span className={sidebarCollapsed ? "hidden" : "truncate"}>{item.label}</span>
         {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
           <span
@@ -341,9 +341,9 @@ const CrmLayout = () => {
               variant="ghost"
               onClick={() => sidebarCollapsed ? setSidebarCollapsed(false) : toggleGroup(group.label)}
               aria-label={sidebarCollapsed ? group.label : undefined}
-              className={`h-10 w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
+              className={`h-11 w-full text-[15px] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
             >
-              <group.icon size={18} className="shrink-0" />
+              <group.icon size={19} className="shrink-0" />
               <span className={sidebarCollapsed ? "hidden" : "truncate"}>{group.label}</span>
               {!sidebarCollapsed && <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />}
             </Button>
@@ -351,7 +351,7 @@ const CrmLayout = () => {
           {sidebarCollapsed && <TooltipContent side="right">{group.label}</TooltipContent>}
         </Tooltip>
         {isExpanded && !sidebarCollapsed && (
-          <div className="ml-4 space-y-0.5">
+          <div className="ml-[22px] space-y-0.5 border-l border-sidebar-border pl-2">
             {group.children.map(child => (
               <NavLink
                 key={child.to}
@@ -359,9 +359,9 @@ const CrmLayout = () => {
                 end={child.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                     isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-primary"
+                      ? "bg-primary/35 text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`
                 }
@@ -389,12 +389,11 @@ const CrmLayout = () => {
           sidebarCollapsed ? "lg:w-16" : "lg:w-64"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className={`flex min-h-20 items-center gap-3 border-b border-sidebar-border px-3 py-3 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
-          <div className={`flex min-w-0 flex-1 flex-col items-center gap-2 ${sidebarCollapsed ? "lg:hidden" : ""}`}>
-            <div className={`flex h-10 w-full items-center justify-center overflow-hidden rounded-control px-2 ${logoNeedsPlaque ? "bg-card" : ""}`}>
-              <img src={logo} alt={tenant.name} className="max-h-8 max-w-full object-contain" />
+        <div className={`flex min-h-20 items-center gap-3 px-4 pb-2 pt-5 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
+          <div className={`flex min-w-0 flex-1 items-center ${sidebarCollapsed ? "lg:hidden" : ""}`}>
+            <div className={`flex h-10 max-w-full items-center overflow-hidden rounded-control ${logoNeedsPlaque ? "bg-card px-2" : ""}`}>
+              <img src={logo} alt={tenant.name} className="max-h-9 max-w-[180px] object-contain" />
             </div>
-            <p className="w-full truncate text-center text-xs font-semibold text-sidebar-foreground">{tenant.name}</p>
           </div>
           <Button
             variant="ghost"
@@ -412,10 +411,10 @@ const CrmLayout = () => {
           )}
         </div>
 
-        <div className={`border-b border-sidebar-border px-4 py-3 ${sidebarCollapsed ? "lg:hidden" : "flex items-center justify-between gap-2"}`}>
-          <div>
-            <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
-            <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
+        <div className={`mx-3 border-b border-sidebar-border px-1 pb-4 pt-1 ${sidebarCollapsed ? "lg:hidden" : "flex items-center justify-between gap-2"}`}>
+          <div className="min-w-0">
+            <h2 className="truncate text-[15px] font-bold text-sidebar-accent-foreground">{tenant.name}</h2>
+            <p className="text-xs text-sidebar-foreground/60">CRM · Gestão de Leads & Vendas</p>
           </div>
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
             <Button
@@ -477,7 +476,7 @@ const CrmLayout = () => {
       </aside>
 
       <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"}`}>
-        <header className="flex h-16 min-w-0 shrink-0 items-center gap-3 border-b border-border/60 bg-card px-3 sm:px-5 lg:px-6">
+        <header className="flex h-16 min-w-0 shrink-0 items-center gap-3 border-b border-border/60 bg-card/70 px-3 sm:px-5 lg:px-6">
           <Button
             variant="ghost"
             size="icon"
@@ -499,11 +498,11 @@ const CrmLayout = () => {
           </Button>
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
-            <span className="hidden text-sm text-muted-foreground md:inline">CRM — Gestão de Leads</span>
+            <span className="hidden border-l border-border pl-4 text-sm font-medium text-foreground md:inline">{tenant.name} — CRM — Gestão de Leads</span>
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-6">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-8">
           <TaskReminderWatcher />
           {/* Aviso de fim de expediente da SDR: vive AQUI, no layout, e não no
               cartão da home. O cartão só existe em /crm/sdr, e a SDR passa o dia
