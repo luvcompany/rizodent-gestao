@@ -395,7 +395,7 @@ export default function CrmConversa() {
                 aria-label="Copiar nome"
                 className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
               >
-                {nameCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                {nameCopied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
               </button>
             </div>
             <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
@@ -409,7 +409,7 @@ export default function CrmConversa() {
                     aria-label="Copiar número"
                     className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    {phoneCopied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                    {phoneCopied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
                   </button>
                 </span>
               )}
@@ -430,7 +430,7 @@ export default function CrmConversa() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                  className="h-8 w-8 text-success hover:bg-success-soft hover:text-success-soft-foreground"
                   disabled={callState.phase !== "idle"}
                   onClick={() =>
                     initiateCall({
@@ -445,7 +445,7 @@ export default function CrmConversa() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
+                <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-success" /> Ligar via WhatsApp</span>
               </TooltipContent>
             </Tooltip>
           )}
@@ -627,7 +627,7 @@ export default function CrmConversa() {
             {activeExecution && (
               <div className="flex items-center gap-2 border-t border-border bg-muted/40 px-3 py-1.5">
                 <Badge variant="default" className="gap-1.5 bg-primary">
-                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
                   <Bot size={12} />
                   {activeExecution.bot_name || "Bot"}
                 </Badge>
@@ -871,7 +871,7 @@ export default function CrmConversa() {
 
       {/* Templates Sheet */}
       <Sheet open={chat.templatesOpen} onOpenChange={chat.setTemplatesOpen}>
-        <SheetContent className="w-[380px] flex flex-col">
+        <SheetContent className="flex w-[380px] max-w-[calc(100vw-1rem)] flex-col">
           <SheetHeader>
             <SheetTitle>Templates Aprovados</SheetTitle>
           </SheetHeader>

@@ -114,7 +114,7 @@ export default function LeadBotPanel({ leadId }: Props) {
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Badge variant="default" className="gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
               Bot ativo
             </Badge>
             <span className="text-xs text-muted-foreground truncate">{activeExecution.bot_name}</span>

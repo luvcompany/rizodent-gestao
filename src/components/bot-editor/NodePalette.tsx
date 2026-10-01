@@ -9,7 +9,7 @@ export default function NodePalette() {
   };
 
   return (
-    <div className="flex h-full w-[220px] flex-col border-r border-border/60 bg-card">
+    <div className="flex h-full w-[180px] shrink-0 flex-col border-r border-border/60 bg-card sm:w-[220px]">
       <div className="border-b border-border/60 p-4">
         <h3 className="text-sm font-semibold text-foreground">Blocos</h3>
       </div>

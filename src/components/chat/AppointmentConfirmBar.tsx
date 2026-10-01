@@ -1131,7 +1131,7 @@ export default function AppointmentConfirmBar({
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 pt-1 border-t border-green-500/20">
+              <div className="space-y-2 border-t border-success/20 pt-1">
                 <p className="text-xs text-muted-foreground">Resultado da avaliação:</p>
                 <div className="grid grid-cols-2 gap-2">
                   <Button
@@ -1437,7 +1437,7 @@ export default function AppointmentConfirmBar({
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2 mt-2 pt-2 border-t border-orange-500/20">
+                  <div className="mt-2 space-y-2 border-t border-warning/20 pt-2">
                     <div>
                       <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
                       <Popover>

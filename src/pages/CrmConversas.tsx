@@ -1860,7 +1860,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {activeExecution && (
                 <div className="flex items-center gap-2 border-t border-border bg-muted/40 px-3 py-1.5">
                   <Badge variant="default" className="gap-1.5 bg-primary">
-                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
                     <Bot size={12} />
                     {activeExecution.bot_name || "Bot"}
                   </Badge>
@@ -2172,7 +2172,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       {/* Templates Sheet */}
       <Sheet open={chat.templatesOpen} onOpenChange={chat.setTemplatesOpen}>
-        <SheetContent className="w-[380px] flex flex-col">
+        <SheetContent className="flex w-[380px] max-w-[calc(100vw-1rem)] flex-col">
           <SheetHeader><SheetTitle>Templates Aprovados</SheetTitle></SheetHeader>
           <div className="mt-3 relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />

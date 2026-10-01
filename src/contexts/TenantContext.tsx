@@ -145,8 +145,8 @@ function applyTenantTheme(branding: {
   root.style.setProperty("--primary-h", h);
   root.style.setProperty("--primary-s", s);
   const sNum = s.replace("%", "");
-  root.style.setProperty("--shadow-orange", `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`);
-  root.style.setProperty("--shadow-primary", `0 8px 20px -10px hsla(${h}, ${sNum}%, 45%, 0.6)`);
+  root.style.setProperty("--shadow-orange", `0 4px 20px -4px hsl(${h} ${sNum}% 50% / 0.3)`);
+  root.style.setProperty("--shadow-primary", `0 8px 20px -10px hsl(${h} ${sNum}% 45% / 0.6)`);
 
   // A cor SECUNDÁRIA da marca é usada como 2º ponto do gradiente (botões/realces),
   // sem tocar no token neutro --secondary.

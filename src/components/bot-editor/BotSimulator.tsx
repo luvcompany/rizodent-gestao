@@ -412,7 +412,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
   const lastMenuMessage = [...messages].reverse().find((m) => m.type === "menu" && m.from === "bot");
 
   return (
-    <div className="flex h-full w-[340px] flex-col border-l border-border/60 bg-card">
+    <div className="flex h-full w-[min(340px,calc(100vw-2rem))] shrink-0 flex-col border-l border-border/60 bg-card">
       <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 py-3">
         <div className="flex items-center gap-2">
           <Smartphone size={16} className="text-primary" />

@@ -418,7 +418,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                 {loadingTransfer ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><Loader2 size={14} className="animate-spin" /> Carregando modelos…</div>
                 ) : transferTemplates.length === 0 ? (
-                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                  <p className="text-xs text-warning-soft-foreground">
                     Nenhum modelo aprovado. Crie e aprove um modelo de boas-vindas em <strong>Modelos</strong> para habilitar a transferência.
                   </p>
                 ) : (
@@ -497,7 +497,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                       {loadingTransfer ? (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground py-2"><Loader2 size={14} className="animate-spin" /> Carregando modelos…</div>
                       ) : transferTemplates.length === 0 ? (
-                        <p className="text-xs text-amber-600 dark:text-amber-500">
+                        <p className="text-xs text-warning-soft-foreground">
                           Nenhum modelo aprovado. Crie e aprove um modelo de boas-vindas em <strong>Modelos</strong> para habilitar a transferência.
                         </p>
                       ) : (

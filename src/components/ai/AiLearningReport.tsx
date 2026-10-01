@@ -226,13 +226,13 @@ export default function AiLearningReport() {
     <div className="space-y-4">
       <div className="grid sm:grid-cols-4 gap-3">
         <Card><CardContent className="p-3 flex items-center gap-3"><Brain size={18} className="text-primary" /><div><p className="text-xs text-muted-foreground">Exemplos salvos</p><p className="font-semibold">{stats.total}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Database size={18} className="text-emerald-600" /><div><p className="text-xs text-muted-foreground">Prontos para busca</p><p className="font-semibold">{stats.embedded}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Loader2 size={18} className="text-amber-600" /><div><p className="text-xs text-muted-foreground">Sem vetor</p><p className="font-semibold">{stats.pending}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Pencil size={18} className="text-amber-600" /><div><p className="text-xs text-muted-foreground">Correções aprendidas</p><p className="font-semibold">{stats.corrections}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Database size={18} className="text-success" /><div><p className="text-xs text-muted-foreground">Prontos para busca</p><p className="font-semibold">{stats.embedded}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Loader2 size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Sem vetor</p><p className="font-semibold">{stats.pending}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Pencil size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Correções aprendidas</p><p className="font-semibold">{stats.corrections}</p></div></CardContent></Card>
       </div>
       <div className="grid lg:grid-cols-3 gap-4">
-        <Block title="Aprovadas sem edição" items={approved} color="text-emerald-600" icon={<ThumbsUp size={16} />} kind="approved" />
-        <Block title="Corrigidas pela equipe" items={edited} color="text-amber-600" icon={<Pencil size={16} />} kind="edited" />
+        <Block title="Aprovadas sem edição" items={approved} color="text-success" icon={<ThumbsUp size={16} />} kind="approved" />
+        <Block title="Corrigidas pela equipe" items={edited} color="text-warning" icon={<Pencil size={16} />} kind="edited" />
         <Block title="Descartadas" items={discarded} color="text-destructive" icon={<ThumbsDown size={16} />} kind="discarded" />
       </div>
 
@@ -276,7 +276,7 @@ export default function AiLearningReport() {
               <div>
                 <label className="text-xs text-muted-foreground">Lead (busque por nome ou telefone)</label>
                 <Input value={add.leadQuery} onChange={(e) => searchLeads(e.target.value)} placeholder="Ex.: Maria ou 5577..." />
-                {add.leadId && <p className="text-xs mt-1 text-emerald-600">Selecionado: {add.leadLabel}</p>}
+                {add.leadId && <p className="mt-1 text-xs text-success">Selecionado: {add.leadLabel}</p>}
                 {add.leadResults.length > 0 && (
                   <div className="mt-1 border rounded max-h-40 overflow-y-auto">
                     {add.leadResults.map((l) => (

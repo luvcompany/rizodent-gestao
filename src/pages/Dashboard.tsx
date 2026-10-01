@@ -28,7 +28,7 @@ const DateRangeFilter = lazy(() =>
   import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
 );
 
-const COLORS = ["hsl(25, 100%, 50%)", "hsl(35, 100%, 55%)", "hsl(15, 90%, 45%)", "hsl(40, 95%, 60%)", "hsl(200, 70%, 50%)", "hsl(280, 60%, 55%)"];
+const PRIMARY_CHART_COLOR = "hsl(var(--primary))";
 
 const formatAxisValue = (v: number) => {
   if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
@@ -737,7 +737,7 @@ const Dashboard = () => {
               <XAxis dataKey="dia" stroke={ct.axisColor} fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="valor" fill="hsl(25,100%,50%)" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
+              <Bar dataKey="valor" fill={PRIMARY_CHART_COLOR} radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -758,7 +758,7 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="value" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
+                <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -771,9 +771,7 @@ const Dashboard = () => {
               <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
-                {espFaturamento.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
+              <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -785,9 +783,7 @@ const Dashboard = () => {
               <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle}>
-                {espVolume.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Bar>
+              <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -849,7 +845,7 @@ const Dashboard = () => {
                           ? "hsl(220, 8%, 72%)"
                           : d.isOutros
                             ? "hsl(220, 10%, 55%)"
-                            : COLORS[i % COLORS.length]
+                            : PRIMARY_CHART_COLOR
                       }
                     />
                   ))}
@@ -884,9 +880,7 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
-                <Bar dataKey="pacientes" radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle}>
-                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
+                <Bar dataKey="pacientes" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -900,9 +894,7 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
-                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                </Bar>
+                <Bar dataKey="faturamento" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>

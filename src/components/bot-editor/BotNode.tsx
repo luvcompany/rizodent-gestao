@@ -11,6 +11,13 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const isSendText = type === "send_text";
   const isSendMenu = type === "send_menu";
   const isHighlighted = !!(data as any)._highlighted;
+  const headerForeground = def.category === "start" || def.category === "action"
+    ? "hsl(var(--success-foreground))"
+    : def.category === "message"
+      ? "hsl(var(--info-foreground))"
+      : def.category === "logic"
+        ? "hsl(var(--purple-foreground))"
+        : "hsl(var(--warning-foreground))";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -51,27 +58,27 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const branchHandles: { id: string; label: string; color: string }[] = [];
 
   if (isCondition) {
-    branchHandles.push({ id: "true", label: "Sim", color: "#22c55e" });
-    branchHandles.push({ id: "false", label: "Não", color: "#ef4444" });
+    branchHandles.push({ id: "true", label: "Sim", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "false", label: "Não", color: "hsl(var(--destructive))" });
   } else if (isWaitReply) {
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendText) {
     if (hasTemplateButtons) {
       templateButtons.forEach((btn) => {
-        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "#3b82f6" });
+        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "hsl(var(--info))" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendMenu) {
     if (hasMenuButtons) {
       menuItems.forEach((btn) => {
-        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
+        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "hsl(var(--info))" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
-    branchHandles.push({ id: "timeout", label: "Timeout", color: "#f97316" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   }
 
   const hasBranching = branchHandles.length > 0;
@@ -99,7 +106,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
       {/* Header */}
       <div
         className="relative flex items-center gap-2 border-b-4 border-background/20 px-3 py-2.5 text-xs font-semibold"
-        style={{ background: def.color, color: "#fff" }}
+        style={{ background: def.color, color: headerForeground }}
       >
         <span>{def.icon}</span>
         <span className="flex-1">{String(data.label || def.label)}</span>

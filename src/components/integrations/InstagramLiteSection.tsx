@@ -265,7 +265,7 @@ export default function InstagramLiteSection() {
                   <XCircle size={12} className="mr-1" /> Não conectado
                 </Badge>
               ) : (
-                <Badge className="bg-green-900/30 text-green-400 border-0">
+                <Badge className="border-0 bg-success-soft text-success-soft-foreground">
                   <CheckCircle size={12} className="mr-1" /> {activeCount} ativa{activeCount === 1 ? "" : "s"}
                 </Badge>
               )}
@@ -277,7 +277,7 @@ export default function InstagramLiteSection() {
                 : `${accounts.length} conta${accounts.length === 1 ? "" : "s"} cadastrada${accounts.length === 1 ? "" : "s"}.`}
             </p>
             {expiringSoon.length > 0 && (
-              <p className="text-xs text-yellow-400 mt-2 flex items-center gap-1">
+              <p className="mt-2 flex items-center gap-1 text-xs text-warning-soft-foreground">
                 <AlertTriangle size={12} /> {expiringSoon.length} token{expiringSoon.length === 1 ? "" : "s"} expirando
               </p>
             )}
@@ -305,9 +305,9 @@ export default function InstagramLiteSection() {
             {expiringSoon.map((a) => {
               const d = daysUntil(a.token_expires_at) ?? 0;
               return (
-                <Alert key={a.id} className="border-yellow-500/50 bg-yellow-500/10">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <AlertDescription className="text-yellow-200">
+                <Alert key={a.id} className="border-warning/40 bg-warning-soft">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <AlertDescription className="text-warning-soft-foreground">
                     Token de <strong>@{a.username || a.ig_user_id}</strong> expira em{" "}
                     {d} {d === 1 ? "dia" : "dias"}. Atualize no Meta Developers.
                   </AlertDescription>
@@ -354,11 +354,11 @@ export default function InstagramLiteSection() {
                             </p>
                           </div>
                           {expired ? (
-                            <Badge className="bg-red-900/30 text-red-400 border-0">
+                            <Badge className="border-0 bg-destructive-soft text-destructive-soft-foreground">
                               <XCircle size={12} className="mr-1" /> Token expirado
                             </Badge>
                           ) : acc.active ? (
-                            <Badge className="bg-green-900/30 text-green-400 border-0">
+                            <Badge className="border-0 bg-success-soft text-success-soft-foreground">
                               <CheckCircle size={12} className="mr-1" /> Ativo
                             </Badge>
                           ) : (
