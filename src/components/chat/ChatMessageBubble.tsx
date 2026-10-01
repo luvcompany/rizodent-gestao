@@ -48,7 +48,7 @@ function getStatusIcon(status: string) {
   switch (status) {
     case "read":
     case "played":
-      return <CheckCheck size={14} className="text-blue-400" />;
+      return <CheckCheck size={14} className="text-info" />;
     case "delivered": return <CheckCheck size={14} className="text-muted-foreground" />;
     case "sent":
     case "accepted":
@@ -95,8 +95,8 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
     const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
     return (
-      <div ref={ref} className="w-full flex transition-all duration-300 rounded-lg">
-        <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
+      <div ref={ref} className="flex w-full min-w-0 rounded-control transition-all duration-300">
+        <div className={`group relative min-w-[7.5rem] max-w-[min(76%,42rem)] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
           {!msg.deleted_at && (
             <MessageActions
               message={msg}
@@ -119,18 +119,18 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </div>
             </div>
           ) : (
-          <div className={`rounded-lg px-3 py-2 ${
+          <div className={`rounded-control px-3 py-2 shadow-card ${
             msg.type === "comment"
               ? (msg.direction === "outbound"
-                  ? "bg-purple-500/15 border border-purple-500/40 text-foreground rounded-br-none"
-                  : "bg-purple-500/10 border border-purple-500/30 text-foreground rounded-bl-none")
+                  ? "border border-purple/40 bg-purple-soft text-purple-soft-foreground rounded-br-none"
+                  : "border border-purple/30 bg-purple-soft text-foreground rounded-bl-none")
               : msg.direction === "outbound"
-                ? "bg-primary/20 text-foreground rounded-br-none"
-                : "bg-card border border-border text-foreground rounded-bl-none"
+                ? "border border-primary/15 bg-primary-soft text-primary-soft-foreground rounded-br-none"
+                : "border border-border/60 bg-card text-card-foreground rounded-bl-none"
           }`}>
             {msg.type === "comment" && (
               <div className="mb-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-600 dark:text-purple-400">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-soft-foreground">
                   <MessageCircle size={11} />
                   <span>{msg.direction === "outbound" ? "Resposta ao comentário" : "Comentário no post"}</span>
                 </div>
@@ -222,7 +222,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                     {msg.ad_account_name && <p className="text-[10px] text-primary/70 font-medium">Conta: {msg.ad_account_name}</p>}
                     {msg.ad_body && <p className="text-[11px] text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
                     {msg.ad_source_url && (
-                      <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:underline truncate block">
+                      <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="block truncate text-[11px] text-info hover:underline">
                         {msg.ad_source_url.replace(/^https?:\/\//, '').slice(0, 50)}
                       </a>
                     )}
@@ -253,7 +253,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </TooltipProvider>
             )}
             {msg.type === "comment" && msg.direction === "inbound" && msg.instagram_comment_id && (
-              <div className="flex items-center gap-1 mt-1.5 pt-1.5 border-t border-purple-500/20">
+              <div className="mt-1.5 flex items-center gap-1 border-t border-purple/20 pt-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -265,7 +265,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                       },
                     }));
                   }}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 rounded px-1.5 py-0.5"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-purple-soft-foreground hover:bg-purple-soft"
                 >
                   <Reply size={11} /> Responder comentário
                 </button>

@@ -98,7 +98,7 @@ export function ConversaFechadaBadge({ fechadaEm }: { fechadaEm: string | null |
   const quando = new Date(fechadaEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+      className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-soft-foreground"
       title={`Fechada em ${quando}. Uma mensagem nova do lead reabre sozinha.`}
     >
       <CheckCircle2 size={11} /> Fechada
@@ -150,7 +150,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogTrigger asChild>
             <Button
               variant="ghost" size="icon"
-              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+              className="h-8 w-8 text-success hover:bg-success-soft hover:text-success-soft-foreground"
               aria-label="Fechar conversa" disabled={ocupado}
             >
               {ocupado ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
@@ -158,7 +158,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           </AlertDialogTrigger>
         </TooltipTrigger>
         <TooltipContent>
-          <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={14} className="text-emerald-600" /> Fechar conversa</span>
+          <span className="inline-flex items-center gap-1.5"><CheckCircle2 size={14} className="text-success" /> Fechar conversa</span>
         </TooltipContent>
       </Tooltip>
       <AlertDialogContent>
@@ -242,7 +242,7 @@ export function FecharConversaMenuItem({ leadId, fechadaEm, onChange }: Props) {
         if (!window.confirm(`Fechar esta conversa?\n\n${TEXTO_FECHAR}`)) return;
         await fechar(false);
       }}>
-        <CheckCircle2 size={14} className="mr-2 text-emerald-600" /> Fechar conversa
+        <CheckCircle2 size={14} className="mr-2 text-success" /> Fechar conversa
       </DropdownMenuItem>
       {oferta.pode && (
         <DropdownMenuItem onClick={async (e) => {
@@ -252,7 +252,7 @@ export function FecharConversaMenuItem({ leadId, fechadaEm, onChange }: Props) {
           )) return;
           await fechar(true);
         }}>
-          <Star size={14} className="mr-2 text-emerald-600" /> Fechar e enviar pesquisa
+          <Star size={14} className="mr-2 text-success" /> Fechar e enviar pesquisa
         </DropdownMenuItem>
       )}
     </>

@@ -782,7 +782,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
 
   return (
-    <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
+    <div className="flex-shrink-0 border-t border-border/60 bg-card px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
       {/* Optimizing/uploading indicator */}
@@ -825,7 +825,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Sessão expirada — use um template"
-                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
+                className="min-h-[40px] max-h-[40px] resize-none bg-surface-sunken py-2 pr-10 opacity-50"
                 disabled
                 rows={1}
               />
@@ -860,7 +860,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   setIgReplyMode("comment");
                 }}
                 disabled={!igCommentTarget}
-                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "comment" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs transition-colors ${igReplyMode === "comment" ? "bg-purple-soft text-purple-soft-foreground" : "text-muted-foreground hover:text-foreground"} disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 <MessageCircle size={12} /> Comentário
               </button>
@@ -878,8 +878,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               </Select>
             )}
             {igReplyMode === "comment" && igCommentTarget && (
-              <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
-                <Reply size={11} className="text-purple-500 flex-shrink-0" />
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-purple/20 bg-purple-soft px-2 py-1 text-[11px] text-purple-soft-foreground">
+                <Reply size={11} className="flex-shrink-0 text-purple" />
                 <span className="truncate">Respondendo: {igCommentTarget.preview || "(sem texto)"}</span>
                 <button
                   type="button"
@@ -923,7 +923,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         )}
         {/* Fallback heurístico (só quando a RPC não respondeu): janela de DM pelo histórico carregado */}
         {!igJanela && isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
-          <div className="flex items-start gap-2 mb-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <div className="mb-2 flex items-start gap-2 rounded-control border border-warning/20 bg-warning-soft px-3 py-2 text-xs text-warning-soft-foreground">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
             <span>
               <strong>Janela de DM expirada.</strong> O Instagram só permite enviar Direct enquanto o usuário enviou um DM nas últimas 24h.
@@ -1002,7 +1002,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                           : "Janela de Direct fechada — veja o aviso acima")
                       : "Digite / para atalhos ou uma mensagem..."
                   }
-                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2 disabled:opacity-60"
+                  className="min-h-[40px] max-h-[120px] resize-none bg-surface-sunken py-2 disabled:opacity-60"
                   disabled={optimizing || uploading || igDirectBloqueado}
                   rows={1}
                 />
