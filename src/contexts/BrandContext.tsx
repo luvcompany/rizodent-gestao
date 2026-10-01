@@ -265,7 +265,8 @@ export function BrandProvider({ slug = null, children }: { slug?: string | null;
     (async () => {
       try {
         // Sem slug o parâmetro é omitido: o default da função é NULL (marca do sistema).
-        const { data, error } = await supabase.rpc(
+        // Cast: a RPC de marca vem do v2 e pode não estar no types.ts gerado.
+        const { data, error } = await (supabase.rpc as any)(
           "get_public_branding",
           slugNormalizado ? { _slug: slugNormalizado } : {},
         );

@@ -172,10 +172,13 @@ async function numeroDoLeadManual(
     // can_access_whatsapp_number(id): aqui só aparecem os números que quem
     // cria acessa — o mesmo filtro que o gatilho aplica. Sem nenhum, o lead
     // fica sem número (NULL), como no banco.
-    let q = db
+    // Cast: a coluna de status é do v2 e ainda não está no schema deste projeto
+    // (ver comentário do tipo FunnelChannel em CrmAutomacoes.tsx) — a consulta
+    // falha e o lead fica sem número, como hoje.
+    let q = (db
       .from("whatsapp_numbers")
       .select("id")
-      .eq("is_active", true)
+      .eq("is_active", true) as any)
       .eq("status", "conectado");
     if (ids) q = q.in("id", ids);
     const { data, error } = await q
@@ -195,7 +198,7 @@ async function numeroDoLeadManual(
     .eq("channel_type", "whatsapp")
     .not("whatsapp_number_id", "is", null);
   if (errCanais) console.error("[Kanban] falha ao ler canais do funil:", errCanais);
-  const ids = ((canais as { whatsapp_number_id: string | null }[] | null) ?? [])
+  const ids = ((canais as unknown as { whatsapp_number_id: string | null }[] | null) ?? [])
     .map((c) => c.whatsapp_number_id)
     .filter((v): v is string => !!v);
   const doFunil = ids.length ? await primeiroConectado(ids) : null;

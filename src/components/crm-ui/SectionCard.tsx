@@ -18,6 +18,8 @@ export interface SectionCardProps extends Omit<React.HTMLAttributes<HTMLElement>
   titleAs?: HeadingTag;
   /** Classe extra do cabeçalho. */
   headerClassName?: string;
+  /** Classe extra do bloco de conteúdo (quando fornecido, o conteúdo é envolvido numa div). */
+  contentClassName?: string;
 }
 
 const PADDING = { md: "p-5", lg: "p-6", none: "" } as const;
@@ -35,6 +37,7 @@ export const SectionCard = React.forwardRef<HTMLElement, SectionCardProps>(
       as = "div",
       titleAs = "h3",
       headerClassName,
+      contentClassName,
       className,
       children,
       ...rest
@@ -79,7 +82,7 @@ export const SectionCard = React.forwardRef<HTMLElement, SectionCardProps>(
             {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
           </div>
         ) : null}
-        {children}
+        {contentClassName != null ? <div className={contentClassName}>{children}</div> : children}
       </Comp>
     );
   },
