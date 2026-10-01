@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useId } from "react";
-import { Bell } from "lucide-react";
+import { Bell, BellRing } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -147,32 +147,43 @@ const NotificationBell = () => {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+        <Button variant="ghost" size="icon" className="relative rounded-control text-muted-foreground hover:bg-primary-soft hover:text-primary-soft-foreground" aria-label="Abrir notificações">
           <Bell size={20} />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h4 className="text-sm font-semibold">Notificações</h4>
+      <PopoverContent className="w-[min(22rem,calc(100vw-1rem))] overflow-hidden p-0" align="end" sideOffset={10}>
+        <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground">
+              <BellRing className="h-4 w-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-semibold text-foreground">Notificações</h4>
+              {unreadCount > 0 && <p className="text-xs text-muted-foreground">{unreadCount} não {unreadCount === 1 ? "lida" : "lidas"}</p>}
+            </div>
+          </div>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs h-7"
+              className="h-8 px-2 text-xs text-primary hover:bg-primary-soft hover:text-primary-soft-foreground"
               onClick={markAllAsRead}
             >
               Marcar todas como lidas
             </Button>
           )}
         </div>
-        <ScrollArea className="max-h-80">
+        <ScrollArea className="max-h-96 bg-popover">
           {notifications.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
+            <div className="flex flex-col items-center px-6 py-10 text-center text-sm text-muted-foreground">
+              <span className="mb-3 grid h-10 w-10 place-items-center rounded-full bg-slate-soft text-slate-soft-foreground">
+                <Bell className="h-4 w-4" />
+              </span>
               Nenhuma notificação
             </div>
           ) : (
@@ -180,8 +191,8 @@ const NotificationBell = () => {
               <button
                 key={n.id}
                 onClick={() => handleClick(n)}
-                className={`w-full text-left px-4 py-3 border-b border-border last:border-0 hover:bg-accent transition-colors ${
-                  !n.is_read ? "bg-primary/5" : ""
+                className={`w-full border-b border-border/60 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-sunken ${
+                  !n.is_read ? "bg-primary-soft/60" : "bg-popover"
                 }`}
               >
                 <div className="flex items-start gap-2">

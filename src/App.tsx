@@ -10,6 +10,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "./components/AppLayout";
 import CrmLayout from "./components/CrmLayout";
 import { WhatsappCallProvider } from "@/contexts/WhatsappCallContext";
+import ThemedLoader from "@/components/ThemedLoader";
 
 
 type PreloadableComponent<T extends ComponentType<any> = ComponentType<any>> = LazyExoticComponent<T> & {
@@ -96,8 +97,8 @@ const queryClient = new QueryClient({
   },
 });
 
-const PageLoader = () => <div className="min-h-screen bg-background" />;
-const RouteLoader = () => <div className="min-h-full bg-background" />;
+const PageLoader = () => <ThemedLoader />;
+const RouteLoader = () => <ThemedLoader fullScreen={false} />;
 const withRouteSuspense = (node: ReactNode) => (
   <Suspense fallback={<RouteLoader />}>{node}</Suspense>
 );

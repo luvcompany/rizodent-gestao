@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
+import ThemedLoader from "@/components/ThemedLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -125,12 +126,7 @@ const TenantLogin = () => {
   }, []);
 
   if (tenantLoading) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 text-muted-foreground">
-        <h1 className="sr-only">Acesso da equipe</h1>
-        <span>Carregando...</span>
-      </div>
-    );
+    return <ThemedLoader />;
   }
 
   if (!tenant.id) {

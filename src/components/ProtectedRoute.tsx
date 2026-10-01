@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
+import ThemedLoader from "@/components/ThemedLoader";
 
 // Rotas liberadas para o papel Recepção (chat + disparos + modelos + bots).
 // Qualquer outra rota redireciona para Conversas.
@@ -99,11 +100,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }, [profile?.is_blocked, signOut]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Carregando...</div>
-      </div>
-    );
+    return <ThemedLoader />;
   }
 
   if (!session) {
@@ -122,11 +119,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   // Sem isso, um deep-link renderia (e consultaria dados de) uma rota proibida
   // na janela entre o boot e a chegada do papel.
   if (!roleResolved) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Carregando...</div>
-      </div>
-    );
+    return <ThemedLoader />;
   }
 
   // Pós-venda só acessa o CRM
