@@ -496,7 +496,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                   <select
                     value={cidade}
                     onChange={(e) => setCidade(e.target.value)}
-                    className="flex h-8 w-full rounded-md border border-input bg-secondary px-3 py-1 text-xs text-foreground"
+                    className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground"
                   >
                     <option value={EMPTY_CITY_VALUE}>Sem localização</option>
                     {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}

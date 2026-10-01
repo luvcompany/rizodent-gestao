@@ -142,7 +142,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
         </p>
       )}
       {!!selectedPipelineId && etapasDoFunilEscolhido.length === 0 && (
-        <p className="text-xs text-amber-500 flex items-start gap-1.5">
+        <p className="flex items-start gap-1.5 text-xs text-warning-soft-foreground">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
           <span>
             Nenhuma etapa de <strong>{nomeFunil(selectedPipelineId) || "deste funil"}</strong> está liberada para o seu
