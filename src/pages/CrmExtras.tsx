@@ -4,7 +4,7 @@ export default function CrmExtras() {
   return (
     <div className="space-y-5">
       <PageHeader title="Funções extras" subtitle="As funcionalidades foram integradas aos seus respectivos painéis." />
-      <SectionCard>
+      <SectionCard title="Atalhos disponíveis">
       <ul className="space-y-3 text-sm text-muted-foreground list-disc list-inside">
         <li><strong>Respostas Rápidas</strong> → Automações {">"} Respostas Rápidas</li>
         <li><strong>Score de Lead & Métricas</strong> → Relatórios</li>
