@@ -11,19 +11,17 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin, Database, Download, RotateCcw, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { generateAndSubmitAppointmentTemplate } from "@/lib/appointmentTemplateBlueprint";
+import { PageHeader, StatusPill } from "@/components/crm-ui";
 
 export default function Configuracoes() {
   const { userRole } = useAuth();
   const isAdmin = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
-        <p className="text-sm text-muted-foreground mt-1">Gerencie seu perfil, preferências e as clínicas integradas</p>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader title="Configurações" subtitle="Gerencie seu perfil, preferências e as clínicas integradas" />
 
       <Tabs defaultValue="perfil">
-        <TabsList>
+        <TabsList variant="pill">
           <TabsTrigger value="perfil"><User size={14} className="mr-1" /> Meu perfil</TabsTrigger>
           <TabsTrigger value="clinicas"><Building2 size={14} className="mr-1" /> Clínicas</TabsTrigger>
           {isAdmin && <TabsTrigger value="backups"><Database size={14} className="mr-1" /> Backups</TabsTrigger>}
@@ -309,7 +307,7 @@ function ClinicasTab() {
           ) : (
             <div className="space-y-2">
               {clinicas.map((c) => (
-                <div key={c.id} className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+                <div key={c.id} className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-foreground truncate">{c.nome}</p>
@@ -320,7 +318,7 @@ function ClinicasTab() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-1.5">
                         <Switch checked={c.ativa} onCheckedChange={() => toggleAtiva(c)} />
-                        <span className="text-xs text-muted-foreground">{c.ativa ? "Ativa" : "Inativa"}</span>
+                        <StatusPill tone={c.ativa ? "success" : "slate"}>{c.ativa ? "Ativa" : "Inativa"}</StatusPill>
                       </div>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar endereço/link" onClick={() => (editId === c.id ? setEditId(null) : startEdit(c))}>
                         <Pencil size={14} />
@@ -347,7 +345,7 @@ function ClinicasTab() {
                     <div className="min-w-0 flex items-center gap-1.5 text-xs">
                       <MapPin size={12} className="shrink-0 text-muted-foreground" />
                       {c.appointment_template_name ? (
-                        <span className="text-emerald-600 truncate flex items-center gap-1">
+                        <span className="flex truncate items-center gap-1 text-success">
                           <CheckCircle2 size={12} /> Modelo: <span className="font-mono">{c.appointment_template_name}</span>
                         </span>
                       ) : (
@@ -497,7 +495,7 @@ function BackupsTab() {
               <Button size="sm" variant="outline" onClick={loadDates} disabled={loading} title="Atualizar lista">
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
               </Button>
-              <Button size="sm" onClick={runNow} disabled={running} className="gradient-orange text-primary-foreground">
+              <Button size="sm" onClick={runNow} disabled={running}>
                 {running ? <Loader2 className="animate-spin mr-1" size={14} /> : <Database className="mr-1" size={14} />}
                 Fazer backup agora
               </Button>

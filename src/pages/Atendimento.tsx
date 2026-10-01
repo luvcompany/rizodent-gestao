@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { rptCriativosParaSelecao, type CriativoOpcao } from "@/lib/reportKit";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/crm-ui";
 
 const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
@@ -426,13 +427,10 @@ const Atendimento = () => {
   const isExistingPatient = !!pacienteSelecionadoId;
 
   return (
-    <div className="mx-auto max-w-3xl animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Novo Atendimento</h1>
-        <p className="text-sm text-muted-foreground">Cadastro de pagamento por especialidade</p>
-      </div>
+    <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
+      <PageHeader title="Novo atendimento" subtitle="Cadastro de pagamento por especialidade" />
 
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <UserCheck size={18} className="text-primary" />
@@ -455,7 +453,7 @@ const Atendimento = () => {
                 />
               </div>
               {sugestoes.length > 0 && !pacienteSelecionadoId && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover p-1 shadow-card">
+                <div className="absolute z-10 mt-1 w-full rounded-xl border border-border/60 bg-popover p-1 shadow-float">
                   {sugestoes.map((pac) => (
                     <button
                       key={pac.id}
@@ -618,7 +616,7 @@ const Atendimento = () => {
                     : especialidadesNovasDisponiveis;
 
                 return (
-                  <Card key={ent.id} className="border-border bg-secondary/30">
+                  <Card key={ent.id} className="border-border/60 bg-surface-sunken">
                     <CardContent className="pt-4 pb-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-muted-foreground">
