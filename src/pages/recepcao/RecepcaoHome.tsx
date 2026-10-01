@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
 import SdrExpediente from "@/components/sdr/SdrExpediente";
 import { rotuloDesfecho } from "@/lib/desfechoLabel";
-import { KpiCard, PageHeader, SectionCard } from "@/components/crm-ui";
+import { KpiCard, PageHeader } from "@/components/crm-ui";
 
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
@@ -204,18 +204,6 @@ export default function RecepcaoHome() {
     return leads.filter((l) => l.last_outbound_at && new Date(l.last_outbound_at) >= inicio).length;
   }, [leads]);
 
-  /** Entradas por hora nas últimas 8 h — alimenta os mini-gráficos. */
-  const porHora = useMemo(() => {
-    const balde = new Array(8).fill(0);
-    const agoraH = new Date();
-    leads.forEach((l) => {
-      if (!l.last_inbound_at) return;
-      const dif = (agoraH.getTime() - new Date(l.last_inbound_at).getTime()) / 3_600_000;
-      if (dif >= 0 && dif < 8) balde[7 - Math.floor(dif)] += 1;
-    });
-    return balde;
-  }, [leads]);
-
   /** Confirma a presença sem sair do Início — antes só dava para fazer isso
    *  dentro da conversa, e a tela cobrava a confirmação sem oferecer o botão. */
   const confirmarConsulta = async (id: string) => {
@@ -319,8 +307,8 @@ export default function RecepcaoHome() {
               </div>
             ) : fila.length === 0 ? (
               <div className="px-6 py-20 text-center">
-                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/15">
-                  <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={22} />
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success-soft">
+                  <CheckCircle2 className="text-success-soft-foreground" size={22} />
                 </div>
                 <p className="mt-3 font-semibold text-foreground">Nenhuma conversa esperando</p>
                 <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">

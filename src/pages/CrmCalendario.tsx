@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
-import { corDesfecho, desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
+import { desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
 
 type Task = {
   id: string;
@@ -776,7 +776,7 @@ export default function CrmCalendario() {
                     const st = getTaskStatus(t);
                     const assignedProfile = profiles.find((p) => p.id === t.assigned_to);
                     return (
-                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer hover:bg-secondary/50 transition-colors", st === "late" && "bg-destructive/5", st === "done" && "bg-green-500/5")}>
+                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer transition-colors hover:bg-surface-sunken", st === "late" && "bg-destructive-soft/40", st === "done" && "bg-success-soft/40")}>
                         <td className="px-3 py-2.5 text-xs whitespace-nowrap">{format(new Date(t.due_date), "dd/MM/yyyy HH:mm")}</td>
                         <td className="px-3 py-2.5 text-xs">{assignedProfile?.nome || "—"}</td>
                         <td className="px-3 py-2.5">
@@ -784,13 +784,13 @@ export default function CrmCalendario() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1.5 text-xs">
-                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-green-500" /> : <Circle size={12} className="text-primary" />}
+                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-success" /> : <Circle size={12} className="text-warning" />}
                             {typeLabels[t.type] || t.type}
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{t.notes || t.title}</td>
                         <td className="px-3 py-2.5">
-                          <Badge variant="outline" className={cn("text-[10px]", st === "done" && "border-green-500 text-green-600", st === "late" && "border-destructive text-destructive")}>
+                          <Badge variant="outline" className={cn("text-[10px]", st === "done" && "border-success/30 bg-success-soft text-success-soft-foreground", st === "late" && "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "border-warning/30 bg-warning-soft text-warning-soft-foreground")}>
                             {st === "done" ? "Concluída" : st === "late" ? "Atrasada" : "Pendente"}
                           </Badge>
                         </td>
@@ -829,7 +829,7 @@ export default function CrmCalendario() {
                         {dayTs.slice(0, 3).map((t) => {
                           const st = getTaskStatus(t);
                           return (
-                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("text-[10px] px-1 py-0.5 rounded truncate cursor-pointer font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
+                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("cursor-pointer rounded px-1 py-0.5 text-[10px] font-medium", st === "done" && "bg-success-soft text-success-soft-foreground", st === "late" && "bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "bg-warning-soft text-warning-soft-foreground")}> 
                               {t.lead_name} {format(new Date(t.due_date), "HH:mm")} {typeLabels[t.type]}
                             </div>
                           );
@@ -868,7 +868,7 @@ export default function CrmCalendario() {
                             {hourTasks.map((t) => {
                               const st = getTaskStatus(t);
                               return (
-                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("text-[9px] px-1 py-0.5 rounded cursor-pointer truncate mb-0.5 font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
+                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("mb-0.5 cursor-pointer rounded px-1 py-0.5 text-[9px] font-medium", st === "done" && "bg-success-soft text-success-soft-foreground", st === "late" && "bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "bg-warning-soft text-warning-soft-foreground")}> 
                                   {t.lead_name}, {typeLabels[t.type]}
                                 </div>
                               );
@@ -893,7 +893,7 @@ export default function CrmCalendario() {
                   const Icon = typeIcons[t.type] || Clock;
                   return (
                     <div key={t.id} onClick={() => setSelectedTask(t)} className="flex items-center gap-2 p-2 rounded-md bg-secondary/50 text-xs cursor-pointer hover:bg-secondary transition-colors">
-                      {st === "done" ? <CheckCircle2 size={14} className="text-green-500" /> : st === "late" ? <AlertTriangle size={14} className="text-destructive" /> : <Circle size={14} className="text-primary" />}
+                      {st === "done" ? <CheckCircle2 size={14} className="text-success" /> : st === "late" ? <AlertTriangle size={14} className="text-destructive" /> : <Circle size={14} className="text-warning" />}
                       <Icon size={12} className="text-muted-foreground" />
                       <span className="flex-1 truncate font-medium">{t.lead_name} — {t.title}</span>
                       <span className={cn("text-muted-foreground", st === "late" && "text-destructive")}>{format(new Date(t.due_date), "HH:mm")}</span>
@@ -985,7 +985,9 @@ export default function CrmCalendario() {
                             // de is_rescheduled sobre 'confirmed'.
                             const statusStyle =
                               ehComparecimento
-                                ? corDesfecho(statusNorm, userRole)
+                                ? statusNorm === "not_contracted" && !escondeDesfechoDeVenda(userRole)
+                                  ? "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground"
+                                  : "border-success/30 bg-success-soft text-success-soft-foreground"
                                 : statusNorm === "no_show"
                                 ? "border-destructive/40 bg-destructive-soft text-destructive-soft-foreground"
                                 : statusNorm === "cancelled"
@@ -1031,7 +1033,7 @@ export default function CrmCalendario() {
                               >
                                 <div className="font-medium break-words leading-tight">
                                    {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
-                                   {!statusIcon && remarcada && <span className="text-purple-500 mr-0.5">↻</span>}
+                                   {!statusIcon && remarcada && <span className="mr-0.5 text-purple">↻</span>}
                                    {appt.lead_name}
                                  </div>
                                 <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
@@ -1069,11 +1071,11 @@ export default function CrmCalendario() {
                   >
                     <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
                     {escondeDesfechoDeVenda(userRole) ? (
-                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
+                      <div className="text-[10px] text-success-soft-foreground" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
                     ) : (
                       <>
-                        <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
-                        <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
+                        <div className="text-[10px] text-success-soft-foreground">🤝 {contratados}</div>
+                        <div className="text-[10px] text-destructive-soft-foreground">❌ {naoContratados}</div>
                       </>
                     )}
                   </div>
@@ -1107,7 +1109,7 @@ export default function CrmCalendario() {
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => { setSelectedTask(null); navigate(`/crm/conversa/${selectedTask.lead_id}`); }}>Ir para conversa</Button>
                   {st !== "done" && (
-                    <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleMarkDone(selectedTask)}>
+                    <Button size="sm" className="flex-1 bg-success text-success-foreground hover:bg-success/90" onClick={() => handleMarkDone(selectedTask)}>
                       <CheckCircle2 size={14} className="mr-1" /> Concluir
                     </Button>
                   )}
@@ -1166,7 +1168,7 @@ export default function CrmCalendario() {
                           NÃO abre o segundo passo — ela não decide contrato nem
                           pode ler as duas palavras (mesma regra do chat, em
                           AppointmentConfirmBar.tsx). */}
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
+                      <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
                         <CheckCircle2 size={14} className="mr-1" /> Compareceu
                       </Button>
                       <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>
