@@ -1370,7 +1370,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 {/* A busca por mensagem corta em 500 leads. Dizer isso é o que
                     separa "não existe mais nada" de "tem mais, refine". */}
                 {buscaNoTeto && (
-                  <p className="mt-1 px-0.5 text-[11px] leading-snug text-amber-600 dark:text-amber-500">
+                  <p className="mt-1 px-0.5 text-[11px] leading-snug text-warning-soft-foreground">
                     Mostrando as 500 conversas com a mensagem mais recente. Há mais — use uma palavra
                     mais específica para chegar nas antigas.
                   </p>
@@ -1705,7 +1705,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                        className="h-8 w-8 text-success hover:bg-success-soft hover:text-success-soft-foreground"
                         disabled={callState.phase !== "idle"}
                         onClick={() =>
                           initiateCall({
@@ -1720,7 +1720,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
+                      <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-success" /> Ligar via WhatsApp</span>
                     </TooltipContent>
                   </Tooltip>
                 )}
