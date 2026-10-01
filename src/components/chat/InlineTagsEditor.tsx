@@ -239,12 +239,14 @@ export default function InlineTagsEditor({
   const isAdSource = dropdownValue === "anúncio";
 
   return (
-    <div className="p-4 border-b border-border space-y-3">
+    <>
+    <section className="space-y-3 border-b border-border/60 px-5 py-5">
+      <h3 className="text-[15px] font-semibold text-foreground">Origem</h3>
       {/* Source */}
       <div>
         <span className="text-xs text-muted-foreground block mb-1">Origem</span>
         <Select value={dropdownValue || ""} onValueChange={handleSourceChange}>
-          <SelectTrigger className="h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
             <SelectValue placeholder="Selecione a origem" />
           </SelectTrigger>
           <SelectContent>
@@ -255,7 +257,7 @@ export default function InlineTagsEditor({
         </Select>
         {dropdownValue === "outro" && (
           <Input
-            className="h-7 text-xs mt-1.5"
+            className="mt-2 h-10 rounded-xl bg-surface-sunken text-sm"
             value={customSource}
             onChange={(e) => setCustomSource(e.target.value)}
             onBlur={handleCustomSourceSave}
@@ -270,7 +272,7 @@ export default function InlineTagsEditor({
         <div>
           <span className="text-xs text-muted-foreground block mb-1">Anúncio vinculado</span>
           {adId ? (
-            <div className="border border-border rounded-md p-2 space-y-1">
+            <div className="space-y-1 rounded-xl border border-border/60 bg-surface-sunken p-3">
               <div className="flex items-start gap-2">
                 {imagemOrigem ? (
                   <img src={imagemOrigem} alt="Anúncio" className="w-14 h-14 rounded object-cover shrink-0" />
@@ -299,12 +301,12 @@ export default function InlineTagsEditor({
             </div>
           ) : (
             <>
-              <Button size="sm" variant="outline" onClick={handleOpenAdSelector} className="w-full h-7 text-xs">
+              <Button size="sm" variant="outline" onClick={handleOpenAdSelector} className="h-10 w-full rounded-xl text-xs">
                 <Link2 size={12} className="mr-1" /> Selecionar anúncio
               </Button>
 
               {showAdSelector && (
-                <div className="mt-1.5 border border-border rounded-md max-h-48 overflow-y-auto">
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-border/60">
                   {loadingAds ? (
                     <p className="text-xs text-muted-foreground p-3 text-center">Carregando...</p>
                   ) : ads.length === 0 ? (
@@ -345,12 +347,15 @@ export default function InlineTagsEditor({
         </div>
       )}
 
+    </section>
+
       {/* Tags */}
-      <div>
+      <section className="border-b border-border/60 px-5 py-5">
+        <h3 className="mb-3 text-[15px] font-semibold text-foreground">Tags</h3>
         <span className="text-xs text-muted-foreground block mb-1">Tags</span>
         <div className="flex flex-wrap gap-1 mb-1.5">
           {tags.map((t) => (
-            <Badge key={t} variant="secondary" className="text-xs gap-1 cursor-default">
+            <Badge key={t} variant="secondary" className="cursor-default gap-1 rounded-full bg-primary-soft text-xs text-primary-soft-foreground">
               #{t}
               <button onClick={() => removeTag(t)} className="hover:text-destructive ml-0.5">
                 <X size={10} />
@@ -363,14 +368,14 @@ export default function InlineTagsEditor({
             value={newTag}
             onChange={(e) => setNewTag(e.target.value)}
             placeholder="Nova tag..."
-            className="h-7 text-xs flex-1"
+            className="h-10 flex-1 rounded-xl bg-surface-sunken text-sm"
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
           />
-          <button onClick={addTag} className="h-7 w-7 flex items-center justify-center rounded-md border border-border hover:bg-secondary transition-colors">
+          <Button type="button" variant="outline" size="icon" onClick={addTag} className="h-10 w-10 shrink-0 rounded-xl">
             <Plus size={12} />
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </section>
+    </>
   );
 }

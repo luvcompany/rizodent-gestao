@@ -993,13 +993,13 @@ export default function AppointmentConfirmBar({
 
   return (
     <section className="border-b border-border/60 px-5 py-5">
-      <div className="flex items-center justify-between mb-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
           <CalendarCheck size={12} />
           Agendamento
         </h3>
         {pendingTasks.length > 0 && (
-          <span className="text-xs text-orange-600 font-medium">{pendingTasks.length} pendente(s)</span>
+          <span className="rounded-full bg-warning-soft px-2 py-1 text-xs font-medium text-warning-soft-foreground">{pendingTasks.length} pendente(s)</span>
         )}
       </div>
 
@@ -1025,7 +1025,7 @@ export default function AppointmentConfirmBar({
                 <Pencil size={12} />
               </Button>
             </div>
-            <Button size="sm" className="h-8 w-full text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleConfirmPendingAppointment(appt)}>
+            <Button size="sm" className="h-10 w-full rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={() => handleConfirmPendingAppointment(appt)}>
               <CheckCircle2 size={12} /> Confirmar agendamento
             </Button>
           </div>
@@ -1043,11 +1043,11 @@ export default function AppointmentConfirmBar({
         const pickerOpen = picker?.apptId === appt.id;
 
         return (
-          <div key={appt.id} className="mb-2 p-3 rounded-lg border border-green-500/30 bg-green-500/10 space-y-2">
+          <div key={appt.id} className="mb-2 space-y-2 rounded-xl border border-success/30 bg-success-soft p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={12} className="text-green-600 shrink-0" />
+                  <CheckCircle2 size={12} className="shrink-0 text-success" />
                   <span className="text-sm font-medium text-foreground">
                     {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
                   </span>

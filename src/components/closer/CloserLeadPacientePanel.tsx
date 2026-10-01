@@ -426,7 +426,7 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
   if (carregando) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 border-b border-border/60 px-5 py-5 text-sm text-muted-foreground">
         <Loader2 size={14} className="animate-spin" /> Carregando paciente…
       </div>
     );
