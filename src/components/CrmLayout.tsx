@@ -18,6 +18,8 @@ import AvisoFimExpediente from "@/components/sdr/AvisoFimExpediente";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type NavItem = {
   to: string;
@@ -182,9 +184,8 @@ const CrmLayout = () => {
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
-  const logo = isDefaultLogo
-    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
-    : tenant.logo_url!;
+  const logo = tenant.logo_dark_url || (isDefaultLogo ? crclinLogoLight : tenant.logo_url) || CRCLIN_DEFAULT_LOGO;
+  const logoNeedsPlaque = !tenant.logo_dark_url;
   const handleLogout = async () => {
     await signOut();
     navigate("/");
@@ -278,51 +279,71 @@ const CrmLayout = () => {
     };
   }, [user?.id]);
 
-  const renderNavItem = (item: NavItem) => (
-    <NavLink
-      key={item.to + (item.search ?? "")}
-      to={item.to + (item.search ?? "")}
-      end={item.end}
-      onClick={() => setSidebarOpen(false)}
-      className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-          itemAtivo(item, isActive)
-            ? "gradient-orange text-primary-foreground shadow-orange"
-            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        }`
-      }
-    >
-      <item.icon size={18} />
-      {item.label}
-      {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
-        <span
-          title="Conversas não lidas (últimos 60 dias)"
-          className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1"
-        >
-          {unreadCount > 999 ? "999+" : unreadCount}
-        </span>
-      )}
-      {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
-        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
-          {todayTaskCount > 99 ? "99+" : todayTaskCount}
-        </span>
-      )}
-    </NavLink>
-  );
+  const renderNavItem = (item: NavItem) => {
+    const link = (
+      <NavLink
+        key={item.to + (item.search ?? "")}
+        to={item.to + (item.search ?? "")}
+        end={item.end}
+        onClick={() => setSidebarOpen(false)}
+        aria-label={sidebarCollapsed ? item.label : undefined}
+        className={({ isActive }) =>
+          `relative flex h-10 items-center rounded-control text-sm font-medium transition-colors ${
+            sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"
+          } ${
+            itemAtivo(item, isActive)
+              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-primary"
+              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          }`
+        }
+      >
+        <item.icon size={18} className="shrink-0" />
+        <span className={sidebarCollapsed ? "hidden" : "truncate"}>{item.label}</span>
+        {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
+          <span
+            title="Conversas não lidas (últimos 60 dias)"
+            className={`${sidebarCollapsed ? "absolute -right-1 -top-1 h-4 min-w-4 text-[9px]" : "ml-auto h-5 min-w-5 text-[10px]"} flex items-center justify-center rounded-full bg-primary px-1 font-bold text-primary-foreground`}
+          >
+            {unreadCount > 999 ? "999+" : unreadCount}
+          </span>
+        )}
+        {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
+          <span className={`${sidebarCollapsed ? "absolute -right-1 -top-1 h-4 min-w-4 text-[9px]" : "ml-auto h-5 min-w-5 text-[10px]"} flex items-center justify-center rounded-full bg-primary px-1 font-bold text-primary-foreground`}>
+            {todayTaskCount > 99 ? "99+" : todayTaskCount}
+          </span>
+        )}
+      </NavLink>
+    );
+
+    if (!sidebarCollapsed) return link;
+    return (
+      <Tooltip key={item.to + (item.search ?? "")}>
+        <TooltipTrigger asChild>{link}</TooltipTrigger>
+        <TooltipContent side="right">{item.label}</TooltipContent>
+      </Tooltip>
+    );
+  };
 
   const renderNavGroup = (group: NavGroup) => {
     const isExpanded = expandedGroups.has(group.label);
     return (
-      <div key={group.label}>
-        <button
-          onClick={() => toggleGroup(group.label)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
-        >
-          <group.icon size={18} />
-          {group.label}
-          <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
-        </button>
-        {isExpanded && (
+      <div key={group.label} className="border-t border-sidebar-border/70 pt-2 first:border-t-0 first:pt-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              onClick={() => sidebarCollapsed ? setSidebarCollapsed(false) : toggleGroup(group.label)}
+              aria-label={sidebarCollapsed ? group.label : undefined}
+              className={`h-10 w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
+            >
+              <group.icon size={18} className="shrink-0" />
+              <span className={sidebarCollapsed ? "hidden" : "truncate"}>{group.label}</span>
+              {!sidebarCollapsed && <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />}
+            </Button>
+          </TooltipTrigger>
+          {sidebarCollapsed && <TooltipContent side="right">{group.label}</TooltipContent>}
+        </Tooltip>
+        {isExpanded && !sidebarCollapsed && (
           <div className="ml-4 space-y-0.5">
             {group.children.map(child => (
               <NavLink
@@ -333,7 +354,7 @@ const CrmLayout = () => {
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                     isActive
-                      ? "gradient-orange text-primary-foreground shadow-orange"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-primary"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`
                 }
@@ -348,7 +369,7 @@ const CrmLayout = () => {
   };
 
   return (
-    <div className="crm-ui flex min-h-screen bg-background">
+    <div className="crm-ui flex min-h-screen w-full bg-background">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -356,111 +377,122 @@ const CrmLayout = () => {
         />
       )}
 
-      {/* Collapse toggle for desktop */}
-      {!sidebarCollapsed && (
-        <button
-          onClick={() => setSidebarCollapsed(true)}
-          className="hidden lg:flex fixed top-4 left-[248px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground hover:text-primary transition-colors"
-          title="Ocultar menu"
-        >
-          <ChevronLeft size={14} />
-        </button>
-      )}
-      {sidebarCollapsed && (
-        <button
-          onClick={() => setSidebarCollapsed(false)}
-          className="hidden lg:flex fixed top-4 left-3 z-[51] h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground hover:text-primary transition-colors"
-          title="Mostrar menu"
-        >
-          <ChevronRight size={14} />
-        </button>
-      )}
-
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform ${
-          sidebarCollapsed ? "-translate-x-full" : "lg:translate-x-0"
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-float transition-[transform,width] duration-200 lg:translate-x-0 ${
+          sidebarCollapsed ? "lg:w-16" : "lg:w-64"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
-          <div className="flex flex-1 items-center justify-center">
-            <img src={logo} alt={tenant.name} className="h-7 max-w-full object-contain" />
+        <div className={`flex min-h-20 items-center gap-3 border-b border-sidebar-border px-3 py-3 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
+          <div className={`flex min-w-0 flex-1 flex-col items-center gap-2 ${sidebarCollapsed ? "lg:hidden" : ""}`}>
+            <div className={`flex h-10 w-full items-center justify-center overflow-hidden rounded-control px-2 ${logoNeedsPlaque ? "bg-card" : ""}`}>
+              <img src={logo} alt={tenant.name} className="max-h-8 max-w-full object-contain" />
+            </div>
+            <p className="w-full truncate text-center text-xs font-semibold text-sidebar-foreground">{tenant.name}</p>
           </div>
-          <button
-            className="ml-auto text-sidebar-foreground lg:hidden"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
+            aria-label="Fechar menu"
           >
             <X size={20} />
-          </button>
+          </Button>
+          {sidebarCollapsed && (
+            <div className={`hidden h-10 w-10 items-center justify-center overflow-hidden rounded-control p-1.5 lg:flex ${logoNeedsPlaque ? "bg-card" : ""}`}>
+              <img src={logo} alt={tenant.name} className="max-h-full max-w-full object-contain" />
+            </div>
+          )}
         </div>
 
-        <div className="px-4 py-3 border-b border-sidebar-border flex items-center justify-between gap-2">
+        <div className={`border-b border-sidebar-border px-4 py-3 ${sidebarCollapsed ? "lg:hidden" : "flex items-center justify-between gap-2"}`}>
           <div>
             <h2 className="text-sm font-bold text-primary tracking-wide">CRM</h2>
             <p className="text-xs text-muted-foreground">Gestão de Leads & Vendas</p>
           </div>
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
-            <button
+            <Button
+              variant="ghost"
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+              className="h-8 gap-1 px-2 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               title="Voltar ao Sistema"
             >
               <ArrowLeft size={14} />
               Sistema
-            </button>
+            </Button>
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+        <nav className={`flex-1 space-y-2 overflow-y-auto py-3 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {crmNavItems.map((entry) =>
             isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
           )}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4 space-y-1">
+        <div className={`space-y-1 border-t border-sidebar-border py-3 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {profile && (
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setEditProfileOpen(true)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-1 hover:bg-sidebar-accent transition-colors group"
+              className={`group mb-1 h-auto w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-1 py-2" : "justify-start gap-3 px-3 py-2"}`}
+              aria-label={sidebarCollapsed ? "Editar perfil" : undefined}
             >
               <Avatar className="h-9 w-9 border border-border">
                 <AvatarImage src={profile.avatar_url || undefined} />
                 <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
               </Avatar>
-              <div className="flex-1 text-left min-w-0">
+              <div className={`min-w-0 flex-1 text-left ${sidebarCollapsed ? "hidden" : ""}`}>
                 <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
                 <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
               </div>
-              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
+              <Settings size={14} className={`${sidebarCollapsed ? "hidden" : ""} text-sidebar-foreground/60 opacity-0 transition-opacity group-hover:opacity-100`} />
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
             onClick={toggleTheme}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className={`w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
+            aria-label={theme === "dark" ? "Modo Claro" : "Modo Escuro"}
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
-          </button>
-          <button
+            {!sidebarCollapsed && (theme === "dark" ? "Modo Claro" : "Modo Escuro")}
+          </Button>
+          <Button
+            variant="ghost"
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className={`w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
+            aria-label="Sair"
           >
             <LogOut size={18} />
-            Sair
-          </button>
+            {!sidebarCollapsed && "Sair"}
+          </Button>
         </div>
       </aside>
 
-      <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
-        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border/60 bg-card px-6">
-          <button
+      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"}`}>
+        <header className="flex h-16 min-w-0 shrink-0 items-center gap-3 border-b border-border/60 bg-card px-3 sm:px-5 lg:px-6">
+          <Button
+            variant="ghost"
+            size="icon"
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menu"
           >
             <Menu size={22} />
-          </button>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden text-muted-foreground hover:bg-primary-soft hover:text-primary-soft-foreground lg:inline-flex"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+            title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </Button>
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
-            <span className="hidden md:inline text-sm text-muted-foreground">CRM — Gestão de Leads</span>
+            <span className="hidden text-sm text-muted-foreground md:inline">CRM — Gestão de Leads</span>
           </div>
         </header>
 
