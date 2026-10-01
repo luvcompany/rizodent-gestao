@@ -197,6 +197,11 @@ const CrmLayout = () => {
   const unreadRefreshTimer = useRef<number | null>(null);
   const crmNavItems = buildCrmNavItems(userRole, isGestorEquipe);
 
+  useEffect(() => {
+    document.body.classList.add("crm-ui-active");
+    return () => document.body.classList.remove("crm-ui-active");
+  }, []);
+
   /** NavLink acende por caminho; itens que só diferem na query (Calendário ×
    *  Tarefas) precisam desempatar pela query atual. */
   const itemAtivo = (item: NavItem, isActive: boolean) => {
@@ -343,7 +348,7 @@ const CrmLayout = () => {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="crm-ui flex min-h-screen bg-background">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -446,7 +451,7 @@ const CrmLayout = () => {
       </aside>
 
       <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
-        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border px-6">
+        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border/60 bg-card px-6">
           <button
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}

@@ -126,7 +126,7 @@ function applyTenantTheme(branding: {
   root.style.removeProperty("--tertiary-foreground");
 
   if (!primary) {
-    ["--primary", "--primary-foreground", "--accent", "--ring", "--gradient-orange", "--shadow-orange", "--tenant-primary", "--tenant-secondary"].forEach((p) => root.style.removeProperty(p));
+    ["--primary", "--primary-foreground", "--primary-h", "--primary-s", "--accent", "--ring", "--gradient-orange", "--shadow-orange", "--shadow-primary", "--tenant-primary", "--tenant-secondary"].forEach((p) => root.style.removeProperty(p));
     return;
   }
 
@@ -142,8 +142,11 @@ function applyTenantTheme(branding: {
   else root.style.removeProperty("--primary-foreground");
 
   const [h, s] = triplet.split(" ");
+  root.style.setProperty("--primary-h", h);
+  root.style.setProperty("--primary-s", s);
   const sNum = s.replace("%", "");
   root.style.setProperty("--shadow-orange", `0 4px 20px -4px hsla(${h}, ${sNum}%, 50%, 0.3)`);
+  root.style.setProperty("--shadow-primary", `0 8px 20px -10px hsla(${h}, ${sNum}%, 45%, 0.6)`);
 
   // A cor SECUNDÁRIA da marca é usada como 2º ponto do gradiente (botões/realces),
   // sem tocar no token neutro --secondary.
