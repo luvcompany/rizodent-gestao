@@ -102,7 +102,7 @@ const EditProfileDialog = ({
         <DialogHeader>
           <DialogTitle>Editar Perfil</DialogTitle>
         </DialogHeader>
-        <div className="space-y-6 pt-2">
+        <div className="space-y-6 rounded-2xl border border-border/60 bg-surface-sunken p-5">
           {/* Avatar */}
           <div className="flex flex-col items-center gap-3">
             <div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
@@ -133,7 +133,7 @@ const EditProfileDialog = ({
             </div>
           </div>
 
-          <Button onClick={handleSave} disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+          <Button onClick={handleSave} disabled={saving} className="w-full font-semibold">
             {saving ? "Salvando..." : "Salvar Alterações"}
           </Button>
         </div>

@@ -172,7 +172,7 @@ export default function CrmPesquisaConfig() {
           </section>
         ) : (
           <>
-            <section className="grid grid-cols-3 gap-3">
+            <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                 <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Enviadas · 30 dias</p>
                 <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-foreground">{cfg.enviadas_30d}</p>
@@ -247,7 +247,7 @@ export default function CrmPesquisaConfig() {
 
               <div className="space-y-1.5">
                 <Label>Prévia (como o lead recebe)</Label>
-                <div className="whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-100">
+                <div className="whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-primary-soft px-4 py-3 text-sm text-primary-soft-foreground">
                   {previa.trim() || <span className="text-muted-foreground">Escreva a mensagem acima.</span>}
                 </div>
               </div>
