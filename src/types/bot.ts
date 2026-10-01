@@ -54,22 +54,22 @@ export type NodeDefinition = {
 
 export const NODE_DEFINITIONS: NodeDefinition[] = [
   // Start
-  { type: 'start', label: 'Início', icon: '▶️', category: 'start', color: 'hsl(var(--success))', description: 'Ponto de início do fluxo', defaultData: {} },
+  { type: 'start', label: 'Início', icon: '▶️', category: 'start', color: '#22c55e', description: 'Ponto de início do fluxo', defaultData: {} },
   // Messages (only 4)
-  { type: 'send_text', label: 'Mensagem de Texto', icon: '💬', category: 'message', color: 'hsl(var(--info))', description: 'Envia texto ou modelo de WhatsApp', defaultData: { text: '', templateId: '', templateButtons: [], timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
-  { type: 'send_audio', label: 'Áudio', icon: '🎙️', category: 'message', color: 'hsl(var(--info))', description: 'Grava e envia áudio de voz', defaultData: { audioUrl: '' } },
-  { type: 'send_file', label: 'Arquivo / Mídia', icon: '📎', category: 'message', color: 'hsl(var(--info))', description: 'Envia foto, vídeo ou documento com texto', defaultData: { fileUrl: '', fileType: 'image', caption: '' } },
-  { type: 'send_menu', label: 'Menu Interativo', icon: '📋', category: 'message', color: 'hsl(var(--info))', description: 'Lista ou botões clicáveis via WhatsApp API', defaultData: { menuType: 'buttons', headerText: '', bodyText: '', footerText: '', buttons: [{ id: '1', title: 'Opção 1' }], listSections: [{ title: 'Seção 1', rows: [{ id: '1', title: 'Item 1', description: '' }] }], buttonLabel: 'Menu', timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
+  { type: 'send_text', label: 'Mensagem de Texto', icon: '💬', category: 'message', color: '#3b82f6', description: 'Envia texto ou modelo de WhatsApp', defaultData: { text: '', templateId: '', templateButtons: [], timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
+  { type: 'send_audio', label: 'Áudio', icon: '🎙️', category: 'message', color: '#3b82f6', description: 'Grava e envia áudio de voz', defaultData: { audioUrl: '' } },
+  { type: 'send_file', label: 'Arquivo / Mídia', icon: '📎', category: 'message', color: '#3b82f6', description: 'Envia foto, vídeo ou documento com texto', defaultData: { fileUrl: '', fileType: 'image', caption: '' } },
+  { type: 'send_menu', label: 'Menu Interativo', icon: '📋', category: 'message', color: '#3b82f6', description: 'Lista ou botões clicáveis via WhatsApp API', defaultData: { menuType: 'buttons', headerText: '', bodyText: '', footerText: '', buttons: [{ id: '1', title: 'Opção 1' }], listSections: [{ title: 'Seção 1', rows: [{ id: '1', title: 'Item 1', description: '' }] }], buttonLabel: 'Menu', timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0 } },
   // Logic
   // delay block removed — timeout on send_text/send_menu/wait_reply handles waiting
-  { type: 'wait_reply', label: 'Registrar Resposta', icon: '💾', category: 'logic', color: 'hsl(var(--purple))', description: 'Salva a resposta do lead em uma variável', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
-  { type: 'condition', label: 'Condição (If/Else)', icon: '🔀', category: 'logic', color: 'hsl(var(--purple))', description: 'Ramifica baseado em condições', defaultData: { field: '', operator: 'equals', value: '' } },
+  { type: 'wait_reply', label: 'Registrar Resposta', icon: '💾', category: 'logic', color: '#a855f7', description: 'Salva a resposta do lead em uma variável', defaultData: { timeoutHours: 1, timeoutMinutes: 0, timeoutSeconds: 0, saveToField: '' } },
+  { type: 'condition', label: 'Condição (If/Else)', icon: '🔀', category: 'logic', color: '#a855f7', description: 'Ramifica baseado em condições', defaultData: { field: '', operator: 'equals', value: '' } },
   // Actions
-  { type: 'move_stage', label: 'Mudar Etapa', icon: '📌', category: 'action', color: 'hsl(var(--success))', description: 'Move o lead para outra etapa', defaultData: { stageId: '' } },
-  { type: 'add_tag', label: 'Adicionar Tag', icon: '🏷️', category: 'action', color: 'hsl(var(--success))', description: 'Adiciona tag ao lead', defaultData: { tag: '' } },
-  { type: 'remove_tag', label: 'Remover Tag', icon: '🏷️', category: 'action', color: 'hsl(var(--success))', description: 'Remove tag do lead', defaultData: { tag: '' } },
-  { type: 'add_note', label: 'Adicionar Nota', icon: '📝', category: 'action', color: 'hsl(var(--success))', description: 'Insere nota no histórico', defaultData: { note: '' } },
-  { type: 'create_task', label: 'Criar Tarefa', icon: '✅', category: 'action', color: 'hsl(var(--success))', description: 'Cria tarefa para o lead', defaultData: { title: '', dueHours: 24 } },
+  { type: 'move_stage', label: 'Mudar Etapa', icon: '📌', category: 'action', color: '#10b981', description: 'Move o lead para outra etapa', defaultData: { stageId: '' } },
+  { type: 'add_tag', label: 'Adicionar Tag', icon: '🏷️', category: 'action', color: '#10b981', description: 'Adiciona tag ao lead', defaultData: { tag: '' } },
+  { type: 'remove_tag', label: 'Remover Tag', icon: '🏷️', category: 'action', color: '#10b981', description: 'Remove tag do lead', defaultData: { tag: '' } },
+  { type: 'add_note', label: 'Adicionar Nota', icon: '📝', category: 'action', color: '#10b981', description: 'Insere nota no histórico', defaultData: { note: '' } },
+  { type: 'create_task', label: 'Criar Tarefa', icon: '✅', category: 'action', color: '#10b981', description: 'Cria tarefa para o lead', defaultData: { title: '', dueHours: 24 } },
   // Control
   { type: 'transfer_human', label: 'Transferir para Humano', icon: '👤', category: 'control', color: 'hsl(var(--warning))', description: 'Encerra bot e notifica operador', defaultData: {} },
   { type: 'trigger_bot', label: 'Acionar Outro Bot', icon: '🤖', category: 'control', color: 'hsl(var(--warning))', description: 'Inicia outro bot para este lead', defaultData: { botId: '', botName: '' } },

@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useModule } from "@/hooks/useModule";
 import { WhatsappCallSession } from "@/lib/whatsapp-call-session";
 import { IncomingWhatsappCallModal } from "@/components/whatsapp-calls/IncomingWhatsappCallModal";
 import { MinimizedIncomingCall } from "@/components/whatsapp-calls/MinimizedIncomingCall";
@@ -13,6 +15,9 @@ export interface WhatsappCallRow {
   id: string;
   tenant_id: string;
   phone_number_id: string;
+  /** Número (whatsapp_numbers.id) que recebeu/fez a ligação. Preenchido pelo
+   *  servidor no v2; linhas antigas podem vir sem ele. */
+  whatsapp_number_id?: string | null;
   wa_call_id: string;
   lead_id: string | null;
   from_phone: string | null;
@@ -45,16 +50,101 @@ interface Ctx {
   muted: boolean;
   minimizeIncoming: () => void;
   restoreIncoming: () => void;
-  initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => Promise<void>;
-  requestCallPermission: (params: { toPhone: string; leadId?: string | null; phoneNumberId?: string }) => Promise<void>;
   /**
-   * A Cloud API não oferece chamadas em números de coexistência — quem usa esse
-   * tipo de conexão liga pelo WhatsApp do próprio celular. Nesses casos os
-   * botões de ligar e de pedir permissão não devem aparecer; resta a telefonia
-   * (Api4Com). Recebe o whatsapp_number_id do lead (NULL = número principal,
-   * que é Cloud API pura e mantém as chamadas).
+   * whatsappNumberId = whatsapp_numbers.id do lead (carimbo). Sem ele, o
+   * servidor (whatsapp-call-signaling) escolhe o número pelo canal do funil ou
+   * pelo número padrão do cliente.
+   */
+  initiateCall: (params: { toPhone: string; leadId?: string | null; leadName?: string | null; whatsappNumberId?: string }) => Promise<void>;
+  requestCallPermission: (params: { toPhone: string; leadId?: string | null; whatsappNumberId?: string }) => Promise<void>;
+  /**
+   * Mostra os botões de ligar / pedir permissão pelo WhatsApp só quando:
+   * - o módulo 'ligacoes' não foi lido como desligado;
+   * - existe número utilizável: o do lead (quando carimbado) ou, sem carimbo,
+   *   pelo menos um número visível — ativo, 'conectado' e fora de coexistência
+   *   (a Cloud API não faz chamadas em coexistência; resta a telefonia Api4Com).
    */
   podeLigarPorWhatsapp: (whatsappNumberId?: string | null) => boolean;
+  /** Números visíveis ao usuário (RPC whatsapp_numeros_visiveis). undefined enquanto carrega. */
+  numerosVisiveis: NumeroWhatsappVisivel[] | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Números de WhatsApp visíveis ao usuário logado.
+// ---------------------------------------------------------------------------
+
+/** Só colunas públicas: a RPC nunca devolve token, app_id, app_secret nem verify_token. */
+export interface NumeroWhatsappVisivel {
+  id: string;
+  display_name: string | null;
+  phone_e164: string | null;
+  phone_number_id: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  is_coexistence: boolean;
+  status: string | null;
+  pipeline_id: string | null;
+  pipeline_nome: string | null;
+}
+
+export const CHAVE_NUMEROS_VISIVEIS = "whatsapp-numeros-visiveis";
+
+const textoOuNull = (v: unknown): string | null =>
+  typeof v === "string" && v.trim() !== "" ? v : null;
+
+async function buscarNumerosVisiveis(): Promise<NumeroWhatsappVisivel[]> {
+  const { data, error } = await supabase.rpc("whatsapp_numeros_visiveis");
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[])
+    .filter((n) => typeof n.id === "string")
+    .map((n) => ({
+      id: n.id as string,
+      display_name: textoOuNull(n.display_name),
+      phone_e164: textoOuNull(n.phone_e164),
+      phone_number_id: textoOuNull(n.phone_number_id),
+      is_active: n.is_active === true,
+      is_default: n.is_default === true,
+      is_coexistence: n.is_coexistence === true,
+      status: textoOuNull(n.status),
+      pipeline_id: textoOuNull(n.pipeline_id),
+      pipeline_nome: textoOuNull(n.pipeline_nome),
+    }));
+}
+
+/** Número pronto para enviar e receber: ativo e com status 'conectado'. */
+export const numeroConectado = (n: NumeroWhatsappVisivel): boolean =>
+  n.is_active && n.status === "conectado";
+
+/** Rótulo curto do número para badges e listas (nunca o phone_number_id cru). */
+export const nomeDoNumero = (n: Pick<NumeroWhatsappVisivel, "display_name" | "phone_e164">): string =>
+  n.display_name || n.phone_e164 || "Número sem nome";
+
+/**
+ * Números de WhatsApp que o usuário logado enxerga (filtrados no banco por
+ * can_access_whatsapp_number). Compartilhado por conversas, recepção,
+ * automações e ligações pela mesma chave do react-query.
+ */
+export function useNumerosWhatsappVisiveis(): {
+  numeros: NumeroWhatsappVisivel[] | undefined;
+  carregando: boolean;
+  erro: unknown;
+} {
+  const { user, profile } = useAuth();
+  const userId = user?.id ?? null;
+  const tenantId = profile?.tenant_id ?? null;
+  const q = useQuery({
+    queryKey: [CHAVE_NUMEROS_VISIVEIS, userId, tenantId],
+    queryFn: buscarNumerosVisiveis,
+    enabled: !!userId && !!tenantId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 5 * 60_000,
+    retry: 2,
+  });
+  useEffect(() => {
+    if (q.error) console.error("[whatsapp] falha ao ler números visíveis:", q.error);
+  }, [q.error]);
+  return { numeros: q.data, carregando: q.isLoading, erro: q.error };
 }
 
 const WhatsappCallContext = createContext<Ctx | null>(null);
@@ -77,7 +167,7 @@ type SyncMsg = {
 };
 
 export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, profile, userRole, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const isAuthed = !!user && !authLoading;
   const [state, setState] = useState<CallState>({ phase: "idle" });
@@ -111,46 +201,33 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const dialToneRef = useRef<{ stop: () => void } | null>(null);
 
   // --- Números de WhatsApp acessíveis (cada número é um mundo).
-  // A lista vem filtrada por RLS (can_access_whatsapp_number). Número não
-  // cadastrado em whatsapp_numbers = mundo legado (número principal), visível
-  // apenas para crc/gerente/superadmin.
-  const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
-  // Números conectados em coexistência: a Cloud API não faz chamadas neles.
-  const [numerosCoexistencia, setNumerosCoexistencia] = useState<Set<string>>(() => new Set());
-  // A SDR do rodízio NÃO atende nem faz chamadas de WhatsApp pelo CRM nesta
-  // fase (decisão fechada na revisão da Fase 1): whatsapp_calls e
-  // whatsapp_call_permissions estão bloqueadas para ela no banco (molde
-  // closer/recepção) e whatsapp-call-signaling devolve 403. Ligar a UI aqui
-  // deixaria o canal realtime mudo e o claim da chamada devolvendo 0 linhas.
-  const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin" || userRole === "sdr";
+  // A lista vem da RPC whatsapp_numeros_visiveis, filtrada no banco por
+  // can_access_whatsapp_number. No v2 não existe "número principal" fora de
+  // whatsapp_numbers: ligação de número que não está na lista não toca aqui.
+  const { numeros: numerosVisiveis } = useNumerosWhatsappVisiveis();
+  // Módulo 'ligacoes': só nega depois de a configuração do cliente ser lida.
+  const { ligado: ligacoesLigado } = useModule("ligacoes");
+  // Guardado em ref para o canal realtime não re-inscrever a cada releitura.
+  const visibilidadeRef = useRef<{ ids: Set<string>; pnids: Set<string> } | null>(null);
   useEffect(() => {
-    if (!user || !tenantId) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from("whatsapp_numbers")
-        .select("id, phone_number_id, is_coexistence")
-        .eq("tenant_id", tenantId);
-      if (cancelled) return;
-      allowedPhoneNumberIdsRef.current = new Set(
-        ((data as any[]) || []).map((n) => String(n.phone_number_id)).filter(Boolean),
-      );
-      setNumerosCoexistencia(
-        new Set(((data as any[]) || []).filter((n) => n.is_coexistence).map((n) => String(n.id))),
-      );
-    })();
-    return () => { cancelled = true; };
-  }, [user, tenantId]);
+    visibilidadeRef.current = numerosVisiveis
+      ? {
+          ids: new Set(numerosVisiveis.map((n) => n.id)),
+          pnids: new Set(numerosVisiveis.map((n) => n.phone_number_id).filter((v): v is string => !!v)),
+        }
+      : null;
+  }, [numerosVisiveis]);
+  const ligacoesLigadoRef = useRef(ligacoesLigado);
+  useEffect(() => { ligacoesLigadoRef.current = ligacoesLigado; }, [ligacoesLigado]);
 
   const callIsVisible = useCallback((row: WhatsappCallRow) => {
-    const allowed = allowedPhoneNumberIdsRef.current;
-    if (!row.phone_number_id) return legacyVisible;
-    if (!allowed) return legacyVisible; // lista ainda não carregada: só privilegiado
-    if (allowed.has(String(row.phone_number_id))) return true;
-    // Número sem linha visível em whatsapp_numbers: tratado como mundo legado
-    // (número principal) — só crc/gerente/superadmin recebem o toque.
-    return legacyVisible;
-  }, [legacyVisible]);
+    if (ligacoesLigadoRef.current === false) return false;
+    const vis = visibilidadeRef.current;
+    // Lista ainda não carregada (ou falhou): ninguém recebe o toque às cegas.
+    if (!vis) return false;
+    if (row.whatsapp_number_id && vis.ids.has(String(row.whatsapp_number_id))) return true;
+    return !!row.phone_number_id && vis.pnids.has(String(row.phone_number_id));
+  }, []);
 
   // --- Realtime: escuta whatsapp_calls do tenant
   useEffect(() => {
@@ -422,12 +499,18 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Envia o pedido NATIVO de permissão de ligação (mensagem com botão "Permitir"
   // no WhatsApp do cliente — 1 toque autoriza). O edge action=request_permission
   // dispara via Graph API; a resposta é registrada por trigger no banco.
-  const requestCallPermission = useCallback(async (params: { toPhone: string; leadId?: string | null; phoneNumberId?: string }) => {
+  const requestCallPermission = useCallback(async (params: { toPhone: string; leadId?: string | null; whatsappNumberId?: string }) => {
     const toPhone = (params.toPhone || "").replace(/\D/g, "");
     if (!toPhone) { toast.error("Número inválido"); return; }
     try {
       const { data, error } = await supabase.functions.invoke("whatsapp-call-signaling", {
-        body: { action: "request_permission", to_phone: toPhone, lead_id: params.leadId ?? null, phone_number_id: params.phoneNumberId },
+        body: {
+          action: "request_permission",
+          to_phone: toPhone,
+          lead_id: params.leadId ?? null,
+          // Sem número, o servidor resolve pelo canal do funil ou pelo padrão.
+          whatsapp_number_id: params.whatsappNumberId || undefined,
+        },
       });
       // O motivo real vem no CORPO do 4xx (error.context), não em error.message
       // — sem ler o corpo, "não faz parte do perfil" viraria o genérico
@@ -446,7 +529,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, []);
 
-  const initiateCall = useCallback(async (params: { toPhone: string; leadId?: string | null; leadName?: string | null; phoneNumberId?: string }) => {
+  const initiateCall = useCallback(async (params: { toPhone: string; leadId?: string | null; leadName?: string | null; whatsappNumberId?: string }) => {
     if (state.phase !== "idle") {
       toast.error("Já existe uma chamada em andamento");
       return;
@@ -461,6 +544,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       id: "pending",
       tenant_id: tenantId!,
       phone_number_id: "",
+      whatsapp_number_id: params.whatsappNumberId ?? null,
       wa_call_id: "",
       lead_id: params.leadId ?? null,
       from_phone: null,
@@ -497,7 +581,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
         },
       });
       sessionRef.current = session;
-      const { callDbId } = await session.initiate({ toPhone, phoneNumberId: params.phoneNumberId, leadId: params.leadId });
+      const { callDbId } = await session.initiate({ toPhone, whatsappNumberId: params.whatsappNumberId, leadId: params.leadId });
       setState((prev) => (prev.phase !== "idle" && "call" in prev ? { ...prev, call: { ...prev.call, id: callDbId, to_phone: toPhone } } : prev));
       toast.success(`Ligando para ${params.leadName || toPhone}...`);
     } catch (e: any) {
@@ -507,7 +591,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
           description: "Envie o pedido de permissão — ele aprova com 1 toque no WhatsApp.",
           action: {
             label: "Solicitar permissão",
-            onClick: () => { void requestCallPermission({ toPhone: params.toPhone, leadId: params.leadId, phoneNumberId: params.phoneNumberId }); },
+            onClick: () => { void requestCallPermission({ toPhone: params.toPhone, leadId: params.leadId, whatsappNumberId: params.whatsappNumberId }); },
           },
         });
       } else {
@@ -586,21 +670,25 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [user?.id, tenantId]);
 
-  // Regra de PAPEL mora aqui, não nas telas: `legacyVisible` (acima) só filtra
-  // chamada RECEBIDA, então enquanto isto só olhava coexistência a SDR via os
-  // dois botões de ligar — e cada clique pedia o microfone e terminava em
-  // "Edge Function returned a non-2xx status code" (whatsapp-call-signaling
-  // devolve 403 para o papel dela). Com a regra no contexto, nenhuma tela
-  // precisa lembrar: CrmConversa e CrmConversas já perguntam por aqui.
+  // A regra mora aqui, não nas telas: CrmConversa e CrmConversas perguntam por
+  // aqui, e nenhuma precisa lembrar de módulo, status ou coexistência.
+  // SDR liga (decisão do dono, 09/09): a RLS de whatsapp_calls e a function
+  // limitam aos leads dela e aos números concedidos a ela.
   const podeLigarPorWhatsapp = useCallback(
-    // SDR liga (decisão do dono, 09/09): a RLS de whatsapp_calls e a function
-    // limitam aos leads dela, então aqui só vale a regra de coexistência.
-    (whatsappNumberId?: string | null) =>
-      !whatsappNumberId || !numerosCoexistencia.has(String(whatsappNumberId)),
-    [numerosCoexistencia],
+    (whatsappNumberId?: string | null) => {
+      if (ligacoesLigado === false) return false;
+      if (!numerosVisiveis) return false;
+      const ligavel = (n: NumeroWhatsappVisivel) => numeroConectado(n) && !n.is_coexistence;
+      if (whatsappNumberId) {
+        const n = numerosVisiveis.find((x) => x.id === String(whatsappNumberId));
+        return !!n && ligavel(n);
+      }
+      return numerosVisiveis.some(ligavel);
+    },
+    [ligacoesLigado, numerosVisiveis],
   );
 
-  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp]);
+  const value = useMemo<Ctx>(() => ({ state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp, numerosVisiveis }), [state, acceptCall, rejectCall, hangupCall, toggleMute, muted, minimizeIncoming, restoreIncoming, initiateCall, requestCallPermission, podeLigarPorWhatsapp, numerosVisiveis]);
 
   return (
     <WhatsappCallContext.Provider value={value}>
@@ -610,6 +698,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {isAuthed && state.phase === "ringing" && !state.minimized && (
         <IncomingWhatsappCallModal
           call={state.call}
+          numerosVisiveis={numerosVisiveis}
           onAccept={acceptCall}
           onReject={rejectCall}
           onMinimize={minimizeIncoming}

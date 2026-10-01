@@ -4,7 +4,13 @@ import * as RechartsPrimitive from "recharts";
 import { cn } from "@/lib/utils";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
+// Os dois temas leem os mesmos tokens (--chart-1..8 mudam com a marca e com o
+// .dark no index.css/theme.ts). Série sem cor no config recebe, pela ordem,
+// hsl(var(--chart-N)) (F2) — nada de hex fixo aqui.
 const THEMES = { light: "", dark: ".dark" } as const;
+
+/** Cor-padrão da série `indice` (0-based): --chart-1..8 em ciclo. */
+const corPadraoDaSerie = (indice: number) => `hsl(var(--chart-${(indice % 8) + 1}))`;
 
 export type ChartConfig = {
   [k in string]: {
@@ -59,7 +65,7 @@ const ChartContainer = React.forwardRef<
 ChartContainer.displayName = "Chart";
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
-  const colorConfig = Object.entries(config).filter(([_, config]) => config.theme || config.color);
+  const colorConfig = Object.entries(config);
 
   if (!colorConfig.length) {
     return null;
@@ -73,9 +79,10 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
             ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
-  .map(([key, itemConfig]) => {
-    const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+  .map(([key, itemConfig], indice) => {
+    const color =
+      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color || corPadraoDaSerie(indice);
+    return `  --color-${key}: ${color};`;
   })
   .join("\n")}
 }

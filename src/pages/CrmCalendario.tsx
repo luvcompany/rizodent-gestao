@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
 import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
-import { desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
+import { corDesfecho, desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
 
 type Task = {
   id: string;
@@ -80,15 +80,15 @@ function getTaskStatus(task: Task) {
 }
 
 function statusColor(st: string) {
-  if (st === "done") return "border-success/30 bg-success-soft text-success-soft-foreground";
-  if (st === "late") return "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground";
-  return "border-warning/30 bg-warning-soft text-warning-soft-foreground";
+  if (st === "done") return "bg-green-500/20 text-green-600 border-green-500/30";
+  if (st === "late") return "bg-destructive/15 text-destructive border-destructive/30";
+  return "bg-card text-foreground border-border";
 }
 
 function statusBg(st: string) {
-  if (st === "done") return "bg-success-soft text-success-soft-foreground";
-  if (st === "late") return "bg-destructive-soft text-destructive-soft-foreground";
-  return "bg-warning-soft text-warning-soft-foreground";
+  if (st === "done") return "bg-green-500 text-white";
+  if (st === "late") return "bg-destructive text-white";
+  return "bg-primary/10 text-primary";
 }
 
 // Page-level cache to avoid refetching on every render.
@@ -575,14 +575,14 @@ export default function CrmCalendario() {
       <div
         key={task.id}
         onClick={() => setSelectedTask(task)}
-        className={cn("cursor-pointer rounded-control border border-l-[3px] p-3 transition-all hover:shadow-card", statusColor(st))}
+        className={cn("border rounded-md p-2.5 cursor-pointer hover:shadow-md transition-all", statusColor(st))}
       >
-        <div className="break-words text-sm font-semibold leading-snug">{task.lead_name}</div>
+        <div className="font-medium text-sm truncate">{task.lead_name}</div>
         {!compact && (
           <>
             <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(task.due_date), "dd/MM/yyyy HH:mm")}</div>
             <div className="flex items-center gap-1 mt-1 text-xs">
-              {st === "late" ? <AlertTriangle size={11} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={11} className="text-success" /> : <Circle size={11} className="text-warning" />}
+              {st === "late" ? <AlertTriangle size={11} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-primary" />}
               <span>{typeLabel}</span>
             </div>
             {task.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.title}: {task.notes}</p>}
@@ -596,10 +596,10 @@ export default function CrmCalendario() {
   };
 
   const renderEventsColumn = (title: string, tasks: Task[]) => (
-    <div className="flex min-w-0 flex-1 flex-col bg-card">
-      <div className="border-b border-border/60 bg-surface-sunken px-2 py-3 text-center">
-        <h3 className="break-words text-sm font-semibold text-foreground">{title}</h3>
-        <span className="mt-1 inline-flex rounded-full bg-slate-soft px-2 py-0.5 text-[11px] font-medium text-slate-soft-foreground">{tasks.length} eventos</span>
+    <div className="flex-1 min-w-[220px] flex flex-col">
+      <div className="text-center py-3 border-b border-border">
+        <h3 className="text-xs font-bold uppercase tracking-wide text-foreground">{title}</h3>
+        <span className="text-xs text-muted-foreground">{tasks.length} eventos</span>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {tasks.length === 0 && <div className="text-center text-xs text-muted-foreground py-8">Nenhum evento</div>}
@@ -638,11 +638,11 @@ export default function CrmCalendario() {
   // contrato pela cor — exatamente o que o rótulo esconde. Para os demais
   // papéis os itens continuam sendo os mesmos de antes, na mesma ordem.
   const legendaAgendamentos = useMemo(() => {
-    const confirmado = { cor: "bg-success", texto: "Confirmado" };
-    const compareceuCor = "bg-success";
-    const naoCompareceu = { cor: "bg-destructive", texto: "Não compareceu" };
-    const reagendado = { cor: "bg-purple", texto: "Reagendado" };
-    const cancelado = { cor: "bg-destructive", texto: "Cancelado" };
+    const confirmado = { cor: "bg-blue-500/40 border border-blue-500/60", texto: "Confirmado" };
+    const compareceuCor = "bg-emerald-500/40 border border-emerald-500/60";
+    const naoCompareceu = { cor: "bg-warning/40 border border-warning/60", texto: "Não compareceu" };
+    const reagendado = { cor: "bg-purple-500/40 border border-purple-500/60", texto: "Reagendado" };
+    const cancelado = { cor: "bg-muted border border-border", texto: "Cancelado" };
     if (escondeDesfechoDeVenda(userRole)) {
       return [
         confirmado,
@@ -656,21 +656,21 @@ export default function CrmCalendario() {
       confirmado,
       { cor: compareceuCor, texto: "Contratado" },
       naoCompareceu,
-      { cor: "bg-destructive", texto: "Não contratou" },
+      { cor: "bg-red-500/40 border border-red-500/60", texto: "Não contratou" },
       reagendado,
       cancelado,
     ];
   }, [userRole]);
 
   return (
-    <div className="-m-6 flex h-full flex-col bg-background p-4 sm:p-5" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
       {/* MAIN VIEW TOGGLE */}
-      <div className="mb-5 flex flex-shrink-0 flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
+      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+        <div className="flex bg-secondary rounded-lg p-1 gap-1">
           <Button
             variant={mainView === "agendamentos" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 rounded-full px-5 text-sm font-medium", mainView === "agendamentos" && "bg-primary text-primary-foreground shadow-primary")}
+            className={cn("h-9 px-6 text-sm font-medium", mainView === "agendamentos" && "gradient-brand text-primary-foreground shadow-sm")}
             onClick={() => setMainView("agendamentos")}
           >
             <CalendarDays size={16} className="mr-2" />
@@ -679,7 +679,7 @@ export default function CrmCalendario() {
           <Button
             variant={mainView === "tarefas" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 rounded-full px-5 text-sm font-medium", mainView === "tarefas" && "bg-primary text-primary-foreground shadow-primary")}
+            className={cn("h-9 px-6 text-sm font-medium", mainView === "tarefas" && "gradient-brand text-primary-foreground shadow-sm")}
             onClick={() => setMainView("tarefas")}
           >
             <Clock size={16} className="mr-2" />
@@ -692,24 +692,22 @@ export default function CrmCalendario() {
       {mainView === "tarefas" && (
         <>
           {/* Sub-nav */}
-          <div className="mb-4 flex flex-shrink-0 flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex flex-wrap gap-1 rounded-full bg-surface-sunken p-1">
+          <div className="flex items-center justify-between mb-3 flex-shrink-0 gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
               {(["events", "list", "week", "month"] as TaskViewMode[]).map((v) => (
                 <Button
                   key={v}
                   variant={taskView === v ? "default" : "ghost"}
                   size="sm"
-                  className={cn("h-9 rounded-full px-3 text-xs", taskView === v && "bg-primary text-primary-foreground shadow-primary")}
+                  className={cn("h-8 text-xs", taskView === v && "bg-primary text-primary-foreground")}
                   onClick={() => setTaskView(v)}
                 >
                   {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : "Mês"}
                 </Button>
               ))}
-              </div>
 
               <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-10 w-[130px] text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs w-[120px] ml-2"><SelectValue placeholder="Tipo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="agendamento">Agendamento</SelectItem>
@@ -719,7 +717,7 @@ export default function CrmCalendario() {
                 </SelectContent>
               </Select>
               <Select value={filterUser} onValueChange={setFilterUser}>
-                <SelectTrigger className="h-10 w-[150px] text-xs"><SelectValue placeholder="Responsável" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Responsável" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   {profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
@@ -734,21 +732,21 @@ export default function CrmCalendario() {
 
           {/* Nav for month/week */}
           {(taskView === "month" || taskView === "week") && (
-            <div className="mb-4 flex flex-shrink-0 flex-wrap items-center gap-2">
-              <Button variant="outline" size="icon" className="h-10 w-10 rounded-control bg-card shadow-card" onClick={() => nav(-1)}><ChevronLeft size={16} /></Button>
-              <h2 className="min-w-[220px] flex-1 text-xl font-bold capitalize text-foreground sm:text-2xl">
+            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)}><ChevronLeft size={16} /></Button>
+              <h2 className="text-sm font-bold text-foreground min-w-[180px] text-center capitalize">
                 {taskView === "month"
                   ? format(currentDate, "MMMM yyyy", { locale: ptBR })
                   : `Sem. ${format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — ${format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}`}
               </h2>
-              <Button variant="outline" size="icon" className="h-10 w-10 rounded-control bg-card shadow-card" onClick={() => nav(1)}><ChevronRight size={16} /></Button>
-              <Button variant="outline" size="sm" className="h-10 rounded-control bg-card px-4 shadow-card" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)}><ChevronRight size={16} /></Button>
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             </div>
           )}
 
           {/* EVENTS */}
           {taskView === "events" && (
-            <div className="grid min-h-0 flex-1 grid-cols-2 overflow-auto rounded-card border border-border/60 bg-border/60 shadow-card lg:grid-cols-5">
+            <div className="flex-1 flex gap-px bg-border rounded-lg overflow-hidden min-h-0">
               {renderEventsColumn("Concluídas", eventsView.done)}
               {renderEventsColumn("Atrasadas", eventsView.late)}
               {renderEventsColumn("Hoje", eventsView.today)}
@@ -759,9 +757,9 @@ export default function CrmCalendario() {
 
           {/* LIST */}
           {taskView === "list" && (
-            <div className="flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
+            <div className="flex-1 overflow-auto rounded-lg border border-border">
               <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-surface-sunken">
+                <thead className="bg-secondary/50 sticky top-0 z-10">
                   <tr className="text-left">
                     <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Vencimento</th>
                     <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Responsável</th>
@@ -776,7 +774,7 @@ export default function CrmCalendario() {
                     const st = getTaskStatus(t);
                     const assignedProfile = profiles.find((p) => p.id === t.assigned_to);
                     return (
-                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer transition-colors hover:bg-surface-sunken", st === "late" && "bg-destructive-soft/40", st === "done" && "bg-success-soft/40")}>
+                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer hover:bg-secondary/50 transition-colors", st === "late" && "bg-destructive/5", st === "done" && "bg-green-500/5")}>
                         <td className="px-3 py-2.5 text-xs whitespace-nowrap">{format(new Date(t.due_date), "dd/MM/yyyy HH:mm")}</td>
                         <td className="px-3 py-2.5 text-xs">{assignedProfile?.nome || "—"}</td>
                         <td className="px-3 py-2.5">
@@ -784,13 +782,13 @@ export default function CrmCalendario() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1.5 text-xs">
-                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-success" /> : <Circle size={12} className="text-warning" />}
+                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-green-500" /> : <Circle size={12} className="text-primary" />}
                             {typeLabels[t.type] || t.type}
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{t.notes || t.title}</td>
                         <td className="px-3 py-2.5">
-                          <Badge variant="outline" className={cn("text-[10px]", st === "done" && "border-success/30 bg-success-soft text-success-soft-foreground", st === "late" && "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "border-warning/30 bg-warning-soft text-warning-soft-foreground")}>
+                          <Badge variant="outline" className={cn("text-[10px]", st === "done" && "border-green-500 text-green-600", st === "late" && "border-destructive text-destructive")}>
                             {st === "done" ? "Concluída" : st === "late" ? "Atrasada" : "Pendente"}
                           </Badge>
                         </td>
@@ -820,7 +818,7 @@ export default function CrmCalendario() {
                   const hasLate = dayTs.some((t) => getTaskStatus(t) === "late");
                   const inMonth = isSameMonth(day, currentDate);
                   return (
-                    <div key={key} onClick={() => setSelectedDay(day)} className={cn("relative min-h-[90px] cursor-pointer bg-card p-1 transition-colors hover:bg-surface-sunken", !inMonth && "opacity-30", isToday(day) && "bg-primary-soft/50", selectedDay && isSameDay(day, selectedDay) && "ring-2 ring-inset ring-primary")}> 
+                    <div key={key} onClick={() => setSelectedDay(day)} className={cn("bg-card p-1 min-h-[90px] cursor-pointer hover:bg-secondary/30 transition-colors relative", !inMonth && "opacity-30", isToday(day) && "ring-1 ring-primary/50", selectedDay && isSameDay(day, selectedDay) && "bg-primary/5")}>
                       <div className="flex items-center justify-between mb-0.5">
                         <span className={cn("text-xs font-medium", isToday(day) ? "bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center" : "text-foreground")}>{format(day, "d")}</span>
                         {hasLate && <span className="w-2 h-2 rounded-full bg-destructive" />}
@@ -829,7 +827,7 @@ export default function CrmCalendario() {
                         {dayTs.slice(0, 3).map((t) => {
                           const st = getTaskStatus(t);
                           return (
-                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("cursor-pointer rounded px-1 py-0.5 text-[10px] font-medium", st === "done" && "bg-success-soft text-success-soft-foreground", st === "late" && "bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "bg-warning-soft text-warning-soft-foreground")}> 
+                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("text-[10px] px-1 py-0.5 rounded truncate cursor-pointer font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
                               {t.lead_name} {format(new Date(t.due_date), "HH:mm")} {typeLabels[t.type]}
                             </div>
                           );
@@ -868,7 +866,7 @@ export default function CrmCalendario() {
                             {hourTasks.map((t) => {
                               const st = getTaskStatus(t);
                               return (
-                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("mb-0.5 cursor-pointer rounded px-1 py-0.5 text-[9px] font-medium", st === "done" && "bg-success-soft text-success-soft-foreground", st === "late" && "bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "bg-warning-soft text-warning-soft-foreground")}> 
+                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("text-[9px] px-1 py-0.5 rounded cursor-pointer truncate mb-0.5 font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
                                   {t.lead_name}, {typeLabels[t.type]}
                                 </div>
                               );
@@ -893,7 +891,7 @@ export default function CrmCalendario() {
                   const Icon = typeIcons[t.type] || Clock;
                   return (
                     <div key={t.id} onClick={() => setSelectedTask(t)} className="flex items-center gap-2 p-2 rounded-md bg-secondary/50 text-xs cursor-pointer hover:bg-secondary transition-colors">
-                      {st === "done" ? <CheckCircle2 size={14} className="text-success" /> : st === "late" ? <AlertTriangle size={14} className="text-destructive" /> : <Circle size={14} className="text-warning" />}
+                      {st === "done" ? <CheckCircle2 size={14} className="text-green-500" /> : st === "late" ? <AlertTriangle size={14} className="text-destructive" /> : <Circle size={14} className="text-primary" />}
                       <Icon size={12} className="text-muted-foreground" />
                       <span className="flex-1 truncate font-medium">{t.lead_name} — {t.title}</span>
                       <span className={cn("text-muted-foreground", st === "late" && "text-destructive")}>{format(new Date(t.due_date), "HH:mm")}</span>
@@ -909,13 +907,13 @@ export default function CrmCalendario() {
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="mb-4 flex flex-shrink-0 flex-wrap items-center gap-2">
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-control bg-card shadow-card" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
-            <h2 className="min-w-[260px] flex-1 text-xl font-bold capitalize text-foreground sm:text-2xl">
+          <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+            <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
               {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
             </h2>
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-control bg-card shadow-card" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
-            <Button variant="outline" size="sm" className="h-10 rounded-control bg-card px-4 shadow-card" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             <span className="text-sm text-muted-foreground ml-auto">
               {appointments.filter(a => {
                 const ws = format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
@@ -925,23 +923,23 @@ export default function CrmCalendario() {
             </span>
           </div>
           {/* Legenda de cores */}
-          <div className="mb-3 flex flex-shrink-0 flex-wrap items-center gap-2 text-[11px]">
-            <span className="font-medium text-muted-foreground">Legenda:</span>
+          <div className="flex items-center gap-3 mb-2 flex-shrink-0 flex-wrap text-[11px]">
+            <span className="text-muted-foreground font-medium">Legenda:</span>
             {legendaAgendamentos.map((item) => (
-              <span key={item.texto} className="flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 font-medium text-foreground shadow-card">
-                <span className={cn("h-2 w-2 rounded-full", item.cor)} /> {item.texto}
+              <span key={item.texto} className="flex items-center gap-1">
+                <span className={cn("w-3 h-3 rounded", item.cor)} /> {item.texto}
               </span>
             ))}
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
-          <div className="flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
-            <div className="grid min-w-[760px]" style={{ gridTemplateColumns: `130px repeat(${apptWeekDays.length}, minmax(104px, 1fr))` }}>
+          <div className="flex-1 overflow-auto rounded-lg border border-border">
+            <div className="grid min-w-[700px]" style={{ gridTemplateColumns: `140px repeat(${apptWeekDays.length}, 1fr)` }}>
               {/* Header row: empty corner + day headers */}
-              <div className="sticky top-0 z-20 border-b border-r border-border/60 bg-surface-sunken p-3 text-xs font-semibold text-muted-foreground">
+              <div className="bg-secondary/70 border-b border-r border-border p-2 text-xs font-semibold text-muted-foreground uppercase sticky top-0 z-10">
                 Cidade
               </div>
               {apptWeekDays.map(day => (
-                <div key={day.toISOString()} className={cn("sticky top-0 z-20 border-b border-border/60 bg-surface-sunken p-2 text-center", isToday(day) && "bg-primary-soft")}> 
+                <div key={day.toISOString()} className={cn("bg-secondary/70 border-b border-border p-2 text-center sticky top-0 z-10", isToday(day) && "bg-primary/10")}>
                   <div className="text-xs font-medium text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</div>
                   <div className={cn("text-sm font-bold", isToday(day) ? "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto" : "text-foreground")}>{format(day, "d")}</div>
                 </div>
@@ -951,8 +949,8 @@ export default function CrmCalendario() {
               {apptCities.map(city => (
                 <div key={city} className="contents">
                   {/* City label */}
-                  <div className="flex items-start border-b border-r border-border/60 bg-card p-3">
-                    <span className="break-words text-xs font-semibold text-foreground">{city}</span>
+                  <div className="bg-card border-b border-r border-border p-2 flex items-start">
+                    <span className="text-xs font-semibold text-foreground">{city}</span>
                   </div>
                   {/* Cells for each day */}
                   {apptWeekDays.map(day => {
@@ -963,7 +961,7 @@ export default function CrmCalendario() {
                     ).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
 
                     return (
-                      <div key={`${city}-${dayKey}`} className={cn("min-h-[92px] border-b border-border/60 bg-card p-2", isToday(day) && "bg-primary-soft/50")}> 
+                      <div key={`${city}-${dayKey}`} className={cn("bg-card border-b border-border p-1.5 min-h-[80px]", isToday(day) && "bg-primary/5")}>
                         <div className="space-y-1">
                           {cellAppts.map(appt => {
                             // Status normalizado UMA vez. `desfechoEhComparecimento`
@@ -985,18 +983,16 @@ export default function CrmCalendario() {
                             // de is_rescheduled sobre 'confirmed'.
                             const statusStyle =
                               ehComparecimento
-                                ? statusNorm === "not_contracted" && !escondeDesfechoDeVenda(userRole)
-                                  ? "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground"
-                                  : "border-success/30 bg-success-soft text-success-soft-foreground"
+                                ? corDesfecho(statusNorm, userRole)
                                 : statusNorm === "no_show"
-                                ? "border-destructive/40 bg-destructive-soft text-destructive-soft-foreground"
+                                ? "bg-warning/15 text-warning border border-warning/50"
                                 : statusNorm === "cancelled"
-                                ? "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground line-through"
+                                ? "bg-muted text-muted-foreground border border-border line-through"
                                 : remarcada
-                                ? "border-purple/30 bg-purple-soft text-purple-soft-foreground"
+                                ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30"
                                 : statusNorm === "confirmed"
-                                ? "border-success/30 bg-success-soft text-success-soft-foreground"
-                                : "border-warning/30 bg-warning-soft text-warning-soft-foreground";
+                                ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                                : "bg-primary/10 text-foreground border border-border";
                             // O ícone segue a mesma regra de sigilo do rótulo: se a
                             // SDR visse 🤝 x ❌, o emoji contaria o contrato. Para
                             // ela os dois desfechos usam o mesmo símbolo neutro.
@@ -1022,7 +1018,7 @@ export default function CrmCalendario() {
                             return (
                               <div
                                 key={appt.id}
-                                className={cn("cursor-pointer rounded-control border border-l-[3px] px-2 py-1.5 text-[10px] transition-colors hover:shadow-card", statusStyle)}
+                                className={cn("text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm", statusStyle)}
                                 title={statusTitulo}
                                 onClick={() => {
                                   setSelectedAppointment(appt);
@@ -1033,7 +1029,7 @@ export default function CrmCalendario() {
                               >
                                 <div className="font-medium break-words leading-tight">
                                    {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
-                                   {!statusIcon && remarcada && <span className="mr-0.5 text-purple">↻</span>}
+                                   {!statusIcon && remarcada && <span className="text-purple-500 mr-0.5">↻</span>}
                                    {appt.lead_name}
                                  </div>
                                 <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
@@ -1071,11 +1067,11 @@ export default function CrmCalendario() {
                   >
                     <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
                     {escondeDesfechoDeVenda(userRole) ? (
-                      <div className="text-[10px] text-success-soft-foreground" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
                     ) : (
                       <>
-                        <div className="text-[10px] text-success-soft-foreground">🤝 {contratados}</div>
-                        <div className="text-[10px] text-destructive-soft-foreground">❌ {naoContratados}</div>
+                        <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
+                        <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
                       </>
                     )}
                   </div>
@@ -1109,7 +1105,7 @@ export default function CrmCalendario() {
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => { setSelectedTask(null); navigate(`/crm/conversa/${selectedTask.lead_id}`); }}>Ir para conversa</Button>
                   {st !== "done" && (
-                    <Button size="sm" className="flex-1 bg-success text-success-foreground hover:bg-success/90" onClick={() => handleMarkDone(selectedTask)}>
+                    <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleMarkDone(selectedTask)}>
                       <CheckCircle2 size={14} className="mr-1" /> Concluir
                     </Button>
                   )}
@@ -1168,7 +1164,7 @@ export default function CrmCalendario() {
                           NÃO abre o segundo passo — ela não decide contrato nem
                           pode ler as duas palavras (mesma regra do chat, em
                           AppointmentConfirmBar.tsx). */}
-                      <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
                         <CheckCircle2 size={14} className="mr-1" /> Compareceu
                       </Button>
                       <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>

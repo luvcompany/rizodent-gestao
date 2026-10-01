@@ -1,21 +1,21 @@
-import LegalLayout from "./LegalLayout";
+import LegalLayout, { EmailLegal } from "./LegalLayout";
 
 const ExclusaoDados = () => (
   <LegalLayout
     title="Exclusão de Dados"
     subtitle="Como solicitar a remoção dos seus dados"
-    metaDescription="Solicite a exclusão dos seus dados pessoais tratados pelo CRClin, incluindo dados obtidos das plataformas Meta."
+    metaDescription="Solicite a exclusão dos seus dados pessoais tratados pela plataforma, incluindo dados obtidos das plataformas Meta."
   >
     <section>
       <p>
-        Respeitamos o seu direito de excluir os dados pessoais tratados pelo CRClin, incluindo os dados obtidos por meio das plataformas Meta (Facebook, Instagram e WhatsApp).
+        Respeitamos o seu direito de excluir os dados pessoais tratados pela plataforma, incluindo os dados obtidos por meio das plataformas Meta (Facebook, Instagram e WhatsApp).
       </p>
     </section>
 
     <section>
       <h2>Como solicitar</h2>
       <p>
-        Envie um e-mail para rizodentmarketing@gmail.com com o assunto "Exclusão de Dados", informando:
+        Envie um e-mail para <EmailLegal /> com o assunto "Exclusão de Dados", informando:
       </p>
       <ul>
         <li>Nome completo;</li>
@@ -33,7 +33,7 @@ const ExclusaoDados = () => (
 
     <section>
       <h2>Contato</h2>
-      <p>Dúvidas sobre este processo: rizodentmarketing@gmail.com.</p>
+      <p>Dúvidas sobre este processo: <EmailLegal />.</p>
     </section>
   </LegalLayout>
 );

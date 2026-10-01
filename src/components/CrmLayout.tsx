@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
@@ -10,7 +10,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useGestorEquipe } from "@/hooks/useGestorEquipe";
 import { useTheme } from "@/hooks/useTheme";
-import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import { CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import { useBrand, type SystemBrand, type TenantBrand } from "@/contexts/BrandContext";
+import { SISTEMA_PADRAO } from "@/lib/brand/theme";
+import { useModulos, podeMostrar } from "@/hooks/useModule";
+import { useVocab, type Vocab } from "@/hooks/useVocab";
+import { moduloDaRota, type ModuloKey } from "@/lib/modulos";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
@@ -18,8 +23,6 @@ import AvisoFimExpediente from "@/components/sdr/AvisoFimExpediente";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type NavItem = {
   to: string;
@@ -44,7 +47,85 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
   return "children" in entry;
 }
 
-const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): SidebarEntry[] => {
+/**
+ * Tira do menu os itens de módulo desligado. Só esconde com `false` explícito
+ * (módulo resolvido e desligado): enquanto a config não chegou, tudo aparece.
+ * Grupo que fica sem filhos some.
+ */
+function filtrarPorModulo(
+  entries: SidebarEntry[],
+  ligado: (key: ModuloKey) => boolean | undefined,
+): SidebarEntry[] {
+  const visivel = (to: string) => {
+    const modulo = moduloDaRota(to);
+    return !modulo || podeMostrar(ligado(modulo));
+  };
+  const saida: SidebarEntry[] = [];
+  for (const entry of entries) {
+    if (isGroup(entry)) {
+      const children = entry.children.filter((c) => visivel(c.to));
+      if (children.length > 0) saida.push({ ...entry, children });
+    } else if (visivel(entry.to)) {
+      saida.push(entry);
+    }
+  }
+  return saida;
+}
+
+/**
+ * Logo da barra lateral:
+ *  - cliente: no escuro, logo escura → logo clara; no claro, logo clara;
+ *  - cliente white-label (sem "Powered by") e sem logo: lockup de texto;
+ *  - sistema: logo do sistema do modo (no escuro, a escura → a clara);
+ *  - sistema ainda com o nome padrão e sem logo cadastrada: logo local do CRClin;
+ *  - nada disso: null (lockup de texto).
+ */
+function escolherLogo(
+  escuro: boolean,
+  cliente: TenantBrand | null,
+  sistema: SystemBrand,
+  poweredBy: boolean,
+): string | null {
+  const limpo = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+  const doCliente = escuro
+    ? limpo(cliente?.logo_dark_url) ?? limpo(cliente?.logo_url)
+    : limpo(cliente?.logo_url);
+  if (doCliente) return doCliente;
+  if (cliente && !poweredBy) return null;
+  const doSistema = escuro
+    ? limpo(sistema.logo_dark_url) ?? limpo(sistema.logo_url)
+    : limpo(sistema.logo_url);
+  if (doSistema) return doSistema;
+  if ((limpo(sistema.name) ?? SISTEMA_PADRAO.name) === SISTEMA_PADRAO.name) {
+    return escuro ? CRCLIN_DEFAULT_LOGO : crclinLogoLight;
+  }
+  return null;
+}
+
+function iniciaisDe(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  const letras = partes.length > 1 ? partes[0][0] + partes[1][0] : (partes[0] ?? "").slice(0, 2);
+  return letras.toUpperCase() || "?";
+}
+
+/** Logo (ou lockup de texto) no topo da barra lateral. */
+function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => setFalhou(false), [logo]);
+  if (logo && !falhou) {
+    return <img src={logo} alt={nome} className="h-7 max-w-full object-contain" onError={() => setFalhou(true)} />;
+  }
+  return (
+    <div className="flex min-w-0 items-center gap-2" title={nome}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-brand text-xs font-bold text-primary-foreground">
+        {iniciaisDe(nomeCurto)}
+      </span>
+      <span className="truncate text-sm font-semibold text-sidebar-foreground">{nomeCurto}</span>
+    </div>
+  );
+}
+
+const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: Vocab): SidebarEntry[] => {
   // SDR do rodízio: base da recepção, isolada por "leads dela" (não por número).
   // Sem Transmissão/Conexões/Pacientes/Relatórios; com Calendário e Tarefas
   // porque agenda e faz follow-up dos próprios leads. Bots/modelos/respostas
@@ -85,7 +166,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean): Sidebar
       { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
-      { to: "/crm/closer/pacientes", icon: Users, label: "Pacientes" },
+      { to: "/crm/closer/pacientes", icon: Users, label: vocab.pessoaPlural },
       {
         label: "Ferramentas",
         icon: Bot,
@@ -178,14 +259,17 @@ const CrmLayout = () => {
   const location = useLocation();
   const { userRole, signOut, profile, user, refreshProfile } = useAuth();
   const { isGestor: isGestorEquipe } = useGestorEquipe();
-  const { tenant } = useTenant();
+  const { system, tenant: marcaCliente, effective } = useBrand();
+  const { ligado: moduloLigado } = useModulos();
+  const vocab = useVocab();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
-  const { theme, toggleTheme, setTheme } = useTheme();
-  const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
-  const logo = tenant.logo_dark_url || (isDefaultLogo ? crclinLogoLight : tenant.logo_url) || CRCLIN_DEFAULT_LOGO;
-  const logoNeedsPlaque = !tenant.logo_dark_url;
+  const { theme, toggleTheme } = useTheme();
+  const logo = escolherLogo(theme === "dark", marcaCliente, system, effective.poweredBy);
+  const tagline = system.tagline?.trim() || null;
+  // "Powered by" só faz sentido dentro de um cliente (sem cliente, a marca já é a do sistema).
+  const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
   const handleLogout = async () => {
     await signOut();
     navigate("/");
@@ -196,19 +280,10 @@ const CrmLayout = () => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas", "Equipe"]));
   const unreadFetchSeq = useRef(0);
   const unreadRefreshTimer = useRef<number | null>(null);
-  const crmNavItems = buildCrmNavItems(userRole, isGestorEquipe);
-
-  useEffect(() => {
-    document.body.classList.add("crm-ui-active");
-    return () => document.body.classList.remove("crm-ui-active");
-  }, []);
-
-  useEffect(() => {
-    const migrationKey = "crm-visual-light-default-v1";
-    if (localStorage.getItem(migrationKey)) return;
-    localStorage.setItem(migrationKey, "1");
-    setTheme("light");
-  }, [setTheme]);
+  const crmNavItems = useMemo(
+    () => filtrarPorModulo(buildCrmNavItems(userRole, isGestorEquipe, vocab), moduloLigado),
+    [userRole, isGestorEquipe, vocab, moduloLigado],
+  );
 
   /** NavLink acende por caminho; itens que só diferem na query (Calendário ×
    *  Tarefas) precisam desempatar pela query atual. */
@@ -286,72 +361,52 @@ const CrmLayout = () => {
     };
   }, [user?.id]);
 
-  const renderNavItem = (item: NavItem) => {
-    const link = (
-      <NavLink
-        key={item.to + (item.search ?? "")}
-        to={item.to + (item.search ?? "")}
-        end={item.end}
-        onClick={() => setSidebarOpen(false)}
-        aria-label={sidebarCollapsed ? item.label : undefined}
-        className={({ isActive }) =>
-          `relative flex h-11 items-center rounded-control text-[15px] font-medium transition-colors ${
-            sidebarCollapsed ? "justify-center px-2" : "gap-3 px-3"
-          } ${
-            itemAtivo(item, isActive)
-              ? "bg-primary/35 text-sidebar-accent-foreground"
-              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          }`
-        }
-      >
-        <item.icon size={19} className="shrink-0" />
-        <span className={sidebarCollapsed ? "hidden" : "truncate"}>{item.label}</span>
-        {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
-          <span
-            title="Conversas não lidas (últimos 60 dias)"
-            className={`${sidebarCollapsed ? "absolute -right-1 -top-1 h-4 min-w-4 text-[9px]" : "ml-auto h-5 min-w-5 text-[10px]"} flex items-center justify-center rounded-full bg-primary px-1 font-bold text-primary-foreground`}
-          >
-            {unreadCount > 999 ? "999+" : unreadCount}
-          </span>
-        )}
-        {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
-          <span className={`${sidebarCollapsed ? "absolute -right-1 -top-1 h-4 min-w-4 text-[9px]" : "ml-auto h-5 min-w-5 text-[10px]"} flex items-center justify-center rounded-full bg-primary px-1 font-bold text-primary-foreground`}>
-            {todayTaskCount > 99 ? "99+" : todayTaskCount}
-          </span>
-        )}
-      </NavLink>
-    );
-
-    if (!sidebarCollapsed) return link;
-    return (
-      <Tooltip key={item.to + (item.search ?? "")}>
-        <TooltipTrigger asChild>{link}</TooltipTrigger>
-        <TooltipContent side="right">{item.label}</TooltipContent>
-      </Tooltip>
-    );
-  };
+  const renderNavItem = (item: NavItem) => (
+    <NavLink
+      key={item.to + (item.search ?? "")}
+      to={item.to + (item.search ?? "")}
+      end={item.end}
+      onClick={() => setSidebarOpen(false)}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+          itemAtivo(item, isActive)
+            ? "gradient-brand text-primary-foreground shadow-brand"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        }`
+      }
+    >
+      <item.icon size={18} />
+      {item.label}
+      {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
+        <span
+          title="Conversas não lidas (últimos 60 dias)"
+          className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1"
+        >
+          {unreadCount > 999 ? "999+" : unreadCount}
+        </span>
+      )}
+      {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
+        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+          {todayTaskCount > 99 ? "99+" : todayTaskCount}
+        </span>
+      )}
+    </NavLink>
+  );
 
   const renderNavGroup = (group: NavGroup) => {
     const isExpanded = expandedGroups.has(group.label);
     return (
-      <div key={group.label} className="border-t border-sidebar-border/70 pt-2 first:border-t-0 first:pt-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              onClick={() => sidebarCollapsed ? setSidebarCollapsed(false) : toggleGroup(group.label)}
-              aria-label={sidebarCollapsed ? group.label : undefined}
-              className={`h-11 w-full text-[15px] font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
-            >
-              <group.icon size={19} className="shrink-0" />
-              <span className={sidebarCollapsed ? "hidden" : "truncate"}>{group.label}</span>
-              {!sidebarCollapsed && <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />}
-            </Button>
-          </TooltipTrigger>
-          {sidebarCollapsed && <TooltipContent side="right">{group.label}</TooltipContent>}
-        </Tooltip>
-        {isExpanded && !sidebarCollapsed && (
-          <div className="ml-[22px] space-y-0.5 border-l border-sidebar-border pl-2">
+      <div key={group.label}>
+        <button
+          onClick={() => toggleGroup(group.label)}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+        >
+          <group.icon size={18} />
+          {group.label}
+          <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+        </button>
+        {isExpanded && (
+          <div className="ml-4 space-y-0.5">
             {group.children.map(child => (
               <NavLink
                 key={child.to}
@@ -359,9 +414,9 @@ const CrmLayout = () => {
                 end={child.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                     isActive
-                      ? "bg-primary/35 text-sidebar-accent-foreground"
+                      ? "gradient-brand text-primary-foreground shadow-brand"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`
                 }
@@ -376,7 +431,7 @@ const CrmLayout = () => {
   };
 
   return (
-    <div className="crm-ui flex min-h-screen w-full bg-background">
+    <div className="flex min-h-screen">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -384,125 +439,120 @@ const CrmLayout = () => {
         />
       )}
 
+      {/* Collapse toggle for desktop */}
+      {!sidebarCollapsed && (
+        <button
+          onClick={() => setSidebarCollapsed(true)}
+          className="hidden lg:flex fixed top-4 left-[248px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground hover:text-primary transition-colors"
+          title="Ocultar menu"
+        >
+          <ChevronLeft size={14} />
+        </button>
+      )}
+      {sidebarCollapsed && (
+        <button
+          onClick={() => setSidebarCollapsed(false)}
+          className="hidden lg:flex fixed top-4 left-3 z-[51] h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground hover:text-primary transition-colors"
+          title="Mostrar menu"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
+
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar shadow-float transition-[transform,width] duration-200 lg:translate-x-0 ${
-          sidebarCollapsed ? "lg:w-16" : "lg:w-64"
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform ${
+          sidebarCollapsed ? "-translate-x-full" : "lg:translate-x-0"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className={`flex min-h-20 items-center gap-3 px-4 pb-2 pt-5 ${sidebarCollapsed ? "lg:justify-center" : ""}`}>
-          <div className={`flex min-w-0 flex-1 items-center ${sidebarCollapsed ? "lg:hidden" : ""}`}>
-            <div className={`flex h-10 max-w-full items-center overflow-hidden rounded-control ${logoNeedsPlaque ? "bg-card px-2" : ""}`}>
-              <img src={logo} alt={tenant.name} className="max-h-9 max-w-[180px] object-contain" />
-            </div>
+        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
+          <div className="flex flex-1 items-center justify-center">
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="ml-auto text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:hidden"
+          <button
+            className="ml-auto text-sidebar-foreground lg:hidden"
             onClick={() => setSidebarOpen(false)}
-            aria-label="Fechar menu"
           >
             <X size={20} />
-          </Button>
-          {sidebarCollapsed && (
-            <div className={`hidden h-10 w-10 items-center justify-center overflow-hidden rounded-control p-1.5 lg:flex ${logoNeedsPlaque ? "bg-card" : ""}`}>
-              <img src={logo} alt={tenant.name} className="max-h-full max-w-full object-contain" />
-            </div>
-          )}
+          </button>
         </div>
 
-        <div className={`mx-3 border-b border-sidebar-border px-1 pb-4 pt-1 ${sidebarCollapsed ? "lg:hidden" : "flex items-center justify-between gap-2"}`}>
+        <div className="px-4 py-3 border-b border-sidebar-border flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-bold text-sidebar-accent-foreground">{tenant.name}</h2>
-            <p className="text-xs text-sidebar-foreground/60">CRM · Gestão de Leads & Vendas</p>
+            <h2 className="truncate text-sm font-bold text-primary tracking-wide">{effective.name}</h2>
+            {tagline && <p className="truncate text-xs text-muted-foreground">{tagline}</p>}
           </div>
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
-            <Button
-              variant="ghost"
+            <button
               onClick={() => navigate("/dashboard")}
-              className="h-8 gap-1 px-2 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
               title="Voltar ao Sistema"
             >
               <ArrowLeft size={14} />
               Sistema
-            </Button>
+            </button>
           )}
         </div>
 
-        <nav className={`flex-1 space-y-2 overflow-y-auto py-3 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
+        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
           {crmNavItems.map((entry) =>
             isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
           )}
         </nav>
 
-        <div className={`space-y-1 border-t border-sidebar-border py-3 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
+        <div className="border-t border-sidebar-border p-4 space-y-1">
           {profile && (
-            <Button
-              variant="ghost"
+            <button
               onClick={() => setEditProfileOpen(true)}
-              className={`group mb-1 h-auto w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-1 py-2" : "justify-start gap-3 px-3 py-2"}`}
-              aria-label={sidebarCollapsed ? "Editar perfil" : undefined}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-1 hover:bg-sidebar-accent transition-colors group"
             >
               <Avatar className="h-9 w-9 border border-border">
                 <AvatarImage src={profile.avatar_url || undefined} />
                 <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
               </Avatar>
-              <div className={`min-w-0 flex-1 text-left ${sidebarCollapsed ? "hidden" : ""}`}>
+              <div className="flex-1 text-left min-w-0">
                 <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
                 <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
               </div>
-              <Settings size={14} className={`${sidebarCollapsed ? "hidden" : ""} text-sidebar-foreground/60 opacity-0 transition-opacity group-hover:opacity-100`} />
-            </Button>
+              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
           )}
-          <Button
-            variant="ghost"
+          <button
             onClick={toggleTheme}
-            className={`w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
-            aria-label={theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-            {!sidebarCollapsed && (theme === "dark" ? "Modo Claro" : "Modo Escuro")}
-          </Button>
-          <Button
-            variant="ghost"
+            {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
+          </button>
+          <button
             onClick={handleLogout}
-            className={`w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${sidebarCollapsed ? "justify-center px-2" : "justify-start gap-3 px-3"}`}
-            aria-label="Sair"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
           >
             <LogOut size={18} />
-            {!sidebarCollapsed && "Sair"}
-          </Button>
+            Sair
+          </button>
+          {mostrarPoweredBy && (
+            <p className="px-3 pt-2 text-[10px] text-muted-foreground">Powered by {system.name}</p>
+          )}
         </div>
       </aside>
 
-      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"}`}>
-        <header className="flex h-16 min-w-0 shrink-0 items-center gap-3 border-b border-border/60 bg-card/70 px-3 sm:px-5 lg:px-6">
-          <Button
-            variant="ghost"
-            size="icon"
+      <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
+        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border px-6">
+          <button
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}
-            aria-label="Abrir menu"
           >
             <Menu size={22} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden text-muted-foreground hover:bg-primary-soft hover:text-primary-soft-foreground lg:inline-flex"
-            onClick={() => setSidebarCollapsed((current) => !current)}
-            aria-label={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-            title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
-          >
-            {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </Button>
+          </button>
           <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
-            <span className="hidden border-l border-border pl-4 text-sm font-medium text-foreground md:inline">{tenant.name} — CRM — Gestão de Leads</span>
+            <span className="hidden md:inline text-sm text-muted-foreground">
+              {tagline ? `${effective.name} — ${tagline}` : effective.name}
+            </span>
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-8">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-6">
           <TaskReminderWatcher />
           {/* Aviso de fim de expediente da SDR: vive AQUI, no layout, e não no
               cartão da home. O cartão só existe em /crm/sdr, e a SDR passa o dia

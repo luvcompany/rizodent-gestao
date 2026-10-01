@@ -1,0 +1,112 @@
+/*
+ * Tokens do painel admin (importado por src/components/admin/shell/AdminShell.tsx).
+ *
+ * Redefine os neutros do shadcn só dentro do admin, em claro e escuro.
+ * --primary (e --ring/--accent) continuam vindo da marca do sistema
+ * (<style id="brand-theme">, P06): não redefinir aqui.
+ *
+ * Por que dois seletores:
+ * - `.admin-shell` cobre tudo o que está dentro do layout;
+ * - `html:root:has(.admin-shell)` cobre o que o Radix renderiza em portal
+ *   (diálogos, menus, popovers, a gaveta do menu no celular), que fica fora
+ *   do .admin-shell no DOM. A especificidade é maior que a do `.dark` do
+ *   index.css e do `html.dark` do brand-theme, e o escuro vence o claro.
+ */
+
+html:root:has(.admin-shell),
+.admin-shell {
+  --background: 220 20% 98%;
+  --foreground: 224 24% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 24% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 24% 12%;
+  --muted: 220 16% 96%;
+  --muted-foreground: 220 9% 44%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+
+  /* Raio: controles (rounded-md) com 8px; cards do admin com 12px. */
+  --radius: 10px;
+  --admin-radius-card: 12px;
+  --admin-radius-control: 8px;
+
+  /* Menu lateral no mesmo tom dos cards. */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 224 24% 12%;
+  --sidebar-accent: 220 16% 96%;
+  --sidebar-accent-foreground: 224 24% 12%;
+  --sidebar-border: 220 13% 91%;
+
+  /* Fundos da prévia de imagem (ImageDropField): uma superfície clara e uma
+     escura fixas, para ver a logo nos dois modos independente do tema atual. */
+  --admin-preview-claro: 0 0% 100%;
+  --admin-preview-claro-xadrez: 220 13% 91%;
+  --admin-preview-escuro: 224 14% 9%;
+  --admin-preview-escuro-xadrez: 224 10% 16%;
+}
+
+html.dark:root:has(.admin-shell),
+.dark .admin-shell {
+  --background: 224 14% 7%;
+  --foreground: 220 14% 96%;
+  --card: 224 13% 10%;
+  --card-foreground: 220 14% 96%;
+  --popover: 224 13% 10%;
+  --popover-foreground: 220 14% 96%;
+  --muted: 224 12% 14%;
+  --muted-foreground: 220 9% 63%;
+  --border: 224 10% 18%;
+  --input: 224 10% 18%;
+
+  --sidebar-background: 224 13% 10%;
+  --sidebar-foreground: 220 14% 96%;
+  --sidebar-accent: 224 12% 14%;
+  --sidebar-accent-foreground: 220 14% 96%;
+  --sidebar-border: 224 10% 18%;
+}
+
+/* O body do app usa um gradiente; no admin, fundo liso do token. */
+html:root:has(.admin-shell) body {
+  background: hsl(var(--background));
+}
+
+.admin-shell {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Superfície de card do admin (SettingsCard, KpiCard, DataTable). */
+.admin-card {
+  border-radius: var(--admin-radius-card, 12px);
+}
+
+/* Números alinhados em colunas e KPIs. */
+.admin-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prévia de imagem sobre xadrez claro e escuro. */
+.admin-xadrez-claro,
+.admin-xadrez-escuro {
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.admin-xadrez-claro {
+  background-color: hsl(var(--admin-preview-claro, 0 0% 100%));
+  background-image:
+    linear-gradient(45deg, hsl(var(--admin-preview-claro-xadrez, 220 13% 91%)) 25%, transparent 25%),
+    linear-gradient(-45deg, hsl(var(--admin-preview-claro-xadrez, 220 13% 91%)) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, hsl(var(--admin-preview-claro-xadrez, 220 13% 91%)) 75%),
+    linear-gradient(-45deg, transparent 75%, hsl(var(--admin-preview-claro-xadrez, 220 13% 91%)) 75%);
+}
+
+.admin-xadrez-escuro {
+  background-color: hsl(var(--admin-preview-escuro, 224 14% 9%));
+  background-image:
+    linear-gradient(45deg, hsl(var(--admin-preview-escuro-xadrez, 224 10% 16%)) 25%, transparent 25%),
+    linear-gradient(-45deg, hsl(var(--admin-preview-escuro-xadrez, 224 10% 16%)) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, hsl(var(--admin-preview-escuro-xadrez, 224 10% 16%)) 75%),
+    linear-gradient(-45deg, transparent 75%, hsl(var(--admin-preview-escuro-xadrez, 224 10% 16%)) 75%);
+}

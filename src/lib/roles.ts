@@ -28,12 +28,12 @@ export const ROLE_LABELS: Record<string, string> = {
 
 export const ROLE_BADGE_CLASS: Record<string, string> = {
   gerente: "bg-primary/20 text-primary border-primary/30",
-  crc: "border-info/30 bg-info-soft text-info-soft-foreground",
-  posvenda: "border-success/30 bg-success-soft text-success-soft-foreground",
-  recepcao: "border-warning/30 bg-warning-soft text-warning-soft-foreground",
-  closer: "border-warning/30 bg-warning-soft text-warning-soft-foreground",
-  sdr: "border-purple/30 bg-purple-soft text-purple-soft-foreground",
-  superadmin: "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground",
+  crc: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  posvenda: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  recepcao: "bg-warning/15 text-foreground border-warning/40 dark:text-warning",
+  closer: "bg-warning/15 text-foreground border-warning/40 dark:text-warning",
+  sdr: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+  superadmin: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
 export const roleLabel = (r: string | null | undefined) => (r ? ROLE_LABELS[r] ?? r : "—");

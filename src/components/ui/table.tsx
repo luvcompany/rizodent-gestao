@@ -2,6 +2,13 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+/*
+ * Pele do CRM (F2): TableHead (marcador crm-th) com h-10 e texto 12/500
+ * terciário; TableRow (crm-tr) com borda /60 e hover afundado. Só sob a casca
+ * do CRM (index.css); fora dela as var() caem em h-12, text-muted-foreground e
+ * hover:bg-muted/50. O padding das células não muda.
+ */
+
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
     <div className="relative w-full overflow-auto">
@@ -12,7 +19,7 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => <thead ref={ref} className={cn("crm-ui-table-header [&_tr]:border-b", className)} {...props} />,
+  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />,
 );
 TableHeader.displayName = "TableHeader";
 
@@ -34,7 +41,10 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
   ({ className, ...props }, ref) => (
     <tr
       ref={ref}
-      className={cn("border-b transition-colors data-[state=selected]:bg-muted hover:bg-muted/50", className)}
+      className={cn(
+        "crm-tr border-b transition-colors data-[state=selected]:bg-muted hover:bg-[color:var(--crm-tr-hover,hsl(var(--muted)/0.5))]",
+        className,
+      )}
       {...props}
     />
   ),
@@ -46,7 +56,7 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
       ref={ref}
       className={cn(
-        "h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "crm-th h-[var(--crm-th-h,3rem)] px-4 text-left align-middle font-medium text-[color:var(--crm-th-fg,hsl(var(--muted-foreground)))] [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}

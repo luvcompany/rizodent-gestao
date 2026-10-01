@@ -1,21 +1,87 @@
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import * as React from "react";
 import { cn } from "@/lib/utils";
+import { renderIcon, type IconLike } from "./icon";
+import { toneClasses, type Tone } from "./tones";
 
-type SectionCardProps = { title: string; icon?: LucideIcon; actions?: ReactNode; children: ReactNode; className?: string; contentClassName?: string };
+type HeadingTag = "h2" | "h3" | "h4";
 
-export function SectionCard({ title, icon: Icon, actions, children, className, contentClassName }: SectionCardProps) {
-  return (
-    <Card className={className}>
-      <CardHeader className="flex-row items-center justify-between space-y-0 p-5">
-        <div className="flex min-w-0 items-center gap-3">
-          {Icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><Icon className="h-4 w-4" /></span>}
-          <CardTitle className="break-words text-base font-semibold leading-snug">{title}</CardTitle>
-        </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-      </CardHeader>
-      <CardContent className={cn("p-5 pt-0", contentClassName)}>{children}</CardContent>
-    </Card>
-  );
+export interface SectionCardProps extends Omit<React.HTMLAttributes<HTMLElement>, "title"> {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  icon?: IconLike;
+  iconTone?: Tone;
+  actions?: React.ReactNode;
+  padding?: "md" | "lg" | "none";
+  /** Elemento raiz. Padrão `div` (não cria landmark novo na árvore de acessibilidade). */
+  as?: "div" | "section" | "article" | "aside" | "li";
+  /** Tag do título. Padrão `h3`, igual ao CardTitle do kit. */
+  titleAs?: HeadingTag;
+  /** Classe extra do cabeçalho. */
+  headerClassName?: string;
 }
+
+const PADDING = { md: "p-5", lg: "p-6", none: "" } as const;
+
+/** Card de seção do redesign: raio de card, borda sutil e sombra de card. */
+export const SectionCard = React.forwardRef<HTMLElement, SectionCardProps>(
+  (
+    {
+      title,
+      description,
+      icon,
+      iconTone = "primary",
+      actions,
+      padding = "md",
+      as = "div",
+      titleAs = "h3",
+      headerClassName,
+      className,
+      children,
+      ...rest
+    },
+    ref,
+  ) => {
+    const Comp = as as React.ElementType;
+    const Heading = titleAs as React.ElementType;
+    const hasHeader = title != null || description != null || icon != null || actions != null;
+    const t = toneClasses(iconTone);
+    return (
+      <Comp
+        ref={ref}
+        className={cn(
+          "rounded-card border border-border/60 bg-card text-card-foreground shadow-card",
+          PADDING[padding],
+          className,
+        )}
+        {...rest}
+      >
+        {hasHeader ? (
+          <div
+            className={cn(
+              "mb-4 flex items-center justify-between gap-3",
+              padding === "none" && "px-5 pt-5",
+              headerClassName,
+            )}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              {icon ? (
+                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", t.soft, t.icon)}>
+                  {renderIcon(icon, 18)}
+                </span>
+              ) : null}
+              <div className="min-w-0">
+                {title != null ? <Heading className="text-base font-semibold text-foreground">{title}</Heading> : null}
+                {description != null ? (
+                  <div className="text-[13px] text-muted-foreground">{description}</div>
+                ) : null}
+              </div>
+            </div>
+            {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
+        ) : null}
+        {children}
+      </Comp>
+    );
+  },
+);
+SectionCard.displayName = "SectionCard";

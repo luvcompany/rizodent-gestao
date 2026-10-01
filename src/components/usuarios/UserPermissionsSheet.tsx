@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "sdr" | "superadmin";
 
@@ -25,15 +26,14 @@ type Pipeline = {
  *  o mesmo critério do gatilho sdr_prepara_novo_membro no banco. */
 const funilGeral = (p: Pipeline) => !p.allowed_roles && !p.is_posvenda && !p.is_instagram;
 
+// Só colunas públicas de whatsapp_numbers: nunca token, app_id, app_secret
+// nem verify_token.
 type WhatsappNumber = {
   id: string;
-  phone_number_id: string;
   display_name: string | null;
   phone_e164: string | null;
   is_active: boolean;
 };
-
-
 
 type IgAccount = {
   id: string;
@@ -86,6 +86,10 @@ interface Props {
 }
 
 export default function UserPermissionsSheet({ open, onOpenChange, userId, userName, userRole, tenantId }: Props) {
+  const { profile } = useAuth();
+  // Cliente das consultas: o informado (painel do superadmin) ou o do próprio
+  // usuário logado (tela Usuários do cliente).
+  const tenantAlvo = tenantId ?? profile?.tenant_id ?? null;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -101,35 +105,17 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     (async () => {
       setLoading(true);
       // Escopo explícito por cliente: no painel do superadmin a RLS não restringe
-      // ao tenant, então sem o filtro viriam funis/números de TODOS os clientes.
-      const scoped = <T,>(q: T): T => (tenantId ? (q as any).eq("tenant_id", tenantId) : q);
-      const [{ data: pls }, { data: ovs }, { data: was }, { data: tmc }, { data: igs }] = await Promise.all([
+      // ao tenant (policy de superadmin), então sem o filtro viriam funis e
+      // números de TODOS os clientes.
+      const scoped = <T,>(q: T): T => (tenantAlvo ? (q as any).eq("tenant_id", tenantAlvo) : q);
+      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
         scoped(supabase.from("crm_pipelines").select("id,name,color,allowed_roles,is_posvenda,is_instagram")).order("name"),
         supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
-        scoped(supabase.from("whatsapp_numbers" as any).select("id,phone_number_id,display_name,phone_e164,is_active")).order("display_name"),
-        scoped(supabase
-          .from("tenant_meta_credentials" as any)
-          .select("tenant_id,whatsapp_phone_number_id,whatsapp_waba_id,whatsapp_enabled"))
-          .maybeSingle(),
+        scoped(supabase.from("whatsapp_numbers").select("id,display_name,phone_e164,is_active")).order("display_name"),
         scoped(supabase.from("ig_accounts").select("id,username,ig_user_id")).order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
-      // Merge per-number rows (whatsapp_numbers) with the tenant-level config (tenant_meta_credentials)
-      const merged: WhatsappNumber[] = [...(((was as unknown) || []) as WhatsappNumber[])];
-      const t: any = tmc;
-      if (t && t.whatsapp_phone_number_id) {
-        const exists = merged.some(w => w.phone_number_id === t.whatsapp_phone_number_id);
-        if (!exists) {
-          merged.push({
-            id: `tmc:${t.tenant_id}`,
-            phone_number_id: t.whatsapp_phone_number_id,
-            display_name: "WhatsApp do tenant",
-            phone_e164: null,
-            is_active: !!t.whatsapp_enabled,
-          });
-        }
-      }
-      setWaNumbers(merged);
+      setWaNumbers(((was ?? []) as WhatsappNumber[]));
       setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
       (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
@@ -137,7 +123,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
       setDirty({});
       setLoading(false);
     })();
-  }, [open, userId, tenantId]);
+  }, [open, userId, tenantAlvo]);
 
   const isSuper = userRole === "crc" || userRole === "superadmin";
   // SDR (rodízio): can_access_pipeline NÃO libera funil com allowed_roles NULL
@@ -156,10 +142,30 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
 
-  // WA numbers / IG accounts: default "liberado para todos do tenant" — EXCETO
-  // recepcao/closer/sdr, que espelham o deny-by-default de can_access_whatsapp_number /
-  // can_access_instagram_account (só vê com override granted=true; a SDR nasce
-  // só com o número principal, concedido pela aba Equipe).
+  // Números de WhatsApp — espelho de can_access_whatsapp_number no banco:
+  // gerente e superadmin veem todos; os demais papéis só veem o número com
+  // override granted=true. Quem grava essas concessões é o próprio banco: ao
+  // conectar um número, ele é concedido aos papéis gerais (crc, pós-venda…);
+  // closer e recepção recebem só o número que eles mesmos conectaram; a SDR
+  // recebe o número padrão do cliente. Por isso aqui não existe "padrão do
+  // papel" a restaurar: sem override = sem acesso, e toda mudança é gravada
+  // como valor explícito (um "não" gravado também impede a concessão
+  // automática do número padrão à SDR).
+  const veTodosOsNumeros = userRole === "gerente" || userRole === "superadmin";
+  const acessoAoNumero = (id: string) =>
+    veTodosOsNumeros || currentValue("whatsapp_number", id, false);
+  const toggleNumero = (id: string, next: boolean) => {
+    const key = `whatsapp_number:${id}`;
+    setDirty(d => {
+      const copy = { ...d };
+      if (overrides[key] === next) delete copy[key]; else copy[key] = next;
+      return copy;
+    });
+  };
+
+  // Contas de Instagram: default "liberado para todos do cliente" — EXCETO
+  // recepcao/closer/sdr, que espelham o deny-by-default de
+  // can_access_instagram_account (só vê com override granted=true).
   const defaultForChannel = () => userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr";
 
   const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
@@ -213,7 +219,9 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
 
   const resetAll = () => {
     const d: Record<string, boolean | null> = {};
-    Object.keys(overrides).forEach(k => { d[k] = null; });
+    // Concessões de número de WhatsApp ficam como estão: apagá-las tiraria o
+    // acesso ao número (sem override = sem acesso), e quem as grava é o banco.
+    Object.keys(overrides).forEach(k => { if (!k.startsWith("whatsapp_number:")) d[k] = null; });
     if (isSdr) {
       // "Padrão" da SDR = recriar os overrides do gatilho (funis gerais com
       // granted=true). Apagar tudo a deixaria sem funil nenhum.
@@ -290,12 +298,12 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
         ) : (
           <div className="mt-4">
             <Tabs defaultValue="pipelines">
-              <TabsList className="flex w-full justify-start overflow-x-auto">
-                <TabsTrigger className="shrink-0" value="pipelines">Funis</TabsTrigger>
-                <TabsTrigger className="shrink-0" value="pages">Páginas</TabsTrigger>
-                <TabsTrigger className="shrink-0" value="actions">Ações</TabsTrigger>
-                <TabsTrigger className="shrink-0" value="whatsapp">WhatsApp</TabsTrigger>
-                <TabsTrigger className="shrink-0" value="instagram">Instagram</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-5">
+                <TabsTrigger value="pipelines">Funis</TabsTrigger>
+                <TabsTrigger value="pages">Páginas</TabsTrigger>
+                <TabsTrigger value="actions">Ações</TabsTrigger>
+                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                <TabsTrigger value="instagram">Instagram</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pipelines" className="space-y-2 pt-4">
@@ -374,28 +382,47 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
               </TabsContent>
 
               <TabsContent value="whatsapp" className="space-y-2 pt-4">
+                <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                  {veTodosOsNumeros
+                    ? "Este papel vê todos os números de WhatsApp do cliente."
+                    : "Este usuário só vê as conversas dos números marcados. Ao conectar um número, o sistema já o libera para os papéis gerais; closer e recepção recebem o número que conectaram, e a SDR recebe o número padrão."}
+                </p>
                 {waNumbers.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Nenhum número de WhatsApp cadastrado. Adicione números em Configurações &gt; Integrações.
+                    Nenhum número de WhatsApp cadastrado. Os números são conectados pelo painel administrativo.
                   </p>
                 )}
                 {waNumbers.map(w => {
-                  const fallback = defaultForChannel();
-                  const val = currentValue("whatsapp_number", w.id, fallback);
-                  const label = w.display_name || w.phone_e164 || w.phone_number_id;
+                  const key = `whatsapp_number:${w.id}`;
+                  const val = acessoAoNumero(w.id);
+                  const label = w.display_name || w.phone_e164 || "Número sem nome";
+                  const alterado = key in dirty;
                   return (
                     <div key={w.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <Switch
                           checked={val}
-                          onCheckedChange={(c) => toggle("whatsapp_number", w.id, fallback, c)}
+                          disabled={veTodosOsNumeros}
+                          onCheckedChange={(c) => toggleNumero(w.id, c)}
+                          aria-label={`Acesso ao número ${label}`}
                         />
                         <div className="min-w-0">
                           <Label className="cursor-pointer truncate block">{label}</Label>
-                          <span className="text-xs text-muted-foreground">ID: {w.phone_number_id}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {w.display_name && w.phone_e164 ? w.phone_e164 : null}
+                            {!w.is_active && (w.display_name && w.phone_e164 ? " · desativado" : "Desativado")}
+                          </span>
                         </div>
                       </div>
-                      <RowBadge scope="whatsapp_number" id={w.id} />
+                      {veTodosOsNumeros ? (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Acesso pelo papel</Badge>
+                      ) : alterado ? (
+                        <Badge variant="outline" className="text-xs bg-primary/15 text-primary border-primary/40">Alterado</Badge>
+                      ) : val ? (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Liberado</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Sem acesso</Badge>
+                      )}
                     </div>
                   );
                 })}
@@ -443,7 +470,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                 <Button
                   onClick={save}
                   disabled={saving || dirtyCount === 0}
-                  className="gradient-orange text-primary-foreground"
+                  className="gradient-brand text-primary-foreground"
                 >
                   {saving ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Save size={14} className="mr-1" />}
                   Salvar

@@ -53,7 +53,7 @@ const TaskReminderWatcher = () => {
     const threshold = new Date(now.getTime() + REMINDER_MINUTES * 60_000);
 
     // Check tasks
-    const { data: tasks } = await supabase
+    const { data: tasks, error: tasksErr } = await supabase
       .from("crm_tasks")
       .select("id, title, due_date, lead_id, crm_leads(name)")
       .eq("status", "pending")
@@ -67,13 +67,20 @@ const TaskReminderWatcher = () => {
     // Só alerta agendamentos de leads do PRÓPRIO usuário (mesmo critério das
     // tarefas). O !inner garante que o filtro no lead realmente restringe as
     // linhas — e a RLS do lead já limita ao mundo do número acessível.
-    const { data: appointments } = await supabase
+    // O .or vai COM referencedTable: coluna do recurso embutido dentro do or=
+    // da raiz ("crm_leads.assigned_to.eq…") o PostgREST não aceita (400
+    // PGRST100) — e, como o erro era ignorado, o alerta nunca disparava.
+    const { data: appointments, error: apptErr } = await supabase
       .from("crm_appointments")
       .select("id, scheduled_date, scheduled_time, lead_id, crm_leads!inner(name, assigned_to)")
       .eq("status", "confirmed")
       .eq("scheduled_date", todayStr)
-      .or(`crm_leads.assigned_to.eq.${user.id},crm_leads.assigned_to.is.null`)
+      .or(`assigned_to.eq.${user.id},assigned_to.is.null`, { referencedTable: "crm_leads" })
       .limit(20);
+
+    // Erro de consulta não pode sumir calado (foi assim que o 400 acima passou).
+    if (tasksErr) console.error("[TaskReminderWatcher] tarefas:", tasksErr.message);
+    if (apptErr) console.error("[TaskReminderWatcher] agendamentos:", apptErr.message);
 
     // Process tasks
     (tasks || []).forEach((task: any) => {

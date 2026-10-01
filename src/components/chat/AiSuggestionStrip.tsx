@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Sparkles, Check, X, Loader2, AlertTriangle, Send, ThumbsDown } from "lucide-react";
 import { toast } from "sonner";
 import ScheduleSuggestionCard from "./ScheduleSuggestionCard";
+import { useModule } from "@/hooks/useModule";
+
+/** Nome exibido quando o cliente não configurou (ou o perfil não lê) a assistente. */
+const NOME_PADRAO_ASSISTENTE = "Assistente";
 
 type Suggestion = {
   id: string;
@@ -35,16 +39,20 @@ interface Props {
 
 export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) {
   const { user } = useAuth();
+  // Módulo de IA desligado para o cliente: a tira some (só com false explícito).
+  const { ligado: iaLigada } = useModule("ia");
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [editedText, setEditedText] = useState("");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
-  const [assistantName, setAssistantName] = useState("Bia");
+  const [assistantName, setAssistantName] = useState(NOME_PADRAO_ASSISTENTE);
   const editedRef = useRef("");
 
-  // Load assistant name
+  // Nome configurado da assistente (ai_assistant_config.assistant_display_name).
+  // Perfis sem leitura dessa config (RLS) ficam com o nome padrão.
   useEffect(() => {
+    let vivo = true;
     (async () => {
       const { data } = await supabase
         .from("ai_assistant_config" as any)
@@ -53,8 +61,10 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (data && (data as any).assistant_display_name) setAssistantName((data as any).assistant_display_name);
+      const nome = String((data as { assistant_display_name?: string | null } | null)?.assistant_display_name ?? "").trim();
+      if (vivo && nome) setAssistantName(nome);
     })();
+    return () => { vivo = false; };
   }, []);
 
   const currentLeadRef = useRef(leadId);
@@ -209,20 +219,21 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       .update({ status: "discarded", decided_at: new Date().toISOString(), decided_by: user?.id || null })
       .eq("id", suggestion.id);
     setSuggestion(null);
-    toast.success("Descartada. Dica: para a Bia aprender o certo, edite a resposta e envie — ela aprende com a correção.");
+    toast.success(`Descartada. Dica: para ${assistantName} aprender o certo, edite a resposta e envie — a correção vira exemplo.`);
   };
 
 
+  if (iaLigada === false) return null;
   if (loading) return null;
 
   if (!suggestion) {
     return (
-      <div className="mx-3 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-primary/15 bg-primary-soft px-3 py-2 text-primary-soft-foreground">
+      <div className="px-3 py-2 border-t border-border bg-secondary/30 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Sparkles size={14} className="text-primary" />
           <span>Copiloto {assistantName}</span>
         </div>
-        <Button size="sm" variant="ghost" onClick={generate} disabled={generating} className="h-8 rounded-full px-3 text-xs gap-1.5 hover:bg-primary/10">
+        <Button size="sm" variant="ghost" onClick={generate} disabled={generating} className="h-7 text-xs gap-1.5">
           {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           Sugerir resposta ({assistantName})
         </Button>
@@ -246,31 +257,31 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
   const isHandoff = suggestion.action === "handoff";
 
   return (
-    <div className={`mx-3 mb-2 rounded-2xl border p-3 shadow-card ${isHandoff ? "border-warning/20 bg-warning-soft text-warning-soft-foreground" : "border-primary/15 bg-primary-soft text-primary-soft-foreground"}`}>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className={`px-3 py-2.5 border-t border-border ${isHandoff ? "bg-warning/10" : "bg-primary/5"}`}>
+      <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 text-xs font-medium">
           {isHandoff ? (
             <><AlertTriangle size={14} className="text-warning" />
-              <span>{assistantName} sugere atendimento humano</span></>
+              <span className="text-foreground dark:text-warning">{assistantName} sugere atendimento humano</span></>
           ) : (
             <><Sparkles size={14} className="text-primary" />
-              <span>Sugestão da {assistantName}</span></>
+              <span>Sugestão · {assistantName}</span></>
           )}
           {suggestion.model && <Badge variant="outline" className="h-4 text-[10px] px-1">{suggestion.model.split("/").pop()}</Badge>}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="h-8 rounded-full px-3 gap-1 text-xs text-destructive hover:text-destructive" title="Marcar como ruim (a Bia aprende a evitar)" onClick={discardAsBad}>
+          <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-destructive hover:text-destructive" title={`Marcar como ruim (${assistantName} aprende a evitar)`} onClick={discardAsBad}>
             <ThumbsDown size={12} />
             <span className="hidden sm:inline">Ruim</span>
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 w-8 rounded-full p-0" title="Fechar sem enviar" onClick={dismiss}>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Fechar sem enviar" onClick={dismiss}>
             <X size={14} />
           </Button>
 
           <Button
             size="sm"
             variant={isHandoff ? "outline" : "default"}
-            className="h-8 rounded-full px-3 gap-1.5 text-xs"
+            className="h-7 gap-1.5 text-xs"
             onClick={send}
             disabled={sending || !leadPhone}
             title={isHandoff ? "Enviar mesmo assim" : "Enviar"}
@@ -282,14 +293,14 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       </div>
 
       {isHandoff && suggestion.action_reason && (
-        <p className="mb-2 text-xs">Motivo: {suggestion.action_reason}</p>
+        <p className="text-xs text-foreground mb-1.5">Motivo: {suggestion.action_reason}</p>
       )}
 
       <Textarea
         value={editedText}
         onChange={(e) => { setEditedText(e.target.value); editedRef.current = e.target.value; }}
         rows={2}
-        className="min-h-16 rounded-xl border-border/60 bg-card/80 text-sm"
+        className="text-sm bg-background"
         placeholder="Mensagem sugerida..."
       />
     </div>

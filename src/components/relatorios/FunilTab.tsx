@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { Loader2, Trophy, XCircle, CircleDot, Wallet, Info } from "lucide-react";
-import { KpiCard } from "@/components/crm-ui";
 
 // Análise de Funil (genérica por pipeline). Coorte = leads criados no período,
 // dentro do funil escolhido. Usa crm_stages (is_won/is_lost = Ganho/Perda/Aberta),
@@ -128,22 +127,22 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
   }, [stages, leads, hist]);
 
   const tiles = [
-    { label: "Coorte (leads no período)", value: String(model.total), icon: CircleDot, tone: "primary" as const },
-    { label: "Em aberto", value: String(model.open), icon: CircleDot, tone: "info" as const },
-    { label: "Ganho", value: String(model.won), icon: Trophy, tone: "success" as const },
-    { label: "Perda", value: String(model.lost), icon: XCircle, tone: "destructive" as const },
-    { label: "Taxa de ganho", value: pct(model.won, model.won + model.lost), sub: "ganhos ÷ decididos", icon: Trophy, tone: "success" as const },
-    { label: "Conversão geral", value: pct(model.won, model.total), sub: "ganhos ÷ coorte", icon: CircleDot, tone: "primary" as const },
-    { label: "Valor em aberto", value: brl.format(model.openValue), icon: Wallet, tone: "warning" as const },
+    { label: "Coorte (leads no período)", value: String(model.total), icon: CircleDot, tone: "text-foreground" },
+    { label: "Em aberto", value: String(model.open), icon: CircleDot, tone: "text-blue-600 dark:text-blue-400" },
+    { label: "Ganho", value: String(model.won), icon: Trophy, tone: "text-emerald-600 dark:text-emerald-500" },
+    { label: "Perda", value: String(model.lost), icon: XCircle, tone: "text-destructive" },
+    { label: "Taxa de ganho", value: pct(model.won, model.won + model.lost), sub: "ganhos ÷ decididos", tone: "text-emerald-600 dark:text-emerald-500" },
+    { label: "Conversão geral", value: pct(model.won, model.total), sub: "ganhos ÷ coorte", tone: "text-foreground" },
+    { label: "Valor em aberto", value: brl.format(model.openValue), icon: Wallet, tone: "text-foreground" },
   ];
 
   return (
     <div className="space-y-6">
-      <Card className="flex flex-wrap items-center gap-4 p-4">
+      <Card className="p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
           <Select value={pid} onValueChange={setPid}>
-            <SelectTrigger className="w-full sm:w-[220px]"><SelectValue placeholder="Escolha um funil" /></SelectTrigger>
+            <SelectTrigger className="w-[220px] h-9"><SelectValue placeholder="Escolha um funil" /></SelectTrigger>
             <SelectContent>
               {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
@@ -157,15 +156,21 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
       </Card>
 
       {!model.hasOutcomeStages && (
-        <div className="flex items-start gap-2 rounded-control border border-warning/30 bg-warning-soft p-3 text-sm text-warning-soft-foreground">
-          <Info size={16} className="mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+          <Info size={16} className="mt-0.5 shrink-0 text-warning" />
           <span>Nenhuma etapa marcada como <strong>Ganho</strong> ou <strong>Perda</strong> neste funil. Marque em <strong>Automações → etapas</strong> para ver conversão e ganho × perda.</span>
         </div>
       )}
 
       {/* Tiles de resultado */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-        {tiles.map((t) => <KpiCard key={t.label} label={t.label} value={<span className="whitespace-nowrap text-2xl">{t.value}</span>} icon={t.icon} tone={t.tone} detail={t.sub} className="p-4" />)}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        {tiles.map((t) => (
+          <Card key={t.label} className="p-4 min-w-0">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground leading-tight line-clamp-2">{t.label}</div>
+            <div className={`text-xl font-bold leading-tight truncate mt-1 ${t.tone}`}>{t.value}</div>
+            {t.sub && <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">{t.sub}</div>}
+          </Card>
+        ))}
       </div>
 
       {/* Funil de conversão por etapa */}
@@ -188,7 +193,7 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
                       <div className="h-full rounded-md flex items-center px-2 transition-all"
-                        style={{ width: `${widthPct}%`, backgroundColor: row.stage.color ? `${row.stage.color}33` : "hsl(var(--primary-soft))", borderRight: `3px solid ${row.stage.color || "hsl(var(--primary))"}` }}>
+                        style={{ width: `${widthPct}%`, backgroundColor: (row.stage.color || "#0E7490") + "33", borderRight: `3px solid ${row.stage.color || "#0E7490"}` }}>
                         <span className="text-xs font-semibold tabular-nums">{row.count}</span>
                       </div>
                     </div>
@@ -199,11 +204,11 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
             })}
             {/* Passo final: Ganho */}
             <div className="flex items-center gap-3 pt-1 border-t border-dashed border-border mt-1">
-              <div className="w-40 shrink-0 truncate text-right text-sm font-medium text-success">Ganho</div>
+              <div className="w-40 shrink-0 text-sm truncate text-right font-medium text-emerald-600 dark:text-emerald-500">Ganho</div>
               <div className="flex-1 min-w-0">
                 <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
                   <div className="h-full rounded-md flex items-center px-2"
-                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, backgroundColor: "hsl(var(--success-soft))", borderRight: "3px solid hsl(var(--success))" }}>
+                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, backgroundColor: "rgba(16,185,129,.20)", borderRight: "3px solid #10B981" }}>
                     <span className="text-xs font-semibold tabular-nums">{model.won}</span>
                   </div>
                 </div>
@@ -218,7 +223,7 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
       <Card className="p-5">
         <h3 className="font-semibold mb-1">Tempo médio por etapa</h3>
         <p className="text-xs text-muted-foreground mb-3">Média do tempo que os leads ficaram em cada etapa antes de sair (passagens concluídas).</p>
-        <div className="overflow-x-auto rounded-control border border-border/60">
+        <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -232,9 +237,9 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
                 <TableRow key={r.stage.id}>
                   <TableCell>
                     <span className="inline-flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.stage.color || "hsl(var(--slate))" }} />
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.stage.color || "#888" }} />
                       {r.stage.name}
-                      {r.stage.is_won && <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-[10px] text-success-soft-foreground">Ganho</span>}
+                      {r.stage.is_won && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-500">Ganho</span>}
                       {r.stage.is_lost && <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">Perda</span>}
                     </span>
                   </TableCell>

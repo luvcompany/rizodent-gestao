@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarDays, Coins, TrendingUp, Trophy } from "lucide-react";
 import { hojeNaClinica } from "@/lib/moeda";
-import { KpiCard, type SemanticTone } from "@/components/crm-ui/KpiCard";
 
 /**
  * Números do closer na tela de Início. Vêm da RPC closer_dashboard_metrics,
@@ -63,35 +62,50 @@ export default function CloserMetricas() {
       valor: falhou ? "—" : brl(m?.faturamento_dia ?? 0),
       apoio: falhou ? "não foi possível carregar" : "faturamento do dia",
       Icone: Coins,
-      tom: "success" as SemanticTone,
+      cor: "text-emerald-600",
+      fundo: "bg-emerald-500/10",
     },
     {
       rotulo: "No mês",
       valor: falhou ? "—" : brl(m?.faturamento_mes ?? 0),
       apoio: `previsão ${brl(m?.previsao_mes ?? 0)}`,
       Icone: TrendingUp,
-      tom: "info" as SemanticTone,
+      cor: "text-sky-600",
+      fundo: "bg-sky-500/10",
     },
     {
       rotulo: "Total",
       valor: falhou ? "—" : brl(m?.faturamento_total ?? 0),
       apoio: "desde o início",
       Icone: CalendarDays,
-      tom: "purple" as SemanticTone,
+      cor: "text-violet-600",
+      fundo: "bg-violet-500/10",
     },
     {
       rotulo: "Fechamentos",
       valor: falhou ? "—" : String(m?.fechamentos_mes ?? 0),
       apoio: `${m?.fechamentos_total ?? 0} no total`,
       Icone: Trophy,
-      tom: "warning" as SemanticTone,
+      cor: "text-warning",
+      fundo: "bg-warning/10",
     },
   ];
 
   return (
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {cartoes.map(({ rotulo, valor, apoio, Icone, tom }) => (
-        <KpiCard key={rotulo} label={rotulo} value={valor} detail={apoio} icon={Icone} tone={tom} className="min-w-0" />
+      {cartoes.map(({ rotulo, valor, apoio, Icone, cor, fundo }) => (
+        <div key={rotulo} className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <span className={`grid h-8 w-8 place-items-center rounded-lg ${fundo} ${cor}`}>
+              <Icone size={16} />
+            </span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {rotulo}
+            </span>
+          </div>
+          <div className="mt-2.5 text-2xl font-semibold tabular-nums text-foreground">{valor}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{apoio}</div>
+        </div>
       ))}
     </section>
   );

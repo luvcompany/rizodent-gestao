@@ -5,6 +5,12 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+/*
+ * F2: o fechar do toast destrutivo usa tokens (destructive-foreground e
+ * destructive) só sob a casca do CRM (marcador crm-toast-close). Fora dela os
+ * fallbacks são exatamente red-300, red-50, red-400 e red-600 de antes.
+ */
+
 const ToastProvider = ToastPrimitives.Provider;
 
 const ToastViewport = React.forwardRef<
@@ -67,7 +73,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-[.destructive]:text-destructive-foreground/80 hover:text-foreground group-[.destructive]:hover:text-destructive-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-[.destructive]:focus:ring-destructive group-[.destructive]:focus:ring-offset-destructive",
+      "crm-toast-close absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-[.destructive]:text-[color:var(--crm-toast-close-fg,#fca5a5)] hover:text-foreground group-[.destructive]:hover:text-[color:var(--crm-toast-close-hover-fg,#fef2f2)] focus:opacity-100 focus:outline-none focus:ring-2 group-[.destructive]:focus:ring-[color:var(--crm-toast-close-ring,#f87171)] group-[.destructive]:focus:ring-offset-[color:var(--crm-toast-close-ring-offset,#dc2626)]",
       className,
     )}
     toast-close=""

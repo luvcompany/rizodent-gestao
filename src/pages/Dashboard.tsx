@@ -13,10 +13,10 @@ import { useChartTheme } from "@/hooks/useChartTheme";
 import { HolidaysManager, type Holiday } from "@/components/HolidaysManager";
 import { businessDaysBetween } from "@/lib/businessDays";
 import {
-  dayKeyBahia,
+  dayKeyNoFuso,
   contaComoFaturamento,
 
-  rangeBahia,
+  rangeNoFuso,
   rptFaturamentoOrigem,
   rptFaturamentoCriativo,
   type FaturamentoOrigemRow,
@@ -28,7 +28,8 @@ const DateRangeFilter = lazy(() =>
   import("@/components/ui/date-range-filter").then((m) => ({ default: m.DateRangeFilter }))
 );
 
-const PRIMARY_CHART_COLOR = "hsl(var(--primary))";
+// Mesma série de useChartTheme().brandSeries: tons da marca + cores de estado.
+const COLORS = ["hsl(var(--brand-500))", "hsl(var(--brand-300))", "hsl(var(--brand-700))", "hsl(var(--info))", "hsl(var(--success))", "hsl(var(--warning))"];
 
 const formatAxisValue = (v: number) => {
   if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
@@ -47,12 +48,12 @@ const toLocalDateStr = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
-// Dia LOCAL (America/Bahia) de um valor vindo do banco:
-// timestamptz (serializado em UTC) é convertido com dayKeyBahia;
+// Dia LOCAL (fuso do tenant) de um valor vindo do banco:
+// timestamptz (serializado em UTC) é convertido com dayKeyNoFuso;
 // colunas DATE ("YYYY-MM-DD") passam direto.
 const dbDay = (v: string | null | undefined): string | null => {
   if (!v) return null;
-  return v.length > 10 ? dayKeyBahia(v) : v;
+  return v.length > 10 ? dayKeyNoFuso(v) : v;
 };
 
 const DASHBOARD_BG_REFRESH_AFTER = 5 * 60_000;
@@ -102,7 +103,7 @@ export const prefetchDashboardData = async (): Promise<void> => {
   const cached = dashboardMemoryCache;
   if (cached?.key === key && Date.now() - cached.ts < DASHBOARD_BG_REFRESH_AFTER) return;
   try {
-    const bahia = rangeBahia(from, to);
+    const bahia = rangeNoFuso(from, to);
     const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }] = await Promise.all([
       supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
       supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", from).lte("data_pagamento", to).limit(50000),
@@ -204,7 +205,7 @@ const Dashboard = () => {
     [allRanges, dateFilter.preset, todayStr]
   );
   const isInSelectedRanges = (dateStr: string | undefined | null) => {
-    const v = dbDay(dateStr); // timestamptz vira dia local (America/Bahia)
+    const v = dbDay(dateStr); // timestamptz vira dia local (fuso do tenant)
     if (!v) return false;
     if (!rangeBounds) return v >= dateFrom && v <= dateTo; // "all"
     return rangeBounds.some((r) => v >= r.from && v <= r.to);
@@ -243,7 +244,7 @@ const Dashboard = () => {
     }
     if (showLoading) setLoading(true);
     const bounded = !isAllPeriod;
-    const bahia = rangeBahia(dateFrom, dateTo);
+    const bahia = rangeNoFuso(dateFrom, dateTo);
     const [{ data: cl }, { data: pg }, { data: tr }, { data: pc }, { data: hd }] = await Promise.all([
     supabase.from("clinicas").select(CLINICAS_SELECT).eq("ativa", true),
     (bounded ? supabase.from("pagamentos").select(PAGAMENTOS_SELECT).gte("data_pagamento", dateFrom).lte("data_pagamento", dateTo) : supabase.from("pagamentos").select(PAGAMENTOS_SELECT)).limit(50000),
@@ -522,12 +523,11 @@ const Dashboard = () => {
 
 
 
-  // Chart: Faturamento por Clínica (agrupando VCA 01 + VCA 02 como "VCA")
+  // Chart: Faturamento por Clínica (nome como cadastrado; unidades com o mesmo
+  // nome somam juntas)
   const fatClinicaRaw = clinicas.map((c) => {
-    let name = c.nome.replace("Clínica ", "").replace("Rizodent ", "");
-    if (name.includes("VCA")) name = "VCA";
     return {
-      name,
+      name: c.nome,
       value: pagamentosFat.filter((p) => p.clinica_id === c.id).reduce((s, p) => s + Number(p.valor), 0)
     };
   });
@@ -655,7 +655,7 @@ const Dashboard = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
         <div className="flex items-center gap-2">
@@ -667,7 +667,7 @@ const Dashboard = () => {
       </div>
 
       {/* Filters */}
-      <Card className="border-border/60 bg-card">
+      <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -709,10 +709,10 @@ const Dashboard = () => {
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpis.map((kpi: any) =>
-        <Card key={kpi.title} className="border-border/60 bg-card">
+        <Card key={kpi.title} className="gradient-card border-border shadow-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{kpi.title}</CardTitle>
-              <div className="rounded-xl bg-primary-soft p-2.5">
+              <div className="rounded-lg bg-primary/10 p-2">
                 <kpi.icon size={18} className="text-primary" />
               </div>
             </CardHeader>
@@ -725,7 +725,7 @@ const Dashboard = () => {
       </div>
 
       {/* Gráfico Venda Diária */}
-      <Card className="border-border/60 bg-card">
+      <Card className="gradient-card border-border shadow-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">Venda Diária</CardTitle>
           <p className="text-xs text-muted-foreground">Pagamentos recebidos por dia útil no período (domingos/feriados aparecem quando há pagamento lançado)</p>
@@ -737,7 +737,7 @@ const Dashboard = () => {
               <XAxis dataKey="dia" stroke={ct.axisColor} fontSize={10} interval={0} angle={-45} textAnchor="end" height={50} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="valor" fill={PRIMARY_CHART_COLOR} radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
+              <Bar dataKey="valor" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} activeBar={activeBarStyle} label={renderBarLabel} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -758,7 +758,7 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
+                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -771,7 +771,9 @@ const Dashboard = () => {
               <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} angle={-20} textAnchor="end" height={60} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-              <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
+              <Bar dataKey="value" fill="hsl(var(--brand-300))" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
+                {espFaturamento.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -783,7 +785,9 @@ const Dashboard = () => {
               <XAxis dataKey="name" stroke={ct.axisColor} fontSize={10} interval={0} tick={{ fill: ct.axisColor }} />
               <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [value, "Quantidade"]} />
-              <Bar dataKey="value" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle}>
+                {espVolume.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -845,7 +849,7 @@ const Dashboard = () => {
                           ? "hsl(220, 8%, 72%)"
                           : d.isOutros
                             ? "hsl(220, 10%, 55%)"
-                            : PRIMARY_CHART_COLOR
+                            : COLORS[i % COLORS.length]
                       }
                     />
                   ))}
@@ -880,7 +884,9 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} allowDecimals={false} width={40} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} />
-                <Bar dataKey="pacientes" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle} />
+                <Bar dataKey="pacientes" radius={[6, 6, 0, 0]} label={{ position: "top", fill: ct.labelColor, fontSize: 11, fontWeight: 600 }} activeBar={activeBarStyle}>
+                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
@@ -894,7 +900,9 @@ const Dashboard = () => {
                 <XAxis dataKey="name" stroke={ct.axisColor} fontSize={11} tick={{ fill: ct.axisColor }} />
                 <YAxis stroke={ct.axisColor} fontSize={11} tickFormatter={formatAxisValue} width={50} tick={{ fill: ct.axisColor }} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(value: number) => [formatCurrency(value), "Faturamento"]} />
-                <Bar dataKey="faturamento" fill={PRIMARY_CHART_COLOR} radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle} />
+                <Bar dataKey="faturamento" radius={[6, 6, 0, 0]} label={renderBarLabel} activeBar={activeBarStyle}>
+                  {origemData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>

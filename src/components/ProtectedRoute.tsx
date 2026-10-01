@@ -3,7 +3,38 @@ import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
-import ThemedLoader from "@/components/ThemedLoader";
+import { useModulos } from "@/hooks/useModule";
+import { moduloDaRota } from "@/lib/modulos";
+
+const AVISO_MODULO_DESLIGADO = "Este recurso não está disponível para a sua clínica.";
+/** Destino de último recurso: não depende de módulo nenhum. */
+const DESTINO_SEM_MODULO = "/crm/dashboard";
+
+/** Home de cada papel — o mesmo destino que os guards abaixo usam para rota não permitida. */
+function homeDoPapel(role: string | null): string {
+  switch (role) {
+    case "recepcao":
+      return "/crm/recepcao";
+    case "closer":
+      return "/crm/closer";
+    case "sdr":
+      return "/crm/sdr";
+    default:
+      return "/crm";
+  }
+}
+
+/**
+ * Redireciona para fora de uma rota de módulo desligado e avisa. O aviso sai
+ * aqui (e não no ProtectedRoute) para só aparecer quando o redirecionamento
+ * acontece de fato; o id evita aviso duplicado (StrictMode, re-render).
+ */
+function SaidaDeModuloDesligado({ destino }: { destino: string }) {
+  useEffect(() => {
+    toast.error(AVISO_MODULO_DESLIGADO, { id: "modulo-desligado" });
+  }, []);
+  return <Navigate to={destino} replace />;
+}
 
 // Rotas liberadas para o papel Recepção (chat + disparos + modelos + bots).
 // Qualquer outra rota redireciona para Conversas.
@@ -78,9 +109,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { session, loading, profile, signOut, user, userRole, roleResolved } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
   const location = useLocation();
+  const { ligado: moduloLigado } = useModulos();
 
   // Bloqueio cross-tenant: se logou com conta de outro cliente nesta URL,
-  // desloga imediatamente para impedir o acesso.
+  // desloga imediatamente para impedir o acesso. Só a sessão deste navegador
+  // (scope 'local'): a mesma conta pode estar em uso legítimo no endereço do
+  // próprio cliente, em outros aparelhos.
   useEffect(() => {
     if (loading || tenantLoading) return;
     if (!user) return;
@@ -88,7 +122,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const userTenantId = (profile as any)?.tenant_id;
     if (userTenantId && userTenantId !== tenant.id) {
       toast.error("Esta conta não pertence a este cliente.");
-      signOut();
+      signOut({ scope: "local" });
     }
   }, [user, profile, tenant.id, loading, tenantLoading, signOut]);
 
@@ -100,7 +134,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }, [profile?.is_blocked, signOut]);
 
   if (loading) {
-    return <ThemedLoader />;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Carregando...</div>
+      </div>
+    );
   }
 
   if (!session) {
@@ -119,7 +157,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   // Sem isso, um deep-link renderia (e consultaria dados de) uma rota proibida
   // na janela entre o boot e a chegada do papel.
   if (!roleResolved) {
-    return <ThemedLoader />;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Carregando...</div>
+      </div>
+    );
   }
 
   // Pós-venda só acessa o CRM
@@ -179,6 +221,23 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     userRole !== "superadmin"
   ) {
     return <Navigate to="/crm" replace />;
+  }
+
+  // Módulo desligado para o cliente: só decide com a config RESOLVIDA e o
+  // módulo explicitamente false (undefined = ainda carregando, não expulsa).
+  // O pathname já vem sem o basename do cliente (/<slug>), porque o
+  // BrowserRouter recebe o basename.
+  const moduloDaTela = moduloDaRota(location.pathname);
+  if (moduloDaTela && moduloLigado(moduloDaTela) === false) {
+    const home = homeDoPapel(userRole);
+    const moduloDaHome = moduloDaRota(home);
+    // Se a home do papel também estiver desligada (ou for a própria tela),
+    // vai para o painel, que não depende de módulo: nunca entra em laço.
+    const destino =
+      home === location.pathname || (moduloDaHome && moduloLigado(moduloDaHome) === false)
+        ? DESTINO_SEM_MODULO
+        : home;
+    return <SaidaDeModuloDesligado destino={destino} />;
   }
 
   return <>{children}</>;

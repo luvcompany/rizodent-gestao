@@ -467,11 +467,11 @@ export default function SdrExpediente() {
 
   const selo =
     estado.estado === "aberto"
-      ? { texto: "Em expediente", cls: "bg-success-soft text-success-soft-foreground", ponto: "bg-success", titulo: "" }
+      ? { texto: "Em expediente", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", ponto: "bg-emerald-500", titulo: "" }
       : estado.estado === "pausado"
         ? {
             texto: `Em pausa · ${motivoEmCurso}${detalheCurto ? `: ${detalheCurto}` : ""}`,
-            cls: "bg-warning-soft text-warning-soft-foreground",
+            cls: "bg-warning/10 text-warning dark:bg-warning/15",
             ponto: "bg-warning",
             titulo: detalhePausa ?? "",
           }
@@ -485,12 +485,12 @@ export default function SdrExpediente() {
   const podeConfirmar = detalheSuficiente(texto) && !pausando;
 
   return (
-    <section className="rounded-card border border-border/60 bg-card shadow-card">
+    <section className="rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex flex-wrap items-center gap-4 px-[18px] py-4">
         <span className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] ${
           estado.estado === "fechado"
             ? "bg-muted text-muted-foreground"
-            : "bg-success-soft text-success-soft-foreground"
+            : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
         }`}>
           <Clock size={21} />
         </span>
@@ -527,7 +527,7 @@ export default function SdrExpediente() {
             )}
           </div>
 
-          <p className={`mt-0.5 text-[12.5px] ${pausaLonga ? "font-semibold text-warning-soft-foreground" : "text-muted-foreground"}`}>
+          <p className={`mt-0.5 text-[12.5px] ${pausaLonga ? "font-semibold text-warning" : "text-muted-foreground"}`}>
             {pausaLonga
               ? `Pausa acima de ${estado.pausa_alerta_min} min — ${estado.gestor_avisado_pausa ? "o gestor foi avisado." : "o gestor será avisado."}`
               : resumoLeads}

@@ -8,6 +8,7 @@ import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } fr
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { asDateParam } from "@/lib/reportKit";
+import { useVocab } from "@/hooks/useVocab";
 import { fmtInt, fmtPct, mensagemDeErroRpc } from "@/lib/relatorioSdr";
 import { AlertTriangle, Loader2, RefreshCw, Trophy, Wallet } from "lucide-react";
 
@@ -68,6 +69,12 @@ export default function CompararFunisTab() {
   const [linhas, setLinhas] = useState<LinhaFunil[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  // Crítica 28: a ressalva da receita recorrente só aparece para o segmento que
+  // a tem (odontologia: "Recorrência de ortodontia"); nos demais, some.
+  const { receitaRecorrenteLabel } = useVocab();
+  const ressalvaRecorrente = receitaRecorrenteLabel
+    ? `sem ${receitaRecorrenteLabel.charAt(0).toLocaleLowerCase("pt-BR")}${receitaRecorrenteLabel.slice(1)} e `
+    : "";
 
   const intervalo = useMemo(() => getDateRangeFromFilter(periodo), [periodo]);
   const de = intervalo ? asDateParam(intervalo.start) : null;
@@ -186,7 +193,7 @@ export default function CompararFunisTab() {
         <>
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="flex items-center gap-4 p-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-success-soft text-success-soft-foreground">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
                 <Trophy size={18} />
               </div>
               <div className="min-w-0">
@@ -218,7 +225,7 @@ export default function CompararFunisTab() {
                   <>
                     <p className="truncate text-lg font-semibold text-foreground">{maiorReceita.nome}</p>
                     <p className="text-xs text-muted-foreground">
-                      <span className="whitespace-nowrap">{brl.format(maiorReceita.receita)}</span> · {fmtInt(maiorReceita.pagantes)} paciente{maiorReceita.pagantes === 1 ? "" : "s"} pagante{maiorReceita.pagantes === 1 ? "" : "s"}
+                      {brl.format(maiorReceita.receita)} · {fmtInt(maiorReceita.pagantes)} paciente{maiorReceita.pagantes === 1 ? "" : "s"} pagante{maiorReceita.pagantes === 1 ? "" : "s"}
                     </p>
                   </>
                 ) : (
@@ -275,7 +282,7 @@ export default function CompararFunisTab() {
                         <TableCell className="text-right tabular-nums">{fmtInt(x.contratados)}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           <span className="font-semibold text-foreground">{fech === null ? "—" : fmtPct(x.contratados, x.compareceram)}</span>
-                          <Barra valor={fech ?? 0} max={maxFech} cor="bg-success" />
+                          <Barra valor={fech ?? 0} max={maxFech} cor="bg-emerald-500" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           <span
@@ -285,13 +292,13 @@ export default function CompararFunisTab() {
                             {conv === null ? "—" : fmtPct(x.contratados, x.leads_novos)}
                             {acimaDeCem && <span className="ml-0.5">*</span>}
                           </span>
-                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-info" />
+                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-sky-500" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          <span className="whitespace-nowrap font-semibold text-foreground">{x.receita > 0 ? brl.format(x.receita) : "—"}</span>
+                          <span className="font-semibold text-foreground">{x.receita > 0 ? brl.format(x.receita) : "—"}</span>
                           <Barra valor={x.receita} max={maxReceita} cor="bg-primary" />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-right tabular-nums">{x.pagantes > 0 ? brl.format(x.receita / x.pagantes) : "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{x.pagantes > 0 ? brl.format(x.receita / x.pagantes) : "—"}</TableCell>
                         <TableCell className="text-right tabular-nums">{fmtInt(x.contratados_etapa)}</TableCell>
                       </TableRow>
                     );
@@ -319,8 +326,8 @@ export default function CompararFunisTab() {
 
           <p className="text-[11px] text-muted-foreground">
             Cada lead conta no funil em que está hoje. "Novos" são leads criados no período; agendamentos e contratos são
-            consultas por data agendada no período; receita são pagamentos no período de pacientes ligados a leads do funil,
-            sem recorrência de ortodontia e sem lançamentos marcados como "não marketing".
+            consultas por data agendada no período; receita são pagamentos no período de pacientes ligados a leads do funil,{" "}
+            {ressalvaRecorrente}sem lançamentos marcados como "não marketing".
             {" "}
             <strong className="font-medium">Fechamento</strong> = contratados ÷ compareceram, os dois lados da mesma safra
             de consultas do período: é a taxa que compara procedimento com procedimento, e a que elege o destaque.

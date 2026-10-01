@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon, ScrollText,
@@ -7,20 +7,81 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { useTheme } from "@/hooks/useTheme";
-import { useTenant, CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import { CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
+import { useBrand, type SystemBrand, type TenantBrand } from "@/contexts/BrandContext";
+import { SISTEMA_PADRAO } from "@/lib/brand/theme";
+import { useModulos, podeMostrar } from "@/hooks/useModule";
+import { useVocab, type Vocab } from "@/hooks/useVocab";
+import { moduloDaRota } from "@/lib/modulos";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
 
-const navItems: Array<{ to: string; icon: any; label: string; roles?: string[] }> = [
+type ItemDoMenu = { to: string; icon: any; label: string; roles?: string[] };
+
+// Rótulos de pessoa e serviço vêm do vocabulário do segmento do cliente.
+const montarItens = (vocab: Vocab): ItemDoMenu[] => [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/atendimento", icon: UserPlus, label: "Atendimento" },
-  { to: "/pacientes", icon: Users, label: "Pacientes" },
+  { to: "/pacientes", icon: Users, label: vocab.pessoaPlural },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
   { to: "/marketing", icon: Megaphone, label: "Marketing" },
   { to: "/crm", icon: Users, label: "CRM" },
-  { to: "/procedimentos", icon: Stethoscope, label: "Procedimentos" },
+  { to: "/procedimentos", icon: Stethoscope, label: vocab.servicoPlural },
   { to: "/acessos", icon: ScrollText, label: "Logs de acesso", roles: ["crc", "gerente", "superadmin"] },
   { to: "/configuracoes", icon: Settings, label: "Configurações" },
 ];
+
+/**
+ * Logo da barra lateral (mesma regra do CrmLayout):
+ *  - cliente: no escuro, logo escura → logo clara; no claro, logo clara;
+ *  - cliente white-label (sem "Powered by") e sem logo: lockup de texto;
+ *  - sistema: logo do sistema do modo (no escuro, a escura → a clara);
+ *  - sistema ainda com o nome padrão e sem logo cadastrada: logo local do CRClin;
+ *  - nada disso: null (lockup de texto).
+ */
+function escolherLogo(
+  escuro: boolean,
+  cliente: TenantBrand | null,
+  sistema: SystemBrand,
+  poweredBy: boolean,
+): string | null {
+  const limpo = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+  const doCliente = escuro
+    ? limpo(cliente?.logo_dark_url) ?? limpo(cliente?.logo_url)
+    : limpo(cliente?.logo_url);
+  if (doCliente) return doCliente;
+  if (cliente && !poweredBy) return null;
+  const doSistema = escuro
+    ? limpo(sistema.logo_dark_url) ?? limpo(sistema.logo_url)
+    : limpo(sistema.logo_url);
+  if (doSistema) return doSistema;
+  if ((limpo(sistema.name) ?? SISTEMA_PADRAO.name) === SISTEMA_PADRAO.name) {
+    return escuro ? CRCLIN_DEFAULT_LOGO : crclinLogoLight;
+  }
+  return null;
+}
+
+function iniciaisDe(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  const letras = partes.length > 1 ? partes[0][0] + partes[1][0] : (partes[0] ?? "").slice(0, 2);
+  return letras.toUpperCase() || "?";
+}
+
+/** Logo (ou lockup de texto) no topo da barra lateral. */
+function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => setFalhou(false), [logo]);
+  if (logo && !falhou) {
+    return <img src={logo} alt={nome} className="h-7 max-w-full object-contain" onError={() => setFalhou(true)} />;
+  }
+  return (
+    <div className="flex min-w-0 items-center gap-2" title={nome}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-brand text-xs font-bold text-primary-foreground">
+        {iniciaisDe(nomeCurto)}
+      </span>
+      <span className="truncate text-sm font-semibold text-sidebar-foreground">{nomeCurto}</span>
+    </div>
+  );
+}
 
 const AppLayout = () => {
   const navigate = useNavigate();
@@ -28,17 +89,24 @@ const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  const { tenant } = useTenant();
-  const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
-  const logo = isDefaultLogo
-    ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
-    : tenant.logo_url!;
+  const { system, tenant: marcaCliente, effective } = useBrand();
+  const { ligado: moduloLigado } = useModulos();
+  const vocab = useVocab();
+  const logo = escolherLogo(theme === "dark", marcaCliente, system, effective.poweredBy);
+  const tagline = system.tagline?.trim() || null;
+  const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
 
-  useEffect(() => {
-    document.body.classList.add("system-ui-active");
-    return () => document.body.classList.remove("system-ui-active");
-  }, []);
-  
+  // Filtra por papel e por módulo. Módulo só esconde o item quando resolveu
+  // DESLIGADO (false); enquanto a config carrega, o item aparece.
+  const itensVisiveis = useMemo(
+    () =>
+      montarItens(vocab).filter((item) => {
+        if (item.roles && !(userRole && item.roles.includes(userRole))) return false;
+        const modulo = moduloDaRota(item.to);
+        return !modulo || podeMostrar(moduloLigado(modulo));
+      }),
+    [vocab, userRole, moduloLigado],
+  );
 
   const handleLogout = async () => {
     await signOut();
@@ -63,7 +131,7 @@ const AppLayout = () => {
       >
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
           <div className="flex flex-1 items-center justify-center">
-            <img src={logo} alt={tenant.name} className="h-7 max-w-full object-contain" />
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
           </div>
           <button
             className="ml-auto text-sidebar-foreground lg:hidden"
@@ -74,7 +142,7 @@ const AppLayout = () => {
         </div>
 
         <nav className="flex-1 space-y-1 p-4">
-          {navItems.filter((item) => !item.roles || (userRole && item.roles.includes(userRole))).map((item) => (
+          {itensVisiveis.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -82,7 +150,7 @@ const AppLayout = () => {
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? "gradient-orange text-primary-foreground shadow-orange"
+                    ? "gradient-brand text-primary-foreground shadow-brand"
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`
               }
@@ -124,11 +192,14 @@ const AppLayout = () => {
             <LogOut size={18} />
             Sair
           </button>
+          {mostrarPoweredBy && (
+            <p className="px-3 pt-2 text-[10px] text-muted-foreground">Powered by {system.name}</p>
+          )}
         </div>
       </aside>
 
-      <div className="min-w-0 flex flex-1 flex-col lg:ml-64">
-        <header className="flex h-16 items-center gap-4 border-b border-border/60 bg-card px-4 sm:px-6">
+      <div className="flex flex-1 flex-col lg:ml-64">
+        <header className="flex h-16 items-center gap-4 border-b border-border px-6">
           <button
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}
@@ -136,11 +207,11 @@ const AppLayout = () => {
             <Menu size={22} />
           </button>
           <div className="ml-auto text-sm text-muted-foreground">
-            {tenant.name} — Sistema de Gestão
+            {tagline ? `${effective.name} — ${tagline}` : effective.name}
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>
       </div>

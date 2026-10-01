@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useModule } from "@/hooks/useModule";
 import {
   createConfirmedAppointment,
   detectRescheduleMode,
@@ -42,7 +43,11 @@ function capitalize(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistantName, onDone }: Props) {
+export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistantName: nomeRecebido, onDone }: Props) {
+  // Nome configurado da assistente (vem do AiSuggestionStrip); vazio → padrão.
+  const assistantName = nomeRecebido?.trim() || "Assistente";
+  // Módulo de IA desligado para o cliente: o cartão some (só com false explícito).
+  const { ligado: iaLigada } = useModule("ia");
   const [date, setDate] = useState<Date | undefined>(parseDate(suggestion.suggested_date));
   const [time, setTime] = useState<string>((suggestion.suggested_time || "09:00").slice(0, 5));
   const [notes, setNotes] = useState("");
@@ -176,32 +181,34 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
 
   const discard = async (bad: boolean) => {
     if (!(await closeSuggestion("dismissed"))) return;
-    if (bad) toast.success("Descartada. Dica: para a Bia aprender o certo, responda/agende do jeito correto.");
+    if (bad) toast.success(`Descartada. Dica: para ${assistantName} aprender o certo, responda/agende do jeito correto.`);
     onDone();
   };
 
+  if (iaLigada === false) return null;
+
   return (
-    <div className="mx-3 mb-2 rounded-2xl border border-success/20 bg-success-soft p-3 text-success-soft-foreground shadow-card">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="px-3 py-2.5 border-t border-border bg-emerald-500/10">
+      <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 text-xs font-medium">
-          <CalendarClock size={14} className="text-success" />
-          <span>
+          <CalendarClock size={14} className="text-emerald-600" />
+          <span className="text-emerald-700 dark:text-emerald-400">
             {step === "propose" ? `${assistantName} sugere agendar` : "Agendado — enviar confirmação"}
           </span>
         </div>
         {step === "propose" && (
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" className="h-8 rounded-full px-3 gap-1 text-xs text-destructive hover:text-destructive" title="Descartar sugestão" onClick={() => discard(true)}>
+            <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-destructive hover:text-destructive" title="Descartar sugestão" onClick={() => discard(true)}>
               <ThumbsDown size={12} /><span className="hidden sm:inline">Ruim</span>
             </Button>
-            <Button size="sm" variant="ghost" className="h-8 w-8 rounded-full p-0" title="Fechar sem agendar" onClick={() => discard(false)}>
+            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Fechar sem agendar" onClick={() => discard(false)}>
               <X size={14} />
             </Button>
           </div>
         )}
       </div>
 
-      {/* Texto que a Bia enviaria (contexto) */}
+      {/* Texto que a assistente enviaria (contexto) */}
       {suggestion.suggested_text && (
         <p className="text-xs text-muted-foreground mb-2 flex items-start gap-1.5">
           <MessageSquareText size={12} className="mt-0.5 shrink-0" />
@@ -211,12 +218,12 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
 
       {step === "propose" ? (
         <div className="space-y-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className={cn("h-10 text-xs w-full justify-start rounded-xl bg-card/80", !date && "text-muted-foreground")}>
+                  <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !date && "text-muted-foreground")}>
                     <CalendarIcon size={12} className="mr-1.5" />
                     {date ? format(date, "dd/MM/yyyy") : "Selecionar"}
                   </Button>
@@ -228,7 +235,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground mb-1 block">Horário</label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-10 rounded-xl bg-card/80 text-xs" />
+              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-8 text-xs" />
             </div>
           </div>
 
@@ -238,7 +245,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
             </label>
             {options.length > 0 ? (
               <Select value={templateName} onValueChange={setTemplateName}>
-                <SelectTrigger className="h-10 rounded-xl bg-card/80 text-xs"><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar modelo" /></SelectTrigger>
                 <SelectContent>
                   {options.map((o) => (
                     <SelectItem key={o.templateName} value={o.templateName} className="text-xs">
@@ -248,12 +255,12 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
                 </SelectContent>
               </Select>
             ) : (
-              <p className="text-[11px] text-warning-soft-foreground">Nenhum modelo de agendamento por cidade configurado. O agendamento será criado; envie a confirmação manualmente se quiser.</p>
+              <p className="text-[11px] text-warning">Nenhum modelo de agendamento por cidade configurado. O agendamento será criado; envie a confirmação manualmente se quiser.</p>
             )}
           </div>
 
           <div className="flex gap-2 pt-0.5">
-            <Button size="sm" className="h-9 flex-1 rounded-full text-xs gap-1.5" onClick={confirmSchedule} disabled={saving}>
+            <Button size="sm" className="flex-1 h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={confirmSchedule} disabled={saving}>
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               {saving ? "Agendando..." : "Confirmar agendamento"}
             </Button>
@@ -261,15 +268,15 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="rounded-xl border border-success/20 bg-card/75 p-3 text-xs">
-            <p className="mb-1 font-medium text-success-soft-foreground">
+          <div className="rounded-md border border-emerald-500/30 bg-background/60 p-2 text-xs">
+            <p className="font-medium text-emerald-700 dark:text-emerald-400 mb-1">
               ✅ {isReschedule ? "Reagendado" : "Agendado"}: {dateLabel} às {time}
             </p>
             {templateName ? (
               <>
                 <p className="text-muted-foreground mb-1">Modelo pronto p/ enviar: <span className="font-mono">{templateName}</span></p>
                 {templateBody && (
-                  <p className="border-l-2 border-success/30 pl-2 text-[11px] text-foreground/80 whitespace-pre-wrap">
+                  <p className="text-[11px] whitespace-pre-wrap text-foreground/80 border-l-2 border-emerald-500/30 pl-2">
                     {templateBody}
                   </p>
                 )}
@@ -281,12 +288,12 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
           </div>
           <div className="flex gap-2">
             {templateName && leadPhone && (
-              <Button size="sm" className="h-9 flex-1 rounded-full text-xs gap-1.5" onClick={sendTemplate} disabled={sending}>
+              <Button size="sm" className="flex-1 h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={sendTemplate} disabled={sending}>
                 {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                 {sending ? "Enviando..." : "Enviar modelo"}
               </Button>
             )}
-            <Button size="sm" variant="outline" className="h-9 rounded-full px-3 text-xs" onClick={finishWithoutSending} disabled={sending}>
+            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={finishWithoutSending} disabled={sending}>
               {templateName && leadPhone ? "Agora não" : "Concluir"}
             </Button>
           </div>

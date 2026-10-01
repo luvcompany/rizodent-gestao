@@ -11,13 +11,6 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const isSendText = type === "send_text";
   const isSendMenu = type === "send_menu";
   const isHighlighted = !!(data as any)._highlighted;
-  const headerForeground = def.category === "start" || def.category === "action"
-    ? "hsl(var(--success-foreground))"
-    : def.category === "message"
-      ? "hsl(var(--info-foreground))"
-      : def.category === "logic"
-        ? "hsl(var(--purple-foreground))"
-        : "hsl(var(--warning-foreground))";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -58,26 +51,26 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const branchHandles: { id: string; label: string; color: string }[] = [];
 
   if (isCondition) {
-    branchHandles.push({ id: "true", label: "Sim", color: "hsl(var(--success))" });
-    branchHandles.push({ id: "false", label: "Não", color: "hsl(var(--destructive))" });
+    branchHandles.push({ id: "true", label: "Sim", color: "#22c55e" });
+    branchHandles.push({ id: "false", label: "Não", color: "#ef4444" });
   } else if (isWaitReply) {
-    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
     branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendText) {
     if (hasTemplateButtons) {
       templateButtons.forEach((btn) => {
-        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "hsl(var(--info))" });
+        branchHandles.push({ id: `btn-${btn.id}`, label: btn.title, color: "#3b82f6" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
     branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   } else if (isSendMenu) {
     if (hasMenuButtons) {
       menuItems.forEach((btn) => {
-        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "hsl(var(--info))" });
+        branchHandles.push({ id: `menu-${btn.id}`, label: btn.title || "Opção", color: "#3b82f6" });
       });
     }
-    branchHandles.push({ id: "reply", label: "Resposta", color: "hsl(var(--success))" });
+    branchHandles.push({ id: "reply", label: "Resposta", color: "#22c55e" });
     branchHandles.push({ id: "timeout", label: "Timeout", color: "hsl(var(--warning))" });
   }
 
@@ -85,9 +78,9 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
   return (
     <div
-      className={`min-w-[220px] max-w-[280px] overflow-hidden rounded-card border bg-card shadow-float transition-all ${
+      className={`min-w-[220px] max-w-[280px] rounded-lg border-2 shadow-lg transition-all ${
         isHighlighted
-          ? "border-success ring-4 ring-success/20 scale-105"
+          ? "border-green-500 ring-4 ring-green-500/30 scale-105"
           : selected
             ? "border-primary ring-2 ring-primary/20"
             : "border-border"
@@ -105,8 +98,8 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
       {/* Header */}
       <div
-        className="relative flex items-center gap-2 border-b-4 border-background/20 px-3 py-2.5 text-xs font-semibold"
-        style={{ background: def.color, color: headerForeground }}
+        className="flex items-center gap-2 px-3 py-2 rounded-t-md text-xs font-semibold relative"
+        style={{ background: def.color, color: "#fff" }}
       >
         <span>{def.icon}</span>
         <span className="flex-1">{String(data.label || def.label)}</span>
@@ -114,7 +107,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
           <div ref={menuRef} className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="rounded p-0.5 transition-colors hover:bg-background/20"
+              className="p-0.5 rounded hover:bg-white/20 transition-colors"
             >
               <MoreVertical size={14} />
             </button>
@@ -150,12 +143,12 @@ function BotNode({ data, selected, type, id }: NodeProps) {
       </div>
 
       {/* Body */}
-      <div className="min-h-[44px] px-3 py-3">
+      <div className="px-3 py-2 min-h-[32px]">
         {(data.description as string) && (
           <p className="text-[10px] text-muted-foreground/70 italic mb-1">{String(data.description).slice(0, 50)}</p>
         )}
         {preview ? (
-          <p className="line-clamp-2 break-words text-xs text-muted-foreground">{preview}</p>
+          <p className="text-xs text-muted-foreground truncate">{preview}</p>
         ) : (
           <p className="text-xs text-muted-foreground/50 italic">Clique para configurar</p>
         )}

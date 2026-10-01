@@ -58,7 +58,7 @@ export default function VariableTextarea({ value, onChange, placeholder, rows = 
       {warnings.length > 0 && (
         <ul className="mt-1 space-y-0.5">
           {warnings.map((w, i) => (
-            <li key={i} className="text-[10px] text-warning-soft-foreground">
+            <li key={i} className="text-[10px] text-warning">
               ⚠️ {w}
             </li>
           ))}

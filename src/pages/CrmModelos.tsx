@@ -13,6 +13,8 @@ import { Plus, Trash2, Copy, Pencil, Image, FileAudio, FileText, Search, Chevron
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import { uploadAutomationMedia } from "@/components/automation/automationMediaUpload";
 import { useAuth } from "@/contexts/AuthContext";
+import type { Database, Json } from "@/integrations/supabase/types";
+import type { NumeroVisivel } from "@/components/integrations/WhatsAppAccountsSection";
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
 
@@ -22,21 +24,53 @@ import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialo
  * "Edge Function returned a non-2xx status code" em error.message, então sem
  * ler o corpo o usuário vê "não funciona" e ninguém sabe por quê.
  */
-async function motivoDoErro(error: any, data: any): Promise<string> {
-  const doCorpo = (data as any)?.error;
-  if (typeof doCorpo === "string" && doCorpo) return doCorpo;
+type CorpoDeErro = { error?: unknown; motivo?: unknown };
+
+/** "erro (motivo)" — o 409 de credencial traz o motivo à parte ("WABA sem token"…). */
+function textoDoCorpo(corpo: CorpoDeErro | null | undefined): string | null {
+  if (!corpo || typeof corpo !== "object") return null;
+  const erro = typeof corpo.error === "string" ? corpo.error.trim() : "";
+  if (!erro) return null;
+  const motivo = typeof corpo.motivo === "string" ? corpo.motivo.trim() : "";
+  return motivo && motivo !== erro ? `${erro} (${motivo})` : erro;
+}
+
+async function motivoDoErro(error: unknown, data: unknown): Promise<string> {
+  const doCorpo = textoDoCorpo(data as CorpoDeErro | null);
+  if (doCorpo) return doCorpo;
+  const err = (error && typeof error === "object" ? error : {}) as {
+    message?: string;
+    context?: { clone?: () => Response; json?: unknown; text?: unknown };
+  };
   try {
-    const resp = (error as any)?.context;
-    if (resp && typeof resp.json === "function") {
-      const j = await resp.json();
-      if (j?.error) return String(j.error);
-    }
-    if (resp && typeof resp.text === "function") {
-      const t = await resp.text();
-      if (t) return t.slice(0, 300);
+    const resp = err.context;
+    if (resp && typeof resp.clone === "function") {
+      const t = await resp.clone().text();
+      if (t) {
+        try {
+          const j = JSON.parse(t) as CorpoDeErro;
+          const doContexto = textoDoCorpo(j);
+          if (doContexto) return doContexto;
+        } catch { /* corpo não-JSON */ }
+        return t.slice(0, 300);
+      }
     }
   } catch { /* fica com a mensagem genérica */ }
-  return error?.message || String(error);
+  return err.message || (error ? String(error) : "Erro desconhecido");
+}
+
+type PapelApp = Database["public"]["Enums"]["app_role"];
+
+// types.ts ainda não conhece a RPC (é regenerado no fechamento).
+// bind: rpc usa `this` (o client); solta numa variável, perderia o contexto.
+const rpcNumeros = supabase.rpc.bind(supabase) as unknown as (
+  nome: "whatsapp_numeros_visiveis",
+) => Promise<{ data: NumeroVisivel[] | null; error: { message: string } | null }>;
+
+/** Rótulo do número no seletor: "nome · +55…". */
+function rotuloDoNumero(n: NumeroVisivel): string {
+  const nome = n.display_name?.trim() || n.verified_name?.trim() || "WhatsApp";
+  return `${nome} · ${n.phone_e164 || "sem número"}`;
 }
 
 
@@ -78,26 +112,21 @@ type WhatsAppTemplate = {
   shared_roles?: string[] | null;
   // Quem criou o modelo — é o que amarra editar/excluir da SDR ao item dela.
   created_by_user_id?: string | null;
+  // Cada número tem a sua cópia dos modelos da WABA; rascunho pode vir sem número.
+  whatsapp_number_id?: string | null;
 };
 
 const ROLE_LABEL: Record<string, string> = {
   gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  gerente: "bg-info-soft text-info-soft-foreground",
-  crc: "bg-purple-soft text-purple-soft-foreground",
-  posvenda: "bg-success-soft text-success-soft-foreground",
-  recepcao: "bg-warning-soft text-warning-soft-foreground",
-  closer: "bg-warning-soft text-warning-soft-foreground",
-  sdr: "bg-info-soft text-info-soft-foreground",
-  superadmin: "bg-destructive-soft text-destructive-soft-foreground",
-};
-
-type Integration = {
-  id: string;
-  key: string;
-  config: any;
-  status: string;
+  gerente: "bg-blue-900/30 text-blue-400",
+  crc: "bg-purple-900/30 text-purple-400",
+  posvenda: "bg-green-900/30 text-green-400",
+  recepcao: "bg-warning/15 text-warning",
+  closer: "bg-warning/15 text-warning",
+  sdr: "bg-teal-900/30 text-teal-400",
+  superadmin: "bg-red-900/30 text-red-400",
 };
 
 const PAGE_SIZE = 10;
@@ -107,8 +136,8 @@ const PAGE_SIZE = 10;
 // handle ao backend — é isso que permite ter VÍDEO em template (que entrega mesmo
 // fora da janela de 24h, ao contrário de mensagem livre).
 function TemplateMediaHeader({
-  headerType, headerContent, onChange,
-}: { headerType: string; headerContent: string; onChange: (handle: string) => void }) {
+  headerType, headerContent, onChange, numeroId,
+}: { headerType: string; headerContent: string; onChange: (handle: string) => void; numeroId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -126,20 +155,19 @@ function TemplateMediaHeader({
     try {
       const up = await uploadAutomationMedia(file, "template-headers", { fileName: file.name });
       if (!up) return;
-      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-        body: { action: "upload_media", media_url: up.url, file_name: up.name, file_type: up.mime },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const handle = (data as any)?.handle;
+      const body: Record<string, unknown> = { action: "upload_media", media_url: up.url, file_name: up.name, file_type: up.mime };
+      if (numeroId) body.whatsapp_number_id = numeroId;
+      const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
+      if (error || (data as CorpoDeErro | null)?.error) throw new Error(await motivoDoErro(error, data));
+      const handle = (data as { handle?: string } | null)?.handle;
       if (!handle) throw new Error("O Meta não devolveu o identificador da mídia.");
       // Guardamos a URL do arquivo (não o handle): o ENVIO precisa de URL e a
       // criação do template gera o handle a partir dela no backend.
       onChange(up.url);
       setFileName(up.name);
       toast.success("Mídia enviada ao Meta. Agora é só salvar o template.");
-    } catch (err: any) {
-      toast.error(err?.message || "Falha ao enviar a mídia ao Meta.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error && err.message ? err.message : "Falha ao enviar a mídia ao Meta.");
     } finally {
       setBusy(false);
     }
@@ -196,15 +224,17 @@ export default function CrmModelos() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
-  const [selectedIntegration, setSelectedIntegration] = useState<string>("");
+  // Números de WhatsApp que o usuário enxerga (RPC, sem token). Toda chamada à
+  // function vai com o id do número escolhido (whatsapp_number_id).
+  const [numeros, setNumeros] = useState<NumeroVisivel[]>([]);
+  const [numerosCarregados, setNumerosCarregados] = useState(false);
+  const [selectedNumero, setSelectedNumero] = useState<string>("");
   // Formulários (Flows) publicados na conexão escolhida — carregados só quando
   // o editor abre, porque a Meta cobra uma chamada por formulário.
   const [formularios, setFormularios] = useState<FormularioDaMeta[]>([]);
   const [carregandoFormularios, setCarregandoFormularios] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
-  const [migrating, setMigrating] = useState(false);
   const [shareTarget, setShareTarget] = useState<WhatsAppTemplate | null>(null);
 
   const [form, setForm] = useState({
@@ -214,232 +244,68 @@ export default function CrmModelos() {
     hasHeader: false,
   });
 
-  // Load integrations
+  // Números visíveis: padrão selecionado (is_default), senão o primeiro. Só os
+  // ativos — número desativado não sincroniza nem cria modelo.
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%").eq("status", "connected");
-      const list = (data || []) as Integration[];
-      setIntegrations(list);
-      if (list.length > 0 && !selectedIntegration) {
-        setSelectedIntegration(list[0].key);
-      }
-    };
-    load();
+    let vivo = true;
+    void rpcNumeros("whatsapp_numeros_visiveis").then(({ data, error }) => {
+      if (!vivo) return;
+      if (error) toast.error("Não foi possível carregar os números de WhatsApp.");
+      const lista = (data ?? []).filter((n) => n.is_active);
+      setNumeros(lista);
+      const padrao = lista.find((n) => n.is_default) ?? lista[0];
+      setSelectedNumero((atual) => (atual && lista.some((n) => n.id === atual) ? atual : padrao?.id ?? ""));
+      setNumerosCarregados(true);
+    });
+    return () => { vivo = false; };
   }, []);
 
-  const fetchTemplates = useCallback(async () => {
-    setLoading(true);
-    // Load from local DB only — Meta sync moved to manual "Sincronizar" button
-    const { data, error } = await supabase
+  // Com mais de um número, cada um tem a sua cópia dos modelos: a lista mostra
+  // a do número escolhido mais os rascunhos sem número. Com um só (ou nenhum),
+  // mostra tudo o que o perfil enxerga (inclusive modelos compartilhados).
+  const filtrarPorNumero = numeros.length > 1 && !!selectedNumero ? selectedNumero : null;
+
+  const lerModelos = useCallback(async () => {
+    let q = supabase
       .from("crm_whatsapp_templates")
       .select("*")
       .order("created_at", { ascending: false });
+    if (filtrarPorNumero) q = q.or(`whatsapp_number_id.eq.${filtrarPorNumero},whatsapp_number_id.is.null`);
+    return q;
+  }, [filtrarPorNumero]);
+
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true);
+    // Só do banco local — a leitura na Meta é o botão "Sincronizar".
+    const { data, error } = await lerModelos();
     if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
     setLoading(false);
-  }, []);
+  }, [lerModelos]);
 
-  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
+  useEffect(() => {
+    if (!numerosCarregados) return;
+    void fetchTemplates();
+  }, [fetchTemplates, numerosCarregados]);
 
   const handleSync = useCallback(async (silent = false) => {
     if (syncing) return;
     setSyncing(true);
     try {
       const body: Record<string, unknown> = { action: "list" };
-      if (selectedIntegration) body.integration_key = selectedIntegration;
+      if (selectedNumero) body.whatsapp_number_id = selectedNumero;
       const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
-      if (error || (data as any)?.error) throw new Error(await motivoDoErro(error, data));
-      const { data: refreshed } = await supabase.from("crm_whatsapp_templates").select("*").order("created_at", { ascending: false });
+      if (error || (data as CorpoDeErro | null)?.error) throw new Error(await motivoDoErro(error, data));
+      const { data: refreshed } = await lerModelos();
       if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
       setLastSyncAt(new Date());
-      if (!silent) toast.success(`Sincronizado! ${data?.count || 0} modelos encontrados na Meta.`);
-    } catch (e: any) {
-      if (!silent) toast.error(`Erro ao sincronizar: ${e?.message || String(e)}`);
+      const count = (data as { count?: number } | null)?.count ?? 0;
+      if (!silent) toast.success(`Sincronizado! ${count} modelos encontrados na Meta.`);
+    } catch (e: unknown) {
+      if (!silent) toast.error(`Erro ao sincronizar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSyncing(false);
     }
-  }, [selectedIntegration, syncing]);
-
-  // Mapeamento dos 5 modelos antigos (com [colchete]) → novos com {{1}}/{{2}}
-  const LEGACY_MIGRATION_MAP: {
-    oldNamePrefix: string;
-    newName: string;
-    payload: {
-      name: string;
-      language: string;
-      category: string;
-      header_type: string | null;
-      header_content: string | null;
-      body_text: string;
-      footer_text: string | null;
-      buttons: BotaoModelo[] | null;
-    };
-  }[] = [
-    {
-      oldNamePrefix: "agendamento_guanambi",
-      newName: "agendamento_guanambi_v2",
-      payload: {
-        name: "agendamento_guanambi_v2",
-        language: "pt_BR",
-        category: "UTILITY",
-        header_type: "TEXT",
-        header_content: "📍 Agendamento Realizado",
-        body_text:
-          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua dos Expedicionários, 71 - Centro, ao lado do banco Santander.\n\nEstaremos te esperando 🧡",
-        footer_text: "Rizodent",
-        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/E8MHDBPVp4Mxr4gr6" }],
-      },
-    },
-    {
-      oldNamePrefix: "agendamento_itabuna",
-      newName: "agendamento_itabuna_v2",
-      payload: {
-        name: "agendamento_itabuna_v2",
-        language: "pt_BR",
-        category: "UTILITY",
-        header_type: "TEXT",
-        header_content: "📍 Agendamento Realizado",
-        body_text:
-          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Avenida Cinquentenário, 375, ao lado da Jan e Ju e em frente ao banco Bradesco.\n\nEstaremos te esperando 🧡",
-        footer_text: "Rizodent",
-        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/iAmAiejknxwGLFa86" }],
-      },
-    },
-    {
-      oldNamePrefix: "agendamento_vca_1",
-      newName: "agendamento_vca_1_v2",
-      payload: {
-        name: "agendamento_vca_1_v2",
-        language: "pt_BR",
-        category: "UTILITY",
-        header_type: "TEXT",
-        header_content: "📍 Agendamento Realizado",
-        body_text:
-          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua Francisco Andrade, próximo ao Bigode de Pedral e acima do Ceasa (antiga Meira Gás).\n\nEstaremos te esperando 🧡",
-        footer_text: "Rizodent",
-        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/R72pSBsKWrRo3F6S8" }],
-      },
-    },
-    {
-      oldNamePrefix: "agendamento_vca_2",
-      newName: "agendamento_vca_2_v2",
-      payload: {
-        name: "agendamento_vca_2_v2",
-        language: "pt_BR",
-        category: "UTILITY",
-        header_type: "TEXT",
-        header_content: "📍 Agendamento Realizado",
-        body_text:
-          "Olá {{1}}! Seu agendamento foi realizado.\n\nData e horário: {{2}}\nServiço: Check-up odontológico\n\nEstamos localizados na Rua Monsenhor Olímpio, 37 - Centro, ao lado da Esquina Embalagens.\n\nEstaremos te esperando 🧡",
-        footer_text: "Rizodent",
-        buttons: [{ type: "URL", text: "Ver localização", url: "https://maps.app.goo.gl/bsDRGmCrgaMkSYB3A" }],
-      },
-    },
-    {
-      oldNamePrefix: "confirmacao_de_agenda_segunda",
-      newName: "confirmacao_de_agenda_segunda_v2",
-      payload: {
-        name: "confirmacao_de_agenda_segunda_v2",
-        language: "pt_BR",
-        category: "UTILITY",
-        header_type: null,
-        header_content: null,
-        body_text:
-          "Olá {{1}}! Aqui é da Rizodent 🧡✨\n\nEstamos confirmando sua consulta agendada para segunda-feira, {{2}}.\n\nPor favor, responda \"Sim\" para confirmar ou \"Quero reagendar\" se precisar de outra data.\n\nAguardamos você 😊",
-        footer_text: null,
-        buttons: [
-          { type: "QUICK_REPLY", text: "Sim!" },
-          { type: "QUICK_REPLY", text: "Quero reagendar." },
-        ],
-      },
-    },
-  ];
-
-  // Detect legacy templates with [bracket] placeholders
-  const legacyBroken = templates.filter((t) =>
-    LEGACY_MIGRATION_MAP.some((m) => t.name.startsWith(m.oldNamePrefix) && /\[.*\]/.test(t.body_text || ""))
-  );
-
-  const handleLegacyMigration = async () => {
-    if (migrating) return;
-    if (!selectedIntegration) {
-      toast.error("Selecione uma integração WhatsApp no topo da página.");
-      return;
-    }
-    const confirm = window.confirm(
-      `Vou criar ${LEGACY_MIGRATION_MAP.length} modelos novos na Meta (com placeholders {{1}}/{{2}}) e excluir os ${legacyBroken.length} antigos que estão com colchetes literais. Deseja continuar?`
-    );
-    if (!confirm) return;
-
-    setMigrating(true);
-    const createdNames: string[] = [];
-    let createdCount = 0;
-    let deletedCount = 0;
-
-    try {
-      // 1. Criar os novos modelos
-      for (const item of LEGACY_MIGRATION_MAP) {
-        // Skip se já existe localmente
-        if (templates.some((t) => t.name === item.newName)) {
-          toast.info(`${item.newName} já existe, pulando criação.`);
-          createdNames.push(item.newName);
-          continue;
-        }
-        try {
-          const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-            body: {
-              action: "create",
-              integration_key: selectedIntegration,
-              ...item.payload,
-            },
-          });
-          if (error || data?.error) {
-            const msg = data?.details ? JSON.stringify(data.details) : error?.message || "erro desconhecido";
-            toast.error(`Falha ao criar ${item.newName}: ${msg}`);
-            continue;
-          }
-          createdCount++;
-          createdNames.push(item.newName);
-          toast.success(`Criado ${item.newName} (status: ${data?.status || "PENDING"})`);
-        } catch (e: any) {
-          toast.error(`Erro ao criar ${item.newName}: ${e?.message || String(e)}`);
-        }
-      }
-
-      // 2. Excluir os antigos correspondentes (apenas os que foram substituídos com sucesso)
-      for (const old of legacyBroken) {
-        const match = LEGACY_MIGRATION_MAP.find((m) => old.name.startsWith(m.oldNamePrefix));
-        if (!match || !createdNames.includes(match.newName)) continue;
-        try {
-          const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-            body: { action: "delete", template_name: old.name, integration_key: selectedIntegration },
-          });
-          if (error) {
-            toast.warning(`Falha ao excluir ${old.name} na Meta, removendo apenas local.`);
-          }
-          const { data: removidos, error: erroLocal } = await supabase
-            .from("crm_whatsapp_templates")
-            .delete()
-            .eq("id", old.id)
-            .select("id");
-          if (erroLocal) {
-            toast.error(`Erro ao excluir ${old.name}: ${erroLocal.message}`);
-          } else if (!removidos || removidos.length === 0) {
-            toast.error(`Seu perfil não tem permissão para excluir ${old.name}.`);
-          } else {
-            deletedCount++;
-          }
-        } catch (e: any) {
-          toast.error(`Erro ao excluir ${old.name}: ${e?.message || String(e)}`);
-        }
-      }
-
-      toast.success(`Migração concluída: ${createdCount} criados, ${deletedCount} antigos excluídos.`);
-      fetchTemplates();
-    } finally {
-      setMigrating(false);
-    }
-  };
-
+  }, [selectedNumero, syncing, lerModelos]);
 
   // Não deduplicar nesta tela de gestão: o usuário precisa enxergar TODOS os
   // modelos (mesmo com mesmo nome base) para conseguir compartilhar individualmente.
@@ -487,10 +353,12 @@ export default function CrmModelos() {
     const { error } = await supabase.from("crm_whatsapp_templates").insert([{
       name: t.name + "_copia", category: t.category, language: t.language,
       header_type: t.header_type, header_content: t.header_content,
-      body_text: t.body_text, footer_text: t.footer_text, buttons: t.buttons as any,
+      body_text: t.body_text, footer_text: t.footer_text, buttons: (t.buttons ?? null) as Json,
       status: "PENDING",
       created_by_user_id: user?.id || null,
-      owner_role: ownerRoleParaGravar(ownerRole) as any,
+      owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
+      // A cópia fica no mesmo número do original.
+      whatsapp_number_id: t.whatsapp_number_id ?? null,
     }]);
     if (error) toast.error("Erro ao duplicar: " + error.message); else { toast.success("Duplicado"); fetchTemplates(); }
   };
@@ -505,14 +373,22 @@ export default function CrmModelos() {
     const template = templates.find(t => t.id === deleteId);
     if (!template) return;
 
-    // Try to delete from Meta API first
+    // Primeiro na Meta, no escopo do número DONO da cópia (senão o do seletor).
+    // Quando a Meta aceita, a function já apaga a cópia de todos os números da
+    // WABA — aí a remoção local abaixo pode não achar mais nada, e está certo.
+    let removidoPelaFuncao = false;
     if (template.meta_template_id) {
       try {
-        const { error } = await supabase.functions.invoke("manage-whatsapp-templates", {
-          body: { action: "delete", template_name: template.name, integration_key: selectedIntegration },
-        });
-        if (error) {
-          toast.error("Erro ao deletar na Meta. Removendo apenas localmente.");
+        const body: Record<string, unknown> = { action: "delete", template_name: template.name, template_id: template.id };
+        const numeroDoModelo = template.whatsapp_number_id || selectedNumero;
+        if (numeroDoModelo) body.whatsapp_number_id = numeroDoModelo;
+        const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
+        if (error || (data as CorpoDeErro | null)?.error) {
+          toast.error(`Não foi possível excluir na Meta: ${await motivoDoErro(error, data)}. Removendo apenas localmente.`);
+        } else {
+          removidoPelaFuncao = true;
+          const aviso = (data as { warning?: string } | null)?.warning;
+          if (aviso) toast.warning(aviso);
         }
       } catch {
         toast.warning("API Meta indisponível. Removendo apenas localmente.");
@@ -530,7 +406,7 @@ export default function CrmModelos() {
       toast.error("Erro ao excluir o modelo: " + erroLocal.message);
       return;
     }
-    if (!removidos || removidos.length === 0) {
+    if ((!removidos || removidos.length === 0) && !removidoPelaFuncao) {
       toast.error("Seu perfil não tem permissão para excluir este modelo.");
       return;
     }
@@ -601,7 +477,7 @@ export default function CrmModelos() {
         const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
           body: {
             action: "create",
-            integration_key: selectedIntegration,
+            ...(selectedNumero ? { whatsapp_number_id: selectedNumero } : {}),
             name: form.name,
             category: form.category,
             language: form.language,
@@ -614,7 +490,7 @@ export default function CrmModelos() {
         });
 
         if (fnError) {
-          toast.error("Erro ao enviar para Meta: " + fnError.message);
+          toast.error("Erro ao enviar para Meta: " + (await motivoDoErro(fnError, data)), { duration: 10000 });
           setSubmitting(false);
           return;
         }
@@ -632,8 +508,8 @@ export default function CrmModelos() {
           { duration: 6000 }
         );
         setTimeout(() => { handleSync(true); }, 5000);
-      } catch (e: any) {
-        toast.error("Erro ao enviar: " + (e?.message || String(e)));
+      } catch (e: unknown) {
+        toast.error("Erro ao enviar: " + (e instanceof Error ? e.message : String(e)));
         setSubmitting(false);
         return;
       }
@@ -654,7 +530,7 @@ export default function CrmModelos() {
         buttons: form.buttons.length > 0 ? form.buttons : null,
         status: "DRAFT",
         created_by_user_id: user?.id || null,
-        owner_role: ownerRoleParaGravar(ownerRole) as any,
+        owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
         updated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from("crm_whatsapp_templates").insert([payload]);
@@ -671,16 +547,18 @@ export default function CrmModelos() {
     if (!modalOpen) return;
     let cancelado = false;
     setCarregandoFormularios(true);
+    const body: Record<string, unknown> = { action: "list_flows" };
+    if (selectedNumero) body.whatsapp_number_id = selectedNumero;
     supabase.functions
-      .invoke("manage-whatsapp-templates", { body: { action: "list_flows", integration_key: selectedIntegration } })
+      .invoke("manage-whatsapp-templates", { body })
       .then(({ data, error }) => {
         if (cancelado) return;
         if (error) { setFormularios([]); return; }
-        setFormularios(((data as any)?.flows ?? []) as FormularioDaMeta[]);
+        setFormularios(((data as { flows?: FormularioDaMeta[] } | null)?.flows ?? []) as FormularioDaMeta[]);
       })
       .finally(() => { if (!cancelado) setCarregandoFormularios(false); });
     return () => { cancelado = true; };
-  }, [modalOpen, selectedIntegration]);
+  }, [modalOpen, selectedNumero]);
 
   const addButton = () => {
     if (form.buttons.length >= 3) return;
@@ -733,20 +611,19 @@ export default function CrmModelos() {
 
 
   const statusBadge = (s: string) => {
-    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="cursor-help rounded-full border border-success/30 bg-success-soft px-2.5 py-1 text-xs font-medium text-success-soft-foreground">Aprovado</span>;
-    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="cursor-help rounded-full border border-warning/30 bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning-soft-foreground">Pendente</span>;
-    if (s === "PAUSED") return <span className="rounded-full border border-purple/30 bg-purple-soft px-2.5 py-1 text-xs font-medium text-purple-soft-foreground">Pausado</span>;
-    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="rounded-full border border-slate/30 bg-slate-soft px-2.5 py-1 text-xs font-medium text-slate-soft-foreground">Rascunho</span>;
-    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="cursor-help rounded-full border border-destructive/30 bg-destructive-soft px-2.5 py-1 text-xs font-medium text-destructive-soft-foreground">Rejeitado</span>;
+    if (s === "APPROVED") return <span title="Aprovado pela Meta — pronto para uso" className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded-full font-medium cursor-help">Aprovado</span>;
+    if (s === "PENDING") return <span title="Em análise pela Meta (pode levar até 24h). Clique em 'Sincronizar com Meta' para atualizar." className="text-[10px] bg-yellow-900/30 text-yellow-400 px-2 py-0.5 rounded-full font-medium cursor-help">Pendente</span>;
+    if (s === "DRAFT") return <span title="Rascunho local — ainda não enviado à Meta" className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full font-medium cursor-help">Rascunho</span>;
+    return <span title="Rejeitado pela Meta — edite ou recrie o modelo" className="text-[10px] bg-destructive/20 text-destructive px-2 py-0.5 rounded-full font-medium cursor-help">Rejeitado</span>;
   };
 
   const categoryBadge = (c: string) => {
     const colors: Record<string, string> = {
-      MARKETING: "bg-purple-soft text-purple-soft-foreground border-purple/30",
-      UTILITY: "bg-info-soft text-info-soft-foreground border-info/30",
-      AUTHENTICATION: "bg-success-soft text-success-soft-foreground border-success/30",
+      MARKETING: "bg-purple-900/30 text-purple-400",
+      UTILITY: "bg-blue-900/30 text-blue-400",
+      AUTHENTICATION: "bg-green-900/30 text-green-400",
     };
-    return <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${colors[c] || "border-slate/30 bg-slate-soft text-slate-soft-foreground"}`}>{c === "MARKETING" ? "Marketing" : c === "UTILITY" ? "Utilidade" : "Autenticação"}</span>;
+    return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${colors[c] || "bg-secondary text-muted-foreground"}`}>{c === "MARKETING" ? "Marketing" : c === "UTILITY" ? "Utilidade" : "Autenticação"}</span>;
   };
 
   const headerIcon = (type: string | null) => {
@@ -759,19 +636,18 @@ export default function CrmModelos() {
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header - FIXED */}
-      <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 shadow-card">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><FileText size={20} /></div>
-          <h1 className="text-2xl font-bold text-foreground">Modelos de Mensagem</h1>
-          {integrations.length > 0 && (
-            <Select value={selectedIntegration} onValueChange={setSelectedIntegration}>
-              <SelectTrigger className="w-[220px] h-8 text-sm">
-                <SelectValue placeholder="Selecione a integração" />
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-bold text-foreground">Modelos de Mensagem</h1>
+          {numeros.length > 1 && (
+            <Select value={selectedNumero} onValueChange={(v) => { setSelectedNumero(v); setPage(0); }}>
+              <SelectTrigger className="w-[260px] h-8 text-sm" aria-label="Número de WhatsApp">
+                <SelectValue placeholder="Selecione o número" />
               </SelectTrigger>
               <SelectContent>
-                {integrations.map((intg) => (
-                  <SelectItem key={intg.key} value={intg.key}>
-                    {(intg.config as any)?.display_name || intg.key}
+                {numeros.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {rotuloDoNumero(n)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -799,12 +675,12 @@ export default function CrmModelos() {
       </div>
 
       {/* Tabs + Filters - FIXED */}
-      <div className="flex-shrink-0 border-b border-border/60 bg-card px-4 py-3 sm:px-6">
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
+          <div className="flex gap-1">
             {["todos", "aprovados", "pendentes"].map(t => (
               <button key={t} onClick={() => { setTab(t); setPage(0); }}
-                className={`rounded-full px-3 py-1.5 text-sm transition-colors ${tab === t ? "bg-primary text-primary-foreground font-medium shadow-card" : "text-muted-foreground hover:bg-card"}`}>
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${tab === t ? "bg-primary/20 text-primary font-medium" : "text-muted-foreground hover:bg-secondary"}`}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
@@ -824,14 +700,14 @@ export default function CrmModelos() {
         </div>
       </div>
 
-      {/* List - SCROLLABLE */}
+      {/* Grid - SCROLLABLE */}
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? <div className="text-center text-muted-foreground py-10">Carregando...</div> : paginated.length === 0 ? <div className="text-center text-muted-foreground py-10">Nenhum modelo encontrado</div> : (
-          <div className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card divide-y divide-border/60">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {paginated.map(t => (
-              <div key={t.id} className="p-4 transition-colors hover:bg-primary-soft/20 sm:px-5">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="min-w-0 break-words text-sm font-semibold text-foreground" title={t.name}>{cleanTemplateName(t.name)}</div>
+              <div key={t.id} className="bg-card rounded-lg border border-border p-4 hover:border-primary/30 transition-all shadow-card">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="font-semibold text-sm text-foreground break-all" title={t.name}>{cleanTemplateName(t.name)}</div>
                   <div className="flex items-center gap-1">{headerIcon(t.header_type)}</div>
                 </div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -841,10 +717,8 @@ export default function CrmModelos() {
                     ? <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ROLE_BADGE_COLOR[t.owner_role] || "bg-secondary text-muted-foreground"}`}>{ROLE_LABEL[t.owner_role]}</span>
                     : <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-secondary text-muted-foreground">Compartilhado</span>}
                 </div>
-                <div className="mb-3 max-w-2xl rounded-card rounded-bl-sm border border-border/60 bg-card px-4 py-3 text-sm text-foreground shadow-card">
-                  <p className="line-clamp-4 whitespace-pre-wrap break-words">{t.body_text || "Sem corpo"}</p>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground line-clamp-3 mb-3">{t.body_text || "Sem corpo"}</p>
+                <div className="flex items-center justify-between">
                   <span className="text-[10px] text-muted-foreground">{new Date(t.created_at).toLocaleDateString("pt-BR")}</span>
                   <div className="flex items-center gap-1">
                     {podeEditarItem(t) && (
@@ -900,11 +774,11 @@ export default function CrmModelos() {
 
       {/* Create/Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-card p-0">
-          <DialogHeader className="border-b border-border/60 px-6 py-5"><DialogTitle>{form.id ? "Editar Modelo" : "Novo Modelo"}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-1 gap-6 bg-surface-sunken/40 p-6 lg:grid-cols-2">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{form.id ? "Editar Modelo" : "Novo Modelo"}</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left: Form */}
-            <div className="space-y-4 rounded-card border border-border/60 bg-card p-5 shadow-card">
+            <div className="space-y-3">
               <div>
                 <Label>Nome do modelo *</Label>
                 <Input className="font-mono text-sm" placeholder="boas_vindas_lead" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") }))} />
@@ -957,6 +831,7 @@ export default function CrmModelos() {
                       headerType={form.header_type}
                       headerContent={form.header_content}
                       onChange={(handle) => setForm(p => ({ ...p, header_content: handle }))}
+                      numeroId={selectedNumero}
                     />
                   )}
                 </div>
@@ -1012,7 +887,7 @@ export default function CrmModelos() {
               {/* Footer */}
               <div>
                 <Label>Rodapé (opcional)</Label>
-                <Input placeholder="Enviado por Rizo" value={form.footer_text} onChange={e => setForm(p => ({ ...p, footer_text: e.target.value }))} />
+                <Input placeholder="Ex.: Equipe da clínica" value={form.footer_text} onChange={e => setForm(p => ({ ...p, footer_text: e.target.value }))} />
               </div>
 
               {/* Buttons */}
@@ -1108,15 +983,15 @@ export default function CrmModelos() {
 
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" className="flex-1" onClick={() => handleSave(false)}>Salvar rascunho</Button>
-                <Button className="flex-1 bg-success text-success-foreground hover:bg-success/90" onClick={() => handleSave(true)}>Submeter para aprovação</Button>
+                <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleSave(true)}>Submeter para aprovação</Button>
               </div>
             </div>
 
             {/* Right: Preview */}
-            <div className="flex flex-col items-center rounded-card border border-border/60 bg-surface-sunken p-5">
+            <div className="bg-secondary rounded-lg p-4 flex flex-col items-center">
               <span className="text-xs text-muted-foreground mb-3">Preview</span>
               <div className="w-full max-w-[300px]">
-                <div className="rounded-card rounded-bl-sm border border-border/60 bg-card p-4 text-sm shadow-float">
+                <div className="bg-card rounded-lg shadow-card border border-border p-3 text-sm">
                   {form.hasHeader && form.header_content && (
                     <div className="font-semibold text-foreground mb-1 text-xs">
                       {form.header_type === "IMAGE" ? <div className="bg-secondary rounded h-20 flex items-center justify-center text-muted-foreground mb-1"><Image size={24} /></div> : null}

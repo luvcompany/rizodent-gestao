@@ -4,6 +4,7 @@ import { deduplicateTemplates } from "@/lib/templateUtils";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { nomeDoNumero, numeroConectado, useNumerosWhatsappVisiveis } from "@/contexts/WhatsappCallContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,10 +39,23 @@ type Automation = {
 };
 type Template = { id: string; name: string; status: string };
 type BotEntry = { id: string; name: string };
-type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
+// whatsapp_number_id: número do canal WhatsApp (coluna do v2; ainda fora dos
+// tipos gerados). O SELECT é "*", então chega do banco.
+type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null; whatsapp_number_id?: string | null };
+
+// Fontes que a equipe do cliente pode ligar a um funil. WhatsApp NÃO entra: o
+// canal WhatsApp de um funil é definido pelo administrador no número, e o banco
+// recusa canal whatsapp gravado pelo navegador (policies RESTRICTIVE).
+const FONTES_MANUAIS: { tipo: string; rotulo: string; icone: string }[] = [
+  { tipo: "instagram", rotulo: "Instagram", icone: "📸" },
+  { tipo: "facebook", rotulo: "Facebook", icone: "📘" },
+  { tipo: "manual", rotulo: "Manual", icone: "✋" },
+  { tipo: "website", rotulo: "Website", icone: "🌐" },
+];
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
 
 const PRESET_COLORS = [
+  // eslint-disable-next-line no-restricted-syntax -- paleta escolhida pelo usuário, não é marca
   "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16",
   "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
   "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
@@ -177,6 +191,25 @@ export default function CrmAutomacoes() {
   // dois botões que sempre falham, que é a reclamação literal do dono no item do
   // AUTOMATIZE. A lista de fontes conectadas continua visível — o SELECT ela tem.
   const podeMexerNasFontes = !ehSdr;
+  // Nome do número de cada canal WhatsApp (join por whatsapp_number_id).
+  const { numeros: numerosWhatsapp } = useNumerosWhatsappVisiveis();
+  const [adicionandoFonte, setAdicionandoFonte] = useState(false);
+  const adicionarFonte = async (tipo: string) => {
+    if (!selectedPipelineId || adicionandoFonte) return;
+    setAdicionandoFonte(true);
+    try {
+      const { data, error } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: tipo }).select().single();
+      if (error) { toast.error("Erro ao adicionar fonte: " + error.message); return; }
+      if (!data) {
+        toast.error("Seu perfil não tem permissão para adicionar fontes neste funil.");
+        return;
+      }
+      toast.success("Fonte adicionada");
+      setChannels(prev => [...prev, data as FunnelChannel]);
+    } finally {
+      setAdicionandoFonte(false);
+    }
+  };
 
   const fetchData = useCallback(async (pipeId?: string) => {
     setLoading(true);
@@ -784,10 +817,9 @@ export default function CrmAutomacoes() {
   return (
     <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header */}
-      <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap overflow-hidden min-w-0 shadow-card">
+      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-3 flex items-center justify-between gap-2 flex-wrap overflow-hidden min-w-0">
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Bot size={21} /></div>
-          <h1 className="break-words text-2xl font-bold text-foreground">Configuração do Funil</h1>
+          <h1 className="text-lg font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
           {pipelines.length > 0 && (
             <div className="flex items-center gap-1">
               <select
@@ -865,8 +897,8 @@ export default function CrmAutomacoes() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel - Lead sources */}
-        <div className="m-4 mr-0 w-[280px] flex-shrink-0 overflow-y-auto rounded-card border border-border/60 bg-card p-5 shadow-card">
-          <h2 className="mb-4 text-[15px] font-semibold text-foreground">Fontes de Lead</h2>
+        <div className="w-[280px] bg-card border-r border-border p-4 flex-shrink-0 overflow-y-auto">
+          <h2 className="font-semibold text-sm text-foreground mb-4">Fontes de Lead</h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -915,14 +947,25 @@ export default function CrmAutomacoes() {
               </div>
             )}
             <hr className="border-border" />
-            <div className="mb-2 text-xs font-semibold text-muted-foreground">Fontes conectadas</div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Fontes conectadas</div>
             {channels.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
             ) : channels.map(ch => {
               const isWhatsapp = ch.channel_type === "whatsapp";
-              const icons: Record<string, string> = { instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
+              const icons: Record<string, string> = Object.fromEntries(FONTES_MANUAIS.map(f => [f.tipo, f.icone]));
+              const numero = isWhatsapp && ch.whatsapp_number_id
+                ? numerosWhatsapp?.find(n => n.id === ch.whatsapp_number_id)
+                : undefined;
+              const rotuloWhatsapp = !ch.whatsapp_number_id
+                ? "WhatsApp: sem número"
+                : numero
+                  ? `WhatsApp: ${nomeDoNumero(numero)}`
+                  : numerosWhatsapp
+                    ? "WhatsApp: número não disponível para você"
+                    : "WhatsApp";
+              const ativo = !isWhatsapp || (!!numero && numeroConectado(numero));
               return (
-                <div key={ch.id} className="flex items-center justify-between gap-2 rounded-control border border-border/60 px-3 py-2.5">
+                <div key={ch.id} className="flex items-center justify-between py-1.5">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     {isWhatsapp ? (
                       <svg viewBox="0 0 32 32" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -932,11 +975,21 @@ export default function CrmAutomacoes() {
                     ) : (
                       <span>{icons[ch.channel_type] || "📡"}</span>
                     )}
-                    {ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
+                    <span
+                      className="truncate"
+                      title={isWhatsapp ? "Definido pelo administrador no número de WhatsApp" : undefined}
+                    >
+                      {isWhatsapp ? rotuloWhatsapp : ch.channel_type.charAt(0).toUpperCase() + ch.channel_type.slice(1)}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="whitespace-nowrap rounded-full border border-success/30 bg-success-soft px-2 py-1 text-xs font-medium text-success-soft-foreground">Ativo</span>
-                    {podeMexerNasFontes && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {ativo ? (
+                      <span className="text-[10px] text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">Ativo</span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Inativo</span>
+                    )}
+                    {/* Canal WhatsApp é só leitura: quem define é o administrador no número. */}
+                    {podeMexerNasFontes && !isWhatsapp && (
                     <button onClick={async () => {
                       const { data, error } = await supabase.from("funnel_channels").delete().eq("id", ch.id).select("id");
                       if (error) { toast.error("Erro ao remover fonte: " + error.message); return; }
@@ -953,23 +1006,32 @@ export default function CrmAutomacoes() {
               );
             })}
             {podeMexerNasFontes && (
-            <button
-              onClick={async () => {
-                const type = prompt("Tipo da fonte (whatsapp, instagram, facebook, manual, website):");
-                if (!type || !selectedPipelineId) return;
-                const { data, error } = await supabase.from("funnel_channels").insert({ pipeline_id: selectedPipelineId, channel_type: type.toLowerCase() }).select().single();
-                if (error) { toast.error("Erro ao adicionar fonte: " + error.message); return; }
-                if (!data) {
-                  toast.error("Seu perfil não tem permissão para adicionar fontes neste funil.");
-                  return;
-                }
-                toast.success("Fonte adicionada");
-                setChannels(prev => [...prev, data as FunnelChannel]);
-              }}
-              className="mt-2 flex h-10 w-full items-center justify-center gap-1 rounded-control bg-primary-soft text-sm font-medium text-primary-soft-foreground transition-colors hover:bg-primary-soft/70"
-            >
-              <Plus size={14} /> Adicionar fonte
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  disabled={!selectedPipelineId || adicionandoFonte}
+                  className="w-full text-sm text-primary bg-primary/10 hover:bg-primary/20 disabled:opacity-60 rounded py-2 flex items-center justify-center gap-1 mt-2 transition-colors"
+                >
+                  <Plus size={14} /> Adicionar fonte
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {FONTES_MANUAIS.map(f => {
+                  const jaTem = channels.some(c => c.channel_type === f.tipo);
+                  return (
+                    <DropdownMenuItem key={f.tipo} disabled={jaTem} onSelect={() => { void adicionarFonte(f.tipo); }}>
+                      <span className="mr-2">{f.icone}</span> {f.rotulo}
+                      {jaTem && <span className="ml-auto text-[10px] text-muted-foreground">já conectada</span>}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            )}
+            {podeMexerNasFontes && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                O canal de WhatsApp do funil é definido pelo administrador no número.
+              </p>
             )}
           </div>
         </div>
@@ -994,10 +1056,10 @@ export default function CrmAutomacoes() {
                             <div
                               ref={prov.innerRef}
                               {...prov.draggableProps}
-                            className={`w-[280px] flex-shrink-0 overflow-hidden rounded-card border border-border/60 bg-card shadow-card ${snap.isDragging ? "shadow-float ring-2 ring-primary" : ""}`}
+                              className={`w-[240px] flex-shrink-0 bg-card rounded-lg border border-border overflow-hidden ${snap.isDragging ? "shadow-brand ring-2 ring-primary" : ""}`}
                             >
-                              <div className="h-1" style={{ backgroundColor: stage.color }} />
-                              <div className="p-4">
+                              <div className="h-1.5" style={{ backgroundColor: stage.color }} />
+                              <div className="p-3">
                               <div className="flex items-center justify-between mb-1">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
                                     {/* Arrastar reescreve a position de todas as etapas do funil; sem
@@ -1082,7 +1144,7 @@ export default function CrmAutomacoes() {
                                             className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted"
                                             title="Tipo da etapa (Ganho / Perda / Aberta) — usado na Análise de Funil"
                                           >
-                                            {stage.is_won ? <span className="text-success">Ganho</span>
+                                            {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
                                               : stage.is_lost ? <span className="text-destructive">Perda</span>
                                               : <span className="text-muted-foreground">Aberta</span>}
                                           </button>
@@ -1119,7 +1181,7 @@ export default function CrmAutomacoes() {
                                         className="text-[10px] px-1.5 py-0.5 rounded border border-border"
                                         title="Tipo da etapa (Ganho / Perda / Aberta) — definido pela gestão"
                                       >
-                                        {stage.is_won ? <span className="text-success">Ganho</span>
+                                        {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
                                           : stage.is_lost ? <span className="text-destructive">Perda</span>
                                           : <span className="text-muted-foreground">Aberta</span>}
                                       </span>
@@ -1265,7 +1327,7 @@ export default function CrmAutomacoes() {
           <DialogHeader><DialogTitle>Excluir Etapa?</DialogTitle></DialogHeader>
           {deleteStageLeadCount > 0 ? (
             <div className="space-y-4">
-              <div className="rounded-control border border-warning/40 bg-warning-soft p-3 text-sm text-warning-soft-foreground">
+              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
                 ⚠️ Existem <strong>{deleteStageLeadCount} lead(s)</strong> nesta etapa. O que deseja fazer?
               </div>
               <div className="space-y-2 text-sm">

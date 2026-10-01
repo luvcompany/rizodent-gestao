@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { definirFusoDoTenant } from "@/lib/fuso";
+import { lerImpersonacao } from "@/lib/impersonacao";
+
+/** Alcance do signOut: 'global' revoga todas as sessões do usuário (todos os
+ *  aparelhos); 'local' descarta só a deste navegador. */
+export type EscopoSaida = "global" | "local";
 
 interface ProfileData {
   nome: string;
@@ -24,7 +30,9 @@ interface AuthContextType {
   roleResolved: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
+  /** Sem escopo: 'local' durante um acesso de suporte (impersonação) — para não
+   *  derrubar o usuário do cliente nos aparelhos dele — e 'global' no resto. */
+  signOut: (opcoes?: { scope?: EscopoSaida }) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
@@ -59,6 +67,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [roleResolved, setRoleResolved] = useState(false);
   const [loading, setLoading] = useState(true);
   const lastProfileFetchRef = useRef<{ userId: string; at: number } | null>(null);
+  // Usuário cujo perfil/papel está no estado. Se um evento trouxer OUTRO
+  // usuário (impersonação, login em outra aba), o perfil antigo é descartado
+  // na hora — senão os guards compararam o tenant do usuário anterior com a
+  // URL até o fetch do novo terminar.
+  const usuarioAtualRef = useRef<string | null>(null);
+
+  const trocarDeUsuarioSeMudou = (novoId: string | null) => {
+    if (usuarioAtualRef.current === novoId) return;
+    usuarioAtualRef.current = novoId;
+    setProfile(null);
+    setUserRole(null);
+    setRoleResolved(false);
+  };
 
   const fetchProfile = async (userId: string, force = false) => {
     const last = lastProfileFetchRef.current;
@@ -82,6 +103,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const normalizedProfile = prof ? { ...prof, signature_enabled: (prof as any).signature_enabled ?? false, must_change_password: (prof as any).must_change_password ?? false, is_blocked: (prof as any).is_blocked ?? false } : null;
       const normalizedRole = role?.role ?? null;
 
+      // A sessão mudou de usuário enquanto esta busca estava no ar: o resultado
+      // é de quem saiu e não pode sobrescrever o estado do usuário novo.
+      if (usuarioAtualRef.current !== userId) return;
+
       // "A consulta falhou" NÃO é "esta pessoa não tem papel". Gravar null no
       // cache por causa de um erro de rede congelaria papel nulo por 15 minutos,
       // e telas que decidem por afirmação (ex.: o botão Compareceu) mostrariam à
@@ -101,9 +126,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       // Mesmo em erro: papel "resolvido" com o melhor estado disponível — senão o
       // gate do ProtectedRoute travaria em "Carregando..." numa falha de rede.
-      setRoleResolved(true);
+      if (usuarioAtualRef.current === userId) setRoleResolved(true);
     }
   };
+
+  // Fuso da clínica (tenants.timezone) para "hoje", relatórios e horários de
+  // agendamento no front (src/lib/fuso.ts). Sem tenant (superadmin), a reserva.
+  const tenantDoPerfil = profile?.tenant_id ?? null;
+  useEffect(() => {
+    if (!tenantDoPerfil) { definirFusoDoTenant(null); return; }
+    let vivo = true;
+    supabase.from("tenants").select("timezone").eq("id", tenantDoPerfil).maybeSingle()
+      .then(({ data }) => { if (vivo && data) definirFusoDoTenant((data as { timezone?: string | null }).timezone); });
+    return () => { vivo = false; };
+  }, [tenantDoPerfil]);
 
   const refreshProfile = async () => {
     if (user) await fetchProfile(user.id, true);
@@ -113,6 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         if (_event === "INITIAL_SESSION") return;
+        trocarDeUsuarioSeMudou(session?.user?.id ?? null);
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -134,6 +171,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
+        trocarDeUsuarioSeMudou(session?.user?.id ?? null);
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
@@ -171,7 +209,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error: null };
   };
 
-  const signOut = async () => {
+  const signOut = async (opcoes?: { scope?: EscopoSaida }) => {
+    const scope: EscopoSaida = opcoes?.scope ?? (lerImpersonacao() ? "local" : "global");
     // Limpa TODOS os caches e preferências do CRM no localStorage antes de
     // sair, para evitar que o próximo usuário (login no mesmo navegador)
     // veja dados, filtros ou estado de UX do usuário anterior.
@@ -185,7 +224,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       // localStorage indisponível em alguns contextos (private mode, SSR) — ignora
     }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope });
   };
 
   return (

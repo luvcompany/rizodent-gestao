@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { toLocalDateISO } from "@/lib/utils";
 import { businessDaysBetween } from "@/lib/businessDays";
-import { fetchAllPaged, dayKeyBahia, classifyOrigemCanonica, contaComoFaturamento, rptContratados, type ContratadoRow } from "@/lib/reportKit";
+import { fetchAllPaged, dayKeyNoFuso, classifyOrigemCanonica, contaComoFaturamento, rptContratados, type ContratadoRow } from "@/lib/reportKit";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,17 +19,22 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 import { useChartTheme } from "@/hooks/useChartTheme";
-import { PageHeader, crmChartColors } from "@/components/crm-ui";
+import { useVocab } from "@/hooks/useVocab";
 
-const COLORS = crmChartColors;
+// Começa pela série de useChartTheme().brandSeries (marca + estados) e completa com 2 tons neutros de categoria.
+const COLORS = ["hsl(var(--brand-500))", "hsl(var(--brand-300))", "hsl(var(--brand-700))", "hsl(var(--info))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(280,60%,60%)", "hsl(0,70%,55%)"];
 
-const activeBarStyle = { style: { opacity: 0.82, transition: "opacity 0.2s ease" } };
+const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
 const Relatorios = () => {
   const navigate = useNavigate();
   const ct = useChartTheme();
+  // A ressalva da receita recorrente só vale para o segmento que a tem
+  // (odontologia: "Recorrência de ortodontia"); nos demais, some — igual à
+  // aba Comparar funis.
+  const { receitaRecorrenteLabel } = useVocab();
   const tooltipStyle = ct.tooltipStyle;
   const tooltipLabelStyle = ct.tooltipLabelStyle;
   const tooltipItemStyle = ct.tooltipItemStyle;
@@ -118,8 +123,8 @@ const Relatorios = () => {
   const filteredTratamentos = useMemo(() => {
     return tratamentos.filter((t) => {
       const inClinica = clinicaFiltro === "todas" || t.clinica_id === clinicaFiltro;
-      // dia local em America/Bahia (created_at é timestamptz UTC)
-      const createdDate = t.created_at ? dayKeyBahia(t.created_at) : "";
+      // dia local no fuso do tenant (created_at é timestamptz UTC)
+      const createdDate = t.created_at ? dayKeyNoFuso(t.created_at) : "";
       const inDate = createdDate >= dateFrom && createdDate <= dateTo;
       return inClinica && inDate;
     });
@@ -456,8 +461,7 @@ const Relatorios = () => {
     if (!reportRef.current) return;
     try {
       const html2canvas = (await import("html2canvas")).default;
-      const background = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
-      const canvas = await html2canvas(reportRef.current, { backgroundColor: `hsl(${background})` });
+      const canvas = await html2canvas(reportRef.current, { backgroundColor: "#1a1a1a" });
       const link = document.createElement("a"); link.download = "relatorio.png"; link.href = canvas.toDataURL(); link.click();
       toast.success("Imagem exportada!");
     } catch { toast.error("Erro ao exportar imagem"); }
@@ -516,7 +520,7 @@ const Relatorios = () => {
   const renderSingleReportByKey = (reportKey: string | null) => {
     switch (reportKey) {
       case "contratado": return (
-        <Card className="rounded-card border-border shadow-card">
+        <Card className="gradient-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Faturamento por Paciente</CardTitle>
             <ShareButtons title="Faturamento por Paciente" data={[{ faturamento: contratadoVsPago.totalContratado }]} getSummary={() =>
@@ -526,11 +530,11 @@ const Relatorios = () => {
           <CardContent className="space-y-6">
             <p className="text-xs text-muted-foreground">Soma de todos os pagamentos recebidos no período (novos e recorrentes), por data de pagamento.</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-control bg-primary-soft p-4">
+              <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Faturamento (pagamentos recebidos)</p>
-                <p className="whitespace-nowrap text-xl font-bold text-primary-soft-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
+                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
               </div>
-              <div className="rounded-control bg-info-soft p-4">
+              <div className="rounded-lg bg-secondary p-4">
                 <p className="text-xs text-muted-foreground">Pacientes com pagamento</p>
                 <p className="text-xl font-bold text-primary">{contratadoVsPago.lista.length}</p>
               </div>
@@ -542,7 +546,7 @@ const Relatorios = () => {
                   {contratadoVsPago.lista.map((p) => (
                     <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
-                      <TableCell className="whitespace-nowrap text-success">{formatCurrency(p.contratado)}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(p.contratado)}</TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.lista.length === 0 && (
@@ -570,7 +574,7 @@ const Relatorios = () => {
                 <XAxis dataKey="date" stroke={ct.axisColor} fontSize={10} />
                 <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
-                <Bar dataKey="faturamento" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="faturamento" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
@@ -606,7 +610,7 @@ const Relatorios = () => {
                 <XAxis dataKey="week" stroke={ct.axisColor} fontSize={10} />
                 <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [formatCurrency(v), "Faturamento"]} />
-                <Bar dataKey="faturamento" fill="hsl(35,100%,55%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="faturamento" fill="hsl(var(--brand-300))" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
@@ -685,7 +689,7 @@ const Relatorios = () => {
                 <XAxis type="number" stroke={ct.axisColor} allowDecimals={false} />
                 <YAxis type="category" dataKey="procedimento" stroke={ct.axisColor} fontSize={10} width={120} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Contratações"]} />
-                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Contratações" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="qtd" fill="hsl(var(--primary))" name="Contratações" radius={[0, 6, 6, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-4 overflow-x-auto max-h-64 overflow-y-auto">
@@ -733,7 +737,7 @@ const Relatorios = () => {
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{r.nome}</TableCell>
                       <TableCell>{r.qtdPagamentos}</TableCell>
-                      <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
+                      <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -759,7 +763,7 @@ const Relatorios = () => {
                 <XAxis dataKey="especialidade" stroke={ct.axisColor} fontSize={11} />
                 <YAxis stroke={ct.axisColor} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number) => [v, "Pagamentos"]} />
-                <Bar dataKey="qtd" fill="hsl(25,100%,50%)" name="Pagamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                <Bar dataKey="qtd" fill="hsl(var(--primary))" name="Pagamentos" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
               </BarChart>
             </ResponsiveContainer>
             <div className="overflow-x-auto">
@@ -814,7 +818,7 @@ const Relatorios = () => {
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
-                        <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -842,7 +846,7 @@ const Relatorios = () => {
                         <TableRow key={r.label}>
                           <TableCell className="font-medium">{r.label}</TableCell>
                           <TableCell>{r.qtdPacientes}</TableCell>
-                          <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
+                          <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -900,11 +904,11 @@ const Relatorios = () => {
               </div>
 
               <Tabs defaultValue="clinica" className="space-y-4">
-                <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="min-w-max">
+                <TabsList className="bg-secondary">
                   <TabsTrigger value="clinica">Por Clínica</TabsTrigger>
                   <TabsTrigger value="forma">Por Forma de Pgto</TabsTrigger>
                   <TabsTrigger value="lista">Lista Completa</TabsTrigger>
-                </TabsList></div>
+                </TabsList>
 
                 <TabsContent value="clinica">
                   <ResponsiveContainer width="100%" height={250}>
@@ -913,7 +917,7 @@ const Relatorios = () => {
                       <XAxis dataKey="clinica" stroke={ct.axisColor} fontSize={11} />
                       <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
-                      <Bar dataKey="total" fill={crmChartColors[0]} name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                      <Bar dataKey="total" fill="hsl(var(--primary))" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
                   </ResponsiveContainer>
                   <div className="mt-4 overflow-x-auto">
@@ -939,7 +943,7 @@ const Relatorios = () => {
                       <XAxis dataKey="forma" stroke={ct.axisColor} fontSize={11} />
                       <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
-                      <Bar dataKey="total" fill={crmChartColors[0]} name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                      <Bar dataKey="total" fill="hsl(var(--brand-300))" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
                   </ResponsiveContainer>
                   <div className="mt-4 overflow-x-auto">
@@ -1120,7 +1124,7 @@ const Relatorios = () => {
                       <YAxis stroke={ct.axisColor} fontSize={12} allowDecimals={false} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} formatter={(v: any, name) => name === "valor" ? formatCurrency(Number(v)) : `${v} pacientes`} />
                       <Legend />
-                      <Bar dataKey="pacientes" name="Pacientes" fill="hsl(25,100%,50%)" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                      <Bar dataKey="pacientes" name="Pacientes" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
                   </ResponsiveContainer>
                 </>
@@ -1161,7 +1165,9 @@ const Relatorios = () => {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Não entram manutenções de ortodontia nem pagamentos marcados como não-marketing.
+                {receitaRecorrenteLabel
+                  ? `Não entram pagamentos de ${receitaRecorrenteLabel.charAt(0).toLocaleLowerCase("pt-BR")}${receitaRecorrenteLabel.slice(1)} nem os marcados como não-marketing.`
+                  : "Não entram pagamentos marcados como não-marketing."}
               </p>
 
 
@@ -1181,7 +1187,7 @@ const Relatorios = () => {
                       <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => l.paciente_id && navigate(`/pacientes/${l.paciente_id}`)}>
                         <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{l.paciente}</TableCell>
                         <TableCell>{l.data ? new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</TableCell>
-                        <TableCell className="text-success">{formatCurrency(l.valor)}</TableCell>
+                        <TableCell className="text-green-400">{formatCurrency(l.valor)}</TableCell>
                         <TableCell className="text-muted-foreground">{l.clinica}</TableCell>
                       </TableRow>
                     ))}
@@ -1202,18 +1208,24 @@ const Relatorios = () => {
 
   return (
     <div className="animate-fade-in space-y-6" ref={reportRef}>
-      <PageHeader title="Relatórios" subtitle="Selecione o tipo de relatório que deseja visualizar" actions={selectedReport ? (
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">Selecione o tipo de relatório que deseja visualizar</p>
+        </div>
+        {selectedReport && (
           <Button variant="outline" size="sm" onClick={() => setSelectedReport(null)}>
             <ArrowLeft size={14} className="mr-1" /> Voltar
           </Button>
-        ) : undefined} />
+        )}
+      </div>
 
       {/* Filters */}
-      <Card className="flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Clínica</span>
           <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
-          <SelectTrigger className="w-full bg-surface-sunken sm:w-[200px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas</SelectItem>
               {clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
@@ -1222,21 +1234,21 @@ const Relatorios = () => {
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">De</span>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full bg-surface-sunken sm:w-[160px]" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Até</span>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full bg-surface-sunken sm:w-[160px]" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
         </div>
-      </Card>
+      </div>
 
       {/* Report selection or content */}
       {!selectedReport ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {reportTypes.map((rt) => (
-            <Card key={rt.key} className="cursor-pointer rounded-card border-border shadow-card transition-colors hover:border-primary/40 hover:shadow-float" onClick={() => setSelectedReport(rt.key)}>
+            <Card key={rt.key} className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setSelectedReport(rt.key)}>
               <CardContent className="p-4 flex items-start gap-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><rt.icon size={20} /></span>
+                <rt.icon size={20} className="text-primary mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="font-semibold text-sm">{rt.label}</p>
                   <p className="text-xs text-muted-foreground">{rt.desc}</p>
