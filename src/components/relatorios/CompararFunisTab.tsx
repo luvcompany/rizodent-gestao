@@ -186,7 +186,7 @@ export default function CompararFunisTab() {
         <>
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="flex items-center gap-4 p-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-success-soft text-success-soft-foreground">
                 <Trophy size={18} />
               </div>
               <div className="min-w-0">
@@ -218,7 +218,7 @@ export default function CompararFunisTab() {
                   <>
                     <p className="truncate text-lg font-semibold text-foreground">{maiorReceita.nome}</p>
                     <p className="text-xs text-muted-foreground">
-                      {brl.format(maiorReceita.receita)} · {fmtInt(maiorReceita.pagantes)} paciente{maiorReceita.pagantes === 1 ? "" : "s"} pagante{maiorReceita.pagantes === 1 ? "" : "s"}
+                      <span className="whitespace-nowrap">{brl.format(maiorReceita.receita)}</span> · {fmtInt(maiorReceita.pagantes)} paciente{maiorReceita.pagantes === 1 ? "" : "s"} pagante{maiorReceita.pagantes === 1 ? "" : "s"}
                     </p>
                   </>
                 ) : (
@@ -275,23 +275,23 @@ export default function CompararFunisTab() {
                         <TableCell className="text-right tabular-nums">{fmtInt(x.contratados)}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           <span className="font-semibold text-foreground">{fech === null ? "—" : fmtPct(x.contratados, x.compareceram)}</span>
-                          <Barra valor={fech ?? 0} max={maxFech} cor="bg-emerald-500" />
+                          <Barra valor={fech ?? 0} max={maxFech} cor="bg-success" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           <span
-                            className={acimaDeCem ? "font-semibold text-amber-600 dark:text-amber-400" : "font-semibold text-foreground"}
+                            className={acimaDeCem ? "font-semibold text-warning" : "font-semibold text-foreground"}
                             title={acimaDeCem ? "Passou de 100% porque os dois lados são safras diferentes: em cima, consultas do período de leads de qualquer época; embaixo, só os leads criados no período. Para comparar procedimentos, use Fechamento." : undefined}
                           >
                             {conv === null ? "—" : fmtPct(x.contratados, x.leads_novos)}
                             {acimaDeCem && <span className="ml-0.5">*</span>}
                           </span>
-                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-sky-500" />
+                          <Barra valor={conv ?? 0} max={maxConv} cor="bg-info" />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          <span className="font-semibold text-foreground">{x.receita > 0 ? brl.format(x.receita) : "—"}</span>
+                          <span className="whitespace-nowrap font-semibold text-foreground">{x.receita > 0 ? brl.format(x.receita) : "—"}</span>
                           <Barra valor={x.receita} max={maxReceita} cor="bg-primary" />
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">{x.pagantes > 0 ? brl.format(x.receita / x.pagantes) : "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right tabular-nums">{x.pagantes > 0 ? brl.format(x.receita / x.pagantes) : "—"}</TableCell>
                         <TableCell className="text-right tabular-nums">{fmtInt(x.contratados_etapa)}</TableCell>
                       </TableRow>
                     );
