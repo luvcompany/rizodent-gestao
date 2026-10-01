@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Instagram, CheckCircle, Power, Trash2, Facebook, Plus, Loader2 } from "lucide-react";
+import { StatusPill } from "@/components/crm-ui";
 
 const IG_PURPLE = "#833AB4";
 const FB_BLUE = "#1877F2";
@@ -324,7 +325,7 @@ export default function InstagramAccountsSection() {
       {hasAccounts && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {accounts.map((acc) => (
-            <Card key={acc.id}>
+            <Card key={acc.id} className="border-border/60 bg-card">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2 rounded-lg" style={{ backgroundColor: `${IG_PURPLE}1A` }}>
@@ -333,13 +334,13 @@ export default function InstagramAccountsSection() {
                   <div className="flex items-center gap-2">
                     <Switch checked={acc.is_active} onCheckedChange={() => handleToggle(acc)} />
                     {acc.is_active ? (
-                      <Badge className="bg-green-900/30 text-green-400 border-0">
+                    <StatusPill tone="success">
                         <CheckCircle size={12} className="mr-1" /> Ativa
-                      </Badge>
+                    </StatusPill>
                     ) : (
-                      <Badge variant="secondary" className="text-muted-foreground">
+                    <StatusPill tone="purple">
                         <Power size={12} className="mr-1" /> Inativa
-                      </Badge>
+                    </StatusPill>
                     )}
                   </div>
                 </div>

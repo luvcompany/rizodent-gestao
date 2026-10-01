@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Phone, Loader2, CheckCircle2, X, RotateCcw } from "lucide-react";
+import { StatusPill } from "@/components/crm-ui";
 
 // Seção da página de Integrações: telefonia por voz via Api4Com.
 // Complementar à ligação por WhatsApp. A ligação em si é feita pela extensão do
@@ -91,7 +92,7 @@ export default function Api4ComSection() {
         <span className="inline-flex items-center justify-center p-1.5 rounded-lg bg-primary/10"><Phone size={16} className="text-primary" /></span>
         Telefonia (Api4Com)
       </h2>
-      <Card className="max-w-2xl">
+      <Card className="max-w-3xl border-border/60 bg-card">
         <CardContent className="p-5 space-y-4">
           <p className="text-sm text-muted-foreground">
             Ligações por telefone (voz) integradas ao CRM — <b>separado</b> da chamada por WhatsApp, que continua normal.
@@ -103,17 +104,17 @@ export default function Api4ComSection() {
             <div className="text-muted-foreground text-sm"><Loader2 className="inline animate-spin mr-2" size={14} /> Carregando…</div>
           ) : status?.connected ? (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-500/5 p-3">
-                <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success-soft p-4">
+                <CheckCircle2 size={18} className="shrink-0 text-success-soft-foreground" />
                 <div className="text-sm">
-                  <p className="font-medium text-foreground">Conectada</p>
+                  <StatusPill tone="success">Conectada</StatusPill>
                   <p className="text-muted-foreground text-xs">Conta: {status.email} · Webhook: {status.webhook_registered ? "registrado" : "não registrado"}</p>
                 </div>
               </div>
 
               {!status.webhook_registered && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
-                  <p className="text-sm font-medium text-amber-700 dark:text-amber-500">Webhook não registrado</p>
+                <div className="space-y-2 rounded-xl border border-warning/40 bg-warning-soft p-4">
+                  <StatusPill tone="warning">Webhook não registrado</StatusPill>
                   <p className="text-xs text-muted-foreground">Sem o webhook, as ligações não aparecem automaticamente em Ligações. Clique para registrar (não precisa digitar a senha de novo).</p>
                   {status.webhook_error && (
                     <p className="text-[11px] text-muted-foreground break-words"><b>Detalhe:</b> {status.webhook_error}</p>

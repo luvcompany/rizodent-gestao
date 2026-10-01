@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle, Power, Trash2, Plus, Settings, XCircle, GitBranch } from "lucide-react";
 import whatsappLogo from "@/assets/whatsapp-logo.png";
 import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbeddedSignupButton";
+import { StatusPill } from "@/components/crm-ui";
 
 const WA_GREEN = "#25D366";
 
@@ -140,10 +141,10 @@ export default function WhatsAppAccountsSection({
             const isDisabled = entry.status === "disabled";
             const pName = pipelines.find((p) => p.id === c.pipeline_id)?.name;
             return (
-              <Card key={entry.key}>
+              <Card key={entry.key} className="border-border/60 bg-card">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="p-2 rounded-lg" style={{ backgroundColor: `${WA_GREEN}1A` }}>
+                    <div className="rounded-xl bg-primary-soft p-2.5">
                       <img src={whatsappLogo} alt="WhatsApp" width={28} height={28} className="rounded-full" />
                     </div>
                     <div className="flex items-center gap-2">
@@ -153,17 +154,17 @@ export default function WhatsAppAccountsSection({
                         onClick={(e) => onToggle(entry, e as unknown as React.MouseEvent)}
                       />
                       {isConnected ? (
-                        <Badge className="bg-green-900/30 text-green-400 border-0">
+                        <StatusPill tone="success">
                           <CheckCircle size={12} className="mr-1" /> Ativo
-                        </Badge>
+                        </StatusPill>
                       ) : isDisabled ? (
-                        <Badge variant="secondary" className="text-muted-foreground">
+                        <StatusPill tone="purple">
                           <Power size={12} className="mr-1" /> Desativado
-                        </Badge>
+                        </StatusPill>
                       ) : (
-                        <Badge variant="secondary" className="text-muted-foreground">
+                        <StatusPill tone="warning">
                           <XCircle size={12} className="mr-1" /> Não conectado
-                        </Badge>
+                        </StatusPill>
                       )}
                     </div>
                   </div>

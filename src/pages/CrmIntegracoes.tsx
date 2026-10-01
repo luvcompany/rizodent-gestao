@@ -25,6 +25,7 @@ import InstagramAccountsSection from "@/components/integrations/InstagramAccount
 import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbeddedSignupButton";
 import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsSection";
 import Api4ComSection from "@/components/integrations/Api4ComSection";
+import { PageHeader, StatusPill } from "@/components/crm-ui";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -389,20 +390,17 @@ export default function CrmIntegracoes() {
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado!"); };
 
   const FieldStatus = ({ value }: { value: string | undefined }) =>
-    value ? <Check size={14} className="text-green-400" /> : <AlertTriangle size={14} className="text-yellow-400" />;
+    value ? <Check size={14} className="text-success" /> : <AlertTriangle size={14} className="text-warning" />;
 
   const selectedPipeline = pipelines.find(p => p.id === editEntry?.config.pipeline_id);
 
   return (
-    <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
-      <div className="flex-shrink-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">Integrações</h1>
-          <p className="text-sm text-muted-foreground">Conecte canais externos ao seu CRM</p>
-        </div>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex-shrink-0 pb-5">
+        <PageHeader title="Integrações" subtitle="Conecte canais externos ao seu CRM" />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto pb-8">
         {(() => {
           const officialEntries = whatsappEntries.filter(e => e.key.startsWith("whatsapp_es_"));
           const liteEntries = whatsappEntries.filter(e => !e.key.startsWith("whatsapp_es_"));
@@ -469,17 +467,17 @@ export default function CrmIntegracoes() {
                                   onClick={(e) => handleToggleIntegration(entry, e as unknown as React.MouseEvent)}
                                 />
                                 {isConnected ? (
-                                  <Badge className="bg-green-900/30 text-green-400 border-0">
+                                  <StatusPill tone="success">
                                     <CheckCircle size={12} className="mr-1" /> Ativo
-                                  </Badge>
+                                  </StatusPill>
                                 ) : isDisabled ? (
-                                  <Badge variant="secondary" className="text-muted-foreground">
+                                  <StatusPill tone="purple">
                                     <Power size={12} className="mr-1" /> Desativado
-                                  </Badge>
+                                  </StatusPill>
                                 ) : (
-                                  <Badge variant="secondary" className="text-muted-foreground">
+                                  <StatusPill tone="warning">
                                     <XCircle size={12} className="mr-1" /> Não conectado
-                                  </Badge>
+                                  </StatusPill>
                                 )}
                               </div>
                             </div>
@@ -533,8 +531,8 @@ export default function CrmIntegracoes() {
               <Card key={intg.key} className="opacity-50 cursor-not-allowed">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-3">
-                    <div className="p-2 rounded-lg bg-primary/10"><Icon size={24} className="text-primary" /></div>
-                    <Badge variant="secondary" className="text-muted-foreground">Em breve</Badge>
+                    <div className="rounded-xl bg-primary-soft p-2.5"><Icon size={24} className="text-primary-soft-foreground" /></div>
+                    <StatusPill tone="slate">Em breve</StatusPill>
                   </div>
                   <h3 className="font-semibold text-foreground mb-1">{intg.name}</h3>
                   <p className="text-sm text-muted-foreground">{intg.desc}</p>
