@@ -61,6 +61,8 @@
     --ring: 221 83% 53%;
 
     --radius: 0.75rem;
+    --radius-card: 1rem;
+    --radius-control: 0.75rem;
 
     --sidebar-background: var(--primary-h) 22% 10%;
     --sidebar-foreground: 210 20% 92%;
@@ -76,6 +78,7 @@
     --gradient-orange: linear-gradient(135deg, hsl(25 100% 50%) 0%, hsl(35 100% 55%) 100%);
     --shadow-card: 0 8px 24px -12px hsl(222 30% 12% / 0.14);
     --shadow-float: 0 18px 48px -18px hsl(222 30% 12% / 0.28);
+    --shadow-primary: 0 8px 20px -10px hsl(var(--primary) / 0.6);
     --shadow-orange: 0 4px 20px -4px hsla(25, 100%, 50%, 0.25);
   }
 
@@ -203,6 +206,8 @@ body.crm-ui-active .crm-ui-sheet[data-side="top"] { border-radius: 0 0 var(--rad
 body.crm-ui-active .crm-ui-sheet[data-side="bottom"] { border-radius: var(--radius-card) var(--radius-card) 0 0; }
 body.crm-ui-active .crm-ui-table-header { background: hsl(var(--surface-sunken)); }
 body.crm-ui-active .crm-ui-table-header th { height: 2.75rem; font-size: 0.75rem; }
+body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] { border-radius: 9999px; background: hsl(var(--surface-sunken)); }
+body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] > .crm-ui-tabs-trigger { border-radius: 9999px; }
 
 /* O picker do emoji-mart tem border-radius próprio, maior que o do popover.
    Dentro do nosso popover (que já é arredondado e recorta com overflow-hidden)
