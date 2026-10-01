@@ -11,8 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, ToggleLeft, ToggleRight, Stethoscope, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { StatusPill } from "@/components/crm-ui";
-import { PageHeader } from "@/components/crm-ui";
+import { useVocab } from "@/hooks/useVocab";
+import { comValorAtual } from "@/hooks/useOpcoesDoTenant";
 
 type TipoProcedimento = {
   id: string;
@@ -25,9 +25,14 @@ type TipoProcedimento = {
   created_at: string;
 };
 
-const ESPECIALIDADES = ["CIRURGIA", "CLÍNICO GERAL", "ENDODONTIA", "ESTÉTICA", "IMPLANTODONTIA", "ORTODONTIA"];
-
 const TiposProcedimento = () => {
+  // Especialidades e termos vêm do segmento do cliente. Lista vazia = o
+  // segmento não trabalha com especialidade: o campo some e fica opcional.
+  const vocab = useVocab();
+  const especialidades = vocab.especialidades;
+  const usaEspecialidade = especialidades.length > 0;
+  const servicoMinusculo = vocab.servico.toLowerCase();
+  const servicosMinusculo = vocab.servicoPlural.toLowerCase();
   const [procedimentos, setProcedimentos] = useState<TipoProcedimento[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -81,15 +86,15 @@ const TiposProcedimento = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nome.trim()) { toast.error("Informe o nome do procedimento"); return; }
-    if (!espForm) { toast.error("Selecione a especialidade"); return; }
+    if (!nome.trim()) { toast.error("Informe o nome"); return; }
+    if (usaEspecialidade && !espForm) { toast.error("Selecione a especialidade"); return; }
     setSaving(true);
     try {
       const payload = {
         nome: nome.trim(),
         descricao: descricao.trim() || null,
         valor_referencia: valorReferencia ? parseFloat(valorReferencia) : 0,
-        especialidade: espForm,
+        especialidade: espForm || null,
         especialidade_secundaria: espSecForm || null,
       };
 
@@ -99,14 +104,14 @@ const TiposProcedimento = () => {
         const { data, error } = await supabase.from("tipos_procedimento").update(payload).eq("id", editingId).select("id");
         if (error) throw error;
         if (!data || data.length === 0) {
-          toast.error("Seu perfil não tem permissão para editar procedimentos.");
+          toast.error(`Seu perfil não tem permissão para editar ${servicosMinusculo}.`);
           return;
         }
-        toast.success("Procedimento atualizado!");
+        toast.success("Cadastro atualizado!");
       } else {
         const { error } = await supabase.from("tipos_procedimento").insert(payload);
         if (error) throw error;
-        toast.success("Procedimento cadastrado!");
+        toast.success("Cadastro salvo!");
       }
       setDialogOpen(false);
       resetForm();
@@ -123,10 +128,10 @@ const TiposProcedimento = () => {
       const { data, error } = await supabase.from("tipos_procedimento").update({ ativo: !p.ativo }).eq("id", p.id).select("id");
       if (error) throw error;
       if (!data || data.length === 0) {
-        toast.error("Seu perfil não tem permissão para alterar procedimentos.");
+        toast.error(`Seu perfil não tem permissão para alterar ${servicosMinusculo}.`);
         return;
       }
-      toast.success(p.ativo ? "Procedimento desativado" : "Procedimento ativado");
+      toast.success(p.ativo ? "Cadastro desativado" : "Cadastro ativado");
       fetchData();
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -147,18 +152,27 @@ const TiposProcedimento = () => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <PageHeader title="Tipos de procedimento" subtitle={`${procedimentos.length} procedimentos cadastrados`} actions={<Button onClick={openNew}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{vocab.servicoPlural}</h1>
+          <p className="text-sm text-muted-foreground">
+            {procedimentos.length} {procedimentos.length === 1 ? servicoMinusculo : servicosMinusculo} no cadastro
+          </p>
+        </div>
+        <Button onClick={openNew} className="gradient-brand text-primary-foreground font-semibold shadow-brand hover:opacity-90">
           <Plus size={16} className="mr-2" />
-          Novo Procedimento
-        </Button>} />
+          Adicionar {servicoMinusculo}
+        </Button>
+      </div>
 
-      {/* Specialty summary cards */}
+      {/* Resumo por especialidade (só quando o segmento usa especialidade) */}
+      {usaEspecialidade && (
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-        {ESPECIALIDADES.map((esp) => (
+        {especialidades.map((esp) => (
           <button
             key={esp}
             onClick={() => setFiltroEsp(filtroEsp === esp ? "todas" : esp)}
-            className={`rounded-xl border p-3 text-center transition-colors ${
+            className={`rounded-lg border p-3 text-center transition-colors ${
               filtroEsp === esp
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-border bg-card text-foreground hover:border-primary/30"
@@ -169,41 +183,44 @@ const TiposProcedimento = () => {
           </button>
         ))}
       </div>
+      )}
 
       {/* Filters */}
-      <Card className="border-border/60 bg-card">
+      <Card className="gradient-card border-border shadow-card">
         <CardContent className="pt-4 pb-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={`grid gap-4 ${usaEspecialidade ? "sm:grid-cols-2" : ""}`}>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar procedimento..."
+                placeholder="Buscar pelo nome..."
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 className="bg-secondary border-border pl-10"
               />
             </div>
-            <Select value={filtroEsp} onValueChange={setFiltroEsp}>
-              <SelectTrigger className="bg-secondary border-border">
-                <Filter size={16} className="mr-2 text-primary" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as Especialidades</SelectItem>
-                {ESPECIALIDADES.map((e) => (
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {usaEspecialidade && (
+              <Select value={filtroEsp} onValueChange={setFiltroEsp}>
+                <SelectTrigger className="bg-secondary border-border">
+                  <Filter size={16} className="mr-2 text-primary" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as especialidades</SelectItem>
+                  {comValorAtual(especialidades, filtroEsp === "todas" ? null : filtroEsp).map((e) => (
+                    <SelectItem key={e} value={e}>{e}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-border/60 bg-card">
+      <Card className="gradient-card border-border shadow-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Stethoscope size={18} className="text-primary" />
-            Procedimentos {filtroEsp !== "todas" ? `— ${filtroEsp}` : "Cadastrados"}
+            {vocab.servicoPlural}{filtroEsp !== "todas" ? ` — ${filtroEsp}` : ""}
             <Badge variant="outline" className="ml-2 bg-primary/10 text-primary border-primary/30">
               {filtered.length}
             </Badge>
@@ -213,14 +230,14 @@ const TiposProcedimento = () => {
           {loading ? (
             <p className="text-muted-foreground text-sm">Carregando...</p>
           ) : filtered.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Nenhum procedimento encontrado.</p>
+            <p className="text-muted-foreground text-sm">Nenhum cadastro encontrado.</p>
           ) : (
             <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Procedimento</TableHead>
-                    <TableHead>Especialidade</TableHead>
+                    <TableHead>{vocab.servico}</TableHead>
+                    {usaEspecialidade && <TableHead>Especialidade</TableHead>}
                     <TableHead>Valor Ref.</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Ações</TableHead>
@@ -235,23 +252,32 @@ const TiposProcedimento = () => {
                           {p.descricao && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{p.descricao}</p>}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
-                            {p.especialidade || "—"}
-                          </Badge>
-                          {p.especialidade_secundaria && (
-                            <Badge variant="outline" className="text-xs bg-accent/10 text-accent border-accent/30">
-                              {p.especialidade_secundaria}
+                      {usaEspecialidade && (
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                              {p.especialidade || "—"}
                             </Badge>
-                          )}
-                        </div>
-                      </TableCell>
+                            {p.especialidade_secundaria && (
+                              <Badge variant="outline" className="text-xs bg-accent/10 text-accent border-accent/30">
+                                {p.especialidade_secundaria}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">{formatCurrency(p.valor_referencia)}</TableCell>
                       <TableCell>
-                        <StatusPill tone={p.ativo ? "success" : "slate"}>
+                        <Badge
+                          variant="outline"
+                          className={
+                            p.ativo
+                              ? "bg-green-500/20 text-green-400 border-green-500/30"
+                              : "bg-muted text-muted-foreground border-border"
+                          }
+                        >
                           {p.ativo ? "Ativo" : "Inativo"}
-                        </StatusPill>
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -276,34 +302,37 @@ const TiposProcedimento = () => {
       <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingId ? "Editar Procedimento" : "Novo Procedimento"}</DialogTitle>
+            <DialogTitle>{editingId ? `Editar ${servicoMinusculo}` : `Adicionar ${servicoMinusculo}`}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>Nome *</Label>
-              <Input placeholder="Ex: Implante Dentário" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required />
+              <Input placeholder="Ex.: Consulta" value={nome} onChange={(e) => setNome(e.target.value)} className="bg-secondary border-border" required />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Especialidade *</Label>
-                <Select value={espForm} onValueChange={setEspForm}>
-                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    {ESPECIALIDADES.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
-                  </SelectContent>
-                </Select>
+            {usaEspecialidade && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Especialidade *</Label>
+                  <Select value={espForm} onValueChange={setEspForm}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {/* Mantém a especialidade já gravada, mesmo fora da lista do segmento. */}
+                      {comValorAtual(especialidades, espForm).map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Especialidade secundária</Label>
+                  <Select value={espSecForm || "nenhuma"} onValueChange={(v) => setEspSecForm(v === "nenhuma" ? "" : v)}>
+                    <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Opcional" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nenhuma">Nenhuma</SelectItem>
+                      {comValorAtual(especialidades, espSecForm).filter((e) => e !== espForm).map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Especialidade Secundária</Label>
-                <Select value={espSecForm || "nenhuma"} onValueChange={(v) => setEspSecForm(v === "nenhuma" ? "" : v)}>
-                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Opcional" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhuma">Nenhuma</SelectItem>
-                    {ESPECIALIDADES.filter(e => e !== espForm).map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            )}
             <div className="space-y-2">
               <Label>Descrição</Label>
               <Textarea placeholder="Descrição opcional" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="bg-secondary border-border" rows={3} />
@@ -312,7 +341,7 @@ const TiposProcedimento = () => {
               <Label>Valor de Referência (R$)</Label>
               <Input type="number" step="0.01" min="0" placeholder="0,00" value={valorReferencia} onChange={(e) => setValorReferencia(e.target.value)} className="bg-secondary border-border" />
             </div>
-            <Button type="submit" disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+            <Button type="submit" disabled={saving} className="w-full gradient-brand text-primary-foreground font-semibold shadow-brand hover:opacity-90">
               {saving ? "Salvando..." : editingId ? "Atualizar" : "Cadastrar"}
             </Button>
           </form>

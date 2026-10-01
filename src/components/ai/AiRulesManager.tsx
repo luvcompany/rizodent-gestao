@@ -15,7 +15,9 @@ type Rule = {
   active: boolean;
 };
 
-export default function AiRulesManager() {
+/** Nome configurado da assistente (ai_assistant_config.assistant_display_name), passado pela tela de IA. */
+export default function AiRulesManager({ nomeAssistente }: { nomeAssistente?: string } = {}) {
+  const nome = nomeAssistente?.trim() || "Assistente";
   const { userRole } = useAuth();
   // Excluir orientação é restrito no banco: a regra nega o pós-venda sem
   // devolver erro, então o botão nem aparece para ele.
@@ -88,8 +90,8 @@ export default function AiRulesManager() {
         <CardTitle className={`text-base ${color}`}>{title}</CardTitle>
         <CardDescription>
           {kind === "diretriz"
-            ? "Coisas que a Bia SEMPRE deve fazer. Injetadas no prompt antes da base de conhecimento."
-            : "Coisas que a Bia NUNCA pode fazer. Têm prioridade máxima sobre qualquer outra regra."}
+            ? `O que ${nome} SEMPRE deve fazer. Entra no prompt antes da base de conhecimento.`
+            : `O que ${nome} NUNCA pode fazer. Tem prioridade máxima sobre qualquer outra regra.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -139,7 +141,7 @@ export default function AiRulesManager() {
     <div className="space-y-4">
       <Section title="Diretrizes (sempre faça)" color="text-primary" items={dirs} value={newDir} setValue={setNewDir} kind="diretriz" />
       <Section title="Restrições (nunca faça)" color="text-destructive" items={rests} value={newRest} setValue={setNewRest} kind="restricao" />
-      <p className="text-[11px] text-muted-foreground">As alterações valem para a próxima sugestão gerada pela Bia.</p>
+      <p className="text-[11px] text-muted-foreground">As alterações valem para a próxima sugestão gerada por {nome}.</p>
     </div>
   );
 }

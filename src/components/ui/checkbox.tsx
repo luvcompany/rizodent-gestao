@@ -4,6 +4,11 @@ import { Check } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+/*
+ * Pele do CRM (F2, marcador crm-checkbox): quadrado com raio de até 5px só sob
+ * a casca do CRM. Fora dela o raio é o rounded-sm de antes (raio − 4px).
+ */
+
 const Checkbox = React.forwardRef<
   React.ElementRef<typeof CheckboxPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
@@ -11,7 +16,7 @@ const Checkbox = React.forwardRef<
   <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+      "crm-checkbox peer h-4 w-4 shrink-0 rounded-[var(--crm-checkbox-radius,calc(var(--radius)-4px))] border border-primary ring-offset-background data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     {...props}

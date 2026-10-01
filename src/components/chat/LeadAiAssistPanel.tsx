@@ -124,7 +124,7 @@ export default function LeadAiAssistPanel({ leadId, leadName, trigger }: Props) 
             <Button
               onClick={() => run(tab, !!result)}
               disabled={loading || (tab === "ask" && !question.trim())}
-              className="gradient-orange text-primary-foreground"
+              className="gradient-brand text-primary-foreground"
               size="sm"
             >
               {loading ? <Loader2 size={14} className="animate-spin mr-2" /> : <Sparkles size={14} className="mr-2" />}

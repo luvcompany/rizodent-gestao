@@ -15,6 +15,8 @@ import {
   defaultOperatorForField,
 } from "@/lib/automationConditions";
 import { supabase } from "@/integrations/supabase/client";
+import { useServicosDoTenant, comValorAtual } from "@/hooks/useOpcoesDoTenant";
+import { useVocab } from "@/hooks/useVocab";
 
 // Operadores oferecidos por tipo de campo (o avaliador suporta os 12).
 const NO_VALUE_OPERATORS: ConditionOperator[] = ["is_empty", "is_not_empty", "is_true", "is_false"];
@@ -35,10 +37,14 @@ const FIELD_OPTIONS: ConditionField[] = [
   "source", "has_ad", "tags", "cidade", "servico_interesse", "value", "nome_anuncio", "ad_account_name", "assigned_to",
 ];
 
-// Static option presets per field
-const STATIC_FIELD_OPTIONS: Partial<Record<ConditionField, string[]>> = {
-  servico_interesse: ["PRÓTESE", "IMPLANTE", "ZIGOMÁTICO", "FACETA", "PROTOCÓLO", "OUTROS"],
-};
+// Serviço de interesse: os serviços cadastrados do cliente (tipos_procedimento
+// ativos); sem cadastro, a lista sugerida do segmento. O valor já salvo na
+// condição continua na lista mesmo se sair do cadastro.
+function useOpcoesDeServico(): string[] {
+  const servicosDoTenant = useServicosDoTenant();
+  const vocab = useVocab();
+  return servicosDoTenant.length > 0 ? servicosDoTenant : vocab.servicosInteresse;
+}
 
 // Fields that should be loaded dynamically from the database (distinct values).
 // `source` (Origem) é dinâmico p/ mostrar as origens REAIS dos leads — não uma
@@ -55,11 +61,14 @@ function useDynamicOptions(field: ConditionField | null) {
     (async () => {
       try {
         if (field === "assigned_to") {
-          const { data } = await supabase.from("profiles").select("id, full_name, email").not("id","in",HIDDEN_USER_IDS_PG).limit(500);
+          // profiles tem "nome" (full_name não existe: dava 42703, a lista vinha
+          // vazia e o campo virava texto livre pedindo o UUID do usuário).
+          const { data, error } = await supabase.from("profiles").select("id, nome, email").not("id","in",HIDDEN_USER_IDS_PG).limit(500);
+          if (error) console.error("[ConditionsBuilder] responsáveis:", error.message);
           if (cancelled) return;
           setOptions((data || []).map((u: any) => ({
             value: u.id,
-            label: u.full_name || u.email || u.id,
+            label: u.nome || u.email || u.id,
           })));
           return;
         }
@@ -100,9 +109,9 @@ function ValueSelector({
   onChange: (v: string) => void;
 }) {
   const dynamic = useDynamicOptions(field);
-  const staticOpts = STATIC_FIELD_OPTIONS[field];
-  const opts = staticOpts
-    ? staticOpts.map((v) => ({ value: v, label: v }))
+  const servicos = useOpcoesDeServico();
+  const opts = field === "servico_interesse"
+    ? comValorAtual(servicos, value == null ? null : String(value)).map((v) => ({ value: v, label: v }))
     : dynamic;
 
   if (opts.length > 0) {

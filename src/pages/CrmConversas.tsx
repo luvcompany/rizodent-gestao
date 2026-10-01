@@ -54,15 +54,14 @@ import ConversationInlineNote, { AddInlineNoteButton } from "@/components/chat/C
 import { useConversationNotes } from "@/hooks/useConversationNotes";
 import NotesBar from "@/components/chat/NotesBar";
 import PipelineStageSelector from "@/components/chat/PipelineStageSelector";
-import { StatusPill } from "@/components/crm-ui/StatusPill";
-import { SearchInput } from "@/components/crm-ui/SearchInput";
 
 import ConversationFilters, { type ConversationFilterValues, emptyFilters } from "@/components/chat/ConversationFilters";
 import ChannelBadgeIcon from "@/components/chat/ChannelBadgeIcon";
 import {
   Search, MessageSquare, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Bot, Square, UserRoundCog, Loader2, CheckCheck, MoreHorizontal, Star, Ban, Copy, Phone, BellRing
 } from "lucide-react";
-import { useWhatsappCall } from "@/contexts/WhatsappCallContext";
+import { nomeDoNumero, useWhatsappCall } from "@/contexts/WhatsappCallContext";
+import { useBrand } from "@/contexts/BrandContext";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getDateRangeFromFilter } from "@/components/ui/date-range-filter";
 import { isWithinInterval } from "date-fns";
@@ -320,10 +319,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
-  // Identificação do "mundo" (conexão de WhatsApp) na lista. Só aparece quando o
-  // tenant tem mais de um número ativo — com só o principal não poluímos a UI.
-  const [numberNames, setNumberNames] = useState<Record<string, string>>({});
-  const [multiNumberTenant, setMultiNumberTenant] = useState(false);
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -336,7 +331,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [selectedLead, setSelectedLead] = useState<LeadConversation | null>(null);
   const [newNote, setNewNote] = useState("");
   const isCrmMobile = useIsCrmMobile();
-  const { initiateCall, requestCallPermission, state: callState, podeLigarPorWhatsapp } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, state: callState, podeLigarPorWhatsapp, numerosVisiveis } = useWhatsappCall();
+  const { system: marcaSistema } = useBrand();
+  // Identificação do "mundo" (número de WhatsApp) na lista. Só aparece quando o
+  // usuário enxerga mais de um número — com um só não poluímos a UI. Lead sem
+  // carimbo (whatsapp_number_id NULL) aparece como "Sem número": na hora de
+  // enviar, o servidor usa o número do funil ou o número padrão.
+  const numberNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    (numerosVisiveis ?? []).forEach((n) => { map[n.id] = nomeDoNumero(n); });
+    return map;
+  }, [numerosVisiveis]);
+  const multiNumberTenant = (numerosVisiveis?.length ?? 0) > 1;
+  const rotuloNumeroDoLead = (whatsappNumberId: string | null | undefined): string | null =>
+    whatsappNumberId ? numberNames[whatsappNumberId] ?? null : "Sem número";
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelVisible, setLeftPanelVisible] = useState(true);
   // On mobile, force single-panel view: list | chat | lead details.
@@ -408,16 +416,22 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     if (!urlLeadId) return;
     setSelectedLeadId(urlLeadId);
     setMobileShowDetails(false);
-    // Se ainda não estiver no array `leads`, hidrata mínimo p/ o painel abrir.
+    // Se ainda não estiver no array `leads`, hidrata p/ o painel abrir — com as
+    // colunas e o mapeamento da lista (normalizeLead). last_direction NÃO é
+    // coluna: é derivada de last_inbound_at/last_outbound_at. Pedir
+    // "last_direction" dava 42703, data=null e o painel não abria.
     const inList = leads.find((l) => l.id === urlLeadId);
     if (!inList) {
       supabase
         .from("crm_leads")
-        .select("id, name, phone, stage_id, pipeline_id, assigned_to, notes, value, last_direction, last_message_at")
+        .select(LEAD_SELECT_COLS)
         .eq("id", urlLeadId)
         .maybeSingle()
-        .then(({ data }) => {
-          if (data) setSelectedLead((prev) => prev && prev.id === urlLeadId ? prev : (data as any));
+        .then(({ data, error }) => {
+          if (error) console.error("[CrmConversas] hidratação do ?lead=", error.message);
+          if (!data) return;
+          const lead = normalizeLead(data as unknown as LeadConversation) as LeadConversation;
+          setSelectedLead((prev) => prev && prev.id === urlLeadId ? prev : lead);
         });
     }
     // remove param sem recarregar
@@ -571,39 +585,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     fetchLeads();
   }, [tenant.id, cacheKey]);
 
-
-  // Conexões de WhatsApp visíveis (para o badge de "mundo" na lista)
-  useEffect(() => {
-    if (!tenant.id) return;
-    let cancelled = false;
-    (async () => {
-      const [{ data }, { data: legacyConfig }] = await Promise.all([
-        supabase
-          .from("whatsapp_numbers")
-          .select("id, display_name, phone_e164, is_active")
-          .eq("tenant_id", tenant.id)
-          .eq("is_active", true),
-        // O número principal (mundo legado) não vive em whatsapp_numbers: ele é
-        // a integração de chave "whatsapp_config".
-        supabase
-          .from("integrations")
-          .select("id")
-          .eq("tenant_id", tenant.id)
-          .eq("key", "whatsapp_config")
-          .neq("status", "disabled")
-          .maybeSingle(),
-      ]);
-      if (cancelled) return;
-      const rows = ((data as any[]) || []);
-      const map: Record<string, string> = {};
-      rows.forEach((n) => { map[n.id] = n.display_name || n.phone_e164 || "Conexão"; });
-      map["__legacy__"] = "Principal";
-      setNumberNames(map);
-      const legacyActive = !!legacyConfig;
-      setMultiNumberTenant(rows.length + (legacyActive ? 1 : 0) > 1);
-    })();
-    return () => { cancelled = true; };
-  }, [tenant.id]);
 
   // Server-side search: when user types, fetch matching leads beyond the initial 500-row cache
   // so older conversations (sorted lower by last_message_at) are still findable.
@@ -1297,7 +1278,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const rowVirtualizer = useVirtualizer({
     count: sortedFiltered.length,
     getScrollElement: () => listScrollRef.current,
-    estimateSize: () => 96,
+    estimateSize: () => 76,
     overscan: 8,
     getItemKey: (i) => sortedFiltered[i]?.id ?? i,
   });
@@ -1310,11 +1291,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   return (
     <div className="flex h-full w-full min-w-0 min-h-0 max-w-full flex-col overflow-hidden bg-background">
-      <ResizablePanelGroup key={isCrmMobile ? "m" : "d"} direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full gap-3 overflow-hidden px-3 pb-3">
+      <ResizablePanelGroup key={isCrmMobile ? "m" : "d"} direction="horizontal" className="h-full w-full min-w-0 min-h-0 max-w-full overflow-hidden">
         {/* LEFT PANEL - Leads list */}
         {effLeftVisible && (
         <><ResizablePanel defaultSize={isCrmMobile ? 100 : 24} minSize={isCrmMobile ? 100 : 20} maxSize={isCrmMobile ? 100 : 28} className="min-w-0 overflow-hidden">
-          <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
+          <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-hidden">
               {/* URL filter banner */}
               {(urlGhost || urlAppointmentStatus || urlInactiveDays) && (
                 <div className="flex items-center gap-1 mb-2 flex-wrap">
@@ -1324,10 +1305,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   <Button variant="ghost" size="sm" className="h-5 px-1 text-[10px]" onClick={() => setSearchParams({})}>✕ Limpar</Button>
                 </div>
               )}
-            <div className="flex-shrink-0 border-b border-border/60 px-4 py-4">
-              <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <h2 className="min-w-0 text-lg font-bold text-foreground">Conversas</h2>
-                <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <div className="flex-shrink-0 px-4 py-3 border-b border-border">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-bold text-foreground text-sm">Conversas</h2>
+                <div className="flex items-center gap-1">
                   <ConversationFilters
                     stages={chat.stages}
                     profiles={profiles}
@@ -1339,12 +1320,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     ads={ads}
                     channel={channel}
                     instagramAccounts={instagramAccounts}
-                    triggerClassName="h-10 rounded-control px-3 text-xs"
                   />
-                   <StatusPill tone="slate" className="h-6 min-w-7 justify-center px-2 text-[10px]">{sortedFiltered.length}{!fullyLoaded ? "…" : ""}</StatusPill>
+                   <span className="text-xs text-muted-foreground">{sortedFiltered.length}{!fullyLoaded ? "…" : ""}</span>
                    <DropdownMenu>
                      <DropdownMenuTrigger asChild>
-                       <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" aria-label="Ordenar conversas">
+                       <Button variant="ghost" size="icon" className="h-7 w-7">
                          <MoreHorizontal size={16} />
                        </Button>
                      </DropdownMenuTrigger>
@@ -1360,24 +1340,25 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                    </DropdownMenu>
                 </div>
               </div>
-              <div className="relative min-w-0">
-                <SearchInput
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
+                <Input
                   placeholder="Buscar por nome, telefone ou mensagem..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-10 min-w-0 text-sm"
+                  className="pl-8 h-8 text-sm bg-secondary"
                 />
                 {/* A busca por mensagem corta em 500 leads. Dizer isso é o que
                     separa "não existe mais nada" de "tem mais, refine". */}
                 {buscaNoTeto && (
-                  <p className="mt-1 px-0.5 text-[11px] leading-snug text-warning-soft-foreground">
+                  <p className="mt-1 px-0.5 text-[11px] leading-snug text-warning">
                     Mostrando as 500 conversas com a mensagem mais recente. Há mais — use uma palavra
                     mais específica para chegar nas antigas.
                   </p>
                 )}
                 {/* Search autocomplete dropdown */}
                 {search.trim().length >= 2 && sortedFiltered.length > 0 && sortedFiltered.length <= 8 && search.replace(/\D/g, "").length >= 3 && (
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-card border border-border bg-card shadow-float">
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
                     {filtered.slice(0, 6).map((lead) => (
                       <button
                         key={lead.id}
@@ -1399,7 +1380,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 )}
               </div>
             </div>
-            <div ref={listScrollRef} className="flex-1 overflow-y-auto bg-card px-2 py-1" style={{ contain: "strict" }}>
+            <div ref={listScrollRef} className="flex-1 overflow-y-auto" style={{ contain: "strict" }}>
               {loading ? (
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
               ) : sortedFiltered.length === 0 ? (
@@ -1424,44 +1405,48 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         ref={rowVirtualizer.measureElement}
                         data-index={vRow.index}
                         style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vRow.start}px)` }}
-                        className={`relative group flex items-start gap-0 overflow-hidden rounded-control border-b border-border/60 transition-colors before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full ${
+                        className={`relative group flex items-start gap-0 border-b border-border transition-colors ${
                           isActive
-                            ? "bg-primary-soft ring-1 ring-inset ring-primary/35 before:bg-primary"
+                            ? "bg-primary/15 border-l-2 border-l-primary"
                             : isUnread
-                              ? "bg-primary-soft/50 before:bg-primary/55 hover:bg-primary-soft/75"
-                              : "before:bg-transparent hover:bg-surface-sunken"
+                              ? "bg-brand-50 border-l-[3px] border-l-primary hover:bg-brand-100"
+                              : "hover:bg-secondary/50"
                         }`}>
                         <button
                           onClick={() => handleSelectLead(lead)}
                           className="flex-1 flex items-start gap-3 px-4 py-3 text-left min-w-0"
                         >
                           <div className="relative flex-shrink-0 mt-0.5">
-                            <Avatar className="h-11 w-11 ring-2 ring-card">
+                            <Avatar className="h-9 w-9">
                               {lead.instagram_profile_pic_url && (
                                 <AvatarImage src={lead.instagram_profile_pic_url} alt={lead.name} />
                               )}
                               <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
                             </Avatar>
-                            <div className="absolute -bottom-1 -left-1 rounded-full bg-card p-0.5 shadow-card">
-                              <ChannelBadgeIcon source={lead.source} size={18} />
+                            <div className="absolute -bottom-0.5 -left-0.5">
+                              <ChannelBadgeIcon source={lead.source} size={16} />
                             </div>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="flex min-w-0 flex-1 flex-wrap items-start gap-1.5 text-sm font-bold leading-5 text-foreground">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-sm text-foreground truncate flex items-center gap-1.5">
                                 {(lead as any).is_blocked && (
                                   <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 shrink-0" title="Lead bloqueado — só aparece na busca">Bloqueado</Badge>
                                 )}
-                                <span className="line-clamp-2 min-w-0 break-words">{lead.name}</span>
-                                {multiNumberTenant && numberNames[(lead as any).whatsapp_number_id ?? "__legacy__"] && (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[9px] px-1 py-0 h-4 shrink-0 font-normal"
-                                    title="Conexão de WhatsApp desta conversa"
-                                  >
-                                    {numberNames[(lead as any).whatsapp_number_id ?? "__legacy__"]}
-                                  </Badge>
-                                )}
+                                <span className="truncate">{lead.name}</span>
+                                {multiNumberTenant && (() => {
+                                  const rotulo = rotuloNumeroDoLead((lead as any).whatsapp_number_id);
+                                  if (!rotulo) return null;
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[9px] px-1 py-0 h-4 shrink-0 font-normal"
+                                      title="Número de WhatsApp desta conversa"
+                                    >
+                                      {rotulo}
+                                    </Badge>
+                                  );
+                                })()}
                               </span>
                               {(() => {
                                 // Na busca, o horário é o da MENSAGEM ENCONTRADA.
@@ -1492,7 +1477,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               {lead.source && (
-                                <Badge variant="slate" className="h-5 px-2 py-0 text-[9px]">
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">
                                   {["facebook_ad", "instagram_ad"].includes(lead.source.toLowerCase()) ? "anúncio" : lead.source}
                                 </Badge>
                               )}
@@ -1508,7 +1493,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                               } else {
                                 preview = basePreview || "Sem mensagens";
                               }
-                              return <p className="mt-1 line-clamp-2 break-words text-xs leading-4 text-muted-foreground">{preview}</p>;
+                              return <p className="text-xs text-muted-foreground truncate mt-0.5">{preview}</p>;
                             })()}
                             {(() => {
                               // Por que este lead apareceu: o termo está numa mensagem
@@ -1594,7 +1579,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                 setLeads(prev => prev.filter(l => l.id !== lead.id));
                                 if (selectedLeadId === lead.id) setSelectedLead(null as any);
                                 toast.success("Lead bloqueado");
-                                if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(lead.id, "bloquear");
+                                if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(lead.id, "bloquear", { nomeSistema: marcaSistema.name });
                               }}
                             >
                               <Ban size={14} className="mr-2" /> Bloquear lead
@@ -1610,16 +1595,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
           </div>
         </ResizablePanel>
-        {!isCrmMobile && <ResizableHandle className="bg-transparent" />}</>
+        {!isCrmMobile && <ResizableHandle />}</>
         )}
 
         {/* CENTER PANEL - Chat */}
         {effCenterVisible && (
         <ResizablePanel defaultSize={isCrmMobile ? 100 : (rightPanelVisible ? 46 : 76)} minSize={isCrmMobile ? 100 : 38} className="min-w-0 overflow-hidden">
           {selectedLeadId && selectedLead && selectedLead.id === selectedLeadId ? (
-            <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
+            <div className="flex min-w-0 min-h-0 h-full flex-col overflow-hidden relative">
               {/* Chat header */}
-              <div className="sticky top-0 z-20 flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-border/60 bg-card px-4 py-3">
+              <div className="flex-shrink-0 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1642,9 +1627,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     <ChannelBadgeIcon source={selectedLead.source} size={16} />
                   </div>
                 </div>
-                <div className="min-w-[12rem] flex-1">
-                  <div className="flex min-w-0 items-start gap-1.5">
-                    <div className="min-w-0 break-words text-sm font-bold leading-5 text-foreground">{selectedLead.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="font-semibold text-foreground text-sm truncate">{selectedLead.name}</div>
                     <button
                       type="button"
                       onClick={async () => {
@@ -1657,7 +1642,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       <Copy size={12} />
                     </button>
                   </div>
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
                     {selectedLead.instagram_username ? (
                       <span>@{selectedLead.instagram_username}</span>
                     ) : selectedLead.phone ? (
@@ -1689,29 +1674,30 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </span>
                     ) : null}
                     {currentStage && (
-                      <StatusPill tone="primary" className="max-w-full gap-1.5 text-[10px]">
+                      <span className="flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStage.color }} />
-                        <span className="break-words">{currentStage.name}</span>
-                      </StatusPill>
+                        {currentStage.name}
+                      </span>
                     )}
                     <ConversaFechadaBadge fechadaEm={selectedLead.conversa_fechada_em} />
                   </div>
                 </div>
                 {/* Ações do lead — sempre compactas (ícone + tooltip) p/ não estourar o header em telas/painéis estreitos */}
-                <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                 {getLeadChannel(selectedLead) !== "instagram" && selectedLead.phone && podeLigarPorWhatsapp((selectedLead as any).whatsapp_number_id) && (
                   <Tooltip delayDuration={200}>
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-success hover:bg-success-soft hover:text-success-soft-foreground"
+                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
                         disabled={callState.phase !== "idle"}
                         onClick={() =>
                           initiateCall({
                             toPhone: selectedLead.phone!,
                             leadId: selectedLead.id,
                             leadName: selectedLead.name,
+                            whatsappNumberId: (selectedLead as any).whatsapp_number_id ?? undefined,
                           })
                         }
                         aria-label="Ligar via WhatsApp"
@@ -1720,7 +1706,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-success" /> Ligar via WhatsApp</span>
+                      <span className="inline-flex items-center gap-1.5"><Phone size={14} className="text-emerald-600" /> Ligar via WhatsApp</span>
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -1735,7 +1721,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        onClick={() => requestCallPermission({ toPhone: selectedLead.phone!, leadId: selectedLead.id })}
+                        onClick={() => requestCallPermission({
+                          toPhone: selectedLead.phone!,
+                          leadId: selectedLead.id,
+                          whatsappNumberId: (selectedLead as any).whatsapp_number_id ?? undefined,
+                        })}
                         aria-label="Solicitar permissão de ligação"
                       >
                         <BellRing size={16} />
@@ -1772,7 +1762,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               <NotesBar notes={selectedLead.notes} onUpdateNotes={handleSaveNotes} />
 
               {/* Messages */}
-              <div className="flex-1 space-y-2 overflow-y-auto bg-surface-sunken p-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-2" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.03) 0%, transparent 50%)" }}>
                 <ChatActivityToast activities={chat.activityToasts} onDismiss={chat.dismissToast} />
 
                 {chat.loading ? (
@@ -1860,7 +1850,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {activeExecution && (
                 <div className="flex items-center gap-2 border-t border-border bg-muted/40 px-3 py-1.5">
                   <Badge variant="default" className="gap-1.5 bg-primary">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-success" />
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                     <Bot size={12} />
                     {activeExecution.bot_name || "Bot"}
                   </Badge>
@@ -1896,11 +1886,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
             </div>
           ) : selectedLeadId ? (
-            <div className="flex h-full items-center justify-center rounded-card border border-border/60 bg-card text-muted-foreground shadow-card">
+            <div className="flex items-center justify-center h-full text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center rounded-card border border-border/60 bg-card text-muted-foreground shadow-card">
+            <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
                 <MessageSquare size={48} className="mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Selecione uma conversa para visualizar</p>
@@ -1913,10 +1903,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
         {/* RIGHT PANEL - Lead details */}
         {effRightVisible && selectedLeadId && selectedLead && selectedLead.id === selectedLeadId && (
           <>
-            {!isCrmMobile && <ResizableHandle className="bg-transparent" />}
+            {!isCrmMobile && <ResizableHandle />}
             <ResizablePanel defaultSize={isCrmMobile ? 100 : 30} minSize={isCrmMobile ? 100 : 24} maxSize={isCrmMobile ? 100 : 34} className="min-w-0 overflow-hidden">
               <Suspense fallback={<SidePanelFallback />}>
-              <div className="lead-detail-panel flex h-full min-h-0 min-w-0 flex-col overflow-y-auto rounded-card border border-border/60 bg-card shadow-card">
+              <div className="flex min-w-0 min-h-0 h-full flex-col bg-card overflow-y-auto">
                 {isCrmMobile && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card sticky top-0 z-10">
                     <Button variant="ghost" size="sm" className="h-8 gap-1 -ml-1" onClick={() => isCrmMobile ? setMobileShowDetails(false) : setRightPanelVisible(false)}>
@@ -1924,19 +1914,19 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </Button>
                   </div>
                 )}
-                <div className="border-b border-border/60 px-5 py-5">
-                  <div className="mb-4 flex min-w-0 items-center gap-4">
-                    <Avatar className="h-16 w-16 shrink-0 ring-4 ring-primary-soft">
+                <div className="p-4 border-b border-border">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Avatar className="h-12 w-12">
                       {selectedLead.instagram_profile_pic_url && (
                         <AvatarImage src={selectedLead.instagram_profile_pic_url} alt={selectedLead.name} />
                       )}
-                      <AvatarFallback className="bg-primary-soft text-xl font-bold text-primary-soft-foreground">
+                      <AvatarFallback className="bg-primary/20 text-primary text-lg font-bold">
                         {selectedLead.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <h2 className="break-words text-lg font-bold leading-tight text-foreground">{selectedLead.name}</h2>
-                      <p className="mt-1 break-words text-sm text-muted-foreground">
+                      <h2 className="font-bold text-foreground text-sm">{selectedLead.name}</h2>
+                      <p className="text-xs text-muted-foreground">
                         {selectedLead.instagram_username
                           ? `@${selectedLead.instagram_username}`
                           : selectedLead.phone
@@ -1955,20 +1945,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     onLeadDeleted={() => { setSelectedLeadId(null); setSelectedLead(null); }}
                   />
 
-                </div>
-
-                <section className="border-b border-border/60 px-5 py-5">
-                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Funil e etapa</h3>
                   <PipelineStageSelector
                     stages={chat.stages}
                     currentStageId={selectedLead.stage_id}
                     onStageChange={handleStageChange}
                   />
 
-                </section>
-
-                <section className="border-b border-border/60 px-5 py-5">
-                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Procedimento</h3>
                   <LeadServiceField
                     leadId={selectedLead.id}
                     servicoInteresse={(selectedLead as any).servico_interesse || null}
@@ -1978,13 +1960,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     }}
                   />
 
-                </section>
-
-                <section className="border-b border-border/60 px-5 py-5">
                   {/* Responsible User Assignment */}
-                  <div>
-                    <h3 className="mb-3 text-[15px] font-semibold text-foreground">Responsável</h3>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  <div className="mt-3">
+                    <label className="text-xs font-medium text-muted-foreground uppercase mb-1 block">
                       <UserRoundCog size={12} className="inline mr-1" />
                       Responsável
                     </label>
@@ -1995,7 +1973,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         value={selectedLead.assigned_to || "unassigned"}
                         onValueChange={(val) => handleTransferLead(val)}
                       >
-                        <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
+                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
                           <SelectValue placeholder="Selecionar responsável" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2016,7 +1994,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         value={selectedLead.assigned_to || "unassigned"}
                         onValueChange={(val) => handleTransferLead(val)}
                       >
-                        <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
+                        <SelectTrigger className="bg-secondary border-border text-sm h-9">
                           <SelectValue placeholder="Selecionar responsável" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2028,10 +2006,6 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     )}
                   </div>
 
-                </section>
-
-                <section className="border-b border-border/60 px-5 py-5">
-                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Enviar para pós-venda</h3>
                   <SendToPosvendaButton
                     leadId={selectedLead.id}
                     stageId={selectedLead.stage_id}
@@ -2053,7 +2027,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       chat.fetchMessages(true);
                     }}
                   />
-                </section>
+                </div>
 
                 <InlineTagsEditor
                   leadId={selectedLead.id}
@@ -2142,17 +2116,17 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 {getLeadChannel(selectedLead) !== "instagram" && <LeadFollowUpPanel leadId={selectedLead.id} />}
 
                 {/* Notes input */}
-                <div className="border-b border-border/60 px-5 py-5">
-                  <h3 className="mb-3 text-[15px] font-semibold text-foreground">Adicionar nota</h3>
+                <div className="p-4 border-b border-border">
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase mb-2">Adicionar Nota</h3>
                   <div className="flex gap-2">
                     <Input
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       placeholder="Adicionar nota..."
-                      className="h-10 rounded-xl bg-surface-sunken text-sm"
+                      className="bg-secondary border-border text-xs h-8"
                       onKeyDown={(e) => { if (e.key === "Enter" && newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }}
                     />
-                    <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()} className="h-10 rounded-xl px-3">
+                    <Button size="sm" variant="outline" onClick={() => { if (newNote.trim()) { handleAddNote(newNote); setNewNote(""); } }} disabled={!newNote.trim()} className="h-8 px-2">
                       +
                     </Button>
                   </div>
@@ -2172,7 +2146,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
       {/* Templates Sheet */}
       <Sheet open={chat.templatesOpen} onOpenChange={chat.setTemplatesOpen}>
-        <SheetContent className="flex w-[380px] max-w-[calc(100vw-1rem)] flex-col">
+        <SheetContent className="w-[380px] flex flex-col">
           <SheetHeader><SheetTitle>Templates Aprovados</SheetTitle></SheetHeader>
           <div className="mt-3 relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -2262,16 +2236,16 @@ export default function CrmConversas() {
   const hideInstagram = userRole === "recepcao" || userRole === "closer";
 
   return (
-    <div className="-m-6 flex min-h-0 flex-col overflow-hidden bg-background" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="flex flex-col bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       <Tabs defaultValue="whatsapp" className="flex flex-col flex-1 overflow-hidden">
-        <TabsList variant="pill" className="mx-3 mt-3 h-10 flex-shrink-0 self-start border border-border/60 shadow-card">
+        <TabsList className="flex-shrink-0 mx-3 mt-2 self-start">
           <TabsTrigger value="whatsapp" className="gap-2">
             <img src={whatsappLogo} alt="" width={16} height={16} className="rounded-full" />
             WhatsApp
             {whatsappUnread > 0 && (
               <span
                 title={`Conversas não lidas (${UNREAD_WINDOW_LABEL})`}
-                className="ml-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive-soft px-1 text-[10px] font-bold text-destructive-soft-foreground"
+                className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
               >
                 {whatsappUnread > 99 ? "99+" : whatsappUnread}
               </span>
@@ -2279,14 +2253,14 @@ export default function CrmConversas() {
           </TabsTrigger>
           {!hideInstagram && (
             <TabsTrigger value="instagram" className="gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" className="fill-purple" xmlns="http://www.w3.org/2000/svg">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#833AB4" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
               </svg>
               Instagram
               {instagramUnread > 0 && (
                 <span
                   title={`Conversas não lidas (${UNREAD_WINDOW_LABEL})`}
-                  className="ml-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive-soft px-1 text-[10px] font-bold text-destructive-soft-foreground"
+                  className="ml-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1"
                 >
                   {instagramUnread > 99 ? "99+" : instagramUnread}
                 </span>

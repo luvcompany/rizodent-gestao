@@ -15,15 +15,15 @@ import { format } from "date-fns";
 import OrigemConversaoTab from "@/components/relatorios/OrigemConversaoTab";
 import FunilTab from "@/components/relatorios/FunilTab";
 import { contaComoLeadNovo } from "@/lib/leadNovo";
+import { useCidadesDoTenant } from "@/hooks/useOpcoesDoTenant";
 import CompararFunisTab from "@/components/relatorios/CompararFunisTab";
 import CrmMetricas from "@/pages/CrmMetricas";
-import { PageHeader } from "@/components/crm-ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Calendar, Clock, MapPin, Bell, MessageSquare, Ghost, TrendingUp, CalendarIcon, Activity, CheckCircle2, XCircle, Target, ArrowDown, ArrowUpDown, ArrowUp, AlertTriangle, Wallet } from "lucide-react";
 import {
   fetchAllPaged,
-  dayKeyBahia,
-  rangeBahia,
+  dayKeyNoFuso,
+  rangeNoFuso,
   asDateParam,
   normalizeCidade,
   rptKpisAgendamentos,
@@ -56,7 +56,7 @@ import {
 //  - "Novos leads no dia"          = COUNT(leads) WHERE created_at = dia
 //                                     (fora os criados pela conciliação do Dontus)
 //  - "Leads que conversaram"       = DISTINCT lead_id com inbound no dia
-//  Dias sempre calculados em America/Bahia (dayKeyBahia).
+//  Dias sempre calculados no fuso do tenant (dayKeyNoFuso).
 // ============================================================================
 
 // ---------- Tipos ----------
@@ -122,12 +122,14 @@ function mean(arr: number[]): number {
 }
 
 // Dia-calendário "YYYY-MM-DD" de uma Date local (date-pickers). Para converter
-// timestamptz ISO em dia local, use dayKeyBahia (America/Bahia) da reportKit.
+// timestamptz ISO em dia local, use dayKeyNoFuso (fuso do tenant) da reportKit.
 const dayKeyFromDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 // ---------- Página ----------
 export default function CrmRelatorios() {
+  // Grafias canônicas das cidades = clinicas.cidade do tenant (normalizeCidade).
+  const cidadesDoTenant = useCidadesDoTenant();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
 
@@ -166,8 +168,8 @@ export default function CrmRelatorios() {
 
   const range = useMemo(() => getDateRangeFromFilter(period), [period]);
 
-  // Fronteiras do período em America/Bahia (períodos inclusivos: último dia inteiro)
-  const bahiaBounds = useMemo(() => (range ? rangeBahia(range.start, range.end) : null), [range]);
+  // Fronteiras do período no fuso do tenant (períodos inclusivos: último dia inteiro)
+  const bahiaBounds = useMemo(() => (range ? rangeNoFuso(range.start, range.end) : null), [range]);
 
   // Carregar dados quando o período muda — SEM filtro de funil (todos os pipelines)
   useEffect(() => {
@@ -409,11 +411,11 @@ export default function CrmRelatorios() {
       conversaramByDay.set(r.dia, r.conversaram);
     });
     cohort.forEach(l => {
-      const k = dayKeyBahia(l.created_at);
+      const k = dayKeyNoFuso(l.created_at);
       novosByDay.set(k, (novosByDay.get(k) || 0) + 1);
     });
     apptsCriadosPeriodo.forEach(a => {
-      const k = dayKeyBahia(a.created_at);
+      const k = dayKeyNoFuso(a.created_at);
       agendCriadosByDay.set(k, (agendCriadosByDay.get(k) || 0) + 1);
     });
     apptsPeriodo.forEach(a => {
@@ -445,7 +447,7 @@ export default function CrmRelatorios() {
   }, [range, messageActivity, cohort, apptsCriadosPeriodo, apptsPeriodo]);
 
   // ============= TEMPO ATÉ CONTRATAÇÃO (coorte) =============
-  // Em DIAS CORRIDOS, comparando dia local (America/Bahia) da entrada do lead
+  // Em DIAS CORRIDOS, comparando dia local (fuso do tenant) da entrada do lead
   // com a data marcada da consulta contratada. Aceita dur = 0 (fechou no mesmo
   // dia) — parse de 'YYYY-MM-DD' como UTC derrubava esses casos.
   const tempoContratacao = useMemo(() => {
@@ -459,7 +461,7 @@ export default function CrmRelatorios() {
       const aps = apptsPeriodo.filter(a => a.lead_id === l.id && a.status === "contracted");
       const firstDay = aps.map(a => a.scheduled_date).sort()[0];
       if (!firstDay) return;
-      const createdDay = dayKeyBahia(l.created_at);
+      const createdDay = dayKeyNoFuso(l.created_at);
       // Ambos 'YYYY-MM-DD' → diferença exata em dias via UTC.
       const dur = (Date.parse(firstDay) - Date.parse(createdDay)) / 86400000;
       if (Number.isFinite(dur) && dur >= 0) durations.push(dur);
@@ -497,12 +499,12 @@ export default function CrmRelatorios() {
       if (!map.has(c)) map.set(c, { agendamentos: 0, comparecimentos: 0, contratacoes: 0, faltas: 0 });
       return map.get(c)!;
     };
-    // normalizeCidade unifica grafias ('VCA' → 'Vitória da Conquista') e
-    // null/vazio → 'Sem cidade' (linha visível, não descartada).
-    const cidadeByLead = new Map(leads.map(l => [l.id, normalizeCidade(l.cidade)]));
+    // normalizeCidade casa a grafia com clinicas.cidade do tenant (sem acento/
+    // caixa) e null/vazio → 'Sem cidade' (linha visível, não descartada).
+    const cidadeByLead = new Map(leads.map(l => [l.id, normalizeCidade(l.cidade, cidadesDoTenant)]));
 
     apptsPeriodo.forEach(a => {
-      const direta = normalizeCidade(a.lead_cidade ?? null);
+      const direta = normalizeCidade(a.lead_cidade ?? null, cidadesDoTenant);
       const c = direta !== "Sem cidade" ? direta : (cidadeByLead.get(a.lead_id) || "Sem cidade");
       const row = ensure(c);
       row.agendamentos++;
@@ -514,7 +516,7 @@ export default function CrmRelatorios() {
     return Array.from(map.entries())
       .map(([cidade, v]) => ({ cidade, ...v }))
       .sort((a, b) => b.contratacoes - a.contratacoes || b.agendamentos - a.agendamentos);
-  }, [apptsPeriodo, leads]);
+  }, [apptsPeriodo, leads, cidadesDoTenant]);
 
   // ============= INATIVOS =============
   // Estoque da BASE INTEIRA via RPC rpt_leads_inativos (não depende do período
@@ -555,18 +557,23 @@ export default function CrmRelatorios() {
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 p-4 sm:p-6">
-      <PageHeader title="Relatórios" subtitle="Dados alinhados ao calendário. Métricas de agendamento contadas por agendamento (não por lead)." />
+    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
+        <p className="text-sm text-muted-foreground">
+          Dados alinhados ao calendário. Métricas de agendamento contadas por <strong>agendamento</strong> (não por lead).
+        </p>
+      </div>
 
       <Tabs defaultValue="overview" className="w-full">
-        <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="min-w-max">
+        <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="origem-conversao">Origem & Conversão</TabsTrigger>
           <TabsTrigger value="funil">Funil</TabsTrigger>
           <TabsTrigger value="comparar-funis">Comparar funis</TabsTrigger>
           <TabsTrigger value="acoes-dia">Ações por Dia</TabsTrigger>
           <TabsTrigger value="metricas-uso">Métricas de Uso</TabsTrigger>
-        </TabsList></div>
+        </TabsList>
 
         <TabsContent value="origem-conversao" className="mt-4">
           <OrigemConversaoTab pipelineId={pipelineId} pipelines={pipelines} setPipelineId={setPipelineId} />
@@ -587,10 +594,10 @@ export default function CrmRelatorios() {
         <TabsContent value="overview" className="space-y-6 mt-4">
 
           {/* Filtros */}
-          <Card className="flex flex-wrap items-center gap-4 p-4">
+          <Card className="p-4 sticky top-0 z-20 backdrop-blur bg-card/95 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
-              <span className="rounded-control bg-surface-sunken px-3 py-2 text-sm font-medium">Todos os funis</span>
+              <span className="text-sm font-medium px-3 py-1 rounded bg-muted">Todos os funis</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
@@ -639,21 +646,21 @@ export default function CrmRelatorios() {
             const taxaComparecimento = m.taxaComparecimento * 100;
             const taxaContratacao = m.taxaContratacao * 100;
             return (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
-                <KpiCard icon={Calendar} label="Agendamentos" value={m.agendamentos} accent="primary"
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                <KpiCard icon={Calendar} label="Agendamentos" value={m.agendamentos} accent="blue"
                   hint="Com data marcada no período, exceto cancelados" />
-                <KpiCard icon={CheckCircle2} label="Compareceram" value={m.compareceram} accent="success"
+                <KpiCard icon={CheckCircle2} label="Compareceram" value={m.compareceram} accent="green"
                   hint={`${taxaComparecimento.toFixed(0)}% de ${desfecho} com desfecho`} />
-                <KpiCard icon={Target} label="Contratos na consulta" value={k.contracted} accent="success"
+                <KpiCard icon={Target} label="Contratos na consulta" value={k.contracted} accent="emerald"
                   hint={`${taxaContratacao.toFixed(0)}% dos que compareceram`} />
                 <KpiCard icon={XCircle} label="Não contrataram" value={k.not_contracted} accent="warning" />
-                <KpiCard icon={CalendarIcon} label="Reagendados" value={m.reagendados} accent="purple"
+                <KpiCard icon={CalendarIcon} label="Reagendados" value={m.reagendados} accent="indigo"
                   hint={`Novos agendamentos nascidos de remarcação · ${m.remarcadosSubstituidos} substituídos`} />
-                <KpiCard icon={Ghost} label="Faltas" value={m.faltas} accent="destructive"
+                <KpiCard icon={Ghost} label="Faltas" value={m.faltas} accent="red"
                   hint="Status: no_show" />
-                <KpiCard icon={Clock} label="Pendentes" value={k.pending} accent="warning"
+                <KpiCard icon={Clock} label="Pendentes" value={k.pending} accent="indigo"
                   hint={k.pending_vencidos > 0 ? `⚠ ${k.pending_vencidos} com data já vencida` : "Sem desfecho ainda"} />
-                <KpiCard icon={XCircle} label="Cancelados" value={k.cancelled} accent="destructive"
+                <KpiCard icon={XCircle} label="Cancelados" value={k.cancelled} accent="red"
                   hint="Status: cancelled" />
               </div>
             );
@@ -685,7 +692,7 @@ export default function CrmRelatorios() {
                 <StatBox
                   label="Contratos na consulta"
                   value={kpisState.status === "ok" ? kpisState.data.contracted : "—"}
-                  color="text-success"
+                  color="text-emerald-600"
                   hint="Agendamentos com status 'contratado' no período (pode ficar desatualizado)"
                 />
                 <StatBox
@@ -697,7 +704,7 @@ export default function CrmRelatorios() {
                 <StatBox
                   label="Recebido desses pacientes"
                   value={brl.format(contratadosState.data.reduce((s, c) => s + c.valor_total_periodo, 0))}
-                  color="text-success"
+                  color="text-emerald-600"
                   hint="Soma dos pagamentos desses pacientes no período"
                 />
               </div>
@@ -717,21 +724,21 @@ export default function CrmRelatorios() {
             </p>
 
             <div className="space-y-2">
-              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} tone="info" />
-              <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} tone="warning" />
-              <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} tone="primary" />
-              <FunnelRow label="Compareceram" hint="Contratados + Não contratados (remarcados não contam)" value={calendario.compareceram} tone="success" />
-              <FunnelRow label="Contratos na consulta" hint="Status final: contracted" value={calendario.contrataram} tone="success" />
-              <FunnelRow label="Reagendados" hint="Novos agendamentos nascidos de remarcação (is_rescheduled)" value={calendario.reagendaram} tone="purple" />
-              <FunnelRow label="Remarcados (substituídos)" hint="Informativo — agendamentos trocados por outro, nunca somados ao comparecimento" value={calendario.remarcadosSubstituidos} tone="slate" />
+              <FunnelRow label="Leads que conversaram" hint="Distintos, com mensagem inbound no período" value={leadsQueConversaram} color="#6366f1" />
+              <FunnelRow label="Agendamentos criados" hint="Ação da equipe — appts criados no período" value={atividadePeriodo.agendamentosCriados} color="hsl(var(--warning))" />
+              <FunnelRow label="Agendamentos do período" hint="Data marcada para o período (= calendário)" value={calendario.total} color="#3b82f6" />
+              <FunnelRow label="Compareceram" hint="Contratados + Não contratados (remarcados não contam)" value={calendario.compareceram} color="#10b981" />
+              <FunnelRow label="Contratos na consulta" hint="Status final: contracted" value={calendario.contrataram} color="#059669" />
+              <FunnelRow label="Reagendados" hint="Novos agendamentos nascidos de remarcação (is_rescheduled)" value={calendario.reagendaram} color="#6366f1" />
+              <FunnelRow label="Remarcados (substituídos)" hint="Informativo — agendamentos trocados por outro, nunca somados ao comparecimento" value={calendario.remarcadosSubstituidos} color="#94a3b8" />
             </div>
 
             <div className="mt-6 border-t pt-4">
               <p className="text-xs font-medium text-muted-foreground mb-3 uppercase">Onde estou perdendo</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <StatBox label="Faltas" value={calendario.faltas} color="text-destructive" />
+                <StatBox label="Faltas" value={calendario.faltas} color="text-red-500" />
                 <StatBox label="Não contrataram" value={calendario.naoContrataram} color="text-warning" />
-                <StatBox label="Pendentes (sem decisão)" value={calendario.pendentes} color="text-warning" />
+                <StatBox label="Pendentes (sem decisão)" value={calendario.pendentes} color="text-indigo-500" />
               </div>
             </div>
           </Card>
@@ -751,13 +758,13 @@ export default function CrmRelatorios() {
             ) : (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-                  <StatBox label="Leads conversaram" value={dailyActivity.totals.conversaram} color="text-purple" />
-                  <StatBox label="Novos leads" value={dailyActivity.totals.novos} color="text-info" />
+                  <StatBox label="Leads conversaram" value={dailyActivity.totals.conversaram} color="text-indigo-600" />
+                  <StatBox label="Novos leads" value={dailyActivity.totals.novos} color="text-blue-600" />
                   <StatBox label="Agend. criados" value={dailyActivity.totals.agendamentosCriados} color="text-warning" />
-                  <StatBox label="Agend. do dia" value={dailyActivity.totals.agendamentosDoDia} color="text-primary" />
-                  <StatBox label="Contratos do dia" value={dailyActivity.totals.contratosDoDia} color="text-success" />
+                  <StatBox label="Agend. do dia" value={dailyActivity.totals.agendamentosDoDia} color="text-sky-600" />
+                  <StatBox label="Contratos do dia" value={dailyActivity.totals.contratosDoDia} color="text-emerald-600" />
                 </div>
-                <div className="max-h-[420px] overflow-auto rounded-control border border-border/60">
+                <div className="max-h-[420px] overflow-y-auto border rounded-lg">
                   <Table>
                     <TableHeader className="sticky top-0 bg-card z-10">
                       <TableRow>
@@ -778,8 +785,8 @@ export default function CrmRelatorios() {
                           <TableCell className="text-right tabular-nums">{r.conversaram}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{r.novos}</TableCell>
                           <TableCell className="text-right tabular-nums text-warning font-semibold">{r.agendamentosCriados}</TableCell>
-                          <TableCell className="text-right tabular-nums text-primary font-semibold">{r.agendamentosDoDia}</TableCell>
-                          <TableCell className="text-right tabular-nums text-success font-semibold">{r.contratosDoDia}</TableCell>
+                          <TableCell className="text-right tabular-nums text-sky-600 font-semibold">{r.agendamentosDoDia}</TableCell>
+                          <TableCell className="text-right tabular-nums text-emerald-600 font-semibold">{r.contratosDoDia}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -803,7 +810,7 @@ export default function CrmRelatorios() {
                 <div className="grid grid-cols-2 gap-3">
                   <StatBox label="Média" value={fmtDias(tempoContratacao.media)} />
                   <StatBox label="Mediana" value={fmtDias(tempoContratacao.mediana)} />
-                  <StatBox label="Mais rápido" value={fmtDias(tempoContratacao.min)} color="text-success" />
+                  <StatBox label="Mais rápido" value={fmtDias(tempoContratacao.min)} color="text-green-600" />
                   <StatBox label="Mais lento" value={fmtDias(tempoContratacao.max)} color="text-warning" />
                   <div className="col-span-2 text-xs text-muted-foreground text-center pt-2">
                     Baseado em {tempoContratacao.count} lead(s) contratado(s) no período
@@ -844,7 +851,7 @@ export default function CrmRelatorios() {
             {porCidade.length === 0 ? (
               <EmptyState icon={MapPin} title="Sem agendamentos no período" />
             ) : (
-              <div className="overflow-x-auto rounded-control border border-border/60"><Table>
+              <Table>
                 <TableHeader>
                   <TableRow>
                     <SortableHead label="Cidade" sortKey="cidade" current={citySort} onClick={toggleCitySort} />
@@ -859,9 +866,9 @@ export default function CrmRelatorios() {
                     <TableRow key={r.cidade}>
                       <TableCell className="font-medium">{r.cidade}</TableCell>
                       <TableCell className="text-right">{r.agendamentos}</TableCell>
-                      <TableCell className="text-right text-success font-semibold">{r.comparecimentos}</TableCell>
-                      <TableCell className="text-right text-success font-semibold">{r.contratacoes}</TableCell>
-                      <TableCell className="text-right text-destructive font-semibold">{r.faltas}</TableCell>
+                      <TableCell className="text-right text-green-600 font-semibold">{r.comparecimentos}</TableCell>
+                      <TableCell className="text-right text-emerald-600 font-semibold">{r.contratacoes}</TableCell>
+                      <TableCell className="text-right text-red-500 font-semibold">{r.faltas}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="font-semibold border-t-2">
@@ -872,7 +879,7 @@ export default function CrmRelatorios() {
                     <TableCell className="text-right">{porCidade.reduce((s, r) => s + r.faltas, 0)}</TableCell>
                   </TableRow>
                 </TableBody>
-              </Table></div>
+              </Table>
             )}
           </Card>
 
@@ -900,13 +907,13 @@ export default function CrmRelatorios() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                    <StatBox label="Sem resposta há +7 dias" value={inativosState.data.mais_7_dias} color="text-warning" hover />
+                    <StatBox label="Sem resposta há +7 dias" value={inativosState.data.mais_7_dias} color="text-yellow-600" hover />
                   </button>
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
                     <StatBox label="Sem resposta há +15 dias" value={inativosState.data.mais_15_dias} color="text-warning" hover />
                   </button>
                   <button onClick={() => navigate("/crm/conversas")} className="text-left">
-                    <StatBox label="Sem resposta há +30 dias" value={inativosState.data.mais_30_dias} color="text-destructive" hover />
+                    <StatBox label="Sem resposta há +30 dias" value={inativosState.data.mais_30_dias} color="text-red-500" hover />
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-3 text-center">
@@ -926,7 +933,7 @@ export default function CrmRelatorios() {
             </div>
             <p className="text-sm text-muted-foreground mb-4">Pares consecutivos de mensagens no período (ignora intervalos &gt; 7d).</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-info" />
+              <StatBox label={`Resposta do Lead (${tempoResposta.nLead} amostras)`} value={fmtDuration(tempoResposta.lead)} color="text-blue-500" />
               <StatBox label={`Resposta do Atendente (${tempoResposta.nCRC} amostras)`} value={fmtDuration(tempoResposta.crc)} color="text-primary" />
             </div>
           </Card>
@@ -974,22 +981,14 @@ export default function CrmRelatorios() {
 // Componentes auxiliares
 // ============================================================================
 
-const FUNNEL_TONES = {
-  primary: "border-primary bg-primary-soft text-primary-soft-foreground",
-  success: "border-success bg-success-soft text-success-soft-foreground",
-  warning: "border-warning bg-warning-soft text-warning-soft-foreground",
-  info: "border-info bg-info-soft text-info-soft-foreground",
-  purple: "border-purple bg-purple-soft text-purple-soft-foreground",
-  slate: "border-slate bg-slate-soft text-slate-soft-foreground",
-} as const;
-function FunnelRow({ label, hint, value, tone }: { label: string; hint?: string; value: number; tone: keyof typeof FUNNEL_TONES }) {
+function FunnelRow({ label, hint, value, color }: { label: string; hint?: string; value: number; color: string }) {
   return (
-    <div className={cn("flex items-center gap-3 rounded-control border-l-[3px] p-3", FUNNEL_TONES[tone])}>
+    <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: color.startsWith("#") ? `${color}15` : `color-mix(in srgb, ${color} 8%, transparent)`, borderLeft: `4px solid ${color}` }}>
       <div className="flex-1 min-w-0">
         <div className="font-medium">{label}</div>
         {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
       </div>
-      <div className="whitespace-nowrap text-2xl font-bold tabular-nums">{value}</div>
+      <div className="text-2xl font-bold tabular-nums" style={{ color }}>{value}</div>
     </div>
   );
 }
@@ -1010,8 +1009,8 @@ function RpcErrorCard({ title, message, onRetry }: { title: string; message: str
 
 function StatBox({ label, value, color = "text-foreground", hover = false, hint }: { label: string; value: string | number; color?: string; hover?: boolean; hint?: string }) {
   return (
-    <div className={`rounded-control bg-surface-sunken p-4 text-center ${hover ? "cursor-pointer transition hover:bg-accent" : ""}`}>
-      <p className={`whitespace-nowrap text-3xl font-bold tabular-nums ${color}`}>{value}</p>
+    <div className={`bg-secondary/40 rounded-lg p-4 text-center ${hover ? "hover:bg-secondary/70 transition cursor-pointer" : ""}`}>
+      <p className={`text-3xl font-bold ${color}`}>{value}</p>
       <p className="text-xs text-muted-foreground mt-1">{label}</p>
       {hint && <p className="text-[10px] text-muted-foreground/80 mt-1">{hint}</p>}
     </div>
@@ -1131,8 +1130,8 @@ function AcoesPorDiaTab({
     let alive = true;
     setLoading(true);
     setLoadError(null);
-    // Fronteiras do intervalo de fetch em America/Bahia
-    const { gteIso: startISO, lteIso: endISO } = rangeBahia(fetchStart, fetchEnd);
+    // Fronteiras do intervalo de fetch no fuso do tenant
+    const { gteIso: startISO, lteIso: endISO } = rangeNoFuso(fetchStart, fetchEnd);
     // Para a métrica de "Conversão em 7 dias" precisamos de agendamentos criados
     // ATÉ 7 dias após o fim do range (mas nunca no futuro). Isso NÃO afeta os
     // demais KPIs, que continuam filtrando por `inRange`/dias úteis do mês.
@@ -1182,7 +1181,7 @@ function AcoesPorDiaTab({
   }, [fetchStart, fetchEnd, reloadKey]);
 
   const inRange = (iso: string) => {
-    const k = dayKeyBahia(iso);
+    const k = dayKeyNoFuso(iso);
     return k >= rangeStartKey && k <= rangeEndKey;
   };
 
@@ -1269,7 +1268,7 @@ function AcoesPorDiaTab({
 
     const falaramByDay = new Map<string, Set<string>>();
     inboundDays.forEach(m => {
-      const k = dayKeyBahia(m.created_at);
+      const k = dayKeyNoFuso(m.created_at);
       if (!workingSet.has(k)) return;
       if (!falaramByDay.has(k)) falaramByDay.set(k, new Set());
       falaramByDay.get(k)!.add(m.lead_id);
@@ -1282,7 +1281,7 @@ function AcoesPorDiaTab({
     // janela de 7 dias por coorte.
     let agendTotal = 0, reagTotal = 0;
     apptsMonth.forEach(a => {
-      const k = dayKeyBahia(a.created_at);
+      const k = dayKeyNoFuso(a.created_at);
       if (!workingSet.has(k)) return;
       if (a.is_rescheduled === true) { reagTotal++; return; }
       agendTotal++;
@@ -1294,7 +1293,7 @@ function AcoesPorDiaTab({
     const SEVEN_D_MS = 7 * 24 * 60 * 60 * 1000;
     const firstInboundByDayLead = new Map<string, number>();
     inboundDays.forEach(m => {
-      const k = dayKeyBahia(m.created_at);
+      const k = dayKeyNoFuso(m.created_at);
       if (!workingSet.has(k)) return;
       const key = `${k}|${m.lead_id}`;
       const t = new Date(m.created_at).getTime();
@@ -1406,17 +1405,17 @@ function AcoesPorDiaTab({
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="flex flex-col gap-2 rounded-control border border-primary/30 bg-primary-soft p-4">
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
             <span className="text-sm text-muted-foreground">Pessoas que falaram comigo</span>
             <span className="text-4xl font-bold text-primary">{falaramDia.size}</span>
             <span className="text-xs text-muted-foreground">Leads distintos com mensagem inbound {isAggregated ? "no período" : "no dia"}</span>
           </div>
-          <div className="flex flex-col gap-2 rounded-control border border-success/30 bg-success-soft p-4">
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
             <span className="text-sm text-muted-foreground">Agendamentos criados</span>
-            <span className="text-4xl font-bold text-success">{agendadosDia}</span>
+            <span className="text-4xl font-bold text-green-600">{agendadosDia}</span>
             <span className="text-xs text-muted-foreground">Novos agendamentos (não reagendados) criados {isAggregated ? "no período" : "no dia"}</span>
           </div>
-          <div className="flex flex-col gap-2 rounded-control border border-warning/30 bg-warning-soft p-4">
+          <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "hsl(var(--warning))" }}>
             <span className="text-sm text-muted-foreground">Reagendamentos</span>
             <span className="text-4xl font-bold text-warning">{reagendadosDia}</span>
             <span className="text-xs text-muted-foreground">Appts marcados como reagendados {isAggregated ? "no período" : "no dia"}</span>
@@ -1455,15 +1454,15 @@ function AcoesPorDiaTab({
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="flex flex-col gap-2 rounded-control border border-primary/30 bg-primary-soft p-4">
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#3b82f6" }}>
               <span className="text-sm text-muted-foreground">Média de pessoas/dia</span>
               <span className="text-3xl font-bold text-primary">{mediasMes.avgFalaram.toFixed(1)}</span>
             </div>
-            <div className="flex flex-col gap-2 rounded-control border border-success/30 bg-success-soft p-4">
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "#10b981" }}>
               <span className="text-sm text-muted-foreground">Média de agendamentos/dia</span>
-              <span className="text-3xl font-bold text-success">{mediasMes.avgAgendados.toFixed(1)}</span>
+              <span className="text-3xl font-bold text-green-600">{mediasMes.avgAgendados.toFixed(1)}</span>
             </div>
-            <div className="flex flex-col gap-2 rounded-control border border-warning/30 bg-warning-soft p-4">
+            <div className="rounded-lg border border-border p-4 flex flex-col gap-2" style={{ borderLeftWidth: 4, borderLeftColor: "hsl(var(--warning))" }}>
               <span className="text-sm text-muted-foreground">Média de reagendamentos/dia</span>
               <span className="text-3xl font-bold text-warning">{mediasMes.avgReagendados.toFixed(1)}</span>
             </div>
@@ -1487,18 +1486,17 @@ function AcoesPorDiaTab({
 // Componentes UI auxiliares
 // ============================================================================
 
-const ACCENTS = {
-  primary: { icon: "bg-primary-soft text-primary-soft-foreground" },
-  success: { icon: "bg-success-soft text-success-soft-foreground" },
-  warning: { icon: "bg-warning-soft text-warning-soft-foreground" },
-  destructive: { icon: "bg-destructive-soft text-destructive-soft-foreground" },
-  info: { icon: "bg-info-soft text-info-soft-foreground" },
-  purple: { icon: "bg-purple-soft text-purple-soft-foreground" },
-  slate: { icon: "bg-slate-soft text-slate-soft-foreground" },
+const ACCENTS: Record<string, { icon: string; ring: string; value: string }> = {
+  blue:    { icon: "text-blue-500 bg-blue-500/10",       ring: "border-blue-500/30",    value: "text-blue-600" },
+  indigo:  { icon: "text-indigo-500 bg-indigo-500/10",   ring: "border-indigo-500/30",  value: "text-indigo-600" },
+  green:   { icon: "text-green-600 bg-green-600/10",     ring: "border-green-600/30",   value: "text-green-600" },
+  emerald: { icon: "text-emerald-600 bg-emerald-600/10", ring: "border-emerald-600/30", value: "text-emerald-600" },
+  red:     { icon: "text-red-500 bg-red-500/10",         ring: "border-red-500/30",     value: "text-red-500" },
+  warning: { icon: "text-warning bg-warning/10",         ring: "border-warning/30",     value: "text-warning" },
 };
 
 function KpiCard({
-  icon: Icon, label, value, accent = "primary", hint,
+  icon: Icon, label, value, accent = "blue", hint,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
@@ -1506,16 +1504,16 @@ function KpiCard({
   accent?: keyof typeof ACCENTS;
   hint?: string;
 }) {
-  const a = ACCENTS[accent] ?? ACCENTS.primary;
+  const a = ACCENTS[accent] ?? ACCENTS.blue;
   return (
-    <Card className="p-5">
+    <Card className={cn("p-4 border-l-4", a.ring)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 whitespace-nowrap text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+          <p className="text-xs font-medium text-muted-foreground uppercase truncate">{label}</p>
+          <p className={cn("text-3xl font-bold mt-1 tabular-nums", a.value)}>{value}</p>
+          {hint && <p className="text-xs text-muted-foreground mt-1 truncate">{hint}</p>}
         </div>
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-control", a.icon)}>
+        <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", a.icon)}>
           <Icon className="w-5 h-5" />
         </div>
       </div>

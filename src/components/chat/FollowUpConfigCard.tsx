@@ -204,11 +204,11 @@ export default function FollowUpConfigCard({ stageId, stages, templates }: Props
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <div
-        className="flex cursor-pointer items-center justify-between bg-warning-soft px-3 py-2"
+        className="flex items-center justify-between px-3 py-2 bg-warning/10 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-2">
-          <RefreshCw size={12} className="text-warning-soft-foreground" />
+          <RefreshCw size={12} className="text-warning" />
           <span className="text-xs font-semibold text-foreground">Follow Up Automático</span>
         </div>
         <Switch

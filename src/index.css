@@ -1,14 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --primary-h: 25;
-    --primary-s: 100%;
-    --background: 220 16% 96%;
-    --foreground: 222 30% 12%;
-    --surface-sunken: 210 25% 95%;
+    color-scheme: light;
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
 
     --card: 0 0% 100%;
     --card-foreground: 0 0% 10%;
@@ -16,76 +16,169 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 10%;
 
-    --primary: 25 100% 50%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: var(--primary-h) var(--primary-s) 94%;
-    --primary-soft-foreground: var(--primary-h) var(--primary-s) 35%;
 
-    --secondary: 220 14% 95%;
+    --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 15%;
 
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 9% 44%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: var(--primary-h) var(--primary-s) 50%;
-    --accent-foreground: 0 0% 100%;
+    /* accent = tom sutil da marca (hover de menus); texto na cor da marca. */
+    --accent: 221 83% 95%;
+    --accent-foreground: 221 83% 51%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 0 86% 96%;
-    --destructive-soft-foreground: 0 68% 42%;
 
-    --success: 145 63% 36%;
-    --success-foreground: 0 0% 100%;
-    --success-soft: 145 58% 94%;
-    --success-soft-foreground: 145 66% 28%;
-    --warning: 38 92% 45%;
-    --warning-foreground: 34 90% 12%;
-    --warning-soft: 42 100% 93%;
-    --warning-soft-foreground: 32 88% 31%;
-    --info: 202 83% 44%;
-    --info-foreground: 0 0% 100%;
-    --info-soft: 201 88% 94%;
-    --info-soft-foreground: 202 76% 34%;
-    --purple: 269 61% 51%;
-    --purple-foreground: 0 0% 100%;
-    --purple-soft: 270 82% 96%;
-    --purple-soft-foreground: 269 55% 40%;
-    --slate: 215 20% 43%;
-    --slate-foreground: 0 0% 100%;
-    --slate-soft: 214 25% 94%;
-    --slate-soft-foreground: 215 22% 34%;
-
-    --border: 220 13% 90%;
-    --input: 220 13% 88%;
-    --ring: var(--primary-h) var(--primary-s) 50%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 221 83% 53%;
 
     --radius: 0.75rem;
-    --radius-card: 1rem;
-    --radius-control: 0.75rem;
 
-    --sidebar-background: var(--primary-h) 30% 8%;
-    --sidebar-foreground: 220 14% 86%;
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--primary-h) 25% 14%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: var(--primary-h) 18% 15%;
-    --sidebar-ring: var(--primary);
+    --sidebar-background: 0 0% 96%;
+    --sidebar-foreground: 0 0% 25%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 90%;
+    --sidebar-accent-foreground: 0 0% 15%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 221 83% 53%;
 
-    --gradient-bg: hsl(220 16% 96%);
+    --gradient-bg: linear-gradient(145deg, hsl(0 0% 96%) 0%, hsl(0 0% 100%) 50%, hsl(0 0% 98%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
-    --gradient-orange: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
-    --shadow-card: 0 1px 2px hsl(222 30% 12% / 0.04), 0 6px 20px -12px hsl(222 30% 12% / 0.12);
-    --shadow-float: 0 18px 48px -18px hsl(222 30% 12% / 0.28);
-    --shadow-primary: 0 8px 20px -10px hsl(var(--primary) / 0.6);
-    --shadow-orange: 0 4px 20px -4px hsl(var(--primary) / 0.25);
+    --shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.08);
+
+    /* Estados (fixos, independem da marca). --warning no claro dá ~4,5:1 sobre
+       branco (AA para texto pequeno) e o branco sobre ele também. */
+    --warning: 32 95% 36%;
+    --warning-foreground: 0 0% 100%;
+    --success: 152 58% 38%;
+    --success-foreground: 0 0% 100%;
+    --info: 212 90% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* Marca padrão do sistema (azul #2563eb). O BrandContext sobrescreve estes
+       tokens por <style id="brand-theme"> com a marca do sistema/cliente. */
+    --brand-50: 221 83% 97%;
+    --brand-100: 221 83% 94%;
+    --brand-200: 221 83% 86%;
+    --brand-300: 221 83% 76%;
+    --brand-400: 221 83% 64%;
+    --brand-500: 221 83% 53%;
+    --brand-600: 221 83% 45%;
+    --brand-700: 221 83% 37%;
+    --brand-800: 221 83% 29%;
+    --brand-900: 221 83% 21%;
+    --brand-gradient: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(221 83% 41%) 100%);
+    --brand-shadow: 0 4px 20px -4px hsl(221 83% 53% / 0.25);
+
+    --font-sans: 'Inter', sans-serif;
+
+    /* ─── Gerador v2 (redesign do CRM): tokens NOVOS ───────────────────────
+       Ninguém os usava antes, então defini-los aqui não muda nenhuma tela
+       existente (nem o /admin, nem a prévia do admin). Os tokens que MUDAM
+       valores antigos ficam só sob a casca do CRM (blocos crm-shell abaixo). */
+
+    /* Superfície afundada (chat, canvas do bot, trilhos) e texto terciário
+       (hora, eixo, placeholder; só metadado de 11–12px, nunca informação
+       principal). L 43% para passar em AA (≥ 4,5:1) no pior fundo claro, o
+       --surface-sunken tingido pela marca (L 50% dava 3,5:1). Matiz neutra
+       fixa, nunca a da marca. */
+    --surface-sunken: 210 12% 95%;
+    --text-tertiary: 200 7% 43%;
+
+    /* Derivados da marca padrão (azul #2563eb), iguais ao que theme.ts gera;
+       o <style id="brand-theme"> sobrescreve com a marca do sistema/cliente. */
+    --primary-hover: 221 83% 47.3%;
+    --primary-soft: 221 83% 93%;
+    --primary-soft-2: 221 80% 96.5%;
+    --primary-soft-fg: 221 83% 33.3%;
+
+    /* Semânticas: os fortes acima (--success, --warning, --info,
+       --destructive) NÃO mudam. Entram o fundo suave (-soft) e o texto sobre o
+       suave (-soft-foreground), este com contraste AA (≥ 4,5:1) sobre o -soft
+       nos dois temas — travado em theme.test.ts. O forte sobre o suave nem
+       sempre passa (ex.: success 3,2:1): para texto em pílula, use
+       text-<cor>-soft-foreground, nunca text-<cor>. */
+    --success-soft: 150 47% 93%;
+    --success-soft-foreground: 152 58% 30%;
+    --warning-soft: 36 93% 94%;
+    --warning-soft-foreground: 32 95% 33%;
+    --info-soft: 218 92% 95%;
+    --info-soft-foreground: 212 90% 40%;
+    --destructive-soft: 0 82% 96%;
+    --destructive-soft-foreground: 0 84% 40%;
+    /* Famílias novas (forte / suave / texto sobre o suave). */
+    --orange: 22 83% 52%;
+    --orange-soft: 30 100% 93%;
+    --orange-soft-foreground: 22 83% 38%;
+    --purple: 249 55% 59%;
+    --purple-soft: 254 73% 95%;
+    --purple-soft-foreground: 249 55% 40%;
+    --pink: 324 48% 52%;
+    --pink-soft: 321 55% 94%;
+    --pink-soft-foreground: 324 48% 40%;
+    --teal: 178 84% 34%;
+    --teal-soft: 177 51% 93%;
+    --teal-soft-foreground: 178 84% 26%;
+    --slate: 215 13% 41%;
+    --slate-soft: 210 22% 95%;
+    --slate-soft-foreground: 215 13% 40%;
+    /* Remarcado = roxo (alias; é o que lib/desfechoLabel.ts usa). */
+    --rescheduled: 249 55% 59%;
+    --rescheduled-soft: 254 73% 95%;
+    --rescheduled-soft-foreground: 249 55% 40%;
+
+    /* Eventos do calendário: fundo suave, barra de 3px e texto na mesma matiz. */
+    --event-purple-bg: 254 64% 94%;
+    --event-purple-bar: 256 58% 60%;
+    --event-purple-fg: 250 46% 42%;
+    --event-green-bg: 153 42% 93%;
+    --event-green-bar: 156 67% 37%;
+    --event-green-fg: 156 69% 25%;
+    --event-pink-bg: 322 60% 94%;
+    --event-pink-bar: 324 48% 52%;
+    --event-pink-fg: 324 49% 36%;
+    --event-orange-bg: 24 85% 94%;
+    --event-orange-bar: 22 81% 58%;
+    --event-orange-fg: 20 72% 37%;
+    --event-blue-bg: 214 76% 94%;
+    --event-blue-bar: 214 67% 52%;
+    --event-blue-fg: 216 66% 35%;
+
+    /* Séries de gráfico: 1 = marca; a 2 vira verde se a marca é laranja/âmbar
+       e a 3 vira verde se a marca é azul (caso do padrão). theme.ts gera. */
+    --chart-1: 221 83% 53%;
+    --chart-2: 37 91% 55%;
+    --chart-3: 155 65% 38%;
+    --chart-4: 246 58% 61%;
+    --chart-5: 205 15% 74%;
+    --chart-6: 173 61% 43%;
+    --chart-7: 324 48% 52%;
+    --chart-8: 358 75% 59%;
+
+    /* Sombras novas (a --shadow-card de sempre fica; a nova vale na casca). */
+    --shadow-xs: 0 1px 2px rgb(16 24 40 / 0.04);
+    --shadow-float: 0 12px 32px -8px rgb(16 24 40 / 0.14);
+
+    /* Variáveis de FORMA do kit (F2). Fora da casca do CRM reproduzem
+       exatamente o visual atual: Card com shadow-sm do Tailwind e Button sem
+       sombra. Os raios não têm default aqui de propósito: rounded-card e
+       rounded-control (tailwind.config.ts) caem em var(--radius) e
+       calc(var(--radius) - 2px), avaliados no próprio elemento (= rounded-lg e
+       rounded-md de hoje, também dentro do admin e da prévia do admin). */
+    --crm-card-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --crm-btn-shadow: none;
+    --crm-header-h: 4rem;
   }
 
   .dark {
-    --background: 222 24% 8%;
-    --foreground: 210 20% 96%;
-    --surface-sunken: 222 20% 6%;
+    color-scheme: dark;
+    --background: 0 0% 8%;
+    --foreground: 0 0% 100%;
 
     --card: 0 0% 11%;
     --card-foreground: 0 0% 100%;
@@ -93,10 +186,8 @@
     --popover: 0 0% 13%;
     --popover-foreground: 0 0% 100%;
 
-    --primary: 25 100% 50%;
+    --primary: 221 83% 58%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: var(--primary-h) var(--primary-s) 18%;
-    --primary-soft-foreground: var(--primary-h) 78% 76%;
 
     --secondary: 0 0% 16%;
     --secondary-foreground: 0 0% 100%;
@@ -104,54 +195,204 @@
     --muted: 0 0% 18%;
     --muted-foreground: 0 0% 64%;
 
-    --accent: var(--primary-h) var(--primary-s) 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 221 83% 18%;
+    --accent-foreground: 221 83% 64%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 0 42% 18%;
-    --destructive-soft-foreground: 0 88% 76%;
-
-    --success: 145 58% 48%;
-    --success-foreground: 145 70% 9%;
-    --success-soft: 145 38% 16%;
-    --success-soft-foreground: 145 64% 70%;
-    --warning: 40 94% 56%;
-    --warning-foreground: 35 90% 10%;
-    --warning-soft: 38 45% 17%;
-    --warning-soft-foreground: 42 95% 72%;
-    --info: 201 88% 58%;
-    --info-foreground: 202 88% 10%;
-    --info-soft: 202 42% 18%;
-    --info-soft-foreground: 201 86% 75%;
-    --purple: 269 72% 67%;
-    --purple-foreground: 270 55% 10%;
-    --purple-soft: 269 38% 19%;
-    --purple-soft-foreground: 270 80% 79%;
-    --slate: 215 22% 62%;
-    --slate-foreground: 222 25% 9%;
-    --slate-soft: 215 20% 18%;
-    --slate-soft-foreground: 214 28% 76%;
 
     --border: 0 0% 20%;
     --input: 0 0% 20%;
-    --ring: var(--primary-h) var(--primary-s) 50%;
+    --ring: 221 83% 58%;
 
-    --sidebar-background: var(--primary-h) 22% 5%;
+    --sidebar-background: 0 0% 6%;
     --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: var(--primary);
-    --sidebar-primary-foreground: var(--primary-foreground);
-    --sidebar-accent: var(--primary-h) 25% 14%;
+    --sidebar-primary: 221 83% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 14%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: var(--primary-h) 18% 16%;
-    --sidebar-ring: var(--primary);
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 221 83% 58%;
 
     --gradient-bg: linear-gradient(145deg, hsl(0 0% 6%) 0%, hsl(0 0% 14%) 50%, hsl(0 0% 10%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(0 0% 12%) 0%, hsl(0 0% 9%) 100%);
-    --gradient-orange: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
-    --shadow-card: 0 10px 28px -14px hsl(0 0% 0% / 0.65);
-    --shadow-float: 0 22px 56px -18px hsl(0 0% 0% / 0.82);
-    --shadow-orange: 0 4px 20px -4px hsl(var(--primary) / 0.3);
+    --shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.5);
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 222 47% 11%;
+    --success: 152 55% 48%;
+    --success-foreground: 222 47% 11%;
+    --info: 212 90% 62%;
+    --info-foreground: 222 47% 11%;
+
+    /* No escuro a escala espelha: brand-50 é o tom mais escuro (fundo sutil). */
+    --brand-50: 221 83% 12%;
+    --brand-100: 221 83% 16%;
+    --brand-200: 221 83% 22%;
+    --brand-300: 221 83% 32%;
+    --brand-400: 221 83% 44%;
+    --brand-500: 221 83% 58%;
+    --brand-600: 221 83% 66%;
+    --brand-700: 221 83% 74%;
+    --brand-800: 221 83% 82%;
+    --brand-900: 221 83% 90%;
+    --brand-gradient: linear-gradient(135deg, hsl(221 83% 58%) 0%, hsl(221 83% 46%) 100%);
+    --brand-shadow: 0 4px 20px -4px hsl(221 83% 58% / 0.3);
+
+    /* ─── Gerador v2: tokens NOVOS no escuro (ver :root) ─── */
+    --surface-sunken: 210 12% 7.5%;
+    --text-tertiary: 200 5% 52%; /* AA sobre o --popover escuro (L 50% dava 4,4:1) */
+
+    --primary-hover: 221 83% 64%;
+    --primary-soft: 221 38% 15%;
+    --primary-soft-2: 221 30% 12%;
+    --primary-soft-fg: 221 83% 72%;
+
+    /* Suave = matiz da cor com S 40% e L 16%; texto sobre o suave com L 72%
+       (AA). Famílias novas: forte com L + 12 do claro. */
+    --success-soft: 152 40% 16%;
+    --success-soft-foreground: 152 55% 72%;
+    --warning-soft: 38 40% 16%;
+    --warning-soft-foreground: 38 85% 72%;
+    --info-soft: 212 40% 16%;
+    --info-soft-foreground: 212 85% 72%;
+    --destructive-soft: 0 40% 16%;
+    --destructive-soft-foreground: 0 84% 72%;
+    --orange: 22 83% 64%;
+    --orange-soft: 22 40% 16%;
+    --orange-soft-foreground: 22 83% 72%;
+    --purple: 249 55% 71%;
+    --purple-soft: 249 40% 16%;
+    --purple-soft-foreground: 249 55% 72%;
+    --pink: 324 48% 64%;
+    --pink-soft: 324 40% 16%;
+    --pink-soft-foreground: 324 48% 72%;
+    --teal: 178 84% 46%;
+    --teal-soft: 178 40% 16%;
+    --teal-soft-foreground: 178 84% 72%;
+    /* slate é quase cinza: suave com pouca saturação (S 40% o deixaria azul). */
+    --slate: 215 13% 53%;
+    --slate-soft: 215 16% 18%;
+    --slate-soft-foreground: 215 13% 72%;
+    --rescheduled: 249 55% 71%;
+    --rescheduled-soft: 249 40% 16%;
+    --rescheduled-soft-foreground: 249 55% 72%;
+
+    /* Eventos no escuro, triplas explícitas: fundo = barra a 16% sobre o card
+       escuro (210 14% 9%), barra = a cor (L + 8 se L < 50), texto L 78%. */
+    --event-purple-bg: 248 24% 18%;
+    --event-purple-bar: 256 58% 60%;
+    --event-purple-fg: 250 46% 78%;
+    --event-green-bg: 164 37% 14%;
+    --event-green-bar: 156 67% 45%;
+    --event-green-fg: 156 69% 78%;
+    --event-pink-bg: 308 21% 15%;
+    --event-pink-bar: 324 48% 52%;
+    --event-pink-fg: 324 49% 78%;
+    --event-orange-bg: 19 26% 17%;
+    --event-orange-bar: 22 81% 58%;
+    --event-orange-fg: 20 70% 78%;
+    --event-blue-bg: 213 38% 16%;
+    --event-blue-bar: 214 67% 52%;
+    --event-blue-fg: 216 66% 78%;
+
+    --chart-1: 221 83% 58%;
+    --chart-2: 37 91% 55%;
+    --chart-3: 155 65% 46%;
+    --chart-4: 246 58% 61%;
+    --chart-5: 205 15% 74%;
+    --chart-6: 173 61% 51%;
+    --chart-7: 324 48% 52%;
+    --chart-8: 358 75% 59%;
+
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-float: 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  }
+
+  /* ─── Casca do CRM (CrmLayout, AppLayout e ChangePassword têm .crm-shell) ───
+     Aqui ficam os tokens que MUDAM valores antigos: neutros novos (matiz
+     neutra fixa 195–210, nunca a da marca; saturação ≤ 14% nos fundos), fundo
+     liso no lugar do gradiente, sombra nova de card e as variáveis de forma do
+     kit. Técnica do admin.css: o seletor no :root pega também os portais do
+     Radix. Fora da casca (/admin, /admin/login, login do cliente, prévia do
+     admin) nada disto casa e o visual fica idêntico.
+
+     Especificidade: estes blocos são 0,2,1 (vencem :root/.dark e o bloco geral
+     da marca, 0,1,1). --background, --surface-sunken, --sidebar-* e
+     --brand-shadow daqui são só FALLBACK (marca padrão azul, fundo na matiz
+     neutra): o CSS da marca os reescreve em html…:root:has(.crm-shell), 0,3,1.
+     O bloco escuro vem depois do claro e tem a mesma especificidade: vence. */
+  html:root:has(.crm-shell) {
+    --background: 210 14% 96%;
+    --surface-sunken: 210 12% 95%;
+    --foreground: 195 28% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 195 28% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 195 28% 9%;
+    --secondary: 210 12% 94%;
+    --secondary-foreground: 195 28% 12%;
+    --muted: 200 12% 95%;
+    --muted-foreground: 200 8% 40%;
+    --border: 210 10% 90%;
+    --input: 210 10% 88%;
+
+    --sidebar-background: 199 45% 7%;
+    --sidebar-foreground: 180 8% 78%;
+    --sidebar-muted: 180 6% 52%;
+    --sidebar-accent: 199 30% 12%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 199 25% 14%;
+    --sidebar-active: 218 66% 21%;
+    --sidebar-active-foreground: 0 0% 100%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-ring: 221 83% 53%;
+    --brand-shadow: 0 6px 16px -6px hsl(221 83% 53% / 0.45);
+
+    --gradient-bg: hsl(var(--background));
+    --gradient-card: hsl(var(--card));
+    --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 16px -6px rgb(16 24 40 / 0.06);
+
+    --crm-radius-card: calc(var(--radius) + 4px);
+    --crm-radius-control: calc(var(--radius) - 2px);
+    --crm-card-shadow: var(--shadow-card);
+    --crm-btn-shadow: var(--brand-shadow);
+    --crm-header-h: 4rem;
+    /* Popover, menus, Select, Tooltip, Dialog, Sheet e toasts (F2). Resolve
+       aqui no <html>, então no escuro pega a --shadow-float do .dark. */
+    --crm-float-shadow: var(--shadow-float);
+  }
+
+  html.dark:has(.crm-shell) {
+    --background: 210 14% 6%;
+    --surface-sunken: 210 12% 7.5%;
+    --foreground: 200 8% 95%;
+    --card: 210 14% 9%;
+    --card-foreground: 200 8% 95%;
+    --popover: 210 13% 11%;
+    --popover-foreground: 200 8% 95%;
+    --secondary: 210 12% 14%;
+    --secondary-foreground: 200 8% 95%;
+    --muted: 210 12% 14%;
+    --muted-foreground: 200 6% 66%;
+    --border: 210 12% 16%;
+    --input: 210 12% 19%;
+
+    --sidebar-background: 199 30% 4.5%;
+    --sidebar-foreground: 180 8% 78%;
+    --sidebar-muted: 180 6% 52%;
+    --sidebar-accent: 199 24% 10%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 199 16% 11%;
+    --sidebar-active: 219 56% 21%;
+    --sidebar-active-foreground: 0 0% 100%;
+    --sidebar-primary: 221 83% 56%; /* badge em AA com branco (58% dava 4,3:1) */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-ring: 221 83% 58%;
+    --brand-shadow: 0 6px 16px -6px hsl(221 83% 58% / 0.35);
+
+    --shadow-card: 0 0 0 1px hsl(var(--border)), 0 8px 24px -8px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -163,75 +404,186 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     background: var(--gradient-bg);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
+  }
+}
+
+/* ─── Pele do kit shadcn no CRM (pacote F2) ─────────────────────────────────
+   Regra: nada aqui casa fora da casca do CRM. Todo seletor começa com
+   :where(html:root:has(.crm-shell)), que tem especificidade ZERO e fica no
+   :root (pega também os portais do Radix). Somado à classe-marcadora do
+   componente (.crm-*), cada regra pesa 0,1,0 e está em @layer components:
+   qualquer utilitário passado por className (text-sm, h-8, border-primary,
+   shadow-none…) continua vencendo, como hoje.
+
+   Dois jeitos de trocar a aparência, conforme o que o componente já tinha:
+   1. Propriedade que a classe base JÁ define (ex.: bg-background do Input):
+      a classe base lê uma variável com fallback = valor de hoje
+      (bg-[color:var(--crm-field-bg,hsl(var(--background)))]) e aqui só se
+      define a variável, no próprio elemento. Fora da casca a variável não
+      existe e o valor calculado é idêntico ao de antes.
+   2. Propriedade que a classe base NÃO define (ex.: cor da borda, que vem do
+      `* { border-color }`, ou a sombra nova do botão primário): definida
+      direto aqui. Fora da casca, nenhuma regra casa.
+
+   Marcadores: crm-btn-default/-outline/-ghost (button.tsx), crm-field
+   (Input, Textarea, SelectTrigger), crm-card / crm-card-title (card.tsx),
+   crm-th / crm-tr (table.tsx), crm-modal (Dialog, AlertDialog, Sheet),
+   crm-float (Popover, DropdownMenu, SelectContent, Tooltip), crm-checkbox,
+   crm-day-today (calendar.tsx), crm-progress(-bar), crm-toast-close,
+   crm-sonner-toast.
+   As abas em pílula (tabs.tsx, variant="pill") são opt-in e não precisam de
+   escopo: o admin não usa a variante. */
+@layer components {
+  /* Button */
+  :where(html:root:has(.crm-shell)) .crm-btn-default {
+    --crm-btn-default-hover: hsl(var(--primary-hover));
+  }
+  /* Sombra da marca só no primário que continua bg-primary. Quando a tela
+     troca o fundo (className="bg-green-600"), o cn() tira o bg-primary da
+     lista de classes e o brilho azul não fica por baixo do botão de outra cor.
+     O :where() mantém o peso em 0,1,0 (shadow-none da tela continua vencendo);
+     o seletor de atributo evita que o Tailwind trate bg-primary como classe
+     desta regra e gere cópias dela com variantes (hover:bg-primary etc.). */
+  :where(html:root:has(.crm-shell)) .crm-btn-default:where([class~="bg-primary"]) {
+    --tw-shadow: var(--crm-btn-shadow);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  :where(html:root:has(.crm-shell)) .crm-btn-outline {
+    --crm-btn-outline-border: hsl(var(--border));
+    --crm-btn-outline-bg: hsl(var(--card));
+    --crm-btn-outline-hover-bg: hsl(var(--surface-sunken));
+    --crm-btn-outline-hover-fg: hsl(var(--foreground));
+  }
+  :where(html:root:has(.crm-shell)) .crm-btn-ghost {
+    --crm-btn-ghost-hover-bg: hsl(var(--muted));
+    --crm-btn-ghost-hover-fg: hsl(var(--foreground));
+  }
+
+  /* Input, Textarea e SelectTrigger: fundo de card, placeholder terciário e
+     borda primária suave no foco (o ring-2 ring-ring de hoje continua). */
+  :where(html:root:has(.crm-shell)) .crm-field {
+    --crm-field-bg: hsl(var(--card));
+    --crm-field-placeholder: hsl(var(--text-tertiary));
+  }
+  :where(html:root:has(.crm-shell)) .crm-field:focus-visible {
+    --crm-field-border: hsl(var(--primary) / 0.5);
+  }
+  :where(html:root:has(.crm-shell)) .crm-field:where([data-placeholder]) {
+    color: hsl(var(--text-tertiary));
+  }
+
+  /* Card: borda sutil e título 16/600 (tamanhos explícitos continuam valendo). */
+  :where(html:root:has(.crm-shell)) .crm-card {
+    border-color: hsl(var(--border) / 0.6);
+  }
+  :where(html:root:has(.crm-shell)) .crm-card-title {
+    --crm-card-title-size: 1rem;
+    --crm-card-title-leading: 1.5rem;
+    --crm-card-title-tracking: -0.01em;
+  }
+
+  /* Table: cabeçalho h-10 12/500 terciário; linha com borda suave. O padding
+     das células (p-4) não muda. */
+  :where(html:root:has(.crm-shell)) .crm-th {
+    --crm-th-h: 2.5rem;
+    --crm-th-fg: hsl(var(--text-tertiary));
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  :where(html:root:has(.crm-shell)) .crm-tr {
+    --crm-tr-hover: hsl(var(--surface-sunken) / 0.6);
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  /* Dialog, AlertDialog e Sheet: superfície de card (o raio 16 e a sombra
+     flutuante vêm de rounded-card/shadow-crm-float-lg). Overlay igual. */
+  :where(html:root:has(.crm-shell)) .crm-modal {
+    --crm-modal-bg: hsl(var(--card));
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  /* Popover, DropdownMenu, SelectContent e Tooltip. */
+  :where(html:root:has(.crm-shell)) .crm-float {
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  /* Checkbox: quadrado arredondado (o rounded-sm de hoje, raio − 4px, vira
+     quase um círculo numa caixa de 16px). */
+  :where(html:root:has(.crm-shell)) .crm-checkbox {
+    --crm-checkbox-radius: clamp(0px, calc(var(--radius) - 4px), 5px);
+  }
+
+  /* Calendar: hoje com anel de 1px na cor da marca; selecionado continua
+     bg-primary (hoje ≠ selecionado). */
+  :where(html:root:has(.crm-shell)) .crm-day-today {
+    box-shadow: inset 0 0 0 1px hsl(var(--primary));
+  }
+
+  /* Progress: trilho afundado de 10px e preenchimento arredondado. */
+  :where(html:root:has(.crm-shell)) .crm-progress {
+    --crm-progress-h: 0.625rem;
+    --crm-progress-track: hsl(var(--surface-sunken));
+  }
+  :where(html:root:has(.crm-shell)) .crm-progress-bar {
+    border-radius: 9999px;
+  }
+
+  /* Toast (Radix), botão fechar do destrutivo: tokens no lugar do red-*. */
+  :where(html:root:has(.crm-shell)) .crm-toast-close {
+    --crm-toast-close-fg: hsl(var(--destructive-foreground) / 0.8);
+    --crm-toast-close-hover-fg: hsl(var(--destructive-foreground));
+    --crm-toast-close-ring: hsl(var(--destructive-foreground) / 0.8);
+    --crm-toast-close-ring-offset: hsl(var(--destructive));
+  }
+
+  /* Sonner: superfície de card (raio 16 e sombra flutuante nas classes). */
+  :where(html:root:has(.crm-shell)) .crm-sonner-toast {
+    --crm-sonner-bg: hsl(var(--card));
+  }
+
+  /* Abas em pílula (TabsTrigger variant="pill"): contador opcional com a
+     classe `tab-count` dentro do gatilho. Os seletores de contexto ficam em
+     :where() para a regra pesar 0,1,0: utilitários no próprio contador
+     (bg-destructive text-destructive-foreground…) continuam vencendo. */
+  :where(.crm-tab-pill) .tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.375rem;
+    height: 1.25rem;
+    min-width: 1.25rem;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+    border-radius: 9999px;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
+    /* "bg-muted" da referência, mas translúcido: o muted liso (95%) some sobre
+       o fundo tingido da casca (96%); assim aparece em card e em fundo. */
+    background-color: hsl(var(--foreground) / 0.07);
+    color: hsl(var(--muted-foreground));
+  }
+  :where(.crm-tab-pill[data-state="active"]) .tab-count {
+    background-color: rgb(255 255 255 / 0.25);
+    color: hsl(var(--primary-foreground));
   }
 }
 
 @layer utilities {
-  .gradient-orange {
-    background: var(--gradient-orange);
+  .gradient-brand {
+    background: var(--brand-gradient);
+  }
+  .shadow-brand {
+    box-shadow: var(--brand-shadow);
   }
   .shadow-card {
     box-shadow: var(--shadow-card);
-  }
-  .shadow-float {
-    box-shadow: var(--shadow-float);
-  }
-  .shadow-orange {
-    box-shadow: var(--shadow-orange);
   }
   .gradient-card {
     background: var(--gradient-card);
   }
 }
-
-/* Pele do CRM. O marcador no body mantém /admin e o restante do produto intactos,
-   inclusive para conteúdos Radix renderizados em portal. */
-body.crm-ui-active {
-  background: hsl(var(--background));
-  overflow-x: hidden;
-}
-body.crm-ui-active main > * { min-width: 0; }
-body.crm-ui-active :where(h1, h2, h3, p, span, label) { overflow-wrap: break-word; }
-body.crm-ui-active [data-radix-popper-content-wrapper] { max-width: calc(100vw - 1rem); }
-
-/* Pele das telas operacionais fora do CRM. Mantém login, landing e /admin
-   independentes e garante que tabelas largas rolem no próprio card. */
-body.system-ui-active {
-  background: hsl(var(--background));
-}
-body.system-ui-active [data-radix-popper-content-wrapper] { max-width: calc(100vw - 1rem); }
-body.system-ui-active main > * { min-width: 0; }
-body.system-ui-active main h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; }
-body.system-ui-active .gradient-card,
-body.system-ui-active [class*="shadow-card"] { background: hsl(var(--card)); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
-body.system-ui-active table { min-width: max-content; }
-body.system-ui-active thead { background: hsl(var(--surface-sunken)); }
-body.system-ui-active thead th { height: 2.75rem; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
-body.system-ui-active input,
-body.system-ui-active textarea,
-body.system-ui-active button[role="combobox"] { border-radius: var(--radius-control); }
-body.system-ui-active input,
-body.system-ui-active button[role="combobox"] { min-height: 2.5rem; }
-body.system-ui-active [role="dialog"] { border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
-
-body.crm-ui-active .crm-ui-button { border-radius: var(--radius-control); }
-body.crm-ui-active .crm-ui-button[data-variant="default"] { box-shadow: var(--shadow-primary); }
-body.crm-ui-active .crm-ui-input,
-body.crm-ui-active .crm-ui-select-trigger,
-body.crm-ui-active .crm-ui-textarea { border-radius: var(--radius-control); }
-body.crm-ui-active .crm-ui-card { border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
-body.crm-ui-active .crm-ui-dialog,
-body.crm-ui-active .crm-ui-popover,
-body.crm-ui-active .crm-ui-select-content { border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
-body.crm-ui-active .crm-ui-sheet[data-side="left"] { border-radius: 0 var(--radius-card) var(--radius-card) 0; }
-body.crm-ui-active .crm-ui-sheet[data-side="right"] { border-radius: var(--radius-card) 0 0 var(--radius-card); }
-body.crm-ui-active .crm-ui-sheet[data-side="top"] { border-radius: 0 0 var(--radius-card) var(--radius-card); }
-body.crm-ui-active .crm-ui-sheet[data-side="bottom"] { border-radius: var(--radius-card) var(--radius-card) 0 0; }
-body.crm-ui-active .crm-ui-table-header { background: hsl(var(--surface-sunken)); }
-body.crm-ui-active .crm-ui-table-header th { height: 2.75rem; font-size: 0.75rem; }
-body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] { border-radius: 9999px; background: hsl(var(--surface-sunken)); }
-body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] > .crm-ui-tabs-trigger { border-radius: 9999px; }
 
 /* O picker do emoji-mart tem border-radius próprio, maior que o do popover.
    Dentro do nosso popover (que já é arredondado e recorta com overflow-hidden)

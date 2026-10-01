@@ -585,3 +585,16 @@ export async function rptTicketMedio(from: Date | string, to: Date | string): Pr
  *  marcados como não-marketing. Mesma regra do SQL `pagamento_conta_marketing`. */
 export const contaComoFaturamento = (p: { recorrencia_orto?: boolean | null; nao_marketing?: boolean | null }) =>
   p.recorrencia_orto !== true && p.nao_marketing !== true;
+
+/**
+ * Apelidos trazidos junto com o redesign do v2 (01/10/2026).
+ *
+ * No v2 estas funções foram renomeadas para tirar "Bahia" do nome, porque lá o
+ * fuso vem do cadastro de cada clínica. Aqui o CRClin é da Rizodent e o fuso
+ * continua sendo America/Bahia: trocar a régua de fuso mexeria em data de
+ * relatório e de faturamento, o que NÃO é redesign. Então as telas novas
+ * encontram o nome que esperam, apontando para a mesma régua de sempre.
+ */
+export const dayKeyNoFuso = dayKeyBahia;
+export const hojeNoFuso = todayBahia;
+export const rangeNoFuso = rangeBahia;

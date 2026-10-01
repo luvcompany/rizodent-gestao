@@ -448,7 +448,7 @@ const RegistroDiarioTab = () => {
               </div>
             )}
 
-            <Button type="submit" disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
+            <Button type="submit" disabled={saving} className="w-full gradient-brand text-primary-foreground font-semibold shadow-brand hover:opacity-90 transition-opacity">
               <Save size={18} className="mr-2" />
               {saving ? "Salvando..." : existingId ? "Atualizar Registro" : "Salvar Registro"}
             </Button>

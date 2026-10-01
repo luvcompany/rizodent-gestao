@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
-import { PageHeader } from "@/components/crm-ui";
 import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
+import { useModule } from "@/hooks/useModule";
+import { useBrand } from "@/contexts/BrandContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,62 @@ import {
 /* ═══════════════════════════════════════════════════
    Importação em Massa
    ═══════════════════════════════════════════════════ */
+/**
+ * Número dos leads importados, com a mesma regra do gatilho
+ * stamp_crm_lead_whatsapp_number:
+ * - closer/recepção: o número concedido a quem importa (gravado no insert);
+ * - demais papéis: o insert vai sem número e o banco carimba com o número do
+ *   canal WhatsApp do funil (ativo e 'conectado'; padrão primeiro, depois o
+ *   mais antigo) ou, sem canal, com o número conectado do cliente (padrão
+ *   primeiro, depois o mais antigo). Nos dois casos só valem números que
+ *   quem importa acessa (can_access_whatsapp_number); sem nenhum, NULL.
+ * `mundo` é o número em que o lead vai morar — é nele (e nos leads ainda sem
+ * número) que a checagem de duplicado precisa procurar.
+ */
+async function numeroDoLeadImportado(
+  userRole: string | null | undefined,
+  pipelineId: string,
+): Promise<{ carimbo: string | null; mundo: string | null }> {
+  if (userRole === "closer" || userRole === "recepcao") {
+    const id = await getMyWhatsappNumberId(userRole);
+    return { carimbo: id, mundo: id };
+  }
+  const db = supabase;
+  const primeiroConectado = async (ids: string[] | null): Promise<string | null> => {
+    // A policy de SELECT de whatsapp_numbers já filtra por
+    // can_access_whatsapp_number(id): aqui só aparecem os números que quem
+    // cria acessa — o mesmo filtro que o gatilho aplica. Sem nenhum, o lead
+    // fica sem número (NULL), como no banco.
+    let q = db
+      .from("whatsapp_numbers")
+      .select("id")
+      .eq("is_active", true)
+      .eq("status", "conectado");
+    if (ids) q = q.in("id", ids);
+    const { data, error } = await q
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (error) {
+      console.error("[Import] falha ao ler números de WhatsApp:", error);
+      return null;
+    }
+    return ((data as { id: string }[] | null) ?? [])[0]?.id ?? null;
+  };
+  const { data: canais, error: errCanais } = await db
+    .from("funnel_channels")
+    .select("whatsapp_number_id")
+    .eq("pipeline_id", pipelineId)
+    .eq("channel_type", "whatsapp")
+    .not("whatsapp_number_id", "is", null);
+  if (errCanais) console.error("[Import] falha ao ler canais do funil:", errCanais);
+  const ids = ((canais as { whatsapp_number_id: string | null }[] | null) ?? [])
+    .map((c) => c.whatsapp_number_id)
+    .filter((v): v is string => !!v);
+  const doFunil = ids.length ? await primeiroConectado(ids) : null;
+  return { carimbo: null, mundo: doFunil ?? (await primeiroConectado(null)) };
+}
+
 function ImportTab() {
   const { profile, userRole } = useAuth();
   const [rows, setRows] = useState<string[][]>([]);
@@ -77,9 +134,8 @@ function ImportTab() {
     if (!selectedPipeline || !selectedStage) return toast.error("Selecione funil e etapa");
     if (!mapping.name || !mapping.phone) return toast.error("Mapeie ao menos Nome e Telefone");
     setImporting(true);
-    // Cada número é um mundo: leads importados nascem carimbados com o número
-    // de quem importa (crc/gerente: NULL = mundo legado).
-    const myNumberId = await getMyWhatsappNumberId(userRole);
+    // Cada número é um mundo: ver numeroDoLeadImportado.
+    const { carimbo, mundo } = await numeroDoLeadImportado(userRole, selectedPipeline);
     const tenantId = profile?.tenant_id ?? null;
     let imported = 0, skipped = 0, failed = 0;
     let insertErrorMsg = "";
@@ -94,11 +150,12 @@ function ImportTab() {
       if (!name || !rawPhone) { skipped++; continue; }
       const phone = normalizePhone(rawPhone);
 
-      // Duplicado só conta dentro do mesmo (tenant, número).
+      // Duplicado conta no número em que o lead vai morar e nos leads ainda
+      // sem número (o webhook adota esse lead na primeira resposta).
       let dupQuery = supabase.from("crm_leads").select("id").eq("phone", phone);
       if (tenantId) dupQuery = dupQuery.eq("tenant_id", tenantId);
-      dupQuery = myNumberId
-        ? dupQuery.eq("whatsapp_number_id", myNumberId)
+      dupQuery = mundo
+        ? dupQuery.or(`whatsapp_number_id.eq.${mundo},whatsapp_number_id.is.null`)
         : dupQuery.is("whatsapp_number_id", null);
       const { data: existing } = await dupQuery.limit(1);
       if (existing && existing.length > 0) { skipped++; continue; }
@@ -109,7 +166,7 @@ function ImportTab() {
       const { error: insErr } = await supabase.from("crm_leads").insert({
         name, phone, pipeline_id: selectedPipeline, stage_id: selectedStage,
         tags, source: source || "import",
-        whatsapp_number_id: myNumberId,
+        whatsapp_number_id: carimbo,
       });
       if (insErr) {
         console.error("[Import] erro ao inserir lead:", phone, insErr);
@@ -262,6 +319,7 @@ function NotificationsTab() {
    ═══════════════════════════════════════════════════ */
 function BlockedTab() {
   const { userRole } = useAuth();
+  const { system: marcaSistema } = useBrand();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -295,7 +353,7 @@ function BlockedTab() {
     toast.success("Lead desbloqueado");
     // Se o número foi bloqueado na Meta, desbloqueia lá também — senão o
     // paciente continuaria sem conseguir escrever para a clínica.
-    if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(id, "desbloquear");
+    if (papelBloqueiaNaMeta(userRole)) await bloquearContatoNaMeta(id, "desbloquear", { nomeSistema: marcaSistema.name });
     setLeads(prev => prev.filter(l => l.id !== id));
   };
 
@@ -610,12 +668,12 @@ function HorarioComercialTab() {
   if (loading) return <Card className="p-4 text-sm text-muted-foreground">Carregando…</Card>;
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Horário comercial</h3>
+      <h3 className="text-lg font-semibold">Horário Comercial</h3>
       <p className="text-sm text-muted-foreground">
         Define o expediente do time de atendimento. As métricas de tempo de resposta contam apenas as horas
         dentro do expediente — mensagens recebidas à noite ou no fim de semana não penalizam o time.
       </p>
-      <Card className="max-w-2xl space-y-3 p-5">
+      <Card className="p-4 space-y-3 max-w-xl">
         {cfg.map((c, d) => (
           <div key={d} className="flex items-center gap-3 flex-wrap">
             <div className="w-32 flex items-center gap-2">
@@ -643,20 +701,25 @@ function HorarioComercialTab() {
 
 export default function CrmConfiguracoes() {
   const { userRole } = useAuth();
-  // API de Conversões: só gestão (mesma régua da RPC meta_capi_pode_gerir).
-  const podeGerirMeta = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+  // API de Conversões: só gestão (mesma régua da RPC meta_capi_pode_gerir) e só
+  // com o módulo 'capi' ligado. O módulo só esconde depois de lido como
+  // desligado (enquanto carrega, a aba aparece).
+  const { ligado: capiLigado } = useModule("capi");
+  const podeGerirMeta =
+    (userRole === "crc" || userRole === "gerente" || userRole === "superadmin") && capiLigado !== false;
   return (
-    <div className="space-y-5">
-      <PageHeader title="Configurações" subtitle="Horário comercial, importação de dados, notificações, leads bloqueados e lixeira." />
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold">Configurações</h1>
+      <p className="text-muted-foreground">Horário comercial, importação de dados, notificações, leads bloqueados e lixeira.</p>
       <Tabs defaultValue="horario" className="w-full">
-        <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="h-auto min-w-max gap-1">
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="horario"><Clock size={14} className="mr-1" /> Horário</TabsTrigger>
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
           <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
           {podeGerirMeta && <TabsTrigger value="meta-capi"><Share2 size={14} className="mr-1" /> Conversões Meta</TabsTrigger>}
-        </TabsList></div>
+        </TabsList>
         <TabsContent value="horario"><HorarioComercialTab /></TabsContent>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>

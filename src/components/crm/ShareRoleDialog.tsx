@@ -12,13 +12,13 @@ export const ROLE_LABEL: Record<string, string> = {
   gerente: "Gerente", crc: "CRC", posvenda: "Pós-venda", recepcao: "Recepção", closer: "Closer", sdr: "SDR", superadmin: "Superadmin",
 };
 export const ROLE_BADGE_COLOR: Record<string, string> = {
-  gerente: "bg-info-soft text-info-soft-foreground",
-  crc: "bg-purple-soft text-purple-soft-foreground",
-  posvenda: "bg-success-soft text-success-soft-foreground",
-  recepcao: "bg-warning-soft text-warning-soft-foreground",
-  closer: "bg-warning-soft text-warning-soft-foreground",
-  sdr: "bg-info-soft text-info-soft-foreground",
-  superadmin: "bg-destructive-soft text-destructive-soft-foreground",
+  gerente: "bg-blue-900/30 text-blue-400",
+  crc: "bg-purple-900/30 text-purple-400",
+  posvenda: "bg-green-900/30 text-green-400",
+  recepcao: "bg-warning/15 text-foreground dark:text-warning",
+  closer: "bg-warning/15 text-foreground dark:text-warning",
+  sdr: "bg-teal-900/30 text-teal-400",
+  superadmin: "bg-red-900/30 text-red-400",
 };
 
 type Props = {

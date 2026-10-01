@@ -1,6 +1,30 @@
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { renderIcon, type IconLike } from "./icon";
 
-export function EmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
-  return <div className="flex min-h-48 flex-col items-center justify-center px-5 py-10 text-center"><span className="grid h-12 w-12 place-items-center rounded-full bg-slate-soft text-slate-soft-foreground"><Icon className="h-5 w-5" /></span><h3 className="mt-4 text-sm font-semibold text-foreground">{title}</h3>{description && <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>}{action && <div className="mt-4">{action}</div>}</div>;
+export interface EmptyStateProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  icon?: IconLike;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  /** Só a ação que já existe na tela (nunca criar botão novo). */
+  action?: React.ReactNode;
 }
+
+/** Estado vazio centralizado: ícone em círculo suave, título, texto e ação opcional. */
+export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
+  ({ icon, title, description, action, className, ...rest }, ref) => (
+    <div ref={ref} className={cn("px-4 py-12 text-center", className)} {...rest}>
+      {icon ? (
+        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-primary-soft-fg">
+          {renderIcon(icon, 24)}
+        </span>
+      ) : null}
+      <div className="text-[15px] font-semibold text-foreground">{title}</div>
+      {description != null ? (
+        <div className="mx-auto mt-1 max-w-sm text-[13px] text-muted-foreground">{description}</div>
+      ) : null}
+      {action ? <div className="mt-5 flex justify-center">{action}</div> : null}
+    </div>
+  ),
+);
+EmptyState.displayName = "EmptyState";

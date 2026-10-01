@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { ScrollText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/contexts/TenantContext";
@@ -29,11 +30,13 @@ const eventLabels: Record<string, string> = {
   user_unblocked: "Usuário desbloqueado",
 };
 
-import { PageHeader, StatusPill, type SemanticTone } from "@/components/crm-ui";
-
-const eventTone: Record<string, SemanticTone> = {
-  login: "success", logout: "slate", login_failed: "warning",
-  login_blocked: "destructive", user_blocked: "destructive", user_unblocked: "success",
+const eventBadgeClass: Record<string, string> = {
+  login: "bg-emerald-500/20 text-emerald-500 border-emerald-500/30",
+  logout: "bg-muted text-muted-foreground border-border",
+  login_failed: "bg-warning/15 text-warning border-warning/30",
+  login_blocked: "bg-red-500/20 text-red-500 border-red-500/30",
+  user_blocked: "bg-red-500/20 text-red-500 border-red-500/30",
+  user_unblocked: "bg-emerald-500/20 text-emerald-500 border-emerald-500/30",
 };
 
 const AcessosLog = () => {
@@ -79,9 +82,17 @@ const AcessosLog = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Logs de acesso" subtitle="Histórico de acessos, tentativas falhas e bloqueios da sua equipe." />
+      <div className="flex items-center gap-3">
+        <ScrollText className="text-primary" size={26} />
+        <div>
+          <h1 className="text-2xl font-bold">Logs de acesso</h1>
+          <p className="text-sm text-muted-foreground">
+            Histórico de acessos, tentativas falhas e bloqueios da sua equipe.
+          </p>
+        </div>
+      </div>
 
-      <Card className="border-border/60">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
         </CardHeader>
@@ -106,7 +117,7 @@ const AcessosLog = () => {
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden border-border/60">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">
             Registros {loading ? "" : `(${filtered.length})`}
@@ -138,9 +149,12 @@ const AcessosLog = () => {
                       </TableCell>
                       <TableCell className="text-sm">{l.email || "—"}</TableCell>
                       <TableCell>
-                        <StatusPill tone={eventTone[l.event] || "slate"}>
+                        <Badge
+                          variant="outline"
+                          className={eventBadgeClass[l.event] || "bg-muted text-muted-foreground"}
+                        >
                           {eventLabels[l.event] || l.event}
-                        </StatusPill>
+                        </Badge>
                       </TableCell>
                       <TableCell
                         className="text-xs text-muted-foreground max-w-[360px] truncate"

@@ -782,12 +782,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
 
   return (
-    <div className="flex-shrink-0 border-t border-border/60 bg-card px-3 py-3 sm:px-4">
+    <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
       {/* Optimizing/uploading indicator */}
       {(optimizing || uploading) && (
-        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-soft-foreground">
+        <div className="flex items-center gap-2 mb-2 bg-primary/10 rounded-lg px-3 py-2 text-sm text-primary">
           <Loader2 size={16} className="animate-spin" />
           <span>{optimizing ? "Otimizando arquivo..." : "Enviando arquivo..."}</span>
         </div>
@@ -795,7 +795,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       {/* Attached file preview */}
       {attachedFile && !optimizing && (
-        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-border/60 bg-surface-sunken px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 mb-2 bg-secondary rounded-lg px-3 py-2 text-sm">
           {attachedFile.type === "image" ? <Image size={16} className="text-primary" /> :
            attachedFile.type === "video" ? <Video size={16} className="text-primary" /> :
            attachedFile.type === "sticker" ? <span className="text-lg">🎨</span> :
@@ -815,23 +815,23 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       {/* Expired window state */}
       {isWindowExpired && !isInstagram ? (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-2xl border border-destructive/20 bg-destructive-soft px-3 py-2.5 text-sm text-destructive-soft-foreground">
+          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
             <AlertTriangle size={16} className="flex-shrink-0" />
             <span className="flex-1">A sessão de 24h expirou. Envie um template para reabrir a conversa.</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 relative">
               <Textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Sessão expirada — use um template"
-                className="min-h-10 max-h-10 resize-none rounded-xl bg-surface-sunken py-2 pr-10 opacity-50"
+                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
                 disabled
                 rows={1}
               />
             </div>
             {!isInstagram && (
-              <Button size="sm" variant="outline" onClick={onLoadTemplates} className="h-10 rounded-xl gap-1.5">
+              <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
                 <FileText size={16} />
                 Enviar Template
               </Button>
@@ -842,11 +842,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         <>
         {isInstagram && (
           <div className="flex items-center gap-2 mb-2">
-            <div className="inline-flex rounded-full border border-border/60 bg-surface-sunken p-1">
+            <div className="inline-flex rounded-md border border-border bg-secondary p-0.5">
               <button
                 type="button"
                 onClick={() => setIgReplyMode("direct")}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors ${igReplyMode === "direct" ? "bg-card text-foreground shadow-card" : "text-muted-foreground hover:text-foreground"}`}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "direct" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <Send size={12} /> Direct
               </button>
@@ -860,7 +860,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   setIgReplyMode("comment");
                 }}
                 disabled={!igCommentTarget}
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors ${igReplyMode === "comment" ? "bg-purple-soft text-purple-soft-foreground" : "text-muted-foreground hover:text-foreground"} disabled:cursor-not-allowed disabled:opacity-50`}
+                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "comment" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <MessageCircle size={12} /> Comentário
               </button>
@@ -878,8 +878,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               </Select>
             )}
             {igReplyMode === "comment" && igCommentTarget && (
-              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-purple/20 bg-purple-soft px-3 py-1 text-[11px] text-purple-soft-foreground">
-                <Reply size={11} className="flex-shrink-0 text-purple" />
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
+                <Reply size={11} className="text-purple-500 flex-shrink-0" />
                 <span className="truncate">Respondendo: {igCommentTarget.preview || "(sem texto)"}</span>
                 <button
                   type="button"
@@ -894,7 +894,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         )}
         {/* Instagram: janela de Direct fechada — resposta da RPC, dita ANTES de escrever */}
         {igDirectBloqueado && (
-          <div className="mb-2 flex items-start gap-2 rounded-2xl border border-destructive/20 bg-destructive-soft px-3 py-2.5 text-xs text-destructive-soft-foreground">
+          <div className="flex items-start gap-2 mb-2 bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 text-xs text-destructive">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1.5">
               <p>
@@ -908,7 +908,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   <button
                     type="button"
                     onClick={() => setIgReplyMode("comment")}
-                    className="inline-flex items-center gap-1 rounded-full border border-destructive/30 px-2.5 py-1 font-medium transition-colors hover:bg-destructive/10"
+                    className="inline-flex items-center gap-1 rounded border border-destructive/30 px-2 py-0.5 font-medium hover:bg-destructive/10 transition-colors"
                   >
                     <MessageCircle size={11} /> Responder pelo comentário
                   </button>
@@ -923,19 +923,45 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         )}
         {/* Fallback heurístico (só quando a RPC não respondeu): janela de DM pelo histórico carregado */}
         {!igJanela && isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
-          <div className="mb-2 flex items-start gap-2 rounded-2xl border border-warning/20 bg-warning-soft px-3 py-2.5 text-xs text-warning-soft-foreground">
-            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 mb-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2 text-xs text-foreground">
+            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5 text-warning" />
             <span>
               <strong>Janela de DM expirada.</strong> O Instagram só permite enviar Direct enquanto o usuário enviou um DM nas últimas 24h.
               {igCommentTarget ? " Use a aba Comentário para responder." : " Aguarde o usuário enviar uma nova mensagem."}
             </span>
           </div>
         )}
-        <div className="rounded-2xl border border-border/60 bg-card shadow-card transition-shadow focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15">
+        <div className="flex items-end gap-2">
           {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
           {!recorderActive && (
             <>
-              <div className="relative px-3 pt-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={optimizing || uploading || igDirectBloqueado}
+                    title={igDirectBloqueado ? igAvisoBloqueio : undefined}
+                  >
+                    <Paperclip size={20} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem onClick={() => handleFileSelect("image/*")}>
+                    <Image size={16} className="mr-2" /> Imagem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect("video/*")}>
+                    <Video size={16} className="mr-2" /> Vídeo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv")}>
+                    <File size={16} className="mr-2" /> Documento
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleFileSelect("image/webp")}>
+                    <span className="mr-2 text-base">🎨</span> Figurinha (WebP)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="flex-1 relative">
                 <SlashCommandMenu
                   query={slashQuery}
                   templates={slashTemplates}
@@ -972,42 +998,15 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   placeholder={
                     igDirectBloqueado
                       ? (igJanela?.situacao === "so_comentario" || igJanela?.situacao === "sem_direct"
-                        ? "Sem Direct desta pessoa — veja o aviso acima"
-                        : "Janela de Direct fechada — veja o aviso acima")
+                          ? "Sem Direct desta pessoa — veja o aviso acima"
+                          : "Janela de Direct fechada — veja o aviso acima")
                       : "Digite / para atalhos ou uma mensagem..."
                   }
-                  className="min-h-10 max-h-[120px] resize-none border-0 bg-transparent px-0 py-2 shadow-none focus-visible:ring-0 disabled:opacity-60"
+                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2 disabled:opacity-60"
                   disabled={optimizing || uploading || igDirectBloqueado}
                   rows={1}
                 />
               </div>
-
-              <div className="flex min-w-0 items-center gap-0.5 border-t border-border/50 px-2 py-1.5">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={optimizing || uploading || igDirectBloqueado}
-                    title={igDirectBloqueado ? igAvisoBloqueio : undefined}
-                  >
-                    <Paperclip size={20} />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="rounded-2xl p-1.5 shadow-float">
-                  <DropdownMenuItem onClick={() => handleFileSelect("image/*")}>
-                    <Image size={16} className="mr-2" /> Imagem
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect("video/*")}>
-                    <Video size={16} className="mr-2" /> Vídeo
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv")}>
-                    <File size={16} className="mr-2" /> Documento
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect("image/webp")}>
-                    <span className="mr-2 text-base">🎨</span> Figurinha (WebP)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
 
               <EmojiPickerButton
                 disabled={optimizing || uploading || igDirectBloqueado}
@@ -1018,18 +1017,18 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               />
 
               {!isInstagram && (
-                <button onClick={onLoadTemplates} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary" title="Templates">
-                  <FileText size={18} />
+                <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
+                  <FileText size={20} />
                 </button>
               )}
 
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <button className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary" title="Iniciar Bot">
-                    <Bot size={18} />
+                  <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+                    <Bot size={20} />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="top" align="start" sideOffset={8} className="w-64 rounded-2xl p-2 shadow-float">
+                <PopoverContent side="top" align="start" sideOffset={8} className="w-64 p-2">
                   <p className="text-xs font-medium text-muted-foreground px-2 mb-1">Iniciar Bot</p>
                   {bots.length === 0 ? (
                     <p className="text-xs text-muted-foreground px-2 py-3">Nenhum bot publicado</p>
@@ -1040,7 +1039,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                           key={b.id}
                           onClick={() => handleStartBot(b.id)}
                           disabled={startingBotId === b.id}
-                          className="flex w-full items-center rounded-xl px-3 py-2 text-sm text-left transition-colors hover:bg-surface-sunken disabled:opacity-50"
+                          className="flex w-full items-center rounded-md px-3 py-2 text-sm text-left hover:bg-muted transition-colors disabled:opacity-50"
                         >
                           {startingBotId === b.id ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1060,13 +1059,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   size="icon"
                   onClick={handleSendMessage}
                   disabled={optimizing || uploading || igDirectBloqueado}
-                  className="ml-auto h-9 w-9 rounded-full shadow-primary"
                   title={igDirectBloqueado ? igAvisoBloqueio : undefined}
                 >
                   <Send size={18} />
                 </Button>
               )}
-              </div>
             </>
           )}
 

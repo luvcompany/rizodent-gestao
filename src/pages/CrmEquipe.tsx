@@ -25,7 +25,6 @@ import {
   UserX, Users, Utensils,
 } from "lucide-react";
 import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
-import { InitialsAvatar, StatusPill } from "@/components/crm-ui";
 
 /**
  * Equipe — gestão das SDRs do rodízio pelo gestor do cliente.
@@ -1040,17 +1039,12 @@ export default function CrmEquipe() {
                     const emAcao = ocupado === m.user_id;
                     return (
                       <TableRow key={m.user_id} className={m.bloqueado ? "opacity-70" : ""}>
-                        <TableCell className="font-medium text-foreground">
-                          <div className="flex min-w-[180px] items-center gap-3">
-                            <InitialsAvatar name={m.nome} className="h-9 w-9 shrink-0" />
-                            <span className="whitespace-normal">{m.nome}</span>
-                          </div>
-                        </TableCell>
+                        <TableCell className="font-medium text-foreground">{m.nome}</TableCell>
                         <TableCell className="text-muted-foreground">{m.email}</TableCell>
                         <TableCell>
                           {m.bloqueado
-                            ? <StatusPill tone="destructive">Bloqueada</StatusPill>
-                            : <StatusPill tone="success">Ativa</StatusPill>}
+                            ? <Badge variant="destructive">Bloqueada</Badge>
+                            : <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-400">Ativa</Badge>}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -1113,7 +1107,7 @@ export default function CrmEquipe() {
         </section>
 
         {erroHorarios && (
-          <p className="text-xs text-warning-soft-foreground">
+          <p className="text-xs text-warning">
             Coluna Horário indisponível: {erroHorarios}
           </p>
         )}
@@ -1232,8 +1226,8 @@ export default function CrmEquipe() {
                 Passe a senha por um canal seguro. Ela não fica salva aqui e a pessoa troca no próximo acesso.
               </p>
             </div>
-            <div className="space-y-2 rounded-2xl border border-border/60 p-4">
-              <p className="text-sm font-semibold text-foreground">Horário de trabalho</p>
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Horário de trabalho</p>
               <p className="text-[11px] text-muted-foreground">
                 Segunda a sexta. As reservas dela passam para quem abriu o expediente se ela não abrir até a
                 entrada + tolerância do painel do rodízio. Sábado em branco = não trabalha no sábado — e o

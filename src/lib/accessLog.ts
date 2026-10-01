@@ -5,7 +5,9 @@ type LogParams = {
   email: string;
   tenantId?: string | null;
   context: "admin" | "client";
-  event: "login" | "logout" | "login_blocked" | "login_failed";
+  // A policy de INSERT só aceita estes três eventos vindos do navegador
+  // (sem ip e sem metadata); os demais só o servidor grava.
+  event: "login" | "logout" | "login_blocked";
 };
 
 export async function logAccess(p: LogParams) {
@@ -16,7 +18,7 @@ export async function logAccess(p: LogParams) {
       tenant_id: p.tenantId ?? null,
       context: p.context,
       event: p.event,
-      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 500) : null,
     });
   } catch (e) {
     console.warn("[access-log] failed", e);

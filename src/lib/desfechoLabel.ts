@@ -99,15 +99,22 @@ const ROTULO_POR_STATUS: Record<string, string> = {
   not_contracted: "Não contratado",
 };
 
-/** Classes Tailwind por status (ver a ressalva do 'rescheduled' no cabeçalho). */
+/**
+ * Classes Tailwind por status (ver a ressalva do 'rescheduled' no cabeçalho).
+ * Só tokens semânticos (src/index.css), nada de paleta fixa: fundo suave
+ * (-soft), texto sobre o suave (-soft-foreground, AA nos dois temas) e borda
+ * na cor forte. Mesma leitura de antes: confirmado = info (azul), remarcada =
+ * rescheduled (roxo), contratado = success (verde), não contratado =
+ * destructive (vermelho).
+ */
 const COR_POR_STATUS: Record<string, string> = {
   pending: "bg-primary/10 text-foreground border border-border",
-  confirmed: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30",
-  no_show: "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/50",
-  rescheduled: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30",
+  confirmed: "bg-info-soft text-info-soft-foreground border border-info/30",
+  no_show: "bg-warning/20 text-foreground dark:text-warning border border-warning/50",
+  rescheduled: "bg-rescheduled-soft text-rescheduled-soft-foreground border border-rescheduled/30",
   cancelled: "bg-muted text-muted-foreground border border-border line-through",
-  contracted: "bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/50",
-  not_contracted: "bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/50",
+  contracted: "bg-success-soft text-success-soft-foreground border border-success/50",
+  not_contracted: "bg-destructive-soft text-destructive-soft-foreground border border-destructive/50",
 };
 
 /** Cor única do "Compareceu" — igual para 'contracted' e 'not_contracted'. */

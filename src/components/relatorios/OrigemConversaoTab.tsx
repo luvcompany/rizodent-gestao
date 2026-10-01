@@ -6,8 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { Loader2, TrendingUp, TrendingDown, Award, Clock, MessageSquare, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { ChartCard, KpiCard } from "@/components/crm-ui";
-import { fetchAllPaged, rangeBahia, dayKeyBahia, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS, businessMinutesBetween, loadBusinessHours, type BusinessHours } from "@/lib/reportKit";
+import { fetchAllPaged, rangeNoFuso, dayKeyNoFuso, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS, businessMinutesBetween, loadBusinessHours, SEM_CIDADE, type BusinessHours } from "@/lib/reportKit";
+import { fusoDoTenant, instanteNoFusoMs } from "@/lib/fuso";
+import { useCidadesDoTenant } from "@/hooks/useOpcoesDoTenant";
 
 type Pipeline = { id: string; name: string };
 type Lead = {
@@ -33,7 +34,10 @@ type OrigemAggRow = {
   faturamento: number;
 };
 
-const CITIES = ["Vitória da Conquista", "Guanambi", "Itabuna", "Ipiaú"];
+// Colunas de cidade: as clínicas do tenant + as cidades que aparecem nos leads
+// do período (no máximo MAX_CIDADES_EXTRAS a mais); o resto cai em "Outras".
+// Antes eram as 4 praças fixas de uma clínica só.
+const MAX_CIDADES_EXTRAS = 6;
 
 function pct(num: number, den: number): string {
   if (!den) return "—";
@@ -55,9 +59,9 @@ const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 // a escrever — não pode inflar a conversão da coorte.
 const TOLERANCIA_CONTRATO_DIAS = 30;
 
-/** Menor dia (YYYY-MM-DD, America/Bahia) de 1º pagamento aceito como contratação do lead. */
+/** Menor dia (YYYY-MM-DD, fuso do tenant) de 1º pagamento aceito como contratação do lead. */
 function diaMinimoContrato(leadCreatedAt: string): string {
-  const [y, m, d] = dayKeyBahia(leadCreatedAt).split("-").map(Number);
+  const [y, m, d] = dayKeyNoFuso(leadCreatedAt).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d - TOLERANCIA_CONTRATO_DIAS)).toISOString().slice(0, 10);
 }
 
@@ -80,7 +84,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   // ranking cai no cálculo do navegador (client + RLS) e rpcAviso explica.
   const [rpcRows, setRpcRows] = useState<OrigemAggRow[] | null>(null);
   const [rpcAviso, setRpcAviso] = useState<string | null>(null);
-  const [tz, setTz] = useState<string>("America/Sao_Paulo");
+  // Fuso da clínica (tenants.timezone), carregado no login (src/lib/fuso.ts).
+  const tz = fusoDoTenant();
+  const cidadesDoTenant = useCidadesDoTenant();
   // Horário comercial do time (tenants.business_hours) — as métricas de resposta
   // contam só o tempo dentro do expediente. null = não configurado (relógio corrido).
   const [businessHours, setBusinessHours] = useState<BusinessHours | null>(null);
@@ -90,8 +96,6 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("tenants").select("timezone").limit(1).maybeSingle();
-      if (data?.timezone) setTz(data.timezone);
       try { setBusinessHours(await loadBusinessHours()); } catch { /* sem config: relógio corrido */ }
     })();
   }, []);
@@ -99,9 +103,9 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
   useEffect(() => {
     const range = getDateRangeFromFilter(period);
     if (!range) return;
-    // Fronteiras do período em America/Bahia, com dias INTEIROS nas duas pontas —
+    // Fronteiras do período no fuso do tenant, com dias INTEIROS nas duas pontas —
     // corrige o preset "Últimos 7 dias", que vinha sem startOfDay/endOfDay.
-    const { gteIso, lteIso } = rangeBahia(range.start, range.end);
+    const { gteIso, lteIso } = rangeNoFuso(range.start, range.end);
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
@@ -211,18 +215,34 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
     return () => { cancelled = true; };
   }, [period, pipelineFiltro]);
 
+  // Colunas de cidade (ver MAX_CIDADES_EXTRAS): tenant primeiro, depois as
+  // mais frequentes do período que não são clínica do tenant.
+  const CITIES = useMemo(() => {
+    const cont = new Map<string, number>();
+    leads.forEach(l => {
+      const c = normalizeCidade(l.cidade, cidadesDoTenant);
+      if (c !== SEM_CIDADE) cont.set(c, (cont.get(c) || 0) + 1);
+    });
+    const extras = [...cont.entries()]
+      .filter(([c]) => !cidadesDoTenant.includes(c))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_CIDADES_EXTRAS)
+      .map(([c]) => c);
+    return [...cidadesDoTenant, ...extras];
+  }, [leads, cidadesDoTenant]);
+
   // City × Origin matrix (cidade normalizada + origem canônica)
   const cityOrigin = useMemo(() => {
     const m: Record<string, Record<string, number>> = {};
     [...CITIES, "Outras"].forEach(c => { m[c] = {}; ORIGENS_CANONICAS.forEach(o => m[c][o] = 0); });
     leads.forEach(l => {
-      const cidade = normalizeCidade(l.cidade);
+      const cidade = normalizeCidade(l.cidade, cidadesDoTenant);
       const city = CITIES.includes(cidade) ? cidade : "Outras";
       const origem = classifyOrigemCanonica(l);
       m[city][origem]++;
     });
     return m;
-  }, [leads]);
+  }, [leads, CITIES, cidadesDoTenant]);
 
   // Tempo de resposta — contado em HORÁRIO COMERCIAL (tempo fora do expediente não
   // penaliza). "Respondido" respeita a ação "Marcar como respondida" (que grava
@@ -261,7 +281,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         const bmin = businessMinutesBetween(ib.toISOString(), after.toISOString(), businessHours);
         if (bmin <= 60) in1h++;
         if (bmin <= 240) in4h++;
-        if (dayKeyBahia(ib.toISOString()) === dayKeyBahia(after.toISOString())) sameDay++;
+        if (dayKeyNoFuso(ib.toISOString()) === dayKeyNoFuso(after.toISOString())) sameDay++;
       } else if (markedAnswered) {
         // respondido pela equipe (marcado manualmente) — sem tempo medido, mas NÃO é falha
         totalAnswered++; answeredIds.add(l.id);
@@ -367,14 +387,15 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       if (!endDay) return;
       const ib = firstInboundByLeadAll.get(l.id) || (l.first_inbound_at ? new Date(l.first_inbound_at) : null);
       if (!ib) return;
-      // data (DATE) → meio-dia em America/Bahia para comparar com timestamps
-      const end = new Date(`${endDay}T12:00:00-03:00`);
+      // data (DATE) → meio-dia no fuso do tenant para comparar com timestamps
+      const [ey, em, ed] = endDay.split("-").map(Number);
+      const end = new Date(instanteNoFusoMs(ey, em, ed, 12, 0, tz));
       const diff = (end.getTime() - ib.getTime()) / 1000;
       if (diff <= 0) return;
       sum += diff; n++;
     });
     return n ? Math.round(sum / n) : 0;
-  }, [leads, appts, primeiroPagamentoByPaciente, firstInboundByLeadAll]);
+  }, [leads, appts, primeiroPagamentoByPaciente, firstInboundByLeadAll, tz]);
 
   // Volume de conversas por hora (hora local do fuso da clínica) — conta leads
   // distintos que iniciaram conversa (1º inbound) naquela hora.
@@ -507,13 +528,13 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   return (
     <div className="space-y-6">
-      <Card className="flex flex-wrap items-center gap-4 p-4">
+      <Card className="p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
           {/* Seletor de funil da página, agora efetivo: filtra a coorte inteira
               da aba (todas as tabelas/indicadores) e a RPC do ranking. */}
           <Select value={pipelineId || "todos"} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-full sm:w-[220px]">
+            <SelectTrigger className="w-[220px] h-9">
               <SelectValue placeholder="Todos os funis" />
             </SelectTrigger>
             <SelectContent>
@@ -546,7 +567,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       ) : (
       <>
       {/* Indicadores de atendimento */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         {[
           {
             title: "Tempo médio até agendamento",
@@ -569,27 +590,27 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         ].map((card) => {
           const d = fmtDuration(card.sec);
           return (
-            <Card key={card.title} className="p-5">
+            <Card key={card.title} className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-sm">{card.title}</h3>
                 {card.icon}
               </div>
-              <div className="flex flex-wrap items-baseline justify-center gap-2">
+              <div className="flex items-baseline justify-center gap-3">
                 {d.hasDays && (
                   <>
-                    <div className="text-4xl font-bold tabular-nums">{d.d}</div>
+                    <div className="text-5xl font-bold tracking-tight">{d.d}</div>
                     <div className="text-3xl text-muted-foreground">d</div>
                   </>
                 )}
                 {d.hasHours && (
                   <>
-                    <div className="text-4xl font-bold tabular-nums">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
+                    <div className="text-5xl font-bold tracking-tight">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
                     <div className="text-3xl text-muted-foreground">:</div>
                   </>
                 )}
-                <div className="text-4xl font-bold tabular-nums">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
                 <div className="text-3xl text-muted-foreground">:</div>
-                <div className="text-4xl font-bold tabular-nums">{String(d.s).padStart(2, "0")}</div>
+                <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
               </div>
               <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
                 {d.hasDays && <span>dias</span>}
@@ -603,7 +624,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         })}
       </div>
 
-      <ChartCard title="Volume de conversas por hora" icon={BarChart3} actions={<div className="text-2xl font-bold tabular-nums">{totalHourly}</div>}>
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            Volume de conversas por hora
+          </h3>
+          <div className="text-2xl font-bold">{totalHourly}</div>
+        </div>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={hourlyVolume} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
@@ -621,14 +649,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         <p className="text-[11px] text-muted-foreground mt-2">
           Novas conversas iniciadas por hora, no fuso horário da clínica ({tz}).
         </p>
-      </ChartCard>
+      </Card>
 
 
 
       {/* Cidade × Origem */}
-      <Card className="overflow-hidden p-4">
+      <Card className="p-4">
         <h3 className="font-semibold mb-3">Leads por Cidade × Origem</h3>
-        <div className="overflow-x-auto rounded-control border border-border/60"><Table>
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Origem</TableHead>
@@ -661,7 +689,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               <TableCell className="text-right font-bold">{leads.length}</TableCell>
             </TableRow>
           </TableBody>
-        </Table></div>
+        </Table>
       </Card>
 
       {/* Tempo de Resposta */}
@@ -674,12 +702,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Respondidos em ≤1h{businessHours ? " útil" : ""}</div>
-            <div className="text-2xl font-bold text-success">{responseStats.in1h}</div>
+            <div className="text-2xl font-bold text-emerald-600">{responseStats.in1h}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.in1h, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Mesmo dia</div>
-            <div className="text-2xl font-bold text-info">{responseStats.sameDay}</div>
+            <div className="text-2xl font-bold text-blue-600">{responseStats.sameDay}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.sameDay, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
@@ -689,7 +717,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Não respondidos</div>
-            <div className="text-2xl font-bold text-destructive">{responseStats.notAnswered}</div>
+            <div className="text-2xl font-bold text-rose-600">{responseStats.notAnswered}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.notAnswered, responseStats.total - responseStats.neverWrote)} dos que escreveram</div>
           </div>
           <div className="p-3 rounded border bg-card">
@@ -722,7 +750,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               <span>{r.value}</span>
             </div>
           ))}
-          <div className="flex justify-between rounded-control bg-success-soft p-2 text-success-soft-foreground">
+          <div className="flex justify-between p-2 rounded bg-emerald-500/10">
             <span>Taxa de Comparecimento</span>
             <span className="font-bold">{funnel.attendanceRate}</span>
           </div>
@@ -739,7 +767,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           {ranking.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem leads no período.</p>
           ) : (
-            <div className="overflow-x-auto rounded-control border border-border/60"><Table>
+            <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Origem</TableHead>
@@ -755,18 +783,18 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 {ranking.map((r, i) => (
                   <TableRow key={r.origem} className={r.leads < 5 ? "text-muted-foreground" : undefined}>
                     <TableCell className="font-medium">
-                      {i === 0 && <TrendingUp className="mr-1 inline h-3 w-3 text-success" />}
-                      {i === ranking.length - 1 && ranking.length > 1 && <TrendingDown className="mr-1 inline h-3 w-3 text-destructive" />}
+                      {i === 0 && <TrendingUp className="inline w-3 h-3 text-emerald-600 mr-1" />}
+                      {i === ranking.length - 1 && ranking.length > 1 && <TrendingDown className="inline w-3 h-3 text-rose-600 mr-1" />}
                       {r.origem}{r.leads < 5 ? " *" : ""}
                     </TableCell>
                     <TableCell className="text-right">{r.leads}</TableCell>
                     <TableCell className="text-right">{r.contracted}</TableCell>
-                    <TableCell className="whitespace-nowrap text-right">{brl.format(r.faturamento)}</TableCell>
+                    <TableCell className="text-right">{brl.format(r.faturamento)}</TableCell>
                     <TableCell className="text-right font-bold">{(r.rate * 100).toFixed(1)}%</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-            </Table></div>
+            </Table>
           )}
           <p className="text-[11px] text-muted-foreground mt-2">
             Leads e conversão = leads criados no período. Faturamento = caixa recebido no período por origem do paciente (bate com o total do dashboard).
@@ -777,7 +805,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               Calculado no servidor — mesmos números para todos os usuários da clínica.
             </p>
           ) : rpcAviso ? (
-            <p className="mt-1 text-[11px] text-warning">{rpcAviso}</p>
+            <p className="text-[11px] text-warning mt-1">{rpcAviso}</p>
           ) : null}
         </Card>
 

@@ -29,13 +29,15 @@ export const MinimizedIncomingCall: React.FC<Props> = ({ call, onAccept, onRejec
   useEffect(() => {
     let cancelled = false;
     if (call.lead_id) {
+      // crm_leads tem "name" ("nome" é de profiles): com "nome" vinha 42703 e o
+      // card mostrava o telefone no lugar do nome do lead.
       supabase
         .from("crm_leads")
-        .select("nome")
+        .select("name")
         .eq("id", call.lead_id)
         .maybeSingle()
         .then(({ data }) => {
-          if (!cancelled) setLeadName((data as any)?.nome ?? null);
+          if (!cancelled) setLeadName(data?.name ?? null);
         });
     }
     return () => { cancelled = true; };
@@ -46,7 +48,7 @@ export const MinimizedIncomingCall: React.FC<Props> = ({ call, onAccept, onRejec
   return (
     // Acima da faixa de toasts (Sonner fica no canto inferior direito) para não
     // cobrir os botões atender/recusar.
-    <div className="fixed bottom-24 right-4 z-[9999] flex w-72 max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-float animate-in slide-in-from-bottom-2">
+    <div className="fixed bottom-24 right-4 z-[9999] w-72 max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-xl p-3 flex items-center gap-3 animate-in slide-in-from-bottom-2">
       <button
         type="button"
         onClick={onExpand}
@@ -54,8 +56,8 @@ export const MinimizedIncomingCall: React.FC<Props> = ({ call, onAccept, onRejec
         className="flex-1 min-w-0 text-left"
         title="Expandir chamada"
       >
-        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-success-soft-foreground">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-emerald-600 dark:text-emerald-500">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
           Chamada recebida
           <ChevronUp className="h-3 w-3 opacity-70" />
         </div>
@@ -80,7 +82,7 @@ export const MinimizedIncomingCall: React.FC<Props> = ({ call, onAccept, onRejec
           onClick={onAccept}
           aria-label="Atender chamada"
           title="Atender"
-          className="h-9 w-9 rounded-full bg-success p-0 text-success-foreground hover:bg-success/90"
+          className="h-9 w-9 rounded-full p-0 bg-green-600 hover:bg-green-700"
         >
           <Phone className="h-4 w-4" />
         </Button>

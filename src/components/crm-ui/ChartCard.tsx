@@ -1,8 +1,23 @@
-import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { SectionCard } from "./SectionCard";
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { SectionCard, type SectionCardProps } from "./SectionCard";
 
-export const crmChartColors = ["hsl(var(--primary))", "hsl(var(--info))", "hsl(var(--success))", "hsl(var(--warning))", "hsl(var(--purple))", "hsl(var(--slate))"] as const;
-export function ChartCard({ title, icon, actions, children, className }: { title: string; icon?: LucideIcon; actions?: ReactNode; children: ReactNode; className?: string }) {
-  return <SectionCard title={title} icon={icon} actions={actions} className={className} contentClassName="min-h-64">{children}</SectionCard>;
+export interface ChartCardProps extends Omit<SectionCardProps, "title" | "description"> {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  /** Altura da área do gráfico (px ou valor CSS). Sem ela, o gráfico define a própria altura. */
+  height?: number | string;
+  bodyClassName?: string;
 }
+
+/** Card de gráfico: SectionCard com título 16/600 e controle (actions) à direita. */
+export const ChartCard = React.forwardRef<HTMLElement, ChartCardProps>(
+  ({ title, subtitle, height, bodyClassName, children, ...rest }, ref) => (
+    <SectionCard ref={ref} title={title} description={subtitle} {...rest}>
+      <div className={cn("w-full min-w-0", bodyClassName)} style={height != null ? { height } : undefined}>
+        {children}
+      </div>
+    </SectionCard>
+  ),
+);
+ChartCard.displayName = "ChartCard";

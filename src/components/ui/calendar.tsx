@@ -5,6 +5,13 @@ import { DayPicker } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
+/*
+ * Pele do CRM (F2): hoje ≠ selecionado. Selecionado continua bg-primary; hoje
+ * ganha, só sob a casca do CRM, um anel de 1px na cor da marca (marcador
+ * crm-day-today, index.css), além do text-primary font-semibold de sempre.
+ * Os botões de navegação e de dia seguem a pele do Button (outline/ghost).
+ */
+
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
@@ -33,7 +40,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         day_range_end: "day-range-end",
         day_selected:
           "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-        day_today: "text-primary font-semibold",
+        day_today: "crm-day-today text-primary font-semibold",
         day_outside:
           "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
         day_disabled: "text-muted-foreground opacity-50",

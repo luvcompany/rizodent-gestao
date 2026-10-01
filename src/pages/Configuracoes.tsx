@@ -11,17 +11,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Camera, Loader2, Save, Building2, Plus, Trash2, User, Send, Pencil, CheckCircle2, X, MapPin, Database, Download, RotateCcw, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { generateAndSubmitAppointmentTemplate } from "@/lib/appointmentTemplateBlueprint";
-import { PageHeader, StatusPill } from "@/components/crm-ui";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 export default function Configuracoes() {
   const { userRole } = useAuth();
   const isAdmin = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Configurações" subtitle="Gerencie seu perfil, preferências e as clínicas integradas" />
+    <div className="max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
+        <p className="text-sm text-muted-foreground mt-1">Gerencie seu perfil, preferências e as clínicas integradas</p>
+      </div>
 
       <Tabs defaultValue="perfil">
-        <TabsList variant="pill">
+        <TabsList>
           <TabsTrigger value="perfil"><User size={14} className="mr-1" /> Meu perfil</TabsTrigger>
           <TabsTrigger value="clinicas"><Building2 size={14} className="mr-1" /> Clínicas</TabsTrigger>
           {isAdmin && <TabsTrigger value="backups"><Database size={14} className="mr-1" /> Backups</TabsTrigger>}
@@ -166,7 +169,7 @@ function PerfilTab() {
         </CardContent>
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+      <Button onClick={handleSave} disabled={saving} className="w-full gradient-brand text-primary-foreground font-semibold shadow-brand hover:opacity-90">
         {saving ? <Loader2 className="animate-spin mr-2" size={16} /> : <Save className="mr-2" size={16} />}
         {saving ? "Salvando..." : "Salvar Configurações"}
       </Button>
@@ -287,7 +290,7 @@ function ClinicasTab() {
             <div className="space-y-2"><Label>Endereço</Label><Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} placeholder="Rua, número, bairro" className="bg-secondary border-border" /></div>
             <div className="space-y-2 sm:col-span-2"><Label>Link de localização</Label><Input value={form.location_link} onChange={(e) => setForm({ ...form, location_link: e.target.value })} placeholder="Ex: https://maps.app.goo.gl/..." className="bg-secondary border-border" /></div>
           </div>
-          <Button onClick={create} disabled={saving} className="gradient-orange text-primary-foreground font-semibold">
+          <Button onClick={create} disabled={saving} className="gradient-brand text-primary-foreground font-semibold">
             {saving ? <Loader2 className="animate-spin mr-2" size={16} /> : <Plus className="mr-2" size={16} />}
             Cadastrar unidade
           </Button>
@@ -307,7 +310,7 @@ function ClinicasTab() {
           ) : (
             <div className="space-y-2">
               {clinicas.map((c) => (
-                <div key={c.id} className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-4">
+                <div key={c.id} className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-foreground truncate">{c.nome}</p>
@@ -318,7 +321,7 @@ function ClinicasTab() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="flex items-center gap-1.5">
                         <Switch checked={c.ativa} onCheckedChange={() => toggleAtiva(c)} />
-                        <StatusPill tone={c.ativa ? "success" : "slate"}>{c.ativa ? "Ativa" : "Inativa"}</StatusPill>
+                        <span className="text-xs text-muted-foreground">{c.ativa ? "Ativa" : "Inativa"}</span>
                       </div>
                       <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar endereço/link" onClick={() => (editId === c.id ? setEditId(null) : startEdit(c))}>
                         <Pencil size={14} />
@@ -335,7 +338,7 @@ function ClinicasTab() {
                       <div className="space-y-1"><Label className="text-xs">Link de localização</Label><Input value={editForm.location_link} onChange={(e) => setEditForm({ ...editForm, location_link: e.target.value })} placeholder="https://maps.app.goo.gl/..." className="h-8 text-xs bg-secondary border-border" /></div>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => setEditId(null)}><X size={12} className="mr-1" />Cancelar</Button>
-                        <Button size="sm" className="h-7 text-xs flex-1 gradient-orange text-primary-foreground" onClick={() => saveEdit(c)} disabled={editSaving}>{editSaving ? "Salvando..." : "Salvar"}</Button>
+                        <Button size="sm" className="h-7 text-xs flex-1 gradient-brand text-primary-foreground" onClick={() => saveEdit(c)} disabled={editSaving}>{editSaving ? "Salvando..." : "Salvar"}</Button>
                       </div>
                     </div>
                   )}
@@ -345,7 +348,7 @@ function ClinicasTab() {
                     <div className="min-w-0 flex items-center gap-1.5 text-xs">
                       <MapPin size={12} className="shrink-0 text-muted-foreground" />
                       {c.appointment_template_name ? (
-                        <span className="flex truncate items-center gap-1 text-success">
+                        <span className="text-emerald-600 truncate flex items-center gap-1">
                           <CheckCircle2 size={12} /> Modelo: <span className="font-mono">{c.appointment_template_name}</span>
                         </span>
                       ) : (
@@ -400,7 +403,9 @@ function BackupsTab() {
 
   const invoke = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke("daily-backup", { body });
-    if (error) throw new Error(error.message || "Erro na função de backup");
+    // Recusa 4xx da function (ex.: restaurar ig_accounts, que vai sem o token)
+    // vem no corpo; sem ler o contexto, o toast mostraria só "non-2xx".
+    if (error) throw new Error(await motivoDoServidor(data, error, "Erro na função de backup"));
     if (data?.error) throw new Error(data.error);
     return data;
   };
@@ -495,7 +500,7 @@ function BackupsTab() {
               <Button size="sm" variant="outline" onClick={loadDates} disabled={loading} title="Atualizar lista">
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
               </Button>
-              <Button size="sm" onClick={runNow} disabled={running}>
+              <Button size="sm" onClick={runNow} disabled={running} className="gradient-brand text-primary-foreground">
                 {running ? <Loader2 className="animate-spin mr-1" size={14} /> : <Database className="mr-1" size={14} />}
                 Fazer backup agora
               </Button>
@@ -519,9 +524,9 @@ function BackupsTab() {
                         {isOpen ? <ChevronDown size={16} className="shrink-0 text-muted-foreground" /> : <ChevronRight size={16} className="shrink-0 text-muted-foreground" />}
                         <span className="font-semibold text-foreground">{date}</span>
                         {man?.finished_at ? (
-                          <span className="flex items-center gap-1 text-xs text-success"><CheckCircle2 size={12} /> completo</span>
+                          <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> completo</span>
                         ) : man ? (
-                          <span className="text-xs text-warning-soft-foreground">parcial</span>
+                          <span className="text-xs text-warning">parcial</span>
                         ) : null}
                       </div>
                       {man?.total_rows != null && <span className="text-xs text-muted-foreground shrink-0">{fmt(man.total_rows)} linhas</span>}
@@ -550,7 +555,7 @@ function BackupsTab() {
                                         onClick={() => downloadTable(date, table)}>
                                         {downloading === `${date}/${table}` ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                                       </Button>
-                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-warning-soft-foreground hover:bg-warning-soft hover:text-warning-soft-foreground" title="Restaurar"
+                                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-warning hover:text-warning/80" title="Restaurar"
                                         onClick={() => { setRestoreMode("insert_missing"); setRestorePanel({ date, table, rows: v.rows }); }}>
                                         <RotateCcw size={12} />
                                       </Button>
@@ -560,8 +565,8 @@ function BackupsTab() {
                             </div>
 
                             {restorePanel && restorePanel.date === date && (
-                              <div className="space-y-2 rounded-xl border border-warning/40 bg-warning-soft p-3">
-                                <div className="flex items-center gap-1.5 text-sm font-medium text-warning-soft-foreground">
+                              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-2">
+                                <div className="flex items-center gap-1.5 text-sm font-medium text-warning">
                                   <AlertTriangle size={14} /> Restaurar <span className="font-mono">{restorePanel.table}</span> ({fmt(restorePanel.rows)} linhas) do backup {date}
                                 </div>
                                 <div className="space-y-1.5">
@@ -575,13 +580,13 @@ function BackupsTab() {
                                   </label>
                                 </div>
                                 {RESTORE_SENSITIVE.has(restorePanel.table) && (
-                                  <p className="text-[11px] leading-snug text-warning-soft-foreground/90">
+                                  <p className="text-[11px] text-warning/90 leading-snug">
                                     Atenção: restaurar esta tabela pode re-disparar automações. Para recuperação completa do banco, use os backups gerenciados do Supabase.
                                   </p>
                                 )}
                                 <div className="flex gap-2 pt-1">
                                   <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={() => setRestorePanel(null)} disabled={restoring}>Cancelar</Button>
-                                  <Button size="sm" className="h-7 flex-1 bg-warning text-xs text-warning-foreground hover:bg-warning/90" onClick={doRestore} disabled={restoring}>
+                                  <Button size="sm" className="h-7 text-xs flex-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={doRestore} disabled={restoring}>
                                     {restoring ? <><Loader2 size={12} className="animate-spin mr-1" /> Restaurando…</> : "Confirmar restauração"}
                                   </Button>
                                 </div>

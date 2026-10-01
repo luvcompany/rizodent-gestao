@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/hooks/useTheme";
 import { uploadAutomationMedia } from "@/components/automation/automationMediaUpload";
 import { getSignedMediaUrl } from "@/lib/mediaUtils";
 
@@ -31,11 +32,10 @@ const MAX_STICKER_BYTES = 500 * 1024;
 const PANEL_W = "w-[352px]";
 
 /** Props do <Picker> — idênticas às originais, antes da aba de figurinhas.
- *  theme="auto" segue o prefers-color-scheme do SO (não o tema do app). */
+ *  O `theme` é passado no uso, a partir do tema do app (useTheme). */
 const PICKER_PROPS = {
   data,
   locale: "pt",
-  theme: "auto" as const,
   previewPosition: "none" as const,
   skinTonePosition: "search" as const,
   set: "native" as const,
@@ -64,6 +64,8 @@ export default function EmojiPickerButton({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { tenant } = useTenant();
   const { user } = useAuth();
+  // O picker segue o tema do APP (classe `dark` no <html>), não o do SO.
+  const { theme: temaDoApp } = useTheme();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,15 +191,15 @@ export default function EmojiPickerButton({
 
   const stickersDisabled = Boolean(stickersDisabledReason);
 
-  // A barra de abas precisa acompanhar o MESMO sinal do emoji-mart (que segue o
-  // prefers-color-scheme do SO, não o tema do app). Por isso media query e não
-  // `dark:` (classe do app) nem tokens do design system.
+  // A barra de abas acompanha o MESMO sinal do emoji-mart, que agora recebe o
+  // tema do app: por isso `dark:` (classe do app). As cores fixas imitam as do
+  // próprio emoji-mart, e não os tokens do design system.
   const surface =
-    "bg-white [@media(prefers-color-scheme:dark)]:bg-[#1d1d1d]";
+    "bg-white dark:bg-[#1d1d1d]";
   const divider =
-    "border-black/10 [@media(prefers-color-scheme:dark)]:border-white/10";
+    "border-black/10 dark:border-white/10";
   const mutedText =
-    "text-neutral-500 [@media(prefers-color-scheme:dark)]:text-neutral-400";
+    "text-neutral-500 dark:text-neutral-400";
 
   const stickersPanel = (
     <div className={`${PANEL_W} flex flex-col h-[380px] ${surface}`}>
@@ -214,10 +216,10 @@ export default function EmojiPickerButton({
             placeholder="Buscar figurinha..."
             className={`w-full h-8 pl-8 pr-2 rounded-md text-sm outline-none border border-transparent
               bg-black/5 text-neutral-900 placeholder:text-neutral-500 focus:border-black/20
-              [@media(prefers-color-scheme:dark)]:bg-white/5
-              [@media(prefers-color-scheme:dark)]:text-neutral-100
-              [@media(prefers-color-scheme:dark)]:placeholder:text-neutral-500
-              [@media(prefers-color-scheme:dark)]:focus:border-white/20`}
+              dark:bg-white/5
+              dark:text-neutral-100
+              dark:placeholder:text-neutral-500
+              dark:focus:border-white/20`}
           />
         </div>
       </div>
@@ -247,8 +249,8 @@ export default function EmojiPickerButton({
                 disabled={uploading}
                 className={`aspect-square rounded-lg border ${divider} flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50
                   bg-black/5 hover:bg-black/10
-                  [@media(prefers-color-scheme:dark)]:bg-white/5
-                  [@media(prefers-color-scheme:dark)]:hover:bg-white/10`}
+                  dark:bg-white/5
+                  dark:hover:bg-white/10`}
                 title="Enviar figurinha própria (WebP)"
               >
                 <ImagePlus size={22} className={mutedText} />
@@ -274,8 +276,8 @@ export default function EmojiPickerButton({
                     }}
                     className={`w-full h-full rounded-lg overflow-hidden flex items-center justify-center transition-colors disabled:cursor-not-allowed
                       bg-black/5 hover:bg-black/10
-                      [@media(prefers-color-scheme:dark)]:bg-white/5
-                      [@media(prefers-color-scheme:dark)]:hover:bg-white/10`}
+                      dark:bg-white/5
+                      dark:hover:bg-white/10`}
                     title={stickersDisabled ? stickersDisabledReason : (s.label || "Enviar figurinha")}
                   >
                     {src ? (
@@ -289,7 +291,7 @@ export default function EmojiPickerButton({
                         className="w-full h-full object-contain"
                       />
                     ) : (
-                      <span className="block w-full h-full animate-pulse bg-black/10 [@media(prefers-color-scheme:dark)]:bg-white/10" />
+                      <span className="block w-full h-full animate-pulse bg-black/10 dark:bg-white/10" />
                     )}
                   </button>
                   <button
@@ -339,7 +341,7 @@ export default function EmojiPickerButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled}
           title={stickersEnabled ? "Emojis e figurinhas" : "Emojis"}
         >
@@ -352,7 +354,7 @@ export default function EmojiPickerButton({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-auto overflow-hidden rounded-2xl border-none bg-card p-0 shadow-float"
+        className="w-auto p-0 border-none shadow-lg overflow-hidden bg-white dark:bg-[#1d1d1d]"
       >
         {stickersEnabled ? (
           <Tabs value={tab} onValueChange={(v) => setTab(v as "emojis" | "stickers")}>
@@ -363,8 +365,8 @@ export default function EmojiPickerButton({
                 value="emojis"
                 className={`rounded-none h-full text-xs ${mutedText} data-[state=active]:shadow-none
                   data-[state=active]:bg-black/5 data-[state=active]:text-neutral-900
-                  [@media(prefers-color-scheme:dark)]:data-[state=active]:bg-white/10
-                  [@media(prefers-color-scheme:dark)]:data-[state=active]:text-white`}
+                  dark:data-[state=active]:bg-white/10
+                  dark:data-[state=active]:text-white`}
               >
                 Emojis
               </TabsTrigger>
@@ -372,8 +374,8 @@ export default function EmojiPickerButton({
                 value="stickers"
                 className={`rounded-none h-full text-xs ${mutedText} data-[state=active]:shadow-none
                   data-[state=active]:bg-black/5 data-[state=active]:text-neutral-900
-                  [@media(prefers-color-scheme:dark)]:data-[state=active]:bg-white/10
-                  [@media(prefers-color-scheme:dark)]:data-[state=active]:text-white`}
+                  dark:data-[state=active]:bg-white/10
+                  dark:data-[state=active]:text-white`}
               >
                 Figurinhas
               </TabsTrigger>
@@ -381,7 +383,7 @@ export default function EmojiPickerButton({
 
             {/* Sem classes de altura/largura/flex: o Picker manda no próprio tamanho. */}
             <TabsContent value="emojis" className="m-0">
-              <Picker {...PICKER_PROPS} onEmojiSelect={(emoji: { native: string }) => onEmojiSelect(emoji.native)} />
+              <Picker {...PICKER_PROPS} theme={temaDoApp} onEmojiSelect={(emoji: { native: string }) => onEmojiSelect(emoji.native)} />
             </TabsContent>
 
             <TabsContent value="stickers" className="m-0">
@@ -389,7 +391,7 @@ export default function EmojiPickerButton({
             </TabsContent>
           </Tabs>
         ) : (
-          <Picker {...PICKER_PROPS} onEmojiSelect={(emoji: { native: string }) => onEmojiSelect(emoji.native)} />
+          <Picker {...PICKER_PROPS} theme={temaDoApp} onEmojiSelect={(emoji: { native: string }) => onEmojiSelect(emoji.native)} />
         )}
       </PopoverContent>
     </Popover>
