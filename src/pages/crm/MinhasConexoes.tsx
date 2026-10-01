@@ -225,7 +225,7 @@ export default function MinhasConexoes() {
           </div>
         ) : itens.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card px-6 py-12 text-center shadow-sm">
-            <div className="mx-auto grid h-[52px] w-[52px] place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
+            <div className="mx-auto grid h-[52px] w-[52px] place-items-center rounded-2xl bg-success-soft text-success-soft-foreground">
               <Smartphone size={24} />
             </div>
             <h2 className="mt-3.5 text-base font-bold tracking-tight text-foreground">
@@ -253,8 +253,8 @@ export default function MinhasConexoes() {
                     <span
                       className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] ${
                         st.ok
-                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
-                          : "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
+                          ? "bg-success-soft text-success-soft-foreground"
+                          : "bg-warning-soft text-warning-soft-foreground"
                       }`}
                     >
                       <Smartphone size={21} />
@@ -285,8 +285,8 @@ export default function MinhasConexoes() {
                     <span
                       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold ${
                         st.ok
-                          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
-                          : "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
+                          ? "bg-success-soft text-success-soft-foreground"
+                          : "bg-warning-soft text-warning-soft-foreground"
                       }`}
                     >
                       {st.ok ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
@@ -403,7 +403,7 @@ export default function MinhasConexoes() {
                 <Label htmlFor="funil-conexao">Funil</Label>
                 <select
                   id="funil-conexao"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
                   value={form.pipeline_id}
                   onChange={(e) => setForm({ ...form, pipeline_id: e.target.value })}
                 >

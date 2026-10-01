@@ -33,9 +33,9 @@ export const ActiveWhatsappCallBar: React.FC<Props> = ({ call, startedAt, onHang
   const durationSecs = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9998] bg-card border border-border shadow-xl rounded-full px-4 py-2 flex items-center gap-3 animate-in slide-in-from-top">
-      <div className="h-8 w-8 rounded-full bg-green-500/20 flex items-center justify-center">
-        <Phone className="h-4 w-4 text-green-600" />
+    <div className="fixed left-1/2 top-4 z-[9998] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-border/60 bg-card px-4 py-2 shadow-float animate-in slide-in-from-top">
+      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-success-soft">
+        <Phone className="h-4 w-4 text-success-soft-foreground" />
       </div>
       <div className="flex flex-col leading-tight">
         <span className="text-sm font-medium">

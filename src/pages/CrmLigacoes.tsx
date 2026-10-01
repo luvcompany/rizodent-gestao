@@ -8,7 +8,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import AudioPlayer from "@/components/chat/AudioPlayer";
 import AudioTranscriptionToggle from "@/components/chat/AudioTranscriptionToggle";
 import { formatDistanceToNow, format } from "date-fns";
@@ -16,6 +16,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import CallPermissionsPanel from "@/components/ligacoes/CallPermissionsPanel";
+import { KpiCard, PageHeader, StatusPill, type SemanticTone } from "@/components/crm-ui";
 
 type CallCategory = "answered" | "missed" | "rejected" | "blocked" | "failed" | "ongoing";
 
@@ -92,21 +93,21 @@ function categorize(c: CallRow): CallCategory {
   return "failed";
 }
 
-function categoryMeta(cat: CallCategory, direction: string) {
+function categoryMeta(cat: CallCategory, direction: string): { icon: typeof Phone; color: string; label: string; tone: SemanticTone } {
   const inbound = direction === "inbound";
   switch (cat) {
     case "answered":
-      return { icon: inbound ? PhoneIncoming : PhoneOutgoing, color: "text-emerald-600 dark:text-emerald-500", label: inbound ? "Recebida" : "Realizada" };
+      return { icon: inbound ? PhoneIncoming : PhoneOutgoing, color: "text-success", label: inbound ? "Recebida" : "Realizada", tone: "success" };
     case "missed":
-      return { icon: PhoneMissed, color: "text-destructive", label: "Perdida" };
+      return { icon: PhoneMissed, color: "text-destructive", label: "Perdida", tone: "destructive" };
     case "rejected":
-      return { icon: PhoneOff, color: "text-destructive", label: "Recusada" };
+      return { icon: PhoneOff, color: "text-destructive", label: "Recusada", tone: "destructive" };
     case "blocked":
-      return { icon: Ban, color: "text-orange-600 dark:text-orange-500", label: "Bloqueada pelo cliente" };
+      return { icon: Ban, color: "text-warning", label: "Bloqueada pelo cliente", tone: "warning" };
     case "failed":
-      return { icon: inbound ? AlertCircle : PhoneOff, color: "text-muted-foreground", label: inbound ? "Não completada" : "Não atendida" };
+      return { icon: inbound ? AlertCircle : PhoneOff, color: "text-muted-foreground", label: inbound ? "Não completada" : "Não atendida", tone: "slate" };
     case "ongoing":
-      return { icon: Phone, color: "text-primary", label: "Ao vivo" };
+      return { icon: Phone, color: "text-primary", label: "Ao vivo", tone: "primary" };
   }
 }
 
@@ -244,17 +245,14 @@ export default function CrmLigacoes() {
   }, [dateScoped, directionFilter]);
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <header className="p-4 md:p-6 border-b bg-background">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <header className="rounded-2xl border border-border/60 bg-card p-4 shadow-card md:p-5">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Phone className="text-primary" />
-            <h1 className="text-2xl font-semibold">Ligações</h1>
-          </div>
+          <PageHeader title="Ligações" subtitle="Histórico e acompanhamento das chamadas" />
           {view === "ligacoes" && <DateRangeFilter value={period} onChange={setPeriod} />}
         </div>
 
-        <div className="flex gap-4 border-b mb-4">
+        <div className="mb-4 flex w-fit gap-1 rounded-full bg-surface-sunken p-1">
           {([
             { key: "ligacoes", label: "Ligações" },
             { key: "permissoes", label: "Permissões" },
@@ -262,12 +260,11 @@ export default function CrmLigacoes() {
             <button
               key={t.key}
               onClick={() => setView(t.key)}
-              className={`relative pb-2 text-sm font-medium transition-colors ${
-                view === t.key ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                view === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t.label}
-              {view === t.key && <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-primary" />}
             </button>
           ))}
         </div>
@@ -275,12 +272,12 @@ export default function CrmLigacoes() {
         {view === "ligacoes" && (
         <>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3 mb-4">
-          <KpiCard label="Total" value={kpis.total} />
-          <KpiCard label="Atendidas" value={kpis.answered} tone="success" />
-          <KpiCard label="Taxa atend." value={`${kpis.rate}%`} />
-          <KpiCard label="Duração média" value={kpis.avgDur ? formatDuration(kpis.avgDur) : "—"} />
-          <KpiCard label="Perdidas" value={kpis.missed} tone="warn" />
-          <KpiCard label="Bloqueadas" value={kpis.blocked} tone="warn" />
+          <KpiCard label="Total" value={kpis.total} icon={Phone} />
+          <KpiCard label="Atendidas" value={kpis.answered} icon={PhoneIncoming} tone="success" />
+          <KpiCard label="Taxa atend." value={`${kpis.rate}%`} icon={PhoneOutgoing} tone="info" />
+          <KpiCard label="Duração média" value={kpis.avgDur ? formatDuration(kpis.avgDur) : "—"} icon={Phone} tone="purple" />
+          <KpiCard label="Perdidas" value={kpis.missed} icon={PhoneMissed} tone="destructive" />
+          <KpiCard label="Bloqueadas" value={kpis.blocked} icon={Ban} tone="warning" />
         </div>
 
         <div className="flex flex-wrap gap-2 mb-3">
@@ -371,9 +368,9 @@ export default function CrmLigacoes() {
                         {when ? formatDistanceToNow(when, { locale: ptBR, addSuffix: true }) : ""}
                       </span>
                     </div>
-                    <div className={`flex items-center gap-1.5 text-xs mt-0.5 ${meta.color}`}>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                       <Icon size={14} />
-                      <span>{meta.label}</span>
+                      <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
                       {dur && <span className="text-muted-foreground">· {dur}</span>}
                       {c.recording_url && (
                         <span className="text-muted-foreground">· 🎙️ Gravado</span>
@@ -426,18 +423,6 @@ export default function CrmLigacoes() {
   );
 }
 
-function KpiCard({ label, value, tone }: { label: string; value: string | number; tone?: "success" | "warn" }) {
-  const color = tone === "success" ? "text-emerald-600 dark:text-emerald-500"
-    : tone === "warn" ? "text-orange-600 dark:text-orange-500"
-    : "text-foreground";
-  return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold ${color}`}>{value}</div>
-    </div>
-  );
-}
-
 function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConversation: (leadId: string) => void }) {
   const cat = categorize(call);
   const meta = categoryMeta(cat, call.direction);
@@ -458,9 +443,9 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
         </div>
       </div>
 
-      <div className={`flex items-center gap-2 text-sm ${meta.color}`}>
+      <div className="flex items-center gap-2 text-sm">
         <Icon size={16} />
-        <span className="font-medium">{meta.label}</span>
+        <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
         {call.duration_seconds ? <span className="text-muted-foreground">· {formatDuration(call.duration_seconds)}</span> : null}
         <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded border bg-muted text-muted-foreground">
           {call.source === "api4com" ? "Telefonia" : "WhatsApp"}
@@ -497,7 +482,7 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
 
       <div className="flex gap-2 pt-2">
         {call.lead_id && (
-          <Button className="flex-1" onClick={() => onGoToConversation(call.lead_id!)}>
+          <Button className="flex-1" onClick={() => call.lead_id && onGoToConversation(call.lead_id)}>
             <MessageSquare size={14} className="mr-1.5" /> Ir para a conversa
           </Button>
         )}

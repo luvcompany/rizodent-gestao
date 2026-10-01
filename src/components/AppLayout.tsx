@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import {
   LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon, ScrollText,
@@ -33,6 +33,11 @@ const AppLayout = () => {
   const logo = isDefaultLogo
     ? (theme === "light" ? crclinLogoLight : CRCLIN_DEFAULT_LOGO)
     : tenant.logo_url!;
+
+  useEffect(() => {
+    document.body.classList.add("system-ui-active");
+    return () => document.body.classList.remove("system-ui-active");
+  }, []);
   
 
   const handleLogout = async () => {
@@ -122,8 +127,8 @@ const AppLayout = () => {
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col lg:ml-64">
-        <header className="flex h-16 items-center gap-4 border-b border-border px-6">
+      <div className="min-w-0 flex flex-1 flex-col lg:ml-64">
+        <header className="flex h-16 items-center gap-4 border-b border-border/60 bg-card px-4 sm:px-6">
           <button
             className="text-foreground lg:hidden"
             onClick={() => setSidebarOpen(true)}
@@ -135,7 +140,7 @@ const AppLayout = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </main>
       </div>

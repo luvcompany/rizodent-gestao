@@ -88,11 +88,11 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
     // Fundo com leve escurecimento mas SEM bloquear o CRM (pointer-events-none);
     // só o card recebe cliques. Assim a chamada chama atenção sem travar a tela.
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in pointer-events-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-foreground/30 backdrop-blur-[2px] animate-in fade-in pointer-events-none"
       onMouseDown={onInteract}
       onKeyDown={onInteract}
     >
-      <div className="pointer-events-auto relative w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl p-6 flex flex-col items-center gap-5">
+      <div className="pointer-events-auto relative mx-4 flex w-full max-w-sm flex-col items-center gap-5 rounded-2xl border border-border/60 bg-card p-6 shadow-float">
         {onMinimize && (
           <Button
             variant="ghost"
@@ -133,7 +133,7 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
             onClick={onAccept}
             aria-label="Atender chamada"
             title="Atender"
-            className="h-14 w-14 rounded-full p-0 bg-green-600 hover:bg-green-700"
+            className="h-14 w-14 rounded-full bg-success p-0 text-success-foreground hover:bg-success/90"
           >
             <Phone className="h-6 w-6" />
           </Button>
