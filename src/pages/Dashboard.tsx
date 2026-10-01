@@ -655,7 +655,7 @@ const Dashboard = () => {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Visão geral do desempenho</p>
         </div>
         <div className="flex items-center gap-2">
@@ -667,7 +667,7 @@ const Dashboard = () => {
       </div>
 
       {/* Filters */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardContent className="pt-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -709,10 +709,10 @@ const Dashboard = () => {
       {/* KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {kpis.map((kpi: any) =>
-        <Card key={kpi.title} className="gradient-card border-border shadow-card">
+        <Card key={kpi.title} className="border-border/60 bg-card">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{kpi.title}</CardTitle>
-              <div className="rounded-lg bg-primary/10 p-2">
+              <div className="rounded-xl bg-primary-soft p-2.5">
                 <kpi.icon size={18} className="text-primary" />
               </div>
             </CardHeader>
@@ -725,7 +725,7 @@ const Dashboard = () => {
       </div>
 
       {/* Gráfico Venda Diária */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">Venda Diária</CardTitle>
           <p className="text-xs text-muted-foreground">Pagamentos recebidos por dia útil no período (domingos/feriados aparecem quando há pagamento lançado)</p>

@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, ToggleLeft, ToggleRight, Stethoscope, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { StatusPill } from "@/components/crm-ui";
 
 type TipoProcedimento = {
   id: string;
@@ -255,16 +256,9 @@ const TiposProcedimento = () => {
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(p.valor_referencia)}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            p.ativo
-                              ? "bg-green-500/20 text-green-400 border-green-500/30"
-                              : "bg-muted text-muted-foreground border-border"
-                          }
-                        >
+                        <StatusPill tone={p.ativo ? "success" : "slate"}>
                           {p.ativo ? "Ativo" : "Inativo"}
-                        </Badge>
+                        </StatusPill>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
