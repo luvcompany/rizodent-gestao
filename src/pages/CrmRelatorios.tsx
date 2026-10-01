@@ -1506,7 +1506,7 @@ function KpiCard({
   accent?: keyof typeof ACCENTS;
   hint?: string;
 }) {
-  const a = ACCENTS[accent] ?? ACCENTS.blue;
+  const a = ACCENTS[accent] ?? ACCENTS.primary;
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-2">

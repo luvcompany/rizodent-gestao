@@ -188,7 +188,7 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
                       <div className="h-full rounded-md flex items-center px-2 transition-all"
-                        style={{ width: `${widthPct}%`, backgroundColor: (row.stage.color || "#0E7490") + "33", borderRight: `3px solid ${row.stage.color || "#0E7490"}` }}>
+                        style={{ width: `${widthPct}%`, backgroundColor: row.stage.color ? `${row.stage.color}33` : "hsl(var(--primary-soft))", borderRight: `3px solid ${row.stage.color || "hsl(var(--primary))"}` }}>
                         <span className="text-xs font-semibold tabular-nums">{row.count}</span>
                       </div>
                     </div>
@@ -199,11 +199,11 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
             })}
             {/* Passo final: Ganho */}
             <div className="flex items-center gap-3 pt-1 border-t border-dashed border-border mt-1">
-              <div className="w-40 shrink-0 text-sm truncate text-right font-medium text-emerald-600 dark:text-emerald-500">Ganho</div>
+              <div className="w-40 shrink-0 truncate text-right text-sm font-medium text-success">Ganho</div>
               <div className="flex-1 min-w-0">
                 <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
                   <div className="h-full rounded-md flex items-center px-2"
-                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, backgroundColor: "rgba(16,185,129,.20)", borderRight: "3px solid #10B981" }}>
+                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, backgroundColor: "hsl(var(--success-soft))", borderRight: "3px solid hsl(var(--success))" }}>
                     <span className="text-xs font-semibold tabular-nums">{model.won}</span>
                   </div>
                 </div>
@@ -232,7 +232,7 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
                 <TableRow key={r.stage.id}>
                   <TableCell>
                     <span className="inline-flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.stage.color || "#888" }} />
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.stage.color || "hsl(var(--slate))" }} />
                       {r.stage.name}
                       {r.stage.is_won && <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-[10px] text-success-soft-foreground">Ganho</span>}
                       {r.stage.is_lost && <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">Perda</span>}
