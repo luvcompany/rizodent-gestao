@@ -339,7 +339,7 @@ export default function EmojiPickerButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled}
           title={stickersEnabled ? "Emojis e figurinhas" : "Emojis"}
         >
@@ -352,7 +352,7 @@ export default function EmojiPickerButton({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-auto p-0 border-none shadow-lg overflow-hidden bg-white [@media(prefers-color-scheme:dark)]:bg-[#1d1d1d]"
+        className="w-auto overflow-hidden rounded-2xl border-none bg-card p-0 shadow-float"
       >
         {stickersEnabled ? (
           <Tabs value={tab} onValueChange={(v) => setTab(v as "emojis" | "stickers")}>

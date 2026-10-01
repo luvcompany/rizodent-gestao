@@ -547,7 +547,7 @@ export default function AudioRecorderComposer({
         onClick={startRecording}
         onPointerEnter={aquecerCodificador}
         onFocus={aquecerCodificador}
-        className="p-2 text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         title="Gravar áudio"
         type="button"
@@ -560,7 +560,7 @@ export default function AudioRecorderComposer({
   // ─── PREVIEW / SENDING ───
   if (mode === "preview" || mode === "sending") {
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm">
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
         <audio key={draftUrl || "d"} ref={previewAudioRef} src={draftUrl || undefined} preload="metadata" />
 
         <button
@@ -612,7 +612,7 @@ export default function AudioRecorderComposer({
 
   // ─── PREPARING / RECORDING ───
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm">
+      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
       <button
         type="button"
         onClick={discardCurrentAudio}
