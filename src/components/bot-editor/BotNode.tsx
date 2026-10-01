@@ -78,9 +78,9 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
   return (
     <div
-      className={`min-w-[220px] max-w-[280px] rounded-lg border-2 shadow-lg transition-all ${
+      className={`min-w-[220px] max-w-[280px] overflow-hidden rounded-card border bg-card shadow-float transition-all ${
         isHighlighted
-          ? "border-green-500 ring-4 ring-green-500/30 scale-105"
+          ? "border-success ring-4 ring-success/20 scale-105"
           : selected
             ? "border-primary ring-2 ring-primary/20"
             : "border-border"
@@ -98,7 +98,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-md text-xs font-semibold relative"
+        className="relative flex items-center gap-2 border-b-4 border-background/20 px-3 py-2.5 text-xs font-semibold"
         style={{ background: def.color, color: "#fff" }}
       >
         <span>{def.icon}</span>
@@ -143,12 +143,12 @@ function BotNode({ data, selected, type, id }: NodeProps) {
       </div>
 
       {/* Body */}
-      <div className="px-3 py-2 min-h-[32px]">
+      <div className="min-h-[44px] px-3 py-3">
         {(data.description as string) && (
           <p className="text-[10px] text-muted-foreground/70 italic mb-1">{String(data.description).slice(0, 50)}</p>
         )}
         {preview ? (
-          <p className="text-xs text-muted-foreground truncate">{preview}</p>
+          <p className="line-clamp-2 break-words text-xs text-muted-foreground">{preview}</p>
         ) : (
           <p className="text-xs text-muted-foreground/50 italic">Clique para configurar</p>
         )}

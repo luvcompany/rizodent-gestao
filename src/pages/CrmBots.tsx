@@ -92,20 +92,23 @@ export default function CrmBots() {
 
   const statusBadge = (s: BotStatus) => {
     const map = {
-      draft: { label: "Rascunho", variant: "secondary" as const },
-      published: { label: "Publicado", variant: "default" as const },
-      archived: { label: "Arquivado", variant: "outline" as const },
+      draft: { label: "Rascunho", className: "border-warning/30 bg-warning-soft text-warning-soft-foreground" },
+      published: { label: "Publicado", className: "border-success/30 bg-success-soft text-success-soft-foreground" },
+      archived: { label: "Arquivado", className: "border-purple/30 bg-purple-soft text-purple-soft-foreground" },
     };
-    const { label, variant } = map[s] || map.draft;
-    return <Badge variant={variant}>{label}</Badge>;
+    const { label, className } = map[s] || map.draft;
+    return <Badge variant="outline" className={`rounded-full px-2.5 py-1 ${className}`}>{label}</Badge>;
   };
 
   return (
-    <div className="space-y-6 -m-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-6 -m-6 p-4 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Bot size={21} /></div>
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold text-foreground">Construtor de Bots</h1>
           <p className="text-sm text-muted-foreground">Crie fluxos de automação de conversas</p>
+          </div>
         </div>
         {canWriteBots && (
           <Button onClick={handleCreate} className="gap-2">
@@ -114,13 +117,13 @@ export default function CrmBots() {
         )}
       </div>
 
-      <div className="relative max-w-sm">
+      <div className="relative max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar bots..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
+          className="h-10 rounded-control bg-surface-sunken pl-9"
         />
       </div>
 
@@ -137,28 +140,33 @@ export default function CrmBots() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card divide-y divide-border/60">
           {filtered.map((bot) => (
             <div
               key={bot.id}
-              className="group border border-border rounded-xl bg-card p-5 hover:border-primary/30 transition-colors cursor-pointer"
+              className="group flex cursor-pointer flex-col gap-3 p-4 transition-colors hover:bg-primary-soft/30 sm:flex-row sm:items-center sm:justify-between sm:px-5"
               onClick={() => navigate(`/crm/bots/${bot.id}`)}
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-primary-soft">
                     <Bot size={20} className="text-primary" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{bot.name}</h3>
-                    <p className="text-xs text-muted-foreground">
+                  <div className="min-w-0">
+                    <h3 className="break-words font-semibold text-foreground">{bot.name}</h3>
+                    <p className="line-clamp-2 text-xs text-muted-foreground">
                       {bot.description || "Sem descrição"}
                     </p>
                   </div>
-                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                {statusBadge(bot.status)}
+                <OwnerRoleBadge ownerRole={(bot as any).owner_role as OwnerRole} />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {new Date(bot.updated_at).toLocaleDateString("pt-BR")}
+                </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
+                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full opacity-70 group-hover:opacity-100">
                       <MoreHorizontal size={16} />
                     </Button>
                   </DropdownMenuTrigger>
@@ -194,15 +202,6 @@ export default function CrmBots() {
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {statusBadge(bot.status)}
-                  <OwnerRoleBadge ownerRole={(bot as any).owner_role as OwnerRole} />
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(bot.updated_at).toLocaleDateString("pt-BR")}
-                </span>
               </div>
             </div>
           ))}

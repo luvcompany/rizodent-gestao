@@ -374,28 +374,28 @@ function BotEditorInner() {
   return (
     <div className="flex flex-col h-full -m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Top Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-border bg-card">
-        <div className="flex items-center gap-3">
+      <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card px-4 py-3 shadow-card">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/crm/bots")}>
             <ArrowLeft size={18} />
           </Button>
           <Input
             value={botName}
             onChange={(e) => setBotName(e.target.value)}
-            className="w-[200px] h-8 text-sm font-semibold bg-transparent border-transparent hover:border-border focus:border-border"
+            className="h-10 w-[200px] rounded-control bg-surface-sunken text-sm font-semibold"
           />
           <Input
             value={botDescription}
             onChange={(e) => setBotDescription(e.target.value)}
             placeholder="Descrição do bot (opcional)"
-            className="w-[250px] h-8 text-xs bg-transparent border-transparent hover:border-border focus:border-border text-muted-foreground"
+            className="h-10 w-[250px] rounded-control bg-surface-sunken text-xs text-muted-foreground"
           />
-          <span className="text-xs text-muted-foreground px-2 py-0.5 rounded bg-secondary">
+          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${botStatus === "published" ? "border-success/30 bg-success-soft text-success-soft-foreground" : "border-warning/30 bg-warning-soft text-warning-soft-foreground"}`}>
             {botStatus === "published" ? "Publicado" : "Rascunho"}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-secondary/40" title="Em quais canais este bot pode rodar. O bot só executa se o lead for do canal marcado.">
+          <div className="flex items-center gap-1 rounded-full border border-border/60 bg-surface-sunken p-1" title="Em quais canais este bot pode rodar. O bot só executa se o lead for do canal marcado.">
             <span className="text-xs text-muted-foreground mr-1">Canais:</span>
             {([
               { key: "whatsapp", label: "WhatsApp" },
@@ -410,7 +410,7 @@ function BotEditorInner() {
                     const next = prev.includes(c.key) ? prev.filter((x) => x !== c.key) : [...prev, c.key];
                     return next.length ? next : prev; // sempre ao menos 1 canal
                   })}
-                  className={`text-xs px-2 py-0.5 rounded-md border transition-colors ${on ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:bg-muted"}`}
+                  className={`rounded-full border px-2 py-1 text-xs transition-colors ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted"}`}
                 >
                   {c.label}
                 </button>
@@ -418,7 +418,7 @@ function BotEditorInner() {
             })}
           </div>
           <TooltipProvider delayDuration={200}>
-            <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-border bg-secondary/40">
+            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface-sunken px-3 py-1.5">
               <Switch
                 id="mark-as-read"
                 checked={markAsRead}
@@ -467,7 +467,7 @@ function BotEditorInner() {
         <NodePalette />
 
         {/* Center: Canvas */}
-        <div className="flex-1 min-w-0" ref={reactFlowWrapper}>
+        <div className="flex-1 min-w-0 bg-surface-sunken" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes.map((n) => ({
               ...n,

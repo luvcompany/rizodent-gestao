@@ -412,8 +412,8 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
   const lastMenuMessage = [...messages].reverse().find((m) => m.type === "menu" && m.from === "bot");
 
   return (
-    <div className="flex flex-col w-[340px] border-l border-border bg-background h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
+    <div className="flex h-full w-[340px] flex-col border-l border-border/60 bg-card">
+      <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 py-3">
         <div className="flex items-center gap-2">
           <Smartphone size={16} className="text-primary" />
           <span className="text-xs font-semibold">Pré-visualização</span>
@@ -428,7 +428,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0 mx-3 my-3 rounded-2xl border-2 border-border bg-background overflow-hidden shadow-lg">
+      <div className="mx-3 my-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-border/60 bg-card shadow-float">
         <div className="flex items-center justify-center py-1.5 bg-card border-b border-border">
           <div className="w-20 h-1 rounded-full bg-muted-foreground/30" />
         </div>
@@ -443,7 +443,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 bg-secondary/20">
+        <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto bg-surface-sunken p-3">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
               {msg.type === "system" ? (
@@ -498,8 +498,8 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                 <div
                   className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
                     msg.from === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-card border border-border text-card-foreground rounded-bl-sm"
+                      ? "bg-primary-soft text-primary-soft-foreground rounded-br-sm"
+                      : "bg-card border border-border/60 text-card-foreground rounded-bl-sm shadow-card"
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.content}</p>
