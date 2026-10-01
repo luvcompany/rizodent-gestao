@@ -372,7 +372,7 @@ function BotEditorInner() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="-m-2 flex h-full flex-col sm:-m-4 lg:-m-6" style={{ height: "calc(100dvh - 4rem)" }}>
       {/* Top Toolbar */}
       <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-card px-4 py-3 shadow-card">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -394,7 +394,7 @@ function BotEditorInner() {
             {botStatus === "published" ? "Publicado" : "Rascunho"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
           <div className="flex items-center gap-1 rounded-full border border-border/60 bg-surface-sunken p-1" title="Em quais canais este bot pode rodar. O bot só executa se o lead for do canal marcado.">
             <span className="text-xs text-muted-foreground mr-1">Canais:</span>
             {([
@@ -462,7 +462,7 @@ function BotEditorInner() {
       </div>
 
       {/* Editor Area */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1 overflow-x-auto">
         {/* Left: Palette */}
         <NodePalette />
 

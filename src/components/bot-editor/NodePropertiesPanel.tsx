@@ -1119,7 +1119,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
   return (
     <div
-      className="flex h-full w-[320px] flex-col border-l border-border/60 bg-card"
+      className="flex h-full w-[min(320px,calc(100vw-2rem))] shrink-0 flex-col border-l border-border/60 bg-card"
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}

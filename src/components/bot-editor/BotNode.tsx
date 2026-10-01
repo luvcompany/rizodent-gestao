@@ -11,6 +11,13 @@ function BotNode({ data, selected, type, id }: NodeProps) {
   const isSendText = type === "send_text";
   const isSendMenu = type === "send_menu";
   const isHighlighted = !!(data as any)._highlighted;
+  const headerForeground = def.category === "start" || def.category === "action"
+    ? "hsl(var(--success-foreground))"
+    : def.category === "message"
+      ? "hsl(var(--info-foreground))"
+      : def.category === "logic"
+        ? "hsl(var(--purple-foreground))"
+        : "hsl(var(--warning-foreground))";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -99,7 +106,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
       {/* Header */}
       <div
         className="relative flex items-center gap-2 border-b-4 border-background/20 px-3 py-2.5 text-xs font-semibold"
-        style={{ background: def.color, color: "#fff" }}
+        style={{ background: def.color, color: headerForeground }}
       >
         <span>{def.icon}</span>
         <span className="flex-1">{String(data.label || def.label)}</span>

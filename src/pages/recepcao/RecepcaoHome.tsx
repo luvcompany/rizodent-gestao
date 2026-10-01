@@ -284,7 +284,7 @@ export default function RecepcaoHome() {
           <KpiCard icon={CheckCircle2} tone="success" label="Respondidas hoje" value={respondidasHoje} detail={respondidasHoje === 1 ? "conversa atendida" : "conversas atendidas"} />
         </section>
 
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
 
           {/* fila */}
           <section className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
@@ -493,7 +493,7 @@ export default function RecepcaoHome() {
               <div className="px-[18px] pb-3 pt-[17px]">
                 <h2 className="text-base font-bold tracking-tight text-foreground">Atalhos rápidos</h2>
               </div>
-              <div className="grid grid-cols-2 gap-2 px-3 pb-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 px-3 pb-4 sm:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
                 {temTransmissao ? (
                   <Atalho to="/crm/campanhas" icone={<Send size={19} />} tom="bg-success-soft text-success-soft-foreground" rotulo="Transmissão" />
                 ) : (
