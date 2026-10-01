@@ -1,13 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 0 0% 10%;
+    --primary-h: 221;
+    --primary-s: 83%;
+    --background: 210 33% 98%;
+    --foreground: 222 30% 12%;
+    --surface-sunken: 210 25% 95%;
 
     --card: 0 0% 100%;
     --card-foreground: 0 0% 10%;
@@ -15,8 +16,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 10%;
 
-    --primary: 25 100% 50%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
+    --primary-soft: var(--primary-h) var(--primary-s) 94%;
+    --primary-soft-foreground: var(--primary-h) var(--primary-s) 35%;
 
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 15%;
@@ -24,37 +27,65 @@
     --muted: 0 0% 92%;
     --muted-foreground: 0 0% 40%;
 
-    --accent: 25 100% 50%;
+    --accent: 221 83% 53%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 86% 96%;
+    --destructive-soft-foreground: 0 68% 42%;
+
+    --success: 145 63% 36%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 145 58% 94%;
+    --success-soft-foreground: 145 66% 28%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 34 90% 12%;
+    --warning-soft: 42 100% 93%;
+    --warning-soft-foreground: 32 88% 31%;
+    --info: 202 83% 44%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 201 88% 94%;
+    --info-soft-foreground: 202 76% 34%;
+    --purple: 269 61% 51%;
+    --purple-foreground: 0 0% 100%;
+    --purple-soft: 270 82% 96%;
+    --purple-soft-foreground: 269 55% 40%;
+    --slate: 215 20% 43%;
+    --slate-foreground: 0 0% 100%;
+    --slate-soft: 214 25% 94%;
+    --slate-soft-foreground: 215 22% 34%;
 
     --border: 0 0% 88%;
     --input: 0 0% 88%;
-    --ring: 25 100% 50%;
+    --ring: 221 83% 53%;
 
     --radius: 0.75rem;
+    --radius-card: 1rem;
+    --radius-control: 0.75rem;
 
-    --sidebar-background: 0 0% 96%;
-    --sidebar-foreground: 0 0% 25%;
-    --sidebar-primary: 25 100% 50%;
+    --sidebar-background: var(--primary-h) 22% 10%;
+    --sidebar-foreground: 210 20% 92%;
+    --sidebar-primary: var(--primary-h) var(--primary-s) 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 90%;
-    --sidebar-accent-foreground: 0 0% 15%;
-    --sidebar-border: 0 0% 88%;
-    --sidebar-ring: 25 100% 50%;
+    --sidebar-accent: var(--primary-h) 28% 18%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: var(--primary-h) 18% 20%;
+    --sidebar-ring: var(--primary-h) var(--primary-s) 53%;
 
     --gradient-bg: linear-gradient(145deg, hsl(0 0% 96%) 0%, hsl(0 0% 100%) 50%, hsl(0 0% 98%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
-    --gradient-orange: linear-gradient(135deg, hsl(25 100% 50%) 0%, hsl(35 100% 55%) 100%);
-    --shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.08);
-    --shadow-orange: 0 4px 20px -4px hsla(25, 100%, 50%, 0.25);
+    --gradient-orange: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(221 83% 53% / 0.85) 100%);
+    --shadow-card: 0 8px 24px -12px hsl(222 30% 12% / 0.14);
+    --shadow-float: 0 18px 48px -18px hsl(222 30% 12% / 0.28);
+    --shadow-primary: 0 8px 20px -10px hsl(var(--primary) / 0.6);
+    --shadow-orange: 0 4px 20px -4px hsl(221 83% 53% / 0.25);
   }
 
   .dark {
-    --background: 0 0% 8%;
-    --foreground: 0 0% 100%;
+    --background: 222 24% 8%;
+    --foreground: 210 20% 96%;
+    --surface-sunken: 222 20% 6%;
 
     --card: 0 0% 11%;
     --card-foreground: 0 0% 100%;
@@ -62,8 +93,10 @@
     --popover: 0 0% 13%;
     --popover-foreground: 0 0% 100%;
 
-    --primary: 25 100% 50%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
+    --primary-soft: var(--primary-h) var(--primary-s) 18%;
+    --primary-soft-foreground: var(--primary-h) 78% 76%;
 
     --secondary: 0 0% 16%;
     --secondary-foreground: 0 0% 100%;
@@ -71,30 +104,54 @@
     --muted: 0 0% 18%;
     --muted-foreground: 0 0% 64%;
 
-    --accent: 25 100% 50%;
+    --accent: 221 83% 58%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 42% 18%;
+    --destructive-soft-foreground: 0 88% 76%;
+
+    --success: 145 58% 48%;
+    --success-foreground: 145 70% 9%;
+    --success-soft: 145 38% 16%;
+    --success-soft-foreground: 145 64% 70%;
+    --warning: 40 94% 56%;
+    --warning-foreground: 35 90% 10%;
+    --warning-soft: 38 45% 17%;
+    --warning-soft-foreground: 42 95% 72%;
+    --info: 201 88% 58%;
+    --info-foreground: 202 88% 10%;
+    --info-soft: 202 42% 18%;
+    --info-soft-foreground: 201 86% 75%;
+    --purple: 269 72% 67%;
+    --purple-foreground: 270 55% 10%;
+    --purple-soft: 269 38% 19%;
+    --purple-soft-foreground: 270 80% 79%;
+    --slate: 215 22% 62%;
+    --slate-foreground: 222 25% 9%;
+    --slate-soft: 215 20% 18%;
+    --slate-soft-foreground: 214 28% 76%;
 
     --border: 0 0% 20%;
     --input: 0 0% 20%;
-    --ring: 25 100% 50%;
+    --ring: 221 83% 53%;
 
-    --sidebar-background: 0 0% 6%;
+    --sidebar-background: var(--primary-h) 22% 5%;
     --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: 25 100% 50%;
+    --sidebar-primary: var(--primary-h) var(--primary-s) 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent: var(--primary-h) 25% 14%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 16%;
-    --sidebar-ring: 25 100% 50%;
+    --sidebar-border: var(--primary-h) 18% 16%;
+    --sidebar-ring: var(--primary-h) var(--primary-s) 53%;
 
     --gradient-bg: linear-gradient(145deg, hsl(0 0% 6%) 0%, hsl(0 0% 14%) 50%, hsl(0 0% 10%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(0 0% 12%) 0%, hsl(0 0% 9%) 100%);
-    --gradient-orange: linear-gradient(135deg, hsl(25 100% 50%) 0%, hsl(35 100% 55%) 100%);
-    --shadow-card: 0 4px 24px -4px hsla(0, 0%, 0%, 0.5);
-    --shadow-orange: 0 4px 20px -4px hsla(25, 100%, 50%, 0.3);
+    --gradient-orange: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(221 83% 53% / 0.85) 100%);
+    --shadow-card: 0 10px 28px -14px hsl(0 0% 0% / 0.65);
+    --shadow-float: 0 22px 56px -18px hsl(0 0% 0% / 0.82);
+    --shadow-orange: 0 4px 20px -4px hsl(221 83% 53% / 0.3);
   }
 }
 
@@ -117,6 +174,9 @@
   .shadow-card {
     box-shadow: var(--shadow-card);
   }
+  .shadow-float {
+    box-shadow: var(--shadow-float);
+  }
   .shadow-orange {
     box-shadow: var(--shadow-orange);
   }
@@ -124,6 +184,30 @@
     background: var(--gradient-card);
   }
 }
+
+/* Pele do CRM. O marcador no body mantém /admin e o restante do produto intactos,
+   inclusive para conteúdos Radix renderizados em portal. */
+body.crm-ui-active {
+  background: hsl(var(--background));
+}
+
+body.crm-ui-active .crm-ui-button { border-radius: var(--radius-control); }
+body.crm-ui-active .crm-ui-button[data-variant="default"] { box-shadow: var(--shadow-primary); }
+body.crm-ui-active .crm-ui-input,
+body.crm-ui-active .crm-ui-select-trigger,
+body.crm-ui-active .crm-ui-textarea { border-radius: var(--radius-control); }
+body.crm-ui-active .crm-ui-card { border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+body.crm-ui-active .crm-ui-dialog,
+body.crm-ui-active .crm-ui-popover,
+body.crm-ui-active .crm-ui-select-content { border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
+body.crm-ui-active .crm-ui-sheet[data-side="left"] { border-radius: 0 var(--radius-card) var(--radius-card) 0; }
+body.crm-ui-active .crm-ui-sheet[data-side="right"] { border-radius: var(--radius-card) 0 0 var(--radius-card); }
+body.crm-ui-active .crm-ui-sheet[data-side="top"] { border-radius: 0 0 var(--radius-card) var(--radius-card); }
+body.crm-ui-active .crm-ui-sheet[data-side="bottom"] { border-radius: var(--radius-card) var(--radius-card) 0 0; }
+body.crm-ui-active .crm-ui-table-header { background: hsl(var(--surface-sunken)); }
+body.crm-ui-active .crm-ui-table-header th { height: 2.75rem; font-size: 0.75rem; }
+body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] { border-radius: 9999px; background: hsl(var(--surface-sunken)); }
+body.crm-ui-active .crm-ui-tabs-list[data-variant="pill"] > .crm-ui-tabs-trigger { border-radius: 9999px; }
 
 /* O picker do emoji-mart tem border-radius próprio, maior que o do popover.
    Dentro do nosso popover (que já é arredondado e recorta com overflow-hidden)
