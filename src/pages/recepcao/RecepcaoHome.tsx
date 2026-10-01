@@ -331,7 +331,7 @@ export default function RecepcaoHome() {
                           )}
                           <span className="relative grid h-[42px] w-[42px] place-items-center rounded-full bg-primary-soft text-[13px] font-bold text-primary-soft-foreground">
                             {iniciais(l.name, l.phone)}
-                            <span className="absolute -bottom-px -right-px h-[15px] w-[15px] rounded-full border-[2.5px] border-card bg-[#25D366]" />
+                            <span className="absolute -bottom-px -right-px h-[15px] w-[15px] rounded-full border-[2.5px] border-card bg-success" />
                           </span>
                           <span className="min-w-0">
                             <span className="line-clamp-2 break-words text-[14.5px] font-semibold leading-snug text-foreground">
