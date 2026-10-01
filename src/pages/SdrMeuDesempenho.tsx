@@ -9,7 +9,8 @@ import {
   buscarLigacoesSdr, buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento,
   type EstadoRpc, type LigacoesSdr, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
-import { AlertTriangle, Info, Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CheckCircle2, Clock3, Headphones, Info, Loader2, Phone, RefreshCw, TrendingUp, Users } from "lucide-react";
+import { EmptyState, KpiCard, PageHeader, SectionCard } from "@/components/crm-ui";
 
 /**
  * Meu desempenho — a SDR vê SÓ os próprios números (Fase 5 do rodízio).
@@ -78,20 +79,11 @@ export default function SdrMeuDesempenho() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[1000px] flex-col gap-6 pb-10">
-        <header className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
-              <TrendingUp size={22} className="text-primary" /> Meu desempenho
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">O que aconteceu com os seus leads no período.</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <DateRangeFilter value={periodo} onChange={setPeriodo} excludePresets={["all", "multi"]} />
-            <Button variant="outline" size="sm" title="Atualizar" disabled={carregando} onClick={() => setRecarga((n) => n + 1)}>
-              <RefreshCw size={14} className={carregando ? "animate-spin" : ""} />
-            </Button>
-          </div>
-        </header>
+        <PageHeader
+          title="Meu desempenho"
+          subtitle="O que aconteceu com os seus leads no período."
+          actions={<><DateRangeFilter value={periodo} onChange={setPeriodo} excludePresets={["all", "multi"]} /><Button variant="outline" size="icon" title="Atualizar" disabled={carregando} onClick={() => setRecarga((n) => n + 1)}><RefreshCw size={16} className={carregando ? "animate-spin" : ""} /></Button></>}
+        />
 
         {estado.status === "error" ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/50 bg-destructive/5 px-5 py-4">
@@ -110,34 +102,25 @@ export default function SdrMeuDesempenho() {
             </div>
           </>
         ) : !l ? (
-          <div className="rounded-2xl border border-border bg-card px-6 py-14 text-center shadow-sm">
-            <p className="font-semibold text-foreground">Sem dados para mostrar</p>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-              Não encontramos seu cadastro na equipe desta clínica. Fale com quem gere a equipe.
-            </p>
-          </div>
+          <EmptyState icon={Info} title="Sem dados para mostrar" description="Não encontramos seu cadastro na equipe desta clínica. Fale com quem gere a equipe." />
         ) : (
           <>
-            {/* Resumo: os quatro números que importam, em uma faixa só */}
-            <section className="grid grid-cols-2 divide-border rounded-2xl border border-border bg-card shadow-sm md:grid-cols-4 md:divide-x">
-              <Destaque rotulo="Leads recebidos" valor={fmtInt(l.leads_recebidos)} apoio="chegaram a você" />
-              <Destaque rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="no seu crédito" />
-              <Destaque
-                rotulo="Compareceram" valor={fmtInt(l.compareceram)} realce
-                apoio={l.compareceram + l.faltas > 0 ? `${taxaComparecimento(l)} de comparecimento` : "nenhuma consulta com desfecho"}
-              />
-              <Destaque rotulo="Ligações feitas" valor={fmtInt(feitas)} apoio={feitas > 0 ? `${fmtPct(atendidas, feitas)} atendidas pelo lead` : "nenhuma no período"} />
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard label="Leads recebidos" value={fmtInt(l.leads_recebidos)} detail="chegaram a você" icon={Users} tone="info" />
+              <KpiCard label="Agendamentos" value={fmtInt(l.agendamentos)} detail="no seu crédito" icon={CalendarCheck2} tone="primary" />
+              <KpiCard label="Compareceram" value={fmtInt(l.compareceram)} detail={l.compareceram + l.faltas > 0 ? `${taxaComparecimento(l)} de comparecimento` : "nenhuma consulta com desfecho"} icon={CheckCircle2} tone="success" />
+              <KpiCard label="Ligações feitas" value={fmtInt(feitas)} detail={feitas > 0 ? `${fmtPct(atendidas, feitas)} atendidas pelo lead` : "nenhuma no período"} icon={Phone} tone="purple" />
             </section>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Painel titulo="Atendimento">
+              <SectionCard title="Atendimento" icon={Headphones} contentClassName="divide-y divide-border/60">
                 <Linha rotulo="Respondidos" valor={fmtInt(l.leads_respondidos)} apoio={l.leads_recebidos > 0 ? `${fmtPct(l.leads_respondidos, l.leads_recebidos)} dos recebidos` : undefined} />
                 <Linha rotulo="1ª resposta (mediana)" valor={fmtSegundos(l.resp_mediana_seg)} apoio={l.resp_amostra > 0 ? `${fmtInt(l.resp_amostra)} na amostra` : "sem amostra"} />
                 <Linha rotulo="1ª resposta (média)" valor={fmtSegundos(l.resp_media_seg)} />
                 <Linha rotulo="Conversas fechadas" valor={fmtInt(l.conversas_fechadas)} />
-              </Painel>
+              </SectionCard>
 
-              <Painel titulo="Consultas no seu crédito">
+              <SectionCard title="Consultas no seu crédito" icon={CalendarCheck2} contentClassName="divide-y divide-border/60">
                 <Linha rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="pelo dia em que você marcou" />
                 <Linha rotulo="Compareceram" valor={fmtInt(l.compareceram)} apoio={l.compareceram + l.faltas > 0 ? taxaComparecimento(l) : undefined} />
                 <Linha rotulo="Faltas" valor={fmtInt(l.faltas)} />
@@ -145,19 +128,19 @@ export default function SdrMeuDesempenho() {
                 <Linha rotulo="Reagendou e faltou" valor={typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"} apoio="faltou de novo depois de remarcar" />
                 <Linha rotulo="Leads com 2+ faltas" valor={typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"} />
                 <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="avisaram que não viriam — contam como agendamento" />
-              </Painel>
+              </SectionCard>
 
-              <Painel titulo="Ligações">
+              <SectionCard title="Ligações" icon={Phone} contentClassName="divide-y divide-border/60">
                 <Linha rotulo="Feitas" valor={fmtInt(feitas)} apoio={lig ? `${fmtInt(lig.telefonia_feitas)} telefonia · ${fmtInt(lig.whatsapp_feitas)} WhatsApp` : undefined} />
                 <Linha rotulo="Atendidas pelo lead" valor={fmtInt(atendidas)} apoio={feitas > 0 ? `${fmtPct(atendidas, feitas)} das feitas` : undefined} />
                 <Linha rotulo="Duração média" valor={atendidas > 0 ? fmtSegundos(lig?.duracao_media_seg ?? 0) : "—"} apoio="das atendidas" />
-              </Painel>
+              </SectionCard>
 
-              <Painel titulo="Expediente e satisfação">
+              <SectionCard title="Expediente e satisfação" icon={Clock3} contentClassName="divide-y divide-border/60">
                 <Linha rotulo="Expediente" valor={fmtMinutos(l.minutos_expediente)} apoio="com o ponto aberto, sem pausas" />
                 <Linha rotulo="Pausas" valor={fmtMinutos(l.minutos_pausa)} apoio="café, almoço e outras" />
                 <Linha rotulo="Pesquisa de satisfação" valor={fmtNota(l.pesquisa_nota_media)} apoio={l.pesquisa_respostas > 0 ? `${fmtInt(l.pesquisa_respostas)} ${l.pesquisa_respostas === 1 ? "resposta" : "respostas"}` : "sem respostas"} />
-              </Painel>
+              </SectionCard>
             </div>
           </>
         )}
@@ -176,25 +159,6 @@ export default function SdrMeuDesempenho() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Destaque({ rotulo, valor, apoio, realce }: { rotulo: string; valor: string; apoio: string; realce?: boolean }) {
-  return (
-    <div className="flex flex-col gap-1 px-5 py-4">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{rotulo}</span>
-      <span className={`font-mono text-3xl font-semibold tabular-nums ${realce ? "text-primary" : "text-foreground"}`}>{valor}</span>
-      <span className="text-xs text-muted-foreground">{apoio}</span>
-    </div>
-  );
-}
-
-function Painel({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{titulo}</h2>
-      <div className="divide-y divide-border">{children}</div>
-    </section>
   );
 }
 
