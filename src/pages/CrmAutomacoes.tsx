@@ -787,7 +787,7 @@ export default function CrmAutomacoes() {
       <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap overflow-hidden min-w-0 shadow-card">
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Bot size={21} /></div>
-          <h1 className="text-2xl font-bold text-foreground whitespace-nowrap">Configuração do Funil</h1>
+          <h1 className="break-words text-2xl font-bold text-foreground">Configuração do Funil</h1>
           {pipelines.length > 0 && (
             <div className="flex items-center gap-1">
               <select
@@ -1082,7 +1082,7 @@ export default function CrmAutomacoes() {
                                             className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted"
                                             title="Tipo da etapa (Ganho / Perda / Aberta) — usado na Análise de Funil"
                                           >
-                                            {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
+                                            {stage.is_won ? <span className="text-success">Ganho</span>
                                               : stage.is_lost ? <span className="text-destructive">Perda</span>
                                               : <span className="text-muted-foreground">Aberta</span>}
                                           </button>
@@ -1119,7 +1119,7 @@ export default function CrmAutomacoes() {
                                         className="text-[10px] px-1.5 py-0.5 rounded border border-border"
                                         title="Tipo da etapa (Ganho / Perda / Aberta) — definido pela gestão"
                                       >
-                                        {stage.is_won ? <span className="text-emerald-600 dark:text-emerald-500">Ganho</span>
+                                        {stage.is_won ? <span className="text-success">Ganho</span>
                                           : stage.is_lost ? <span className="text-destructive">Perda</span>
                                           : <span className="text-muted-foreground">Aberta</span>}
                                       </span>

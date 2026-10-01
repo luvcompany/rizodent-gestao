@@ -379,7 +379,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle size={18} className="text-yellow-500" /> Lead já cadastrado
+              <AlertTriangle size={18} className="text-warning" /> Lead já cadastrado
             </DialogTitle>
           </DialogHeader>
           {duplicateInfo && (
@@ -1377,7 +1377,7 @@ export default function CrmKanban() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground">
             <GitBranch className="h-5 w-5" />
           </div>
-          <h1 className="text-xl font-bold text-foreground leading-none whitespace-nowrap">{pipeline?.name || "CRM"}</h1>
+          <h1 className="min-w-0 break-words text-xl font-bold leading-tight text-foreground">{pipeline?.name || "CRM"}</h1>
           {pipelines.length > 1 && (
             <Select
               value={pipeline?.id || ""}

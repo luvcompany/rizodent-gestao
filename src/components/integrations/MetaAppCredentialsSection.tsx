@@ -161,7 +161,7 @@ export default function MetaAppCredentialsSection() {
             <h3 className="font-semibold flex items-center gap-2">
               WhatsApp Business
               {row.whatsapp_enabled
-                ? <Badge className="bg-green-600">Ativo</Badge>
+                ? <Badge className="bg-success-soft text-success-soft-foreground">Ativo</Badge>
                 : <Badge variant="outline">Inativo</Badge>}
             </h3>
             <div className="flex items-center gap-2">
@@ -227,7 +227,7 @@ export default function MetaAppCredentialsSection() {
             <h3 className="font-semibold flex items-center gap-2">
               Instagram
               {row.instagram_enabled
-                ? <Badge className="bg-green-600">Ativo</Badge>
+                ? <Badge className="bg-success-soft text-success-soft-foreground">Ativo</Badge>
                 : <Badge variant="outline">Inativo</Badge>}
             </h3>
             <div className="flex items-center gap-2">

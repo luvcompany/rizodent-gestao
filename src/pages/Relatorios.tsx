@@ -733,7 +733,7 @@ const Relatorios = () => {
                       <TableCell className="font-bold text-primary">{i + 1}</TableCell>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{r.nome}</TableCell>
                       <TableCell>{r.qtdPagamentos}</TableCell>
-                      <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
+                      <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -814,7 +814,7 @@ const Relatorios = () => {
                       <TableRow key={r.label}>
                         <TableCell className="font-medium">{r.label}</TableCell>
                         <TableCell>{r.qtdPacientes}</TableCell>
-                        <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
+                        <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -842,7 +842,7 @@ const Relatorios = () => {
                         <TableRow key={r.label}>
                           <TableCell className="font-medium">{r.label}</TableCell>
                           <TableCell>{r.qtdPacientes}</TableCell>
-                          <TableCell className="text-green-400">{formatCurrency(r.contratado)}</TableCell>
+                          <TableCell className="text-success">{formatCurrency(r.contratado)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1181,7 +1181,7 @@ const Relatorios = () => {
                       <TableRow key={l.id} className="cursor-pointer hover:bg-muted/50" onClick={() => l.paciente_id && navigate(`/pacientes/${l.paciente_id}`)}>
                         <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{l.paciente}</TableCell>
                         <TableCell>{l.data ? new Date(l.data + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</TableCell>
-                        <TableCell className="text-green-400">{formatCurrency(l.valor)}</TableCell>
+                        <TableCell className="text-success">{formatCurrency(l.valor)}</TableCell>
                         <TableCell className="text-muted-foreground">{l.clinica}</TableCell>
                       </TableRow>
                     ))}
