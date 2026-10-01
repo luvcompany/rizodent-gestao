@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.cancel_followup_on_stage_exit() FROM PUBLIC, anon, authenticated;
