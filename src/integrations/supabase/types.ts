@@ -255,48 +255,6 @@ export type Database = {
           },
         ]
       }
-      admin_audit_log: {
-        Row: {
-          action: string
-          actor_id: string
-          after: Json | null
-          before: Json | null
-          created_at: string
-          id: number
-          ip: string | null
-          target_id: string | null
-          target_tenant_id: string | null
-          target_type: string | null
-          user_agent: string | null
-        }
-        Insert: {
-          action: string
-          actor_id: string
-          after?: Json | null
-          before?: Json | null
-          created_at?: string
-          id?: number
-          ip?: string | null
-          target_id?: string | null
-          target_tenant_id?: string | null
-          target_type?: string | null
-          user_agent?: string | null
-        }
-        Update: {
-          action?: string
-          actor_id?: string
-          after?: Json | null
-          before?: Json | null
-          created_at?: string
-          id?: number
-          ip?: string | null
-          target_id?: string | null
-          target_tenant_id?: string | null
-          target_type?: string | null
-          user_agent?: string | null
-        }
-        Relationships: []
-      }
       ai_assistant_config: {
         Row: {
           assistant_display_name: string
@@ -1177,7 +1135,7 @@ export type Database = {
           clinica_id?: string | null
           created_at?: string
           created_by?: string | null
-          data_pagamento: string
+          data_pagamento?: string
           especialidade?: string | null
           forma_pagamento?: string | null
           id?: string
@@ -3868,7 +3826,6 @@ export type Database = {
           id: string
           pipeline_id: string
           tenant_id: string | null
-          whatsapp_number_id: string | null
         }
         Insert: {
           channel_config?: Json | null
@@ -3877,7 +3834,6 @@ export type Database = {
           id?: string
           pipeline_id: string
           tenant_id?: string | null
-          whatsapp_number_id?: string | null
         }
         Update: {
           channel_config?: Json | null
@@ -3886,7 +3842,6 @@ export type Database = {
           id?: string
           pipeline_id?: string
           tenant_id?: string | null
-          whatsapp_number_id?: string | null
         }
         Relationships: [
           {
@@ -3901,13 +3856,6 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "funnel_channels_whatsapp_number_id_fkey"
-            columns: ["whatsapp_number_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -3950,44 +3898,6 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
-      }
-      impersonation_codes: {
-        Row: {
-          admin_user_id: string
-          code_hash: string
-          created_at: string
-          expires_at: string
-          target_user_id: string
-          tenant_id: string
-          used_at: string | null
-        }
-        Insert: {
-          admin_user_id: string
-          code_hash: string
-          created_at?: string
-          expires_at: string
-          target_user_id: string
-          tenant_id: string
-          used_at?: string | null
-        }
-        Update: {
-          admin_user_id?: string
-          code_hash?: string
-          created_at?: string
-          expires_at?: string
-          target_user_id?: string
-          tenant_id?: string
-          used_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "impersonation_codes_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       instagram_accounts: {
         Row: {
@@ -4120,7 +4030,6 @@ export type Database = {
         Row: {
           created_at: string
           expires_at: string
-          origin: string | null
           state: string
           tenant_id: string
           user_id: string
@@ -4128,7 +4037,6 @@ export type Database = {
         Insert: {
           created_at?: string
           expires_at?: string
-          origin?: string | null
           state?: string
           tenant_id: string
           user_id: string
@@ -4136,7 +4044,6 @@ export type Database = {
         Update: {
           created_at?: string
           expires_at?: string
-          origin?: string | null
           state?: string
           tenant_id?: string
           user_id?: string
@@ -4289,7 +4196,6 @@ export type Database = {
           error_reason: string | null
           from_device: boolean
           id: string
-          importada_do_historico: boolean
           instagram_account_id: string | null
           instagram_comment_id: string | null
           instagram_message_id: string | null
@@ -4327,7 +4233,6 @@ export type Database = {
           error_reason?: string | null
           from_device?: boolean
           id?: string
-          importada_do_historico?: boolean
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
           instagram_message_id?: string | null
@@ -4365,7 +4270,6 @@ export type Database = {
           error_reason?: string | null
           from_device?: boolean
           id?: string
-          importada_do_historico?: boolean
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
           instagram_message_id?: string | null
@@ -4406,86 +4310,6 @@ export type Database = {
             columns: ["whatsapp_number_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_numbers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_apps: {
-        Row: {
-          admin_login_config_id: string | null
-          app_id: string
-          app_secret: string
-          app_secret_fingerprint: string
-          app_secret_tamanho: number
-          ativo: boolean
-          created_at: string
-          created_by: string | null
-          embedded_signup_liberado: boolean
-          graph_version: string
-          id: string
-          is_system_default: boolean
-          modo_app: string | null
-          nome: string
-          tenant_id: string | null
-          testado_em: string | null
-          updated_at: string
-          verify_token: string
-          webhook_ultimo_evento_em: string | null
-          webhook_verificado_em: string | null
-          whatsapp_config_id: string | null
-        }
-        Insert: {
-          admin_login_config_id?: string | null
-          app_id: string
-          app_secret: string
-          app_secret_fingerprint?: string
-          app_secret_tamanho?: number
-          ativo?: boolean
-          created_at?: string
-          created_by?: string | null
-          embedded_signup_liberado?: boolean
-          graph_version?: string
-          id?: string
-          is_system_default?: boolean
-          modo_app?: string | null
-          nome: string
-          tenant_id?: string | null
-          testado_em?: string | null
-          updated_at?: string
-          verify_token?: string
-          webhook_ultimo_evento_em?: string | null
-          webhook_verificado_em?: string | null
-          whatsapp_config_id?: string | null
-        }
-        Update: {
-          admin_login_config_id?: string | null
-          app_id?: string
-          app_secret?: string
-          app_secret_fingerprint?: string
-          app_secret_tamanho?: number
-          ativo?: boolean
-          created_at?: string
-          created_by?: string | null
-          embedded_signup_liberado?: boolean
-          graph_version?: string
-          id?: string
-          is_system_default?: boolean
-          modo_app?: string | null
-          nome?: string
-          tenant_id?: string | null
-          testado_em?: string | null
-          updated_at?: string
-          verify_token?: string
-          webhook_ultimo_evento_em?: string | null
-          webhook_verificado_em?: string | null
-          whatsapp_config_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_apps_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -4620,197 +4444,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      meta_wabas: {
-        Row: {
-          business_id: string | null
-          created_at: string
-          created_by: string | null
-          id: string
-          meta_app_id: string
-          mm_lite: boolean
-          nome: string | null
-          pausa_motivo: string | null
-          pausada_em: string | null
-          pausada_por: string | null
-          saude: Json | null
-          saude_em: string | null
-          status: string
-          subscribed_apps_ok: boolean
-          subscribed_em: string | null
-          tenant_id: string
-          token: string | null
-          token_escopos: string[] | null
-          token_expira_em: string | null
-          token_fingerprint: string | null
-          token_tamanho: number | null
-          token_tipo: string | null
-          token_validado_em: string | null
-          ultimo_erro: string | null
-          updated_at: string
-          waba_id: string
-        }
-        Insert: {
-          business_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          meta_app_id: string
-          mm_lite?: boolean
-          nome?: string | null
-          pausa_motivo?: string | null
-          pausada_em?: string | null
-          pausada_por?: string | null
-          saude?: Json | null
-          saude_em?: string | null
-          status?: string
-          subscribed_apps_ok?: boolean
-          subscribed_em?: string | null
-          tenant_id: string
-          token?: string | null
-          token_escopos?: string[] | null
-          token_expira_em?: string | null
-          token_fingerprint?: string | null
-          token_tamanho?: number | null
-          token_tipo?: string | null
-          token_validado_em?: string | null
-          ultimo_erro?: string | null
-          updated_at?: string
-          waba_id: string
-        }
-        Update: {
-          business_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          meta_app_id?: string
-          mm_lite?: boolean
-          nome?: string | null
-          pausa_motivo?: string | null
-          pausada_em?: string | null
-          pausada_por?: string | null
-          saude?: Json | null
-          saude_em?: string | null
-          status?: string
-          subscribed_apps_ok?: boolean
-          subscribed_em?: string | null
-          tenant_id?: string
-          token?: string | null
-          token_escopos?: string[] | null
-          token_expira_em?: string | null
-          token_fingerprint?: string | null
-          token_tamanho?: number | null
-          token_tipo?: string | null
-          token_validado_em?: string | null
-          ultimo_erro?: string | null
-          updated_at?: string
-          waba_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_wabas_meta_app_id_fkey"
-            columns: ["meta_app_id"]
-            isOneToOne: false
-            referencedRelation: "meta_apps"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "meta_wabas_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_webhook_desconhecidos: {
-        Row: {
-          display_phone: string | null
-          eventos: number
-          meta_app_id: string
-          phone_number_id: string
-          primeiro_em: string
-          ultimo_em: string
-          waba_id: string | null
-        }
-        Insert: {
-          display_phone?: string | null
-          eventos?: number
-          meta_app_id: string
-          phone_number_id: string
-          primeiro_em?: string
-          ultimo_em?: string
-          waba_id?: string | null
-        }
-        Update: {
-          display_phone?: string | null
-          eventos?: number
-          meta_app_id?: string
-          phone_number_id?: string
-          primeiro_em?: string
-          ultimo_em?: string
-          waba_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "meta_webhook_desconhecidos_meta_app_id_fkey"
-            columns: ["meta_app_id"]
-            isOneToOne: false
-            referencedRelation: "meta_apps"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      meta_webhook_rejeicoes: {
-        Row: {
-          contagem: number
-          dia: string
-          motivo: string
-          ultimo_em: string
-        }
-        Insert: {
-          contagem?: number
-          dia: string
-          motivo: string
-          ultimo_em?: string
-        }
-        Update: {
-          contagem?: number
-          dia?: string
-          motivo?: string
-          ultimo_em?: string
-        }
-        Relationships: []
-      }
-      modules: {
-        Row: {
-          availability: string
-          category: string
-          default_enabled: boolean
-          description: string
-          key: string
-          name: string
-          sort: number | null
-        }
-        Insert: {
-          availability?: string
-          category: string
-          default_enabled: boolean
-          description: string
-          key: string
-          name: string
-          sort?: number | null
-        }
-        Update: {
-          availability?: string
-          category?: string
-          default_enabled?: boolean
-          description?: string
-          key?: string
-          name?: string
-          sort?: number | null
-        }
-        Relationships: []
       }
       pacientes: {
         Row: {
@@ -5083,21 +4716,6 @@ export type Database = {
           },
         ]
       }
-      reserved_slugs: {
-        Row: {
-          reason: string | null
-          slug: string
-        }
-        Insert: {
-          reason?: string | null
-          slug: string
-        }
-        Update: {
-          reason?: string | null
-          slug?: string
-        }
-        Relationships: []
-      }
       rpt_baseline_anuncio: {
         Row: {
           criado_em: string
@@ -5128,139 +4746,28 @@ export type Database = {
         }
         Relationships: []
       }
-      segment_presets: {
-        Row: {
-          ai_system_prompt: string
-          key: string
-          label: string
-          sort: number
-          vocabulary: Json
-        }
-        Insert: {
-          ai_system_prompt: string
-          key: string
-          label: string
-          sort?: number
-          vocabulary: Json
-        }
-        Update: {
-          ai_system_prompt?: string
-          key?: string
-          label?: string
-          sort?: number
-          vocabulary?: Json
-        }
-        Relationships: []
-      }
-      system_settings: {
-        Row: {
-          app_geral_semeado_em: string | null
-          favicon_url: string | null
-          font_family: string
-          id: number
-          legal_address: string | null
-          legal_contact_email: string | null
-          legal_operator_doc: string | null
-          legal_operator_name: string | null
-          legal_updated_at: string | null
-          logo_dark_url: string | null
-          logo_url: string | null
-          primary_color: string
-          primary_color_dark: string | null
-          primary_domain: string | null
-          product_name: string
-          public_version: number
-          radius_px: number
-          secondary_color: string | null
-          short_name: string
-          support_email: string | null
-          tagline: string | null
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          app_geral_semeado_em?: string | null
-          favicon_url?: string | null
-          font_family?: string
-          id?: number
-          legal_address?: string | null
-          legal_contact_email?: string | null
-          legal_operator_doc?: string | null
-          legal_operator_name?: string | null
-          legal_updated_at?: string | null
-          logo_dark_url?: string | null
-          logo_url?: string | null
-          primary_color?: string
-          primary_color_dark?: string | null
-          primary_domain?: string | null
-          product_name?: string
-          public_version?: number
-          radius_px?: number
-          secondary_color?: string | null
-          short_name?: string
-          support_email?: string | null
-          tagline?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          app_geral_semeado_em?: string | null
-          favicon_url?: string | null
-          font_family?: string
-          id?: number
-          legal_address?: string | null
-          legal_contact_email?: string | null
-          legal_operator_doc?: string | null
-          legal_operator_name?: string | null
-          legal_updated_at?: string | null
-          logo_dark_url?: string | null
-          logo_url?: string | null
-          primary_color?: string
-          primary_color_dark?: string | null
-          primary_domain?: string | null
-          product_name?: string
-          public_version?: number
-          radius_px?: number
-          secondary_color?: string | null
-          short_name?: string
-          support_email?: string | null
-          tagline?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
       tenant_api_keys: {
         Row: {
           active: boolean
-          api_key: string | null
+          api_key: string
           created_at: string
           id: string
-          key_hash: string | null
-          key_prefix: string | null
-          last_used_at: string | null
           name: string | null
           tenant_id: string
         }
         Insert: {
           active?: boolean
-          api_key?: string | null
+          api_key: string
           created_at?: string
           id?: string
-          key_hash?: string | null
-          key_prefix?: string | null
-          last_used_at?: string | null
           name?: string | null
           tenant_id: string
         }
         Update: {
           active?: boolean
-          api_key?: string | null
+          api_key?: string
           created_at?: string
           id?: string
-          key_hash?: string | null
-          key_prefix?: string | null
-          last_used_at?: string | null
           name?: string | null
           tenant_id?: string
         }
@@ -5383,71 +4890,6 @@ export type Database = {
           },
         ]
       }
-      tenant_modules: {
-        Row: {
-          enabled: boolean
-          module_key: string
-          tenant_id: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          enabled: boolean
-          module_key: string
-          tenant_id: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          enabled?: boolean
-          module_key?: string
-          tenant_id?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tenant_modules_module_key_fkey"
-            columns: ["module_key"]
-            isOneToOne: false
-            referencedRelation: "modules"
-            referencedColumns: ["key"]
-          },
-          {
-            foreignKeyName: "tenant_modules_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      tenant_private: {
-        Row: {
-          lead_webhook_secret: string
-          rotated_at: string
-          tenant_id: string
-        }
-        Insert: {
-          lead_webhook_secret?: string
-          rotated_at?: string
-          tenant_id: string
-        }
-        Update: {
-          lead_webhook_secret?: string
-          rotated_at?: string
-          tenant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tenant_private_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       tenant_subscriptions: {
         Row: {
           amount: number
@@ -5543,116 +4985,65 @@ export type Database = {
           business_hours: Json | null
           created_at: string
           deleted_at: string | null
-          display_name: string | null
           favicon_url: string | null
-          font_family: string | null
-          hide_system_brand: boolean
           id: string
-          is_protected: boolean
-          login_bg_url: string | null
-          login_footer: string | null
-          login_subtitle: string | null
-          login_title: string | null
+          lead_webhook_secret: string | null
           logo_dark_url: string | null
           logo_url: string | null
-          meta_app_id: string | null
           meta_app_version: string
           name: string
-          primary_color: string | null
-          primary_color_dark: string | null
-          radius_px: number | null
-          secondary_color: string | null
-          segment: string
+          primary_color: string
+          secondary_color: string
           slug: string
           status: string
-          tertiary_color: string | null
+          tertiary_color: string
           timezone: string
           trial_ends_at: string | null
           updated_at: string
-          vocabulary: Json
         }
         Insert: {
           branding_version?: number
           business_hours?: Json | null
           created_at?: string
           deleted_at?: string | null
-          display_name?: string | null
           favicon_url?: string | null
-          font_family?: string | null
-          hide_system_brand?: boolean
           id?: string
-          is_protected?: boolean
-          login_bg_url?: string | null
-          login_footer?: string | null
-          login_subtitle?: string | null
-          login_title?: string | null
+          lead_webhook_secret?: string | null
           logo_dark_url?: string | null
           logo_url?: string | null
-          meta_app_id?: string | null
           meta_app_version?: string
           name: string
-          primary_color?: string | null
-          primary_color_dark?: string | null
-          radius_px?: number | null
-          secondary_color?: string | null
-          segment?: string
+          primary_color?: string
+          secondary_color?: string
           slug: string
           status?: string
-          tertiary_color?: string | null
+          tertiary_color?: string
           timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
-          vocabulary?: Json
         }
         Update: {
           branding_version?: number
           business_hours?: Json | null
           created_at?: string
           deleted_at?: string | null
-          display_name?: string | null
           favicon_url?: string | null
-          font_family?: string | null
-          hide_system_brand?: boolean
           id?: string
-          is_protected?: boolean
-          login_bg_url?: string | null
-          login_footer?: string | null
-          login_subtitle?: string | null
-          login_title?: string | null
+          lead_webhook_secret?: string | null
           logo_dark_url?: string | null
           logo_url?: string | null
-          meta_app_id?: string | null
           meta_app_version?: string
           name?: string
-          primary_color?: string | null
-          primary_color_dark?: string | null
-          radius_px?: number | null
-          secondary_color?: string | null
-          segment?: string
+          primary_color?: string
+          secondary_color?: string
           slug?: string
           status?: string
-          tertiary_color?: string | null
+          tertiary_color?: string
           timezone?: string
           trial_ends_at?: string | null
           updated_at?: string
-          vocabulary?: Json
         }
-        Relationships: [
-          {
-            foreignKeyName: "tenants_meta_app_id_fkey"
-            columns: ["meta_app_id"]
-            isOneToOne: false
-            referencedRelation: "meta_apps"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tenants_segment_fkey"
-            columns: ["segment"]
-            isOneToOne: false
-            referencedRelation: "segment_presets"
-            referencedColumns: ["key"]
-          },
-        ]
+        Relationships: []
       }
       tipos_procedimento: {
         Row: {
@@ -6033,149 +5424,84 @@ export type Database = {
       }
       whatsapp_numbers: {
         Row: {
-          conectado_por: string | null
+          app_id: string | null
+          app_secret: string | null
           created_at: string
           display_name: string | null
           id: string
           is_active: boolean
           is_coexistence: boolean
           is_default: boolean
-          meta_waba_id: string | null
-          origem: string
           phone_e164: string | null
           phone_number_id: string
-          quality_rating: string | null
-          status: string
           tenant_id: string
-          ultimo_envio_em: string | null
-          ultimo_erro: string | null
-          ultimo_teste_em: string | null
-          ultimo_teste_ok: boolean | null
-          ultimo_webhook_em: string | null
+          token: string | null
           updated_at: string
-          verified_name: string | null
+          verify_token: string | null
           waba_id: string | null
-          waba_pausada: boolean
         }
         Insert: {
-          conectado_por?: string | null
+          app_id?: string | null
+          app_secret?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
           is_active?: boolean
           is_coexistence?: boolean
           is_default?: boolean
-          meta_waba_id?: string | null
-          origem?: string
           phone_e164?: string | null
           phone_number_id: string
-          quality_rating?: string | null
-          status?: string
           tenant_id: string
-          ultimo_envio_em?: string | null
-          ultimo_erro?: string | null
-          ultimo_teste_em?: string | null
-          ultimo_teste_ok?: boolean | null
-          ultimo_webhook_em?: string | null
+          token?: string | null
           updated_at?: string
-          verified_name?: string | null
+          verify_token?: string | null
           waba_id?: string | null
-          waba_pausada?: boolean
         }
         Update: {
-          conectado_por?: string | null
+          app_id?: string | null
+          app_secret?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
           is_active?: boolean
           is_coexistence?: boolean
           is_default?: boolean
-          meta_waba_id?: string | null
-          origem?: string
           phone_e164?: string | null
           phone_number_id?: string
-          quality_rating?: string | null
-          status?: string
           tenant_id?: string
-          ultimo_envio_em?: string | null
-          ultimo_erro?: string | null
-          ultimo_teste_em?: string | null
-          ultimo_teste_ok?: boolean | null
-          ultimo_webhook_em?: string | null
+          token?: string | null
           updated_at?: string
-          verified_name?: string | null
+          verify_token?: string | null
           waba_id?: string | null
-          waba_pausada?: boolean
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_numbers_meta_waba_id_fkey"
-            columns: ["meta_waba_id"]
-            isOneToOne: false
-            referencedRelation: "meta_wabas"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_numbers_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       whatsapp_oauth_states: {
         Row: {
           coexistence: boolean
           created_at: string
-          dialogo_url: string | null
           expires_at: string
-          iniciado_em: string | null
-          meta_app_id: string | null
-          modo: string
-          origin: string | null
           state: string
           tenant_id: string
           user_id: string
-          vinculo_hash: string | null
         }
         Insert: {
           coexistence?: boolean
           created_at?: string
-          dialogo_url?: string | null
           expires_at?: string
-          iniciado_em?: string | null
-          meta_app_id?: string | null
-          modo?: string
-          origin?: string | null
           state?: string
           tenant_id: string
           user_id: string
-          vinculo_hash?: string | null
         }
         Update: {
           coexistence?: boolean
           created_at?: string
-          dialogo_url?: string | null
           expires_at?: string
-          iniciado_em?: string | null
-          meta_app_id?: string | null
-          modo?: string
-          origin?: string | null
           state?: string
           tenant_id?: string
           user_id?: string
-          vinculo_hash?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_oauth_states_meta_app_id_fkey"
-            columns: ["meta_app_id"]
-            isOneToOne: false
-            referencedRelation: "meta_apps"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       whatsapp_template_logs: {
         Row: {
@@ -6256,47 +5582,6 @@ export type Database = {
           stage_id: string
         }[]
       }
-      admin_clientes_listar: {
-        Args: {
-          p_busca?: string
-          p_limite?: number
-          p_offset?: number
-          p_segmento?: string
-          p_status?: string
-        }
-        Returns: Json
-      }
-      admin_definir_numeros_usuario: {
-        Args: { p_numeros: string[]; p_tenant: string; p_user: string }
-        Returns: Json
-      }
-      admin_integracoes_status: { Args: { p_tenant: string }; Returns: Json }
-      admin_meta_alertas: { Args: never; Returns: Json }
-      admin_meta_apps_listar: { Args: never; Returns: Json }
-      admin_meta_visao: { Args: { p_tenant: string }; Returns: Json }
-      admin_numeros_por_usuario: {
-        Args: { p_tenant: string }
-        Returns: {
-          acesso: boolean
-          email: string
-          granted: boolean
-          is_blocked: boolean
-          no_rodizio: boolean
-          nome: string
-          numero_ativo: boolean
-          numero_id: string
-          numero_nome: string
-          numero_padrao: boolean
-          numero_so_de_closer: boolean
-          numero_status: string
-          origem: string
-          papel: string
-          phone_e164: string
-          phone_number_id: string
-          user_id: string
-          waba_pausada: boolean
-        }[]
-      }
       admin_platform_metrics: { Args: never; Returns: Json }
       admin_tenant_metrics: { Args: { _tenant_id: string }; Returns: Json }
       admin_tenant_users: {
@@ -6312,7 +5597,6 @@ export type Database = {
           role: string
         }[]
       }
-      admin_tenant_uso: { Args: { p_tenant: string }; Returns: Json }
       api4com_call_label: {
         Args: { _direction: string; _dur: number; _status: string }
         Returns: string
@@ -6322,6 +5606,16 @@ export type Database = {
         Args: { _tenant: string }
         Returns: undefined
       }
+      automacoes_saude: {
+        Args: { _tenant?: string }
+        Returns: {
+          achado: string
+          detalhe: string
+          onde: string
+          quantos: number
+        }[]
+      }
+      automacoes_saude_vigia: { Args: never; Returns: Json }
       backup_list_tables: {
         Args: never
         Returns: {
@@ -6531,15 +5825,6 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
-      cron_chamar_funcao: {
-        Args: {
-          p_body?: Json
-          p_func: string
-          p_secret: string
-          p_timeout?: number
-        }
-        Returns: number
-      }
       current_tenant_id: { Args: never; Returns: string }
       debug_audio_messages: {
         Args: { p_lead_id: string; p_limit?: number }
@@ -6660,10 +5945,6 @@ export type Database = {
       dono_restrito_do_numero: {
         Args: { _number_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
-      }
-      encerrar_sessoes_do_cliente: {
-        Args: { _tenant_id: string }
-        Returns: number
       }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
@@ -6862,8 +6143,6 @@ export type Database = {
           name: string
         }[]
       }
-      get_my_tenant_config: { Args: never; Returns: Json }
-      get_public_branding: { Args: { _slug?: string }; Returns: Json }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
@@ -6919,7 +6198,6 @@ export type Database = {
         Args: { _lead_id: string }
         Returns: boolean
       }
-      lead_numero_acessivel: { Args: { _lead_id: string }; Returns: boolean }
       lead_tem_pagamento_de_contrato: {
         Args: { p_ate?: string; p_desde: string; p_lead_id: string }
         Returns: boolean
@@ -6932,8 +6210,6 @@ export type Database = {
         Args: { p_lead_id: string }
         Returns: string
       }
-      lead_webhook_segredo: { Args: never; Returns: string }
-      lead_webhook_segredo_gerar: { Args: never; Returns: string }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
@@ -6953,8 +6229,6 @@ export type Database = {
           similarity: number
         }[]
       }
-      meta_app_do_tenant: { Args: { p_tenant: string }; Returns: string }
-      meta_app_por_verify_token: { Args: { p_token: string }; Returns: string }
       meta_capi_claim: {
         Args: { p_limite?: number }
         Returns: {
@@ -7004,19 +6278,6 @@ export type Database = {
         Args: { p_paciente_id: string; p_ref: string; p_tenant_id: string }
         Returns: number
       }
-      meta_webhook_desconhecido_registrar: {
-        Args: {
-          p_display_phone: string
-          p_meta_app_id: string
-          p_phone_number_id: string
-          p_waba_id: string
-        }
-        Returns: undefined
-      }
-      meta_webhook_rejeicao_registrar: {
-        Args: { p_motivo: string }
-        Returns: undefined
-      }
       modelo_data_formato_antigo: {
         Args: { p_data: string; p_hora: string }
         Returns: string
@@ -7034,9 +6295,9 @@ export type Database = {
         Returns: number
       }
       normaliza_nome_etapa: { Args: { p_nome: string }; Returns: string }
-      numero_so_de_closer_recepcao: {
-        Args: { _number_id: string }
-        Returns: boolean
+      notify_dashboard_event: {
+        Args: { p_cidade: string; p_source: string; p_tipo: string }
+        Returns: undefined
       }
       pacientes_whatsapp_direto: {
         Args: { p_paciente_ids: string[] }
@@ -7068,8 +6329,6 @@ export type Database = {
         Returns: number
       }
       pipelines_definir_ordem: { Args: { p_ids: string[] }; Returns: number }
-      plataforma_tem_superadmin: { Args: never; Returns: boolean }
-      pode_gerir_integracoes: { Args: never; Returns: boolean }
       ponto_abrir: { Args: never; Returns: Json }
       ponto_adiar_encerramento: { Args: { p_min?: number }; Returns: Json }
       ponto_encerrar: { Args: never; Returns: Json }
@@ -7364,6 +6623,7 @@ export type Database = {
         }[]
       }
       restore_deleted_lead: { Args: { _backup_id: string }; Returns: string }
+      rizodent_infer_cidade: { Args: { p_texto: string }; Returns: string }
       rodizio_aplicar_lote_ao_abrir: {
         Args: { p_user_id: string }
         Returns: number
@@ -7702,10 +6962,6 @@ export type Database = {
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
-      tenant_module_enabled: {
-        Args: { _key: string; _tenant: string }
-        Returns: boolean
-      }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
       tenant_set_user_role: {
@@ -7715,7 +6971,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      tenant_whatsapp_resumo: { Args: never; Returns: Json }
       termo_regex_acento_indiferente: {
         Args: { p_termo: string }
         Returns: string
@@ -7795,32 +7050,6 @@ export type Database = {
         Returns: boolean
       }
       watchdog_reenqueue_missing_bots: { Args: never; Returns: number }
-      whatsapp_numeros_visiveis: {
-        Args: never
-        Returns: {
-          app_origem: string
-          display_name: string
-          id: string
-          is_active: boolean
-          is_coexistence: boolean
-          is_default: boolean
-          origem: string
-          phone_e164: string
-          phone_number_id: string
-          pipeline_id: string
-          pipeline_nome: string
-          quality_rating: string
-          status: string
-          ultimo_envio_em: string
-          ultimo_erro: string
-          ultimo_teste_em: string
-          ultimo_teste_ok: boolean
-          ultimo_webhook_em: string
-          verified_name: string
-          waba_id: string
-          waba_pausada: boolean
-        }[]
-      }
     }
     Enums: {
       app_role:

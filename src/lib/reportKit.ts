@@ -250,10 +250,20 @@ const CIDADES_CANONICAS: Record<string, string> = {
   "guanambi": "Guanambi",
 };
 
-/** Normaliza grafias de cidade; null/vazio vira "Sem cidade". */
-export function normalizeCidade(cidade: string | null): string {
+/** Normaliza grafias de cidade; null/vazio vira "Sem cidade".
+ *  Com `grafiasCanonicas` (cidades do tenant, ex. clinicas.cidade), casa a
+ *  grafia sem acento/caixa e devolve a grafia canônica do tenant. */
+export function normalizeCidade(
+  cidade: string | null,
+  grafiasCanonicas?: string[] | null,
+): string {
   const raw = (cidade ?? "").trim();
   if (!raw) return SEM_CIDADE;
+  if (grafiasCanonicas?.length) {
+    const alvo = norm(raw);
+    const canonica = grafiasCanonicas.find((g) => g && norm(g) === alvo);
+    if (canonica) return canonica;
+  }
   return CIDADES_CANONICAS[norm(raw)] ?? raw;
 }
 

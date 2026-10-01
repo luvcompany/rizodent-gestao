@@ -111,7 +111,8 @@ export function normalizarTenantConfig(bruto: unknown): TenantConfig | null {
 }
 
 async function carregarTenantConfig(): Promise<TenantConfig | null> {
-  const { data, error } = await supabase.rpc("get_my_tenant_config");
+  // Cast: a RPC é do v2 e pode não estar no types.ts gerado.
+  const { data, error } = await (supabase.rpc as any)("get_my_tenant_config");
   if (error) throw error;
   return normalizarTenantConfig(data);
 }

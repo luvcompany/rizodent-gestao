@@ -106,10 +106,10 @@ export default function SdrMeuDesempenho() {
         ) : (
           <>
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard label="Leads recebidos" value={fmtInt(l.leads_recebidos)} detail="chegaram a você" icon={Users} tone="info" />
-              <KpiCard label="Agendamentos" value={fmtInt(l.agendamentos)} detail="no seu crédito" icon={CalendarCheck2} tone="primary" />
-              <KpiCard label="Compareceram" value={fmtInt(l.compareceram)} detail={l.compareceram + l.faltas > 0 ? `${taxaComparecimento(l)} de comparecimento` : "nenhuma consulta com desfecho"} icon={CheckCircle2} tone="success" />
-              <KpiCard label="Ligações feitas" value={fmtInt(feitas)} detail={feitas > 0 ? `${fmtPct(atendidas, feitas)} atendidas pelo lead` : "nenhuma no período"} icon={Phone} tone="purple" />
+              <KpiCard label="Leads recebidos" value={fmtInt(l.leads_recebidos)} hint="chegaram a você" icon={Users} tone="info" />
+              <KpiCard label="Agendamentos" value={fmtInt(l.agendamentos)} hint="no seu crédito" icon={CalendarCheck2} tone="primary" />
+              <KpiCard label="Compareceram" value={fmtInt(l.compareceram)} hint={l.compareceram + l.faltas > 0 ? `${taxaComparecimento(l)} de comparecimento` : "nenhuma consulta com desfecho"} icon={CheckCircle2} tone="success" />
+              <KpiCard label="Ligações feitas" value={fmtInt(feitas)} hint={feitas > 0 ? `${fmtPct(atendidas, feitas)} atendidas pelo lead` : "nenhuma no período"} icon={Phone} tone="purple" />
             </section>
 
             <div className="grid gap-4 md:grid-cols-2">

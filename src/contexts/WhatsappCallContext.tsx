@@ -93,7 +93,8 @@ const textoOuNull = (v: unknown): string | null =>
   typeof v === "string" && v.trim() !== "" ? v : null;
 
 async function buscarNumerosVisiveis(): Promise<NumeroWhatsappVisivel[]> {
-  const { data, error } = await supabase.rpc("whatsapp_numeros_visiveis");
+  // Cast: a RPC é do v2 e pode não estar no types.ts gerado.
+  const { data, error } = await (supabase.rpc as any)("whatsapp_numeros_visiveis");
   if (error) throw error;
   return ((data ?? []) as Record<string, unknown>[])
     .filter((n) => typeof n.id === "string")
