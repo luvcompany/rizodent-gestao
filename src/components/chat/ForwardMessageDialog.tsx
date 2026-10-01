@@ -94,7 +94,7 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm rounded-2xl">
         <DialogHeader>
           <DialogTitle>Encaminhar mensagem</DialogTitle>
         </DialogHeader>
@@ -104,7 +104,7 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar lead..."
-            className="pl-9"
+            className="h-10 rounded-xl bg-surface-sunken pl-9"
           />
         </div>
         <div className="max-h-64 overflow-y-auto space-y-1">
@@ -116,7 +116,7 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
               key={lead.id}
               onClick={() => handleForward(lead)}
               disabled={sending === lead.id}
-              className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-secondary transition-colors text-left"
+              className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-surface-sunken"
             >
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary/20 text-primary text-xs">

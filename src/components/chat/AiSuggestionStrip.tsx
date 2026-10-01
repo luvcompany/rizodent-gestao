@@ -217,12 +217,12 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
 
   if (!suggestion) {
     return (
-      <div className="px-3 py-2 border-t border-border bg-secondary/30 flex items-center justify-between gap-2">
+      <div className="mx-3 mb-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-primary/15 bg-primary-soft px-3 py-2 text-primary-soft-foreground">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Sparkles size={14} className="text-primary" />
           <span>Copiloto {assistantName}</span>
         </div>
-        <Button size="sm" variant="ghost" onClick={generate} disabled={generating} className="h-7 text-xs gap-1.5">
+        <Button size="sm" variant="ghost" onClick={generate} disabled={generating} className="h-8 rounded-full px-3 text-xs gap-1.5 hover:bg-primary/10">
           {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           Sugerir resposta ({assistantName})
         </Button>
@@ -246,12 +246,12 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
   const isHandoff = suggestion.action === "handoff";
 
   return (
-    <div className={`px-3 py-2.5 border-t border-border ${isHandoff ? "bg-amber-500/10" : "bg-primary/5"}`}>
-      <div className="flex items-center justify-between mb-1.5">
+    <div className={`mx-3 mb-2 rounded-2xl border p-3 shadow-card ${isHandoff ? "border-warning/20 bg-warning-soft text-warning-soft-foreground" : "border-primary/15 bg-primary-soft text-primary-soft-foreground"}`}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium">
           {isHandoff ? (
-            <><AlertTriangle size={14} className="text-amber-500" />
-              <span className="text-amber-700 dark:text-amber-400">{assistantName} sugere atendimento humano</span></>
+            <><AlertTriangle size={14} className="text-warning" />
+              <span>{assistantName} sugere atendimento humano</span></>
           ) : (
             <><Sparkles size={14} className="text-primary" />
               <span>Sugestão da {assistantName}</span></>
@@ -259,18 +259,18 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
           {suggestion.model && <Badge variant="outline" className="h-4 text-[10px] px-1">{suggestion.model.split("/").pop()}</Badge>}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs text-destructive hover:text-destructive" title="Marcar como ruim (a Bia aprende a evitar)" onClick={discardAsBad}>
+          <Button size="sm" variant="ghost" className="h-8 rounded-full px-3 gap-1 text-xs text-destructive hover:text-destructive" title="Marcar como ruim (a Bia aprende a evitar)" onClick={discardAsBad}>
             <ThumbsDown size={12} />
             <span className="hidden sm:inline">Ruim</span>
           </Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Fechar sem enviar" onClick={dismiss}>
+          <Button size="sm" variant="ghost" className="h-8 w-8 rounded-full p-0" title="Fechar sem enviar" onClick={dismiss}>
             <X size={14} />
           </Button>
 
           <Button
             size="sm"
             variant={isHandoff ? "outline" : "default"}
-            className="h-7 gap-1.5 text-xs"
+            className="h-8 rounded-full px-3 gap-1.5 text-xs"
             onClick={send}
             disabled={sending || !leadPhone}
             title={isHandoff ? "Enviar mesmo assim" : "Enviar"}
@@ -282,14 +282,14 @@ export default function AiSuggestionStrip({ leadId, leadPhone, onSent }: Props) 
       </div>
 
       {isHandoff && suggestion.action_reason && (
-        <p className="text-xs text-amber-700 dark:text-amber-400 mb-1.5">Motivo: {suggestion.action_reason}</p>
+        <p className="mb-2 text-xs">Motivo: {suggestion.action_reason}</p>
       )}
 
       <Textarea
         value={editedText}
         onChange={(e) => { setEditedText(e.target.value); editedRef.current = e.target.value; }}
         rows={2}
-        className="text-sm bg-background"
+        className="min-h-16 rounded-xl border-border/60 bg-card/80 text-sm"
         placeholder="Mensagem sugerida..."
       />
     </div>

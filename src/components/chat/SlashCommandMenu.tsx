@@ -69,15 +69,15 @@ export default function SlashCommandMenu({ query, templates, bots, onSelectTempl
   if (!visible || filteredItems.length === 0) return null;
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto" ref={listRef}>
-      <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border flex items-center gap-1.5">
+    <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-72 overflow-y-auto rounded-2xl border border-border/60 bg-card p-1.5 shadow-float" ref={listRef}>
+      <div className="flex items-center gap-1.5 border-b border-border/60 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
         <Search size={10} /> Atalhos rápidos
       </div>
       {filteredItems.map((item, i) => (
         <button
           key={`${item.type}-${(item.data as any).id}`}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-            i === selectedIndex ? "bg-primary/10 text-primary" : "hover:bg-muted/50 text-foreground"
+          className={`mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+            i === selectedIndex ? "bg-primary-soft text-primary-soft-foreground" : "text-foreground hover:bg-surface-sunken"
           }`}
           onClick={() => {
             if (item.type === "template") onSelectTemplate(item.data as Template);
@@ -85,16 +85,16 @@ export default function SlashCommandMenu({ query, templates, bots, onSelectTempl
           }}
           onMouseEnter={() => setSelectedIndex(i)}
         >
-          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-            item.type === "template" ? "bg-blue-100 dark:bg-blue-900/30" : "bg-violet-100 dark:bg-violet-900/30"
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-control ${
+            item.type === "template" ? "bg-info-soft text-info-soft-foreground" : "bg-purple-soft text-purple-soft-foreground"
           }`}>
-            {item.type === "template" ? <FileText size={14} className="text-blue-500" /> : <Bot size={14} className="text-violet-500" />}
+            {item.type === "template" ? <FileText size={14} /> : <Bot size={14} />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{item.label}</div>
             {item.desc && <div className="text-[11px] text-muted-foreground truncate">{item.desc}</div>}
           </div>
-          <span className="text-[10px] text-muted-foreground uppercase">{item.type === "template" ? "Template" : "Bot"}</span>
+          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${item.type === "template" ? "bg-info-soft text-info-soft-foreground" : "bg-purple-soft text-purple-soft-foreground"}`}>{item.type === "template" ? "Template" : "Bot"}</span>
         </button>
       ))}
     </div>
