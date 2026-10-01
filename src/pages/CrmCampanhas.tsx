@@ -130,24 +130,35 @@ export default function CrmCampanhas() {
     load();
   };
 
-  const statusColor: Record<string, string> = { draft: "secondary", sending: "default", completed: "outline", failed: "destructive" };
+  const statusStyle: Record<string, string> = {
+    draft: "border-warning/30 bg-warning-soft text-warning-soft-foreground",
+    sending: "border-info/30 bg-info-soft text-info-soft-foreground",
+    completed: "border-success/30 bg-success-soft text-success-soft-foreground",
+    failed: "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground",
+    paused: "border-purple/30 bg-purple-soft text-purple-soft-foreground",
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Send size={20} /></div>
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold">Campanhas em Massa</h1>
           <p className="text-muted-foreground">Envie templates aprovados para múltiplos leads</p>
+          </div>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="sm"><Plus size={16} /> Nova Campanha</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Nova Campanha</DialogTitle></DialogHeader>
-            <div className="space-y-3">
+          <DialogContent className="rounded-card p-0">
+            <DialogHeader className="border-b border-border/60 px-6 py-5"><DialogTitle>Nova Campanha</DialogTitle></DialogHeader>
+            <div className="space-y-4 bg-surface-sunken/40 p-6">
+              <div className="space-y-3 rounded-card border border-border/60 bg-card p-4 shadow-card">
               <div><Label>Nome</Label><Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
               <div><Label>Template</Label><TemplateSearchSelect templates={templates} value={form.template_id || undefined} onValueChange={v => setForm(p => ({ ...p, template_id: v }))} placeholder="Selecione..." /></div>
               <div><Label>Funil (filtro)</Label><Select value={form.pipeline_id} onValueChange={v => setForm(p => ({ ...p, pipeline_id: v, stage_id: "" }))}><SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
               {form.pipeline_id && <div><Label>Etapa (filtro)</Label><Select value={form.stage_id} onValueChange={v => setForm(p => ({ ...p, stage_id: v }))}><SelectTrigger><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>}
+              </div>
               <div className="flex items-center gap-3">
                 <Button variant="outline" onClick={preview}><Users size={16} /> Preview</Button>
                 {previewCount !== null && <span className="text-sm text-muted-foreground">{previewCount} leads</span>}
@@ -157,13 +168,13 @@ export default function CrmCampanhas() {
           </DialogContent>
         </Dialog>
       </div>
-      <Table>
+      <div className="overflow-x-auto rounded-card border border-border/60 bg-card shadow-card"><Table>
         <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Status</TableHead><TableHead>Visibilidade</TableHead><TableHead>Total</TableHead><TableHead>Enviados</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
         <TableBody>
           {broadcasts.map(b => (
             <TableRow key={b.id}>
               <TableCell className="font-medium">{b.name}</TableCell>
-              <TableCell><Badge variant={statusColor[b.status] as any || "outline"}>{b.status}</Badge></TableCell>
+              <TableCell><Badge variant="outline" className={`whitespace-nowrap rounded-full px-2.5 py-1 ${statusStyle[b.status] || "border-slate/30 bg-slate-soft text-slate-soft-foreground"}`}>{b.status}</Badge></TableCell>
               <TableCell><OwnerRoleBadge ownerRole={(b.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>{b.total_leads}</TableCell>
               <TableCell>{b.sent_count}</TableCell>
@@ -178,7 +189,7 @@ export default function CrmCampanhas() {
           ))}
           {broadcasts.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhuma campanha</TableCell></TableRow>}
         </TableBody>
-      </Table>
+      </Table></div>
 
       <ShareRoleDialog
         open={!!shareTarget}

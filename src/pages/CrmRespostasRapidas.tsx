@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Plus, Trash2, Edit, Users } from "lucide-react";
+import { Plus, Trash2, Edit, Users, MessageSquareText } from "lucide-react";
 import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -66,31 +66,36 @@ export default function CrmRespostasRapidas() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><MessageSquareText size={20} /></div>
+          <div className="min-w-0">
           <h1 className="text-2xl font-bold">Respostas Rápidas</h1>
           <p className="text-muted-foreground">Snippets de texto para uso no chat com comando /</p>
+          </div>
         </div>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setEditing(null); setTitle(""); setContent(""); } }}>
           <DialogTrigger asChild><Button size="sm"><Plus size={16} /> Nova Resposta</Button></DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>{editing ? "Editar" : "Nova"} Resposta Rápida</DialogTitle></DialogHeader>
-            <div className="space-y-3">
+          <DialogContent className="rounded-card p-0">
+            <DialogHeader className="border-b border-border/60 px-6 py-5"><DialogTitle>{editing ? "Editar" : "Nova"} Resposta Rápida</DialogTitle></DialogHeader>
+            <div className="space-y-4 bg-surface-sunken/40 p-6">
+              <div className="space-y-3 rounded-card border border-border/60 bg-card p-4 shadow-card">
               <div><Label>Título</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Saudação inicial" /></div>
               <div><Label>Conteúdo</Label><Textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Olá! Tudo bem? Como posso ajudar?" rows={4} /></div>
+              </div>
               <Button onClick={save} className="w-full">{editing ? "Salvar" : "Criar"}</Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
-      <Table>
+      <div className="overflow-x-auto rounded-card border border-border/60 bg-card shadow-card"><Table>
         <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Conteúdo</TableHead><TableHead>Visibilidade</TableHead><TableHead className="w-32">Ações</TableHead></TableRow></TableHeader>
         <TableBody>
           {replies.map((r) => (
             <TableRow key={r.id}>
               <TableCell className="font-medium">{r.title}</TableCell>
-              <TableCell className="max-w-md truncate text-muted-foreground">{r.content}</TableCell>
+              <TableCell className="max-w-md whitespace-normal break-words text-muted-foreground">{r.content}</TableCell>
               <TableCell><OwnerRoleBadge ownerRole={(r.owner_role ?? null) as OwnerRole} /></TableCell>
               <TableCell>
                 <div className="flex gap-1">
@@ -109,7 +114,7 @@ export default function CrmRespostasRapidas() {
           ))}
           {replies.length === 0 && <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">Nenhuma resposta rápida cadastrada</TableCell></TableRow>}
         </TableBody>
-      </Table>
+      </Table></div>
 
       <ShareRoleDialog
         open={!!shareTarget}
