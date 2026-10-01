@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, ToggleLeft, ToggleRight, Stethoscope, Search, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { StatusPill } from "@/components/crm-ui";
+import { PageHeader } from "@/components/crm-ui";
 
 type TipoProcedimento = {
   id: string;
@@ -145,18 +147,10 @@ const TiposProcedimento = () => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Tipos de Procedimento</h1>
-          <p className="text-sm text-muted-foreground">
-            {procedimentos.length} procedimentos cadastrados
-          </p>
-        </div>
-        <Button onClick={openNew} className="gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+      <PageHeader title="Tipos de procedimento" subtitle={`${procedimentos.length} procedimentos cadastrados`} actions={<Button onClick={openNew}>
           <Plus size={16} className="mr-2" />
           Novo Procedimento
-        </Button>
-      </div>
+        </Button>} />
 
       {/* Specialty summary cards */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -164,7 +158,7 @@ const TiposProcedimento = () => {
           <button
             key={esp}
             onClick={() => setFiltroEsp(filtroEsp === esp ? "todas" : esp)}
-            className={`rounded-lg border p-3 text-center transition-colors ${
+            className={`rounded-xl border p-3 text-center transition-colors ${
               filtroEsp === esp
                 ? "border-primary bg-primary/10 text-primary"
                 : "border-border bg-card text-foreground hover:border-primary/30"
@@ -177,7 +171,7 @@ const TiposProcedimento = () => {
       </div>
 
       {/* Filters */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardContent className="pt-4 pb-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="relative">
@@ -205,7 +199,7 @@ const TiposProcedimento = () => {
         </CardContent>
       </Card>
 
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="overflow-hidden border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Stethoscope size={18} className="text-primary" />
@@ -255,16 +249,9 @@ const TiposProcedimento = () => {
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(p.valor_referencia)}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            p.ativo
-                              ? "bg-green-500/20 text-green-400 border-green-500/30"
-                              : "bg-muted text-muted-foreground border-border"
-                          }
-                        >
+                        <StatusPill tone={p.ativo ? "success" : "slate"}>
                           {p.ativo ? "Ativo" : "Inativo"}
-                        </Badge>
+                        </StatusPill>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

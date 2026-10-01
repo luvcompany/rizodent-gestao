@@ -48,8 +48,8 @@ const ChangePassword = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-8">
-        <h1 className="text-xl font-bold">Defina sua nova senha</h1>
+      <form onSubmit={submit} className="w-full max-w-md space-y-5 rounded-2xl border border-border/60 bg-card p-6 shadow-float sm:p-8">
+        <h1 className="text-3xl font-bold">Defina sua nova senha</h1>
         <p className="text-sm text-muted-foreground">Esta é sua primeira vez. Crie uma senha pessoal para continuar.</p>
         <div><Label>Nova senha</Label><Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} /></div>
         <div><Label>Confirme a senha</Label><Input type="password" value={pwd2} onChange={(e) => setPwd2(e.target.value)} /></div>

@@ -124,7 +124,7 @@ export const HolidaysManager = ({ clinicas, onChange }: Props) => {
           <Button onClick={add} className="w-full gap-2"><Plus className="h-4 w-4" />Adicionar feriado</Button>
 
           <div className="border-t pt-3">
-            <p className="text-xs font-semibold text-muted-foreground mb-2">FERIADOS CADASTRADOS</p>
+            <p className="mb-2 text-sm font-semibold text-foreground">Feriados cadastrados</p>
             <div className="max-h-64 overflow-y-auto space-y-1">
               {holidays.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">Nenhum feriado cadastrado</p>
@@ -133,7 +133,7 @@ export const HolidaysManager = ({ clinicas, onChange }: Props) => {
                 const cl = clinicas.find((c) => c.id === h.clinica_id);
                 const [y, m, d] = h.data.split("-");
                 return (
-                  <div key={h.id} className="flex items-center justify-between gap-2 p-2 rounded hover:bg-muted/50">
+                  <div key={h.id} className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-card p-3 hover:bg-muted/50">
                     <div className="text-sm">
                       <span className="font-medium">{`${d}/${m}/${y}`}</span>
                       {h.descricao && <span className="text-muted-foreground"> — {h.descricao}</span>}

@@ -191,6 +191,26 @@ body.crm-ui-active {
   background: hsl(var(--background));
 }
 
+/* Pele das telas operacionais fora do CRM. Mantém login, landing e /admin
+   independentes e garante que tabelas largas rolem no próprio card. */
+body.system-ui-active {
+  background: hsl(var(--background));
+}
+body.system-ui-active [data-radix-popper-content-wrapper] { max-width: calc(100vw - 1rem); }
+body.system-ui-active main > * { min-width: 0; }
+body.system-ui-active main h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; }
+body.system-ui-active .gradient-card,
+body.system-ui-active [class*="shadow-card"] { background: hsl(var(--card)); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+body.system-ui-active table { min-width: max-content; }
+body.system-ui-active thead { background: hsl(var(--surface-sunken)); }
+body.system-ui-active thead th { height: 2.75rem; font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+body.system-ui-active input,
+body.system-ui-active textarea,
+body.system-ui-active button[role="combobox"] { border-radius: var(--radius-control); }
+body.system-ui-active input,
+body.system-ui-active button[role="combobox"] { min-height: 2.5rem; }
+body.system-ui-active [role="dialog"] { border-radius: var(--radius-card); box-shadow: var(--shadow-float); }
+
 body.crm-ui-active .crm-ui-button { border-radius: var(--radius-control); }
 body.crm-ui-active .crm-ui-button[data-variant="default"] { box-shadow: var(--shadow-primary); }
 body.crm-ui-active .crm-ui-input,

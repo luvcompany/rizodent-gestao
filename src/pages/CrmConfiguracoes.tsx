@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
+import { PageHeader } from "@/components/crm-ui";
 import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
 import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
 import { Button } from "@/components/ui/button";
@@ -609,12 +610,12 @@ function HorarioComercialTab() {
   if (loading) return <Card className="p-4 text-sm text-muted-foreground">Carregando…</Card>;
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Horário Comercial</h3>
+      <h3 className="text-lg font-semibold">Horário comercial</h3>
       <p className="text-sm text-muted-foreground">
         Define o expediente do time de atendimento. As métricas de tempo de resposta contam apenas as horas
         dentro do expediente — mensagens recebidas à noite ou no fim de semana não penalizam o time.
       </p>
-      <Card className="p-4 space-y-3 max-w-xl">
+      <Card className="max-w-2xl space-y-3 p-5">
         {cfg.map((c, d) => (
           <div key={d} className="flex items-center gap-3 flex-wrap">
             <div className="w-32 flex items-center gap-2">
@@ -645,18 +646,17 @@ export default function CrmConfiguracoes() {
   // API de Conversões: só gestão (mesma régua da RPC meta_capi_pode_gerir).
   const podeGerirMeta = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Configurações</h1>
-      <p className="text-muted-foreground">Horário comercial, importação de dados, notificações, leads bloqueados e lixeira.</p>
+    <div className="space-y-5">
+      <PageHeader title="Configurações" subtitle="Horário comercial, importação de dados, notificações, leads bloqueados e lixeira." />
       <Tabs defaultValue="horario" className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1">
+        <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="h-auto min-w-max gap-1">
           <TabsTrigger value="horario"><Clock size={14} className="mr-1" /> Horário</TabsTrigger>
           <TabsTrigger value="import"><Upload size={14} className="mr-1" /> Importação</TabsTrigger>
           <TabsTrigger value="notifications"><Bell size={14} className="mr-1" /> Notificações</TabsTrigger>
           <TabsTrigger value="blocked"><Ban size={14} className="mr-1" /> Bloqueados</TabsTrigger>
           <TabsTrigger value="lixeira"><Trash2 size={14} className="mr-1" /> Lixeira</TabsTrigger>
           {podeGerirMeta && <TabsTrigger value="meta-capi"><Share2 size={14} className="mr-1" /> Conversões Meta</TabsTrigger>}
-        </TabsList>
+        </TabsList></div>
         <TabsContent value="horario"><HorarioComercialTab /></TabsContent>
         <TabsContent value="import"><ImportTab /></TabsContent>
         <TabsContent value="notifications"><NotificationsTab /></TabsContent>

@@ -12,6 +12,7 @@ import { Sparkles, Save, Loader2, Bot, MessageSquare, Wand2, Clock, ShieldCheck,
 import AiRulesManager from "@/components/ai/AiRulesManager";
 import AiLearningReport from "@/components/ai/AiLearningReport";
 import { toast } from "sonner";
+import { PageHeader, StatusPill } from "@/components/crm-ui";
 
 const MODELS = [
   { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (rápido, padrão)" },
@@ -138,31 +139,24 @@ export default function CrmIaConfig() {
   const features = config.enabled_features || {};
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Sparkles className="text-primary" size={22} />
-            Configurações da I.A
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure como o assistente de IA analisa e sugere respostas para os atendimentos.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        title="Configurações da I.A"
+        subtitle="Configure como o assistente de IA analisa e sugere respostas para os atendimentos."
+        actions={<>
           <div className="flex items-center gap-2">
             <Switch checked={config.is_active} onCheckedChange={(v) => update({ is_active: v })} />
-            <Label className="text-sm">{config.is_active ? "Ativa" : "Inativa"}</Label>
+            <StatusPill tone={config.is_active ? "success" : "slate"}>{config.is_active ? "Ativa" : "Inativa"}</StatusPill>
           </div>
-          <Button onClick={save} disabled={saving} className="gradient-orange text-primary-foreground">
+          <Button onClick={save} disabled={saving}>
             {saving ? <Loader2 size={14} className="animate-spin mr-2" /> : <Save size={14} className="mr-2" />}
             Salvar
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
       <Tabs defaultValue="bia">
-        <TabsList className="grid grid-cols-7 w-full max-w-5xl">
+        <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="h-auto min-w-max gap-1">
           <TabsTrigger value="bia" className="gap-2"><Sparkles size={14} />Bia</TabsTrigger>
           <TabsTrigger value="orientacoes" className="gap-2"><ShieldCheck size={14} />Orientações</TabsTrigger>
           <TabsTrigger value="aprendizado" className="gap-2"><GraduationCap size={14} />Aprendizado</TabsTrigger>
@@ -170,7 +164,7 @@ export default function CrmIaConfig() {
           <TabsTrigger value="instrucoes" className="gap-2"><Wand2 size={14} />Instruções</TabsTrigger>
           <TabsTrigger value="funcoes" className="gap-2"><MessageSquare size={14} />Funções</TabsTrigger>
           <TabsTrigger value="agenda" className="gap-2"><Clock size={14} />Atendimento</TabsTrigger>
-        </TabsList>
+        </TabsList></div>
 
         {/* BIA / COPILOTO */}
         <TabsContent value="bia" className="space-y-4 mt-4">
@@ -427,7 +421,7 @@ function ToggleRow({
   disabled,
 }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-border bg-secondary/30">
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-surface-sunken p-4">
       <div className="flex-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>

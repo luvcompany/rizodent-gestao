@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Tables } from "@/integrations/supabase/types";
 import { format } from "date-fns";
+import { PageHeader } from "@/components/crm-ui";
 
 type LeadWithClinica = Tables<"leads_diarios"> & { clinicas?: { nome: string } | null };
 
@@ -293,14 +294,11 @@ const CadastroLeads = () => {
 
 
   return (
-    <div className="mx-auto max-w-4xl animate-fade-in space-y-6">
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold">Cadastro de Leads</h1>
-        <p className="text-sm text-muted-foreground">Gerencie o funil de vendas diário</p>
-      </div>
+    <div className="mx-auto max-w-5xl animate-fade-in space-y-6">
+      <PageHeader title="Cadastro de leads" subtitle="Gerencie o funil de vendas diário" />
 
       {/* CARD 1: Leads Novos */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Users size={18} className="text-primary" />
@@ -343,7 +341,7 @@ const CadastroLeads = () => {
             )}
           </div>
 
-          <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
+          <Button onClick={handleSaveLeads} disabled={savingLeads} className="w-full font-semibold">
             <Save size={18} className="mr-2" />
             {savingLeads ? "Salvando..." : "Salvar Leads Novos"}
           </Button>
@@ -351,7 +349,7 @@ const CadastroLeads = () => {
       </Card>
 
       {/* CARD 2: Agendados + Reagendados */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <TrendingUp size={18} className="text-primary" />

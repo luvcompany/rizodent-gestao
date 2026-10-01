@@ -3,10 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Eye, Plus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
+import { InitialsAvatar, PageHeader, StatusPill } from "@/components/crm-ui";
 
 interface PacienteView {
   id: string;
@@ -137,19 +137,12 @@ const Pacientes = () => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Pacientes</h1>
-          <p className="text-sm text-muted-foreground">{pacientes.length} pacientes cadastrados</p>
-        </div>
-        <Button
+      <PageHeader title="Pacientes" subtitle={`${pacientes.length} pacientes cadastrados`} actions={<Button
           onClick={() => navigate("/atendimento")}
-          className="gradient-orange text-primary-foreground shadow-orange hover:opacity-90 transition-opacity"
         >
           <Plus size={18} className="mr-2" />
           Novo Atendimento
-        </Button>
-      </div>
+        </Button>} />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="relative flex-1 space-y-1">
@@ -177,28 +170,31 @@ const Pacientes = () => {
       ) : (
         <div className="grid gap-3">
           {filtered.map((pac) => (
-            <Card key={pac.id} className="gradient-card border-border shadow-card hover:border-primary/30 transition-colors">
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="space-y-1">
+            <Card key={pac.id} className="border-border/60 bg-card transition-colors hover:border-primary/30">
+              <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <InitialsAvatar name={pac.nome} className="h-11 w-11 shrink-0" />
+                  <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold">{pac.nome}</p>
+                    <p className="break-words font-semibold">{pac.nome}</p>
                     {pac.is_recorrente ? (
-                      <Badge className="bg-blue-600/20 text-blue-400 border-blue-600/30 text-xs">Recorrente</Badge>
+                      <StatusPill tone="info">Recorrente</StatusPill>
                     ) : (
-                      <Badge className="bg-orange-600/20 text-orange-400 border-orange-600/30 text-xs">Cliente novo</Badge>
+                      <StatusPill tone="primary">Cliente novo</StatusPill>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {pac.telefone} {pac.clinica_nome && `• ${pac.clinica_nome}`}
                   </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right space-y-0.5">
-                    <p className="text-sm font-semibold text-primary">
+                <div className="flex items-center justify-between gap-4 sm:justify-end">
+                  <div className="space-y-0.5 sm:text-right">
+                    <p className="whitespace-nowrap text-sm font-semibold text-primary">
                       Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                     {pac.ultimo_valor_pago != null && (
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      <p className="whitespace-nowrap text-xs text-success">
                         Último pagamento: R$ {pac.ultimo_valor_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </p>
                     )}
