@@ -182,7 +182,7 @@ const CrmLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, setTheme } = useTheme();
   const isDefaultLogo = !tenant.logo_url || tenant.logo_url === CRCLIN_DEFAULT_LOGO;
   const logo = tenant.logo_dark_url || (isDefaultLogo ? crclinLogoLight : tenant.logo_url) || CRCLIN_DEFAULT_LOGO;
   const logoNeedsPlaque = !tenant.logo_dark_url;
@@ -202,6 +202,13 @@ const CrmLayout = () => {
     document.body.classList.add("crm-ui-active");
     return () => document.body.classList.remove("crm-ui-active");
   }, []);
+
+  useEffect(() => {
+    const migrationKey = "crm-visual-light-default-v1";
+    if (localStorage.getItem(migrationKey)) return;
+    localStorage.setItem(migrationKey, "1");
+    setTheme("light");
+  }, [setTheme]);
 
   /** NavLink acende por caminho; itens que só diferem na query (Calendário ×
    *  Tarefas) precisam desempatar pela query atual. */
