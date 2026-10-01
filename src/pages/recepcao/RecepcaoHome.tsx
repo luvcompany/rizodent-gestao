@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import CloserMetricas from "@/components/closer/CloserMetricas";
 import SdrExpediente from "@/components/sdr/SdrExpediente";
 import { rotuloDesfecho } from "@/lib/desfechoLabel";
+import { KpiCard, PageHeader } from "@/components/crm-ui";
 
 import {
   MessageSquare, Send, FileText, Zap, Bot, Users, Clock, CheckCircle2,
@@ -94,40 +95,11 @@ function iniciais(nome: string | null, tel: string | null): string {
   return ((partes[0]?.[0] ?? "") + (partes.length > 1 ? partes[partes.length - 1][0] : "")).toUpperCase();
 }
 
-/** Paleta fixa dos avatares — estável por pessoa (mesma inicial, mesma cor). */
-const TONS = [
-  "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400",
-  "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
-  "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
-  "bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400",
-  "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400",
-];
-const tomDe = (chave: string) => {
-  let h = 0;
-  for (let i = 0; i < chave.length; i++) h = (h * 31 + chave.charCodeAt(i)) % 997;
-  return TONS[h % TONS.length];
-};
-
 function saudacao(): string {
   const h = new Date().getHours();
   if (h < 12) return "Bom dia";
   if (h < 18) return "Boa tarde";
   return "Boa noite";
-}
-
-/** Mini-gráfico das últimas 8 horas — desenhado a partir dos próprios dados. */
-function Spark({ pontos, cor }: { pontos: number[]; cor: string }) {
-  if (pontos.length < 2) return null;
-  const max = Math.max(...pontos, 1);
-  const passo = 82 / (pontos.length - 1);
-  const y = (v: number) => 30 - (v / max) * 24;
-  const linha = pontos.map((v, i) => `${i === 0 ? "M" : "L"}${(i * passo).toFixed(1)} ${y(v).toFixed(1)}`).join(" ");
-  return (
-    <svg viewBox="0 0 82 34" preserveAspectRatio="none" className="ml-auto hidden h-8 w-20 shrink-0 xl:block" aria-hidden="true">
-      <path d={`${linha} L82 34 L0 34 Z`} fill={cor} opacity="0.14" />
-      <path d={linha} fill="none" stroke={cor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 export default function RecepcaoHome() {
@@ -232,18 +204,6 @@ export default function RecepcaoHome() {
     return leads.filter((l) => l.last_outbound_at && new Date(l.last_outbound_at) >= inicio).length;
   }, [leads]);
 
-  /** Entradas por hora nas últimas 8 h — alimenta os mini-gráficos. */
-  const porHora = useMemo(() => {
-    const balde = new Array(8).fill(0);
-    const agoraH = new Date();
-    leads.forEach((l) => {
-      if (!l.last_inbound_at) return;
-      const dif = (agoraH.getTime() - new Date(l.last_inbound_at).getTime()) / 3_600_000;
-      if (dif >= 0 && dif < 8) balde[7 - Math.floor(dif)] += 1;
-    });
-    return balde;
-  }, [leads]);
-
   /** Confirma a presença sem sair do Início — antes só dava para fazer isso
    *  dentro da conversa, e a tela cobrava a confirmação sem oferecer o botão. */
   const confirmarConsulta = async (id: string) => {
@@ -281,17 +241,11 @@ export default function RecepcaoHome() {
       <div className="mx-auto flex max-w-[1180px] flex-col gap-5 pb-10">
 
         {/* cabeçalho */}
-        <header className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[25px]">
-              {saudacao()}{primeiroNome ? `, ${primeiroNome}` : ""} 👋
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
-            </p>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2.5">
+        <PageHeader
+          title={`${saudacao()}${primeiroNome ? `, ${primeiroNome}` : ""} 👋`}
+          subtitle={new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
+          actions={
+          <>
             {/* O closer trabalha dentro das conversas o dia todo: o aviso de
                 conexão e o atalho para abrir conversas viram ruído aqui.
                 O sino não é repetido: o cabeçalho do CRM, logo acima, já traz o
@@ -300,21 +254,21 @@ export default function RecepcaoHome() {
             {/* SDR não lê a tabela de conexões (RLS): o chip diria "desconectado"
                 mesmo com tudo ligado — some para ela. */}
             {userRole !== "closer" && userRole !== "sdr" && (
-              <span className="hidden items-center gap-2 rounded-xl border border-border bg-card px-3.5 py-2 text-[13px] font-medium shadow-sm sm:flex">
-                <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${conectado === false ? "bg-red-500" : "bg-emerald-500"}`} />
+              <span className="hidden h-10 items-center gap-2 rounded-control border border-border/60 bg-card px-3.5 text-[13px] font-medium shadow-card sm:flex">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${conectado === false ? "bg-destructive" : "bg-success"}`} />
                 {conectado === false ? "WhatsApp desconectado" : "WhatsApp conectado"}
               </span>
             )}
             {userRole !== "closer" && (
               <Link
                 to="/crm/conversas"
-                className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13.5px] font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+                className="flex h-10 items-center gap-2 rounded-control bg-primary px-4 text-[13.5px] font-semibold text-primary-foreground shadow-primary transition-opacity hover:opacity-90"
               >
                 <MessageSquare size={16} /> Abrir conversas
               </Link>
             )}
-          </div>
-        </header>
+          </>}
+        />
 
         {/* Faturamento do closer — só para ele; a recepção não lança pagamentos. */}
         {userRole === "closer" && <CloserMetricas />}
@@ -325,39 +279,15 @@ export default function RecepcaoHome() {
 
         {/* indicadores */}
         <section className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
-          <Indicador
-            icone={<Users size={21} />}
-            tom="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400"
-            rotulo="Esperando resposta"
-            valor={fila.length}
-            detalhe={fila.length === 1 ? "conversa na fila" : "conversas na fila"}
-            pontos={porHora}
-            cor="rgb(99 102 241)"
-          />
-          <Indicador
-            icone={<Clock size={21} />}
-            tom="bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
-            rotulo="Mais de 1 hora"
-            valor={atrasadas}
-            detalhe={atrasadas ? "precisam de atenção" : "nada atrasado"}
-            pontos={porHora}
-            cor="rgb(245 158 11)"
-          />
-          <Indicador
-            icone={<CheckCircle2 size={21} />}
-            tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
-            rotulo="Respondidas hoje"
-            valor={respondidasHoje}
-            detalhe={respondidasHoje === 1 ? "conversa atendida" : "conversas atendidas"}
-            pontos={porHora}
-            cor="rgb(16 185 129)"
-          />
+          <KpiCard icon={Users} tone="info" label="Esperando resposta" value={fila.length} detail={fila.length === 1 ? "conversa na fila" : "conversas na fila"} />
+          <KpiCard icon={Clock} tone="warning" label="Mais de 1 hora" value={atrasadas} detail={atrasadas ? "precisam de atenção" : "nada atrasado"} />
+          <KpiCard icon={CheckCircle2} tone="success" label="Respondidas hoje" value={respondidasHoje} detail={respondidasHoje === 1 ? "conversa atendida" : "conversas atendidas"} />
         </section>
 
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
 
           {/* fila */}
-          <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <section className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
             <div className="flex items-center gap-3 px-[18px] pb-3 pt-[17px]">
               <div>
                 <h2 className="text-base font-bold tracking-tight text-foreground">Fila de atendimento</h2>
@@ -377,8 +307,8 @@ export default function RecepcaoHome() {
               </div>
             ) : fila.length === 0 ? (
               <div className="px-6 py-20 text-center">
-                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/15">
-                  <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={22} />
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success-soft">
+                  <CheckCircle2 className="text-success-soft-foreground" size={22} />
                 </div>
                 <p className="mt-3 font-semibold text-foreground">Nenhuma conversa esperando</p>
                 <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">
@@ -399,12 +329,12 @@ export default function RecepcaoHome() {
                           {atrasada && (
                             <span className="absolute bottom-3 left-0 top-3 w-[3px] rounded-r bg-primary" aria-hidden />
                           )}
-                          <span className={`relative grid h-[42px] w-[42px] place-items-center rounded-full text-[13px] font-bold ${tomDe(l.id)}`}>
+                          <span className="relative grid h-[42px] w-[42px] place-items-center rounded-full bg-primary-soft text-[13px] font-bold text-primary-soft-foreground">
                             {iniciais(l.name, l.phone)}
-                            <span className="absolute -bottom-px -right-px h-[15px] w-[15px] rounded-full border-[2.5px] border-card bg-[#25D366]" />
+                            <span className="absolute -bottom-px -right-px h-[15px] w-[15px] rounded-full border-[2.5px] border-card bg-success" />
                           </span>
                           <span className="min-w-0">
-                            <span className="block truncate text-[14.5px] font-semibold tracking-tight text-foreground">
+                            <span className="line-clamp-2 break-words text-[14.5px] font-semibold leading-snug text-foreground">
                               {l.name || l.phone || "Sem nome"}
                             </span>
                             <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">
@@ -436,13 +366,13 @@ export default function RecepcaoHome() {
           {/* coluna lateral */}
           <div className="flex flex-col gap-4">
             {presencas.length > 0 && (
-              <section className="overflow-hidden rounded-2xl border-2 border-orange-500/40 bg-orange-500/5 shadow-sm">
+              <section className="overflow-hidden rounded-card border border-warning/40 bg-warning-soft shadow-card">
                 <div className="flex items-center gap-2.5 px-[18px] pb-3 pt-[17px]">
-                  <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400">
+                  <span className="grid h-[34px] w-[34px] place-items-center rounded-control bg-warning text-warning-foreground">
                     <CheckCircle2 size={16} />
                   </span>
                   <h2 className="text-base font-bold tracking-tight text-foreground">Marcar presença</h2>
-                  <span className="ml-auto rounded-full bg-orange-500/15 px-2.5 py-0.5 text-[12px] font-bold text-orange-600 dark:text-orange-400">
+                  <span className="ml-auto rounded-full bg-warning px-2.5 py-0.5 text-[12px] font-bold text-warning-foreground">
                     {presencas.length}
                   </span>
                 </div>
@@ -454,19 +384,19 @@ export default function RecepcaoHome() {
                   {presencas.slice(0, 8).map((c, i) => (
                     <li
                       key={c.id}
-                      className={`grid grid-cols-[76px_1fr_auto] items-center gap-3 py-3 ${i > 0 ? "border-t border-orange-500/20" : ""}`}
+                      className={`grid grid-cols-[76px_minmax(0,1fr)] items-center gap-3 py-3 sm:grid-cols-[76px_minmax(0,1fr)_auto] ${i > 0 ? "border-t border-warning/20" : ""}`}
                     >
                       <span className="font-mono text-[12.5px] font-semibold tabular-nums text-muted-foreground">
                         {c.scheduled_date.slice(8, 10)}/{c.scheduled_date.slice(5, 7)}{" "}
                         {(c.scheduled_time ?? "").slice(0, 5)}
                       </span>
-                      <span className="truncate text-sm font-semibold text-foreground">
+                      <span className="break-words text-sm font-semibold text-foreground">
                         {c.lead_name || "Sem nome"}
                       </span>
                       <button
                         type="button"
                         onClick={() => navigate(`/crm/conversa/${c.lead_id}`)}
-                        className="whitespace-nowrap rounded-full bg-orange-600 px-3 py-1 text-[11.5px] font-semibold text-white transition-colors hover:bg-orange-700"
+                        className="col-span-2 h-9 whitespace-nowrap rounded-control bg-primary px-3 text-[11.5px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 sm:col-span-1"
                       >
                         Marcar
                       </button>
@@ -474,16 +404,16 @@ export default function RecepcaoHome() {
                   ))}
                 </ul>
                 {presencas.length > 8 && (
-                  <div className="border-t border-orange-500/20 px-[18px] py-3 text-[12.5px] text-muted-foreground">
+                  <div className="border-t border-warning/20 px-[18px] py-3 text-[12.5px] text-muted-foreground">
                     e mais {presencas.length - 8} consulta(s) esperando.
                   </div>
                 )}
               </section>
             )}
 
-            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <section className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
               <div className="flex items-center gap-2.5 px-[18px] pb-3 pt-[17px]">
-                <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400">
+                <span className="grid h-[34px] w-[34px] place-items-center rounded-control bg-info-soft text-info-soft-foreground">
                   <CalendarDays size={16} />
                 </span>
                 <h2 className="text-base font-bold tracking-tight text-foreground">Consultas de hoje</h2>
@@ -519,13 +449,13 @@ export default function RecepcaoHome() {
                         <span className={`font-mono text-[13px] font-semibold tabular-nums ${confirmada ? "text-muted-foreground" : "text-primary"}`}>
                           {(c.scheduled_time ?? "").slice(0, 5)}
                         </span>
-                        <span className="truncate text-sm font-semibold text-foreground">
+                        <span className="break-words text-sm font-semibold leading-snug text-foreground">
                           {c.lead_name || "Sem nome"}
                         </span>
                         <span
                           className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${
                             confirmada
-                              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+                              ? "bg-success-soft text-success-soft-foreground"
                               : "bg-muted text-muted-foreground"
                           }`}
                         >
@@ -559,19 +489,19 @@ export default function RecepcaoHome() {
               )}
             </section>
 
-            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <section className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
               <div className="px-[18px] pb-3 pt-[17px]">
                 <h2 className="text-base font-bold tracking-tight text-foreground">Atalhos rápidos</h2>
               </div>
-              <div className="grid grid-cols-4 gap-2 px-3 pb-4">
+              <div className="grid grid-cols-2 gap-2 px-3 pb-4 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
                 {temTransmissao ? (
-                  <Atalho to="/crm/campanhas" icone={<Send size={19} />} tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" rotulo="Transmissão" />
+                  <Atalho to="/crm/campanhas" icone={<Send size={19} />} tom="bg-success-soft text-success-soft-foreground" rotulo="Transmissão" />
                 ) : (
-                  <Atalho to="/crm/calendario" icone={<CalendarDays size={19} />} tom="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" rotulo="Calendário" />
+                  <Atalho to="/crm/calendario" icone={<CalendarDays size={19} />} tom="bg-success-soft text-success-soft-foreground" rotulo="Calendário" />
                 )}
-                <Atalho to="/crm/modelos" icone={<FileText size={19} />} tom="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400" rotulo="Modelos" />
-                <Atalho to="/crm/respostas-rapidas" icone={<Zap size={19} />} tom="bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" rotulo="Respostas" />
-                <Atalho to="/crm/bots" icone={<Bot size={19} />} tom="bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" rotulo="Bots" />
+                <Atalho to="/crm/modelos" icone={<FileText size={19} />} tom="bg-purple-soft text-purple-soft-foreground" rotulo="Modelos" />
+                <Atalho to="/crm/respostas-rapidas" icone={<Zap size={19} />} tom="bg-warning-soft text-warning-soft-foreground" rotulo="Respostas" />
+                <Atalho to="/crm/bots" icone={<Bot size={19} />} tom="bg-info-soft text-info-soft-foreground" rotulo="Bots" />
               </div>
             </section>
           </div>
@@ -581,37 +511,14 @@ export default function RecepcaoHome() {
   );
 }
 
-function Indicador({
-  icone, tom, rotulo, valor, detalhe, pontos, cor,
-}: {
-  icone: React.ReactNode; tom: string; rotulo: string; valor: number;
-  detalhe: string; pontos: number[]; cor: string;
-}) {
-  return (
-    <div className="flex items-center gap-3.5 rounded-2xl border border-border bg-card p-[18px] shadow-sm">
-      <span className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] ${tom}`}>{icone}</span>
-      <span className="min-w-0">
-        <span className="block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          {rotulo}
-        </span>
-        <span className="mt-0.5 block font-mono text-[27px] font-bold leading-tight tracking-tight tabular-nums text-foreground">
-          {valor}
-        </span>
-        <span className="block text-[12.5px] text-muted-foreground">{detalhe}</span>
-      </span>
-      <Spark pontos={pontos} cor={cor} />
-    </div>
-  );
-}
-
 function Atalho({ to, icone, tom, rotulo }: { to: string; icone: React.ReactNode; tom: string; rotulo: string }) {
   return (
     <Link
       to={to}
-      className="flex flex-col items-center gap-2 rounded-[13px] px-1.5 py-3.5 text-center text-[11.5px] font-medium leading-tight text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      className="flex min-w-0 flex-col items-center gap-2 rounded-control border border-transparent px-1.5 py-3.5 text-center text-[11.5px] font-medium leading-tight text-muted-foreground transition-colors hover:border-border/60 hover:bg-surface-sunken hover:text-foreground"
     >
       <span className={`grid h-[42px] w-[42px] place-items-center rounded-xl ${tom}`}>{icone}</span>
-      {rotulo}
+      <span className="max-w-full break-words">{rotulo}</span>
     </Link>
   );
 }

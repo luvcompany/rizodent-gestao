@@ -467,12 +467,12 @@ export default function SdrExpediente() {
 
   const selo =
     estado.estado === "aberto"
-      ? { texto: "Em expediente", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", ponto: "bg-emerald-500", titulo: "" }
+      ? { texto: "Em expediente", cls: "bg-success-soft text-success-soft-foreground", ponto: "bg-success", titulo: "" }
       : estado.estado === "pausado"
         ? {
             texto: `Em pausa · ${motivoEmCurso}${detalheCurto ? `: ${detalheCurto}` : ""}`,
-            cls: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
-            ponto: "bg-amber-500",
+            cls: "bg-warning-soft text-warning-soft-foreground",
+            ponto: "bg-warning",
             titulo: detalhePausa ?? "",
           }
         : { texto: "Fora do expediente", cls: "bg-muted text-muted-foreground", ponto: "bg-muted-foreground/50", titulo: "" };
@@ -485,12 +485,12 @@ export default function SdrExpediente() {
   const podeConfirmar = detalheSuficiente(texto) && !pausando;
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-sm">
+    <section className="rounded-card border border-border/60 bg-card shadow-card">
       <div className="flex flex-wrap items-center gap-4 px-[18px] py-4">
         <span className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] ${
           estado.estado === "fechado"
             ? "bg-muted text-muted-foreground"
-            : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+            : "bg-success-soft text-success-soft-foreground"
         }`}>
           <Clock size={21} />
         </span>
@@ -527,7 +527,7 @@ export default function SdrExpediente() {
             )}
           </div>
 
-          <p className={`mt-0.5 text-[12.5px] ${pausaLonga ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+          <p className={`mt-0.5 text-[12.5px] ${pausaLonga ? "font-semibold text-warning-soft-foreground" : "text-muted-foreground"}`}>
             {pausaLonga
               ? `Pausa acima de ${estado.pausa_alerta_min} min — ${estado.gestor_avisado_pausa ? "o gestor foi avisado." : "o gestor será avisado."}`
               : resumoLeads}
