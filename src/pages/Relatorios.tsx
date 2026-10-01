@@ -19,10 +19,11 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as XLSX from "xlsx";
 import type { Tables } from "@/integrations/supabase/types";
 import { useChartTheme } from "@/hooks/useChartTheme";
+import { PageHeader, crmChartColors } from "@/components/crm-ui";
 
-const COLORS = ["hsl(25,100%,50%)", "hsl(35,100%,55%)", "hsl(180,60%,50%)", "hsl(280,60%,60%)", "hsl(120,50%,50%)", "hsl(0,70%,55%)", "hsl(210,70%,55%)", "hsl(50,90%,55%)"];
+const COLORS = crmChartColors;
 
-const activeBarStyle = { style: { filter: "brightness(1.3) drop-shadow(0 0 8px rgba(255,140,0,0.4))", transition: "filter 0.2s ease" } };
+const activeBarStyle = { style: { opacity: 0.82, transition: "opacity 0.2s ease" } };
 
 const formatCurrency = (v: number) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
 
@@ -455,7 +456,8 @@ const Relatorios = () => {
     if (!reportRef.current) return;
     try {
       const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(reportRef.current, { backgroundColor: "#1a1a1a" });
+      const background = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+      const canvas = await html2canvas(reportRef.current, { backgroundColor: `hsl(${background})` });
       const link = document.createElement("a"); link.download = "relatorio.png"; link.href = canvas.toDataURL(); link.click();
       toast.success("Imagem exportada!");
     } catch { toast.error("Erro ao exportar imagem"); }
@@ -514,7 +516,7 @@ const Relatorios = () => {
   const renderSingleReportByKey = (reportKey: string | null) => {
     switch (reportKey) {
       case "contratado": return (
-        <Card className="gradient-card border-border shadow-card">
+        <Card className="rounded-card border-border shadow-card">
           <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-base flex items-center gap-2"><DollarSign size={18} className="text-primary" /> Faturamento por Paciente</CardTitle>
             <ShareButtons title="Faturamento por Paciente" data={[{ faturamento: contratadoVsPago.totalContratado }]} getSummary={() =>
@@ -524,11 +526,11 @@ const Relatorios = () => {
           <CardContent className="space-y-6">
             <p className="text-xs text-muted-foreground">Soma de todos os pagamentos recebidos no período (novos e recorrentes), por data de pagamento.</p>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg bg-secondary p-4">
+              <div className="rounded-control bg-primary-soft p-4">
                 <p className="text-xs text-muted-foreground">Faturamento (pagamentos recebidos)</p>
-                <p className="text-xl font-bold text-accent-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
+                <p className="whitespace-nowrap text-xl font-bold text-primary-soft-foreground">{formatCurrency(contratadoVsPago.totalContratado)}</p>
               </div>
-              <div className="rounded-lg bg-secondary p-4">
+              <div className="rounded-control bg-info-soft p-4">
                 <p className="text-xs text-muted-foreground">Pacientes com pagamento</p>
                 <p className="text-xl font-bold text-primary">{contratadoVsPago.lista.length}</p>
               </div>
@@ -540,7 +542,7 @@ const Relatorios = () => {
                   {contratadoVsPago.lista.map((p) => (
                     <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/pacientes/${p.id}`)}>
                       <TableCell className="font-medium text-primary underline-offset-2 hover:underline">{p.nome}</TableCell>
-                      <TableCell className="text-green-400">{formatCurrency(p.contratado)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-success">{formatCurrency(p.contratado)}</TableCell>
                     </TableRow>
                   ))}
                   {contratadoVsPago.lista.length === 0 && (
@@ -898,11 +900,11 @@ const Relatorios = () => {
               </div>
 
               <Tabs defaultValue="clinica" className="space-y-4">
-                <TabsList className="bg-secondary">
+                <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="min-w-max">
                   <TabsTrigger value="clinica">Por Clínica</TabsTrigger>
                   <TabsTrigger value="forma">Por Forma de Pgto</TabsTrigger>
                   <TabsTrigger value="lista">Lista Completa</TabsTrigger>
-                </TabsList>
+                </TabsList></div>
 
                 <TabsContent value="clinica">
                   <ResponsiveContainer width="100%" height={250}>
@@ -911,7 +913,7 @@ const Relatorios = () => {
                       <XAxis dataKey="clinica" stroke={ct.axisColor} fontSize={11} />
                       <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
-                      <Bar dataKey="total" fill="hsl(25,100%,50%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                      <Bar dataKey="total" fill={crmChartColors[0]} name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
                   </ResponsiveContainer>
                   <div className="mt-4 overflow-x-auto">
@@ -937,7 +939,7 @@ const Relatorios = () => {
                       <XAxis dataKey="forma" stroke={ct.axisColor} fontSize={11} />
                       <YAxis stroke={ct.axisColor} fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                       <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={false} formatter={(v: number, name: string) => [name === "total" ? formatCurrency(v) : v, name === "total" ? "Valor" : "Quantidade"]} />
-                      <Bar dataKey="total" fill="hsl(35,100%,55%)" name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
+                      <Bar dataKey="total" fill={crmChartColors[0]} name="Valor" radius={[6, 6, 0, 0]} activeBar={activeBarStyle} />
                     </BarChart>
                   </ResponsiveContainer>
                   <div className="mt-4 overflow-x-auto">
@@ -1200,24 +1202,18 @@ const Relatorios = () => {
 
   return (
     <div className="animate-fade-in space-y-6" ref={reportRef}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Relatórios</h1>
-          <p className="text-sm text-muted-foreground">Selecione o tipo de relatório que deseja visualizar</p>
-        </div>
-        {selectedReport && (
+      <PageHeader title="Relatórios" subtitle="Selecione o tipo de relatório que deseja visualizar" actions={selectedReport ? (
           <Button variant="outline" size="sm" onClick={() => setSelectedReport(null)}>
             <ArrowLeft size={14} className="mr-1" /> Voltar
           </Button>
-        )}
-      </div>
+        ) : undefined} />
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <Card className="flex flex-col gap-3 rounded-card p-5 sm:flex-row sm:items-end">
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Clínica</span>
           <Select value={clinicaFiltro} onValueChange={setClinicaFiltro}>
-            <SelectTrigger className="w-full sm:w-[200px] bg-secondary border-border"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full bg-surface-sunken sm:w-[200px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas</SelectItem>
               {clinicas.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
@@ -1226,21 +1222,21 @@ const Relatorios = () => {
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">De</span>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full bg-surface-sunken sm:w-[160px]" />
         </div>
         <div className="space-y-1">
           <span className="text-xs text-muted-foreground">Até</span>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-secondary border-border w-full sm:w-[160px]" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full bg-surface-sunken sm:w-[160px]" />
         </div>
-      </div>
+      </Card>
 
       {/* Report selection or content */}
       {!selectedReport ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {reportTypes.map((rt) => (
-            <Card key={rt.key} className="gradient-card border-border shadow-card cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setSelectedReport(rt.key)}>
+            <Card key={rt.key} className="cursor-pointer rounded-card border-border shadow-card transition-colors hover:border-primary/40 hover:shadow-float" onClick={() => setSelectedReport(rt.key)}>
               <CardContent className="p-4 flex items-start gap-3">
-                <rt.icon size={20} className="text-primary mt-0.5 flex-shrink-0" />
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><rt.icon size={20} /></span>
                 <div>
                   <p className="font-semibold text-sm">{rt.label}</p>
                   <p className="text-xs text-muted-foreground">{rt.desc}</p>

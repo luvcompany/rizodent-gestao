@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { Loader2, TrendingUp, TrendingDown, Award, Clock, MessageSquare, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ChartCard, KpiCard } from "@/components/crm-ui";
 import { fetchAllPaged, rangeBahia, dayKeyBahia, asDateParam, classifyOrigemCanonica, normalizeCidade, ORIGENS_CANONICAS, businessMinutesBetween, loadBusinessHours, type BusinessHours } from "@/lib/reportKit";
 
 type Pipeline = { id: string; name: string };
@@ -506,13 +507,13 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 flex flex-wrap items-center gap-4">
+      <Card className="flex flex-wrap items-center gap-4 p-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
           {/* Seletor de funil da página, agora efetivo: filtra a coorte inteira
               da aba (todas as tabelas/indicadores) e a RPC do ranking. */}
           <Select value={pipelineId || "todos"} onValueChange={setPipelineId}>
-            <SelectTrigger className="w-[220px] h-9">
+            <SelectTrigger className="w-full sm:w-[220px]">
               <SelectValue placeholder="Todos os funis" />
             </SelectTrigger>
             <SelectContent>
@@ -545,7 +546,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
       ) : (
       <>
       {/* Indicadores de atendimento */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         {[
           {
             title: "Tempo médio até agendamento",
@@ -568,27 +569,27 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         ].map((card) => {
           const d = fmtDuration(card.sec);
           return (
-            <Card key={card.title} className="p-6">
+            <Card key={card.title} className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-sm">{card.title}</h3>
                 {card.icon}
               </div>
-              <div className="flex items-baseline justify-center gap-3">
+              <div className="flex flex-wrap items-baseline justify-center gap-2">
                 {d.hasDays && (
                   <>
-                    <div className="text-5xl font-bold tracking-tight">{d.d}</div>
+                    <div className="text-4xl font-bold tabular-nums">{d.d}</div>
                     <div className="text-3xl text-muted-foreground">d</div>
                   </>
                 )}
                 {d.hasHours && (
                   <>
-                    <div className="text-5xl font-bold tracking-tight">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
+                    <div className="text-4xl font-bold tabular-nums">{d.hasDays ? String(d.h).padStart(2, "0") : d.h}</div>
                     <div className="text-3xl text-muted-foreground">:</div>
                   </>
                 )}
-                <div className="text-5xl font-bold tracking-tight">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
+                <div className="text-4xl font-bold tabular-nums">{d.hasHours ? String(d.m).padStart(2, "0") : d.m}</div>
                 <div className="text-3xl text-muted-foreground">:</div>
-                <div className="text-5xl font-bold tracking-tight">{String(d.s).padStart(2, "0")}</div>
+                <div className="text-4xl font-bold tabular-nums">{String(d.s).padStart(2, "0")}</div>
               </div>
               <div className="flex justify-center gap-8 mt-2 text-xs text-muted-foreground">
                 {d.hasDays && <span>dias</span>}
@@ -602,14 +603,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         })}
       </div>
 
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-muted-foreground" />
-            Volume de conversas por hora
-          </h3>
-          <div className="text-2xl font-bold">{totalHourly}</div>
-        </div>
+      <ChartCard title="Volume de conversas por hora" icon={BarChart3} actions={<div className="text-2xl font-bold tabular-nums">{totalHourly}</div>}>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={hourlyVolume} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
@@ -627,14 +621,14 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
         <p className="text-[11px] text-muted-foreground mt-2">
           Novas conversas iniciadas por hora, no fuso horário da clínica ({tz}).
         </p>
-      </Card>
+      </ChartCard>
 
 
 
       {/* Cidade × Origem */}
-      <Card className="p-4">
+      <Card className="overflow-hidden p-4">
         <h3 className="font-semibold mb-3">Leads por Cidade × Origem</h3>
-        <Table>
+        <div className="overflow-x-auto rounded-control border border-border/60"><Table>
           <TableHeader>
             <TableRow>
               <TableHead>Origem</TableHead>
@@ -667,7 +661,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               <TableCell className="text-right font-bold">{leads.length}</TableCell>
             </TableRow>
           </TableBody>
-        </Table>
+        </Table></div>
       </Card>
 
       {/* Tempo de Resposta */}
@@ -680,12 +674,12 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Respondidos em ≤1h{businessHours ? " útil" : ""}</div>
-            <div className="text-2xl font-bold text-emerald-600">{responseStats.in1h}</div>
+            <div className="text-2xl font-bold text-success">{responseStats.in1h}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.in1h, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Mesmo dia</div>
-            <div className="text-2xl font-bold text-blue-600">{responseStats.sameDay}</div>
+            <div className="text-2xl font-bold text-info">{responseStats.sameDay}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.sameDay, responseStats.total)}</div>
           </div>
           <div className="p-3 rounded border bg-card">
@@ -695,7 +689,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           </div>
           <div className="p-3 rounded border bg-card">
             <div className="text-xs text-muted-foreground">Não respondidos</div>
-            <div className="text-2xl font-bold text-rose-600">{responseStats.notAnswered}</div>
+            <div className="text-2xl font-bold text-destructive">{responseStats.notAnswered}</div>
             <div className="text-xs text-muted-foreground">{pct(responseStats.notAnswered, responseStats.total - responseStats.neverWrote)} dos que escreveram</div>
           </div>
           <div className="p-3 rounded border bg-card">
@@ -728,7 +722,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               <span>{r.value}</span>
             </div>
           ))}
-          <div className="flex justify-between p-2 rounded bg-emerald-500/10">
+          <div className="flex justify-between rounded-control bg-success-soft p-2 text-success-soft-foreground">
             <span>Taxa de Comparecimento</span>
             <span className="font-bold">{funnel.attendanceRate}</span>
           </div>
@@ -745,7 +739,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
           {ranking.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem leads no período.</p>
           ) : (
-            <Table>
+            <div className="overflow-x-auto rounded-control border border-border/60"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Origem</TableHead>
@@ -761,18 +755,18 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
                 {ranking.map((r, i) => (
                   <TableRow key={r.origem} className={r.leads < 5 ? "text-muted-foreground" : undefined}>
                     <TableCell className="font-medium">
-                      {i === 0 && <TrendingUp className="inline w-3 h-3 text-emerald-600 mr-1" />}
-                      {i === ranking.length - 1 && ranking.length > 1 && <TrendingDown className="inline w-3 h-3 text-rose-600 mr-1" />}
+                      {i === 0 && <TrendingUp className="mr-1 inline h-3 w-3 text-success" />}
+                      {i === ranking.length - 1 && ranking.length > 1 && <TrendingDown className="mr-1 inline h-3 w-3 text-destructive" />}
                       {r.origem}{r.leads < 5 ? " *" : ""}
                     </TableCell>
                     <TableCell className="text-right">{r.leads}</TableCell>
                     <TableCell className="text-right">{r.contracted}</TableCell>
-                    <TableCell className="text-right">{brl.format(r.faturamento)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right">{brl.format(r.faturamento)}</TableCell>
                     <TableCell className="text-right font-bold">{(r.rate * 100).toFixed(1)}%</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+            </Table></div>
           )}
           <p className="text-[11px] text-muted-foreground mt-2">
             Leads e conversão = leads criados no período. Faturamento = caixa recebido no período por origem do paciente (bate com o total do dashboard).
@@ -783,7 +777,7 @@ export default function OrigemConversaoTab({ pipelineId, pipelines, setPipelineI
               Calculado no servidor — mesmos números para todos os usuários da clínica.
             </p>
           ) : rpcAviso ? (
-            <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1">{rpcAviso}</p>
+            <p className="mt-1 text-[11px] text-warning">{rpcAviso}</p>
           ) : null}
         </Card>
 

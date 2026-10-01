@@ -12,6 +12,7 @@ import {
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import { AlertTriangle, BarChart3, Info, Loader2, RefreshCw, Users } from "lucide-react";
+import { EmptyState } from "@/components/crm-ui";
 
 /**
  * Relatório por SDR — visão do GESTOR da equipe (Fase 5 do rodízio).
@@ -193,17 +194,18 @@ export default function CrmRelatorioSdr() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-5 pb-10">
-        <header className="flex flex-wrap items-center gap-3">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
-              <BarChart3 size={22} className="text-primary" /> Relatório por SDR
-            </h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><BarChart3 size={20} /></span>
+              <h1 className="text-3xl font-bold text-foreground">Relatório por SDR</h1>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
               Leads, respostas, agendamentos, pesquisa e expediente de cada SDR no período.{" "}
               <Link to="/crm/equipe" className="underline underline-offset-2 hover:text-foreground">Ver a equipe</Link>
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <DateRangeFilter value={periodo} onChange={setPeriodo} excludePresets={["all", "multi"]} />
             <Button
               variant="outline" size="sm" title="Atualizar" disabled={carregando}
@@ -214,7 +216,7 @@ export default function CrmRelatorioSdr() {
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <section className="overflow-hidden rounded-card border border-border bg-card shadow-card">
           {estado.status === "error" ? (
             <div className="flex flex-wrap items-center gap-3 px-6 py-10">
               <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
@@ -232,24 +234,17 @@ export default function CrmRelatorioSdr() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : sdrs.length === 0 ? (
-            <div className="px-6 py-16 text-center">
-              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-primary/10">
-                <Users className="text-primary" size={22} />
-              </div>
-              <p className="mt-3 font-semibold text-foreground">Nenhuma SDR cadastrada</p>
-              <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                O relatório aparece assim que a primeira SDR for criada na aba Equipe.
-              </p>
-              <Button size="sm" variant="outline" className="mt-4" asChild>
+            <EmptyState icon={Users} title="Nenhuma SDR cadastrada" description="O relatório aparece assim que a primeira SDR for criada na aba Equipe." action={
+              <Button size="sm" variant="outline" asChild>
                 <Link to="/crm/equipe"><Users size={14} className="mr-1" /> Abrir a Equipe</Link>
               </Button>
-            </div>
+            } />
           ) : (
             <div className="overflow-x-auto">
               <Table className="min-w-[1240px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-10 bg-card">SDR</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-surface-sunken">SDR</TableHead>
                     {COLUNAS.map((c) => (
                       <TableHead key={c.chave} className="whitespace-nowrap text-right" title={c.dica}>
                         {c.titulo}

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toLocalDateISO } from "@/lib/utils";
 import { dayKeyBahia } from "@/lib/reportKit";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, Bot, Mic, Sparkles, Zap } from "lucide-react";
+import { ChartCard, KpiCard, crmChartColors } from "@/components/crm-ui";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
   ResponsiveContainer, Legend,
@@ -277,29 +278,32 @@ const CrmMetricas = () => {
     return Array.from(new Set(data.automacoes.map((r) => traduzir(r.action_type, ACTION_TYPE_LABELS))));
   }, [data]);
 
-  const COLORS = ["hsl(var(--primary))", "#22c55e", "#3b82f6", "#a855f7", "#f59e0b", "#ef4444", "#06b6d4", "#ec4899"];
+  const chartColor = (label: string, primaryLabel?: string) => {
+    if (label === primaryLabel) return crmChartColors[0];
+    let hash = 0;
+    for (const char of label) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    return crmChartColors[1 + (hash % (crmChartColors.length - 1))];
+  };
 
   const periodoLabel = `${from.toLocaleDateString("pt-BR")} — ${to.toLocaleDateString("pt-BR")}`;
   const semDados = loading ? "Carregando…" : errorMsg ? "Dados indisponíveis." : "Sem dados no período.";
 
   return (
-    <div className="animate-fade-in space-y-6 overflow-y-auto h-full pr-2">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Métricas de Uso</h1>
-          <p className="text-sm text-muted-foreground">
-            Bots, IA e Automações · <span className="font-medium">{periodoLabel}</span>
-          </p>
+    <div className="animate-fade-in space-y-6">
+      <Card className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-foreground">Métricas de Uso</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Bots, IA e Automações · <span className="font-medium">{periodoLabel}</span></p>
         </div>
         <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
-          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[220px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             {PRESETS.map((p) => (
               <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </Card>
 
       {errorMsg && (
         <Card className="border-destructive/50">
@@ -311,38 +315,25 @@ const CrmMetricas = () => {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Execuções de Bot",
             value: kpis.botsTotal,
             sub: `${kpis.botsConcluidos.toLocaleString("pt-BR")} concluídas (${pctConcluidos}%)`,
             icon: Bot,
+            tone: "primary" as const,
           },
-          { label: "Sugestões e análises da IA", value: kpis.ia, sub: "sugestões regeneradas não contam", icon: Sparkles },
-          { label: "Transcrições de áudio", value: kpis.transcricoes, sub: "geradas automaticamente", icon: Mic },
-          { label: "Automações executadas", value: kpis.automacoes, icon: Zap },
-        ].map((k) => (
-          <Card key={k.label} className="gradient-card shadow-card">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="rounded-lg bg-primary/10 p-3"><k.icon className="text-primary" size={20} /></div>
-              <div>
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-2xl font-bold">{loading ? "…" : k.value.toLocaleString("pt-BR")}</p>
-                {k.sub && !loading && <p className="text-[11px] text-muted-foreground">{k.sub}</p>}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+          { label: "Sugestões e análises da IA", value: kpis.ia, sub: "sugestões regeneradas não contam", icon: Sparkles, tone: "purple" as const },
+          { label: "Transcrições de áudio", value: kpis.transcricoes, sub: "geradas automaticamente", icon: Mic, tone: "info" as const },
+          { label: "Automações executadas", value: kpis.automacoes, icon: Zap, tone: "success" as const },
+        ].map((k) => <KpiCard key={k.label} label={k.label} value={loading ? "…" : k.value.toLocaleString("pt-BR")} icon={k.icon} tone={k.tone} detail={k.sub && !loading ? k.sub : undefined} />)}
       </div>
 
       {/* Bots */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Bot size={16} /> Execuções concluídas por Bot</CardTitle>
-          <p className="text-xs text-muted-foreground">Execuções de bot concluídas com sucesso no período (uma execução pode enviar várias mensagens).</p>
-        </CardHeader>
-        <CardContent className="h-[320px]">
+      <ChartCard title="Execuções concluídas por Bot" icon={Bot}>
+        <p className="mb-4 text-xs text-muted-foreground">Execuções de bot concluídas com sucesso no período (uma execução pode enviar várias mensagens).</p>
+        <div className="h-[320px] min-w-0">
           {botPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -354,21 +345,18 @@ const CrmMetricas = () => {
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
                 {botNames.map((n, i) => (
-                  <Bar key={n} dataKey={n} fill={COLORS[i % COLORS.length]} stackId="a" />
+                  <Bar key={n} dataKey={n} fill={chartColor(n, botNames[0])} stackId="a" radius={[4, 4, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ChartCard>
 
       {/* IA */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} /> Uso da IA (Bia)</CardTitle>
-          <p className="text-xs text-muted-foreground">Volumes por tipo: sugestões, análises, exemplos e transcrições automáticas de áudio.</p>
-        </CardHeader>
-        <CardContent className="h-[320px]">
+      <ChartCard title="Uso da IA (Bia)" icon={Sparkles}>
+        <p className="mb-4 text-xs text-muted-foreground">Volumes por tipo: sugestões, análises, exemplos e transcrições automáticas de áudio.</p>
+        <div className="h-[320px] min-w-0">
           {iaPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -380,23 +368,20 @@ const CrmMetricas = () => {
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
                 {iaModes.map((m, i) => (
-                  <Bar key={m} dataKey={m} fill={COLORS[i % COLORS.length]} />
+                  <Bar key={m} dataKey={m} fill={chartColor(m, iaModes[0])} radius={[4, 4, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ChartCard>
 
 
 
       {/* Automações */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Zap size={16} /> Automações executadas</CardTitle>
-          <p className="text-xs text-muted-foreground">Ações efetivamente executadas por gatilhos, agrupadas por tipo.</p>
-        </CardHeader>
-        <CardContent className="h-[320px]">
+      <ChartCard title="Automações executadas" icon={Zap}>
+        <p className="mb-4 text-xs text-muted-foreground">Ações efetivamente executadas por gatilhos, agrupadas por tipo.</p>
+        <div className="h-[320px] min-w-0">
           {autoPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -408,13 +393,13 @@ const CrmMetricas = () => {
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
                 {autoTypes.map((t, i) => (
-                  <Bar key={t} dataKey={t} fill={COLORS[i % COLORS.length]} stackId="a" />
+                  <Bar key={t} dataKey={t} fill={chartColor(t, autoTypes[0])} stackId="a" radius={[4, 4, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ChartCard>
     </div>
   );
 };
