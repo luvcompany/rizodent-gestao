@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { fmtPct } from "@/lib/relatorioSdr";
 import { DialogoLeads, useListaLeads } from "@/components/relatorios/SdrDiario";
 
 export type Blocos = Record<string, string[]>;
