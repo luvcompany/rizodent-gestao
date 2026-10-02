@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
               }
             }
           } else {
-            await adRes.text();
+            console.log(`[REPAIR] ad ${adSourceId} token ...${token.slice(-6)}: ${adRes.status} ${(await adRes.text()).slice(0,200)}`);
           }
         } catch (_) { /* skip */ }
 
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (!imageUrl) { falhas.push(adSourceId); continue; }
+      if (!imageUrl) { console.log(`[REPAIR] sem imagem ad ${adSourceId} tokens=${tokensDo(g.pipelineId, g.tenantId).length}`); falhas.push(adSourceId); continue; }
 
       imageUrl = await persistAdImage(supabase, imageUrl, adSourceId);
       const ids = Array.from(g.leadIds);
