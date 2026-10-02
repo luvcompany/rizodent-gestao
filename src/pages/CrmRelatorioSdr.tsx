@@ -11,7 +11,7 @@ import {
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import {
-  AlertTriangle, BarChart3, CalendarCheck, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply,
+  AlertTriangle, BarChart3, CalendarCheck, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply, Star,
   type LucideIcon,
 } from "lucide-react";
 import { EmptyState } from "@/components/crm-ui";
@@ -256,8 +256,8 @@ export default function CrmRelatorioSdr() {
           </div>
         ) : carregando ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+              {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
             </div>
             <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-6 shadow-card">
               <Skeleton className="h-5 w-1/3" />
@@ -279,7 +279,7 @@ export default function CrmRelatorioSdr() {
             {total && (
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
                   <KpiEquipe label="Leads recebidos" value={fmtInt(total.leads_recebidos)} icon={Inbox} tom="info" />
                   <KpiEquipe label="Respondidos" value={fmtInt(total.leads_respondidos)} icon={MessageSquareReply} tom="primary"
                     apoio={fmtPct(total.leads_respondidos, total.leads_recebidos)} />
@@ -290,6 +290,10 @@ export default function CrmRelatorioSdr() {
                   <KpiEquipe label="Faltas" value={fmtInt(total.faltas)} icon={UserX} tom="destructive" />
                   <KpiEquipe label="Contratados" value={fmtInt(total.contratados)} icon={Handshake} tom="success"
                     apoio={total.compareceram > 0 ? `${fmtPct(total.contratados, total.compareceram)} dos que compareceram` : undefined} />
+                  <KpiEquipe label="Pesquisa de satisfação" value={fmtNota(total.pesquisa_nota_media)} icon={Star} tom="warning"
+                    apoio={total.pesquisa_respostas > 0
+                      ? `${fmtInt(total.pesquisa_respostas)} ${total.pesquisa_respostas === 1 ? "resposta" : "respostas"} no período`
+                      : "sem respostas no período"} />
                 </div>
               </section>
             )}
