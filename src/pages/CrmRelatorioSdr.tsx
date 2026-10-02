@@ -323,13 +323,17 @@ export default function CrmRelatorioSdr() {
                   <KpiEquipe label="Leads recebidos" value={fmtInt(total.leads_recebidos)} icon={Inbox} tom="info" />
                   <KpiEquipe label="Respondidos" value={fmtInt(total.leads_respondidos)} icon={MessageSquareReply} tom="primary"
                     apoio={fmtPct(total.leads_respondidos, total.leads_recebidos)} />
-                  <KpiEquipe label="Agendamentos" value={fmtInt(total.agendamentos)} icon={CalendarCheck} tom="primary"
-                    apoio={total.agend_cancelados > 0 ? `${fmtInt(total.agend_cancelados)} cancelados (dentro da conta)` : undefined} />
-                  <KpiEquipe label="Compareceram" value={fmtInt(total.compareceram)} icon={UserCheck} tom="success"
-                    apoio={total.compareceram + total.faltas > 0 ? `${taxaComparecimento(total)} de comparecimento` : undefined} />
-                  <KpiEquipe label="Faltas" value={fmtInt(total.faltas)} icon={UserX} tom="destructive" />
-                  <KpiEquipe label="Contratados" value={fmtInt(total.contratados)} icon={Handshake} tom="success"
-                    apoio={total.compareceram > 0 ? `${fmtPct(total.contratados, total.compareceram)} dos que compareceram` : undefined} />
+                  <KpiEquipe label="Agendamentos" value={eqAgendamentos !== null ? fmtInt(eqAgendamentos) : fmtInt(total.agendamentos)} icon={CalendarCheck} tom="primary"
+                    apoio={eqAgendamentos === null && total.agend_cancelados > 0 ? `${fmtInt(total.agend_cancelados)} cancelados (dentro da conta)` : undefined} />
+                  <KpiEquipe label="Compareceram" value={eqCompareceram !== null ? fmtInt(eqCompareceram) : fmtInt(total.compareceram)} icon={UserCheck} tom="success"
+                    apoio={eqCompareceram !== null && eqFaltas !== null
+                      ? (eqCompareceram + eqFaltas > 0 ? `${fmtPct(eqCompareceram, eqCompareceram + eqFaltas)} de comparecimento` : undefined)
+                      : (total.compareceram + total.faltas > 0 ? `${taxaComparecimento(total)} de comparecimento` : undefined)} />
+                  <KpiEquipe label="Faltas" value={eqFaltas !== null ? fmtInt(eqFaltas) : fmtInt(total.faltas)} icon={UserX} tom="destructive" />
+                  <KpiEquipe label="Contratados" value={eqContratados !== null ? fmtInt(eqContratados) : fmtInt(total.contratados)} icon={Handshake} tom="success"
+                    apoio={eqContratados !== null && eqCompareceram !== null
+                      ? (eqCompareceram > 0 ? `${fmtPct(eqContratados, eqCompareceram)} dos que compareceram` : undefined)
+                      : (total.compareceram > 0 ? `${fmtPct(total.contratados, total.compareceram)} dos que compareceram` : undefined)} />
                   <KpiEquipe label="Pesquisa de satisfação" value={fmtNota(total.pesquisa_nota_media)} icon={Star} tom="warning"
                     apoio={total.pesquisa_respostas > 0
                       ? `${fmtInt(total.pesquisa_respostas)} ${total.pesquisa_respostas === 1 ? "resposta" : "respostas"} no período`
