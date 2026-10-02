@@ -298,7 +298,8 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
   let corpo: React.ReactNode;
   if (modo === "feitos") {
     const feitos = linhas.filter((l) => l.dia_marcou >= de && l.dia_marcou <= ate);
-    const diasUteis = dias.filter((d) => new Date(`${d}T12:00:00Z`).getUTCDay() !== 0).length || 1;
+    const hoje = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia" }).format(new Date());
+    const diasUteis = dias.filter((d) => d <= hoje && new Date(`${d}T12:00:00Z`).getUTCDay() !== 0).length || 1;
     const porDiaEquipe = new Map<string, LinhaDiaria[]>();
     feitos.forEach((r) => { const arr = porDiaEquipe.get(r.dia_marcou) ?? []; arr.push(r); porDiaEquipe.set(r.dia_marcou, arr); });
     const diasComEquipe = Array.from(porDiaEquipe.keys()).sort();
