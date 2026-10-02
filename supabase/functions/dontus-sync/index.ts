@@ -391,9 +391,16 @@ type PlanItem = {
   fix_pagamento_id?: string | null;
 
   move_to_contratado: boolean;
-  // Tipo primeiro/recorrente baseado no HISTÓRICO DO DONTUS (não no CRClin).
+  // Tipo pela regra do MÊS (02/10/2026): recorrente = já pagou em mês anterior
+  // (Dontus ou CRClin); novo = primeiro mês pagando.
   tipo: "primeiro" | "recorrente";
-  tipo_source: "visto_antes_no_dontus" | "primeiro_no_dontus";
+  tipo_source: "mes_anterior_no_dontus" | "mes_anterior_no_crclin" | "primeiro_mes" | "visto_antes_no_dontus" | "primeiro_no_dontus";
+  // Pagamento JÁ importado (skip): ficha e tipo gravados, para corrigir o tipo.
+  pagamento_existente_id?: string | null;
+  paciente_existente_id?: string | null;
+  tipo_gravado?: string | null;
+  fix_tipo?: boolean;
+  tipo_pela_regra_do_mes?: boolean;
   // Criar lead novo no CRClin diretamente em "Contratados" (para KOMMO sem lead
   // com pagamento que CONTA no dia). Apenas um item por paciente/dia recebe true.
   create_lead: boolean;
@@ -407,6 +414,58 @@ type PlanItem = {
 
 // Helpers de data (yyyy-mm-dd)
 function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
+function inicioDoMes(iso: string): string { return iso.slice(0, 8) + "01"; }
+
+// ── Novo × recorrente (regra do dono, 02/10/2026) ───────────────────────────
+// Para o resultado do mês conta tudo o que o paciente pagou no mês. O pagamento
+// é RECORRENTE quando o paciente já tem pagamento em algum mês ANTERIOR (no
+// Dontus ou no CRClin) e NOVO no primeiro mês em que paga — vários pagamentos
+// no mesmo mês são todos novos.
+//
+// Menor primeira_data do Dontus por paciente, somando todas as clínicas. Busca
+// só os ids pedidos, em lotes: a leitura da tabela inteira corta em 1.000
+// linhas (cada clínica tem milhares de pacientes) e era isso que marcava quase
+// todo pagamento como "primeiro" desde agosto.
+async function primeiraDataDontusPorPaciente(admin: any, ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  const LOTE = 200; // até 4 clínicas por id → no máximo 800 linhas por consulta
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const lote = ids.slice(i, i + LOTE);
+    const { data, error } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data")
+      .in("id_paciente_dontus", lote);
+    if (error) throw error;
+    for (const r of data || []) {
+      const id = Number(r.id_paciente_dontus);
+      const d = String(r.primeira_data);
+      const prev = out.get(id);
+      if (!prev || d < prev) out.set(id, d);
+    }
+  }
+  return out;
+}
+
+// Fichas do CRClin que já têm pagamento antes de `antesDe` (yyyy-mm-dd).
+async function fichasComPagamentoAntes(admin: any, pacienteIds: string[], antesDe: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const LOTE = 100;
+  const PAGE = 1000;
+  for (let i = 0; i < pacienteIds.length; i += LOTE) {
+    const lote = pacienteIds.slice(i, i + LOTE);
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await admin.from("pagamentos")
+        .select("id, paciente_id")
+        .in("paciente_id", lote)
+        .lt("data_pagamento", antesDe)
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      for (const r of data || []) out.add(String(r.paciente_id));
+      if (!data || data.length < PAGE) break;
+    }
+  }
+  return out;
+}
 function addDays(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return ymd(d);
 }
@@ -1059,10 +1118,11 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
   importados: number; adotados: number; leads_criados: number;
   movidos: number; contratado_na_fila: number; notificacoes: number; erros: number; erros_det: any[];
   orto_corrigidos: number;
+  tipo_corrigidos: number;
 }> {
   // `movidos` só cresce em cliente SEM carência (contratado_apos_min = 0).
   // Na Rizodent a espera é de 24 h, então o número que interessa é o da fila.
-  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, contratado_na_fila: 0, notificacoes: 0, erros: 0, erros_det: [] as any[], orto_corrigidos: 0 };
+  const c = { importados: 0, adotados: 0, leads_criados: 0, movidos: 0, contratado_na_fila: 0, notificacoes: 0, erros: 0, erros_det: [] as any[], orto_corrigidos: 0, tipo_corrigidos: 0 };
   const fallbackUser = await resolveFallbackUser(admin);
   let mainPipeline: { pipeline_id: string; stage_id: string } | null = null;
   const movedLeads = new Set<string>();
@@ -1124,6 +1184,15 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
             .eq("dontus_key", item.dontus_key);
           if (upd.error) throw upd.error;
           c.orto_corrigidos++;
+        }
+        // Auto-correção do tipo (novo × recorrente) pela regra do mês.
+        if (item.fix_tipo && item.pagamento_existente_id) {
+          const upd = await admin.from("pagamentos")
+            .update({ tipo: item.tipo })
+            .eq("id", item.pagamento_existente_id)
+            .eq("dontus_key", item.dontus_key);
+          if (upd.error) throw upd.error;
+          c.tipo_corrigidos++;
         }
         if (item.notification) {
           await notify(fallbackUser, item, item.matched_lead_id, `sync:skip:${item.dontus_key}`);
@@ -1293,7 +1362,10 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         if (targetId) {
           const upd = await admin.from("pagamentos")
             // Sobrescreve a classificação da recepção pela regra do dia.
-            .update({ dontus_key: item.dontus_key, recorrencia_orto: item.recorrencia_orto })
+            .update({
+              dontus_key: item.dontus_key, recorrencia_orto: item.recorrencia_orto,
+              ...(item.tipo_pela_regra_do_mes ? { tipo: item.tipo } : {}),
+            })
             .eq("id", targetId).is("dontus_key", null);
 
           if (upd.error) {
@@ -1529,7 +1601,7 @@ async function syncClinica(
 
     // 1) Já importado?
     const { data: existing } = await admin.from("pagamentos")
-      .select("id, recorrencia_orto").eq("dontus_key", dontus_key).maybeSingle();
+      .select("id, recorrencia_orto, tipo, paciente_id").eq("dontus_key", dontus_key).maybeSingle();
     if (existing) {
       // Auto-correção: se a classificação gravada divergir da regra do dia,
       // o executor faz UPDATE (sem re-importar).
@@ -1543,6 +1615,9 @@ async function syncClinica(
         origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
         matched_paciente_id: null, move_to_contratado: false, notification: null,
         fix_recorrencia_orto: precisaCorrigir, fix_pagamento_id: precisaCorrigir ? (existing as any).id : null,
+        pagamento_existente_id: (existing as any).id,
+        paciente_existente_id: (existing as any).paciente_id ?? null,
+        tipo_gravado: (existing as any).tipo ?? null,
       } as any);
       continue;
     }
@@ -1811,13 +1886,49 @@ async function syncClinica(
   }
 
   // ============ Pós-processamento ============
-  // (A) Classificar tipo primeiro/recorrente com base no histórico DO DONTUS.
-  //     Fonte: seenBefore (idPaciente com pagamento em data anterior a hoje).
+  // (A) Classificar tipo primeiro/recorrente pela regra do MÊS.
+  //     Recorrente = o pagador já tem pagamento em mês anterior no Dontus
+  //     (menor data entre todas as clínicas) ou a ficha do CRClin já tem
+  //     pagamento em mês anterior. Se a consulta do histórico falhar, cai na
+  //     classificação antiga e NÃO corrige pagamento já gravado — o próximo
+  //     ciclo (10 min) refaz.
+  let primeiraDontus = new Map<number, string>();
+  const fichasJaPagantes = new Map<string, Set<string>>(); // mês → fichas com pagamento antes dele
+  let regraDoMesOk = true;
+  try {
+    primeiraDontus = await primeiraDataDontusPorPaciente(admin, [...new Set(plan.map((p) => p.paciente_id_dontus))]);
+    const fichasPorMes = new Map<string, Set<string>>();
+    for (const p of plan) {
+      const ficha = p.paciente_existente_id || p.matched_paciente_id || null;
+      if (!ficha) continue;
+      const mes = inicioDoMes(p.data);
+      if (!fichasPorMes.has(mes)) fichasPorMes.set(mes, new Set());
+      fichasPorMes.get(mes)!.add(ficha);
+    }
+    for (const [mes, fichas] of fichasPorMes) {
+      fichasJaPagantes.set(mes, await fichasComPagamentoAntes(admin, [...fichas], mes));
+    }
+  } catch (e) {
+    regraDoMesOk = false;
+    console.warn("[dontus-sync] histórico para novo × recorrente falhou:", (e as any)?.message || e);
+  }
   for (const p of plan) {
-    const seen = seenBefore.has(p.paciente_id_dontus);
-    p.tipo = seen ? "recorrente" : "primeiro";
-    p.tipo_source = seen ? "visto_antes_no_dontus" : "primeiro_no_dontus";
     p.create_lead = false;
+    if (!regraDoMesOk) {
+      const seen = seenBefore.has(p.paciente_id_dontus);
+      p.tipo = seen ? "recorrente" : "primeiro";
+      p.tipo_source = seen ? "visto_antes_no_dontus" : "primeiro_no_dontus";
+      continue;
+    }
+    const mes = inicioDoMes(p.data);
+    const prim = primeiraDontus.get(p.paciente_id_dontus);
+    const ficha = p.paciente_existente_id || p.matched_paciente_id || null;
+    const noDontus = !!prim && prim < mes;
+    const noCrclin = !!ficha && !!fichasJaPagantes.get(mes)?.has(ficha);
+    p.tipo = noDontus || noCrclin ? "recorrente" : "primeiro";
+    p.tipo_source = noDontus ? "mes_anterior_no_dontus" : noCrclin ? "mes_anterior_no_crclin" : "primeiro_mes";
+    p.tipo_pela_regra_do_mes = true;
+    if (p.action === "skip" && p.pagamento_existente_id && p.tipo_gravado !== p.tipo) p.fix_tipo = true;
   }
 
   // (B) KOMMO sem lead OU reconhecido pela base do Kommo (kommo_base): se o
@@ -1882,6 +1993,7 @@ async function syncClinica(
     recorrentes: plan.filter((p) => p.tipo === "recorrente").length,
     notificacoes: plan.filter((p) => p.notification).length,
     orto_a_corrigir: plan.filter((p) => p.fix_recorrencia_orto).length,
+    tipo_a_corrigir: plan.filter((p) => p.fix_tipo).length,
     phone_lookup_failed: phoneLookupFailed,
     telefones_no_cache: phoneCache.size,
     plan,
@@ -1893,6 +2005,7 @@ async function syncClinica(
     importados: number; adotados: number; leads_criados: number;
     movidos: number; contratado_na_fila: number; notificacoes: number; erros: number; erros_det: any[];
     orto_corrigidos: number;
+  tipo_corrigidos: number;
   } | null = null;
   let reconciliacaoRemovidos = 0;
   let reconciliacaoAlerta: string | null = null;
@@ -1907,6 +2020,7 @@ async function syncClinica(
       contratado_na_fila: exec.contratado_na_fila,
       notificacoes: exec.notificacoes,
       orto_corrigidos: exec.orto_corrigidos,
+      tipo_corrigidos: exec.tipo_corrigidos,
       erros: exec.erros,
       erros_det: exec.erros_det,
     };
