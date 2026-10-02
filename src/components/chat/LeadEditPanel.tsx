@@ -460,7 +460,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       : effectiveSource === "outro" ? (customSource.trim() || "outro") : source;
     const updates = {
       // CONV-27: o nome vai como a pessoa digitou (sem forçar MAIÚSCULAS).
-      name: name.trim(),
+      name: name.trim().toLocaleUpperCase("pt-BR"),
       phone: telefoneFinal,
       source: finalSource || null,
       value: value ? parseFloat(value) : null,
