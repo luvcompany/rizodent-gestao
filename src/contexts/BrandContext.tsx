@@ -106,6 +106,7 @@ function normalizarCliente(entrada: unknown, slug: string | null): TenantBrand |
     primary_color: txt(raw.primary_color),
     primary_color_dark: txt(raw.primary_color_dark),
     secondary_color: txt(raw.secondary_color),
+    action_color: txt(raw.action_color),
     font_family: txt(raw.font_family),
     radius_px: num(raw.radius_px),
     login_title: txt(raw.login_title),

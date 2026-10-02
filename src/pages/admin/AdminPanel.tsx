@@ -147,7 +147,7 @@ export const AdminClientes = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
+  const [form, setForm] = useState({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", action_color: "#2563eb", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
 
   const load = async () => {
     const q = (supabase as any).from("tenants").select("*").order("created_at", { ascending: false });
@@ -206,7 +206,7 @@ export const AdminClientes = () => {
     if (error || (data as any)?.error) { toast.error(await getFunctionErrorMessage(data, error, "Erro ao criar cliente")); return; }
     toast.success(`Cliente ${form.name} criado! Link: crclin.com.br/${form.slug}`);
     setOpen(false);
-    setForm({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
+    setForm({ name: "", slug: "", primary_color: "#2563eb", secondary_color: "#6366f1", action_color: "#2563eb", tertiary_color: "#ffedd5", admin_name: "", admin_email: "", admin_password: "", clinic_name: "", clinic_city: "", plan_id: "" });
     load();
   };
 
@@ -271,11 +271,12 @@ export const AdminClientes = () => {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <BrandColorField label="Cor principal" value={form.primary_color} onChange={(v) => setForm({ ...form, primary_color: v })} />
               <BrandColorField label="Cor secundária" value={form.secondary_color} onChange={(v) => setForm({ ...form, secondary_color: v })} />
+              <BrandColorField label="Cor dos botões e abas" value={form.action_color} onChange={(v) => setForm({ ...form, action_color: v })} />
             </div>
-            <div><p className="mb-1 text-xs font-semibold text-slate-400">Prévia da interface do cliente</p><BrandPreview primary={form.primary_color} secondary={form.secondary_color} name={form.name || "Clínica"} /></div>
+            <div><p className="mb-1 text-xs font-semibold text-slate-400">Prévia da interface do cliente</p><BrandPreview primary={form.primary_color} secondary={form.secondary_color} actionColor={form.action_color} name={form.name || "Clínica"} /></div>
             <div className="border-t border-slate-800 pt-3"><p className="mb-2 text-sm font-semibold">Clínica principal</p></div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Nome da clínica</Label><Input className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500" value={form.clinic_name} onChange={(e) => setForm({ ...form, clinic_name: e.target.value })} placeholder="ex: Clínica Centro" /></div>

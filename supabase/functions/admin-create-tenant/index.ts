@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
     if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden — superadmin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const body = await req.json();
-    const { name, slug, primary_color, secondary_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name, clinic_name, clinic_city } = body;
+    const { name, slug, primary_color, secondary_color, action_color, tertiary_color, logo_url, favicon_url, plan_id, admin_email, admin_password, admin_name, clinic_name, clinic_city } = body;
     const cleanEmail = String(admin_email || "").trim().toLowerCase();
     const cleanSlug = String(slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
 
@@ -162,6 +162,7 @@ Deno.serve(async (req) => {
       name, slug: cleanSlug,
       primary_color: primary_color || "#3b82f6",
       secondary_color: secondary_color || "#fb923c",
+      action_color: action_color || primary_color || "#3b82f6",
       tertiary_color: tertiary_color || "#fed7aa",
       logo_url, favicon_url, status: "active",
     }).select().single();
