@@ -63,30 +63,40 @@ export function useListaLeads() {
   return { lista, setLista, linhas };
 }
 
-const th = "bg-muted/50 px-3 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap";
-const td = "px-3 py-2.5 text-sm whitespace-nowrap border-t border-border/60";
+const th = "bg-muted/50 px-3 py-2.5 text-left text-xs font-medium text-muted-foreground";
+const td = "px-3 py-2.5 text-sm border-t border-border/60";
 
 export function DialogoLeads({ lista, linhas, onClose }: { lista: Lista | null; linhas: any[] | null; onClose: () => void }) {
   const navigate = useNavigate();
   return (
     <Dialog open={!!lista} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl rounded-2xl">
-        <DialogHeader><DialogTitle>{lista?.titulo} ({lista ? new Set(lista.leadIds).size : 0})</DialogTitle></DialogHeader>
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-3xl rounded-2xl">
+        <DialogHeader><DialogTitle className="pr-6 text-base leading-snug">{lista?.titulo} ({lista ? new Set(lista.leadIds).size : 0})</DialogTitle></DialogHeader>
         {!linhas ? (
           <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="max-h-[60vh] overflow-auto">
-            <table className="w-full">
-              <thead><tr><th className={th}>Nome</th><th className={th}>Telefone</th><th className={th}>Cidade</th><th className={th}></th></tr></thead>
+          <div className="max-h-[60vh] overflow-y-auto">
+            <table className="w-full table-fixed">
+              <thead>
+                <tr>
+                  <th className={th}>Nome</th>
+                  <th className={cn(th, "hidden w-32 sm:table-cell")}>Telefone</th>
+                  <th className={cn(th, "hidden w-36 md:table-cell")}>Cidade</th>
+                  <th className={cn(th, "w-32")}></th>
+                </tr>
+              </thead>
               <tbody>
                 {linhas.map((r: any) => (
                   <tr key={r.lead_id}>
-                    <td className={td}>{r.nome}</td>
-                    <td className={cn(td, "tabular-nums")}>{r.telefone}</td>
-                    <td className={td}>{r.cidade ?? "—"}</td>
+                    <td className={td}>
+                      <p className="truncate font-medium text-foreground" title={r.nome}>{r.nome}</p>
+                      <p className="truncate text-xs tabular-nums text-muted-foreground sm:hidden">{r.telefone}</p>
+                    </td>
+                    <td className={cn(td, "hidden tabular-nums text-muted-foreground sm:table-cell")}>{r.telefone}</td>
+                    <td className={cn(td, "hidden text-muted-foreground md:table-cell")}><span className="block truncate" title={r.cidade ?? ""}>{r.cidade ?? "—"}</span></td>
                     <td className={cn(td, "text-right")}>
-                      <Button size="sm" variant="outline" className="rounded-xl" onClick={() => navigate(`../../conversas?lead=${r.lead_id}`, { relative: "path" })}>
-                        <MessageCircle size={14} className="mr-1" /> Ver conversa
+                      <Button size="sm" variant="outline" className="h-8 rounded-xl px-2.5 text-xs" onClick={() => navigate(`../../conversas?lead=${r.lead_id}`, { relative: "path" })}>
+                        <MessageCircle size={13} className="mr-1 shrink-0" /> Ver conversa
                       </Button>
                     </td>
                   </tr>
