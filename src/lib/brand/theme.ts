@@ -139,7 +139,7 @@ export function chaveDaMarca(slug: string | null | undefined): string {
  * BrandContext e no script do index.html) e na assinatura que decide reaplicar
  * o <style id="brand-theme">, para CSS antigo em cache não prender a tela velha.
  */
-export const VERSAO_GERADOR_TEMA = "3";
+export const VERSAO_GERADOR_TEMA = "2";
 
 export const CHAVE_CSS_DA_MARCA = (slug: string | null | undefined) =>
   `crm:brand_css:v${VERSAO_GERADOR_TEMA}:${chaveDaMarca(slug)}`;
