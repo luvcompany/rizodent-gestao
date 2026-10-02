@@ -33,7 +33,8 @@
           var slug = null;
           var plataforma = /lovable\.(app|dev|host)$|lovableproject\.com$/.test(host) || host === "localhost" || host.indexOf("127.") === 0;
           var partes = host.split(".");
-          if (!plataforma && partes.length >= 3 && ["www", "admin", "app", "api"].indexOf(partes[0]) < 0) {
+          var minPartes = /\.(com|net|org|co)\.[a-z]{2}$/.test(host) ? 4 : 3;
+          if (!plataforma && partes.length >= minPartes && ["www", "admin", "app", "api"].indexOf(partes[0]) < 0) {
             slug = partes[0];
           } else {
             var seg = (location.pathname.split("/")[1] || "").toLowerCase();
