@@ -18,6 +18,7 @@ type Dados = {
   geral_agendados: Ids; geral_compareceram: Ids; geral_faltas: Ids; cancelados: Ids; geral_pendentes: Ids;
   falta_sem_remarcacao: Ids; falta_novamente: Ids; falta_periodo_anterior: Ids;
   pend_agendamento_futuro: Ids; pend_remarcacao_futura: Ids; pend_hoje: Ids; pend_sem_resultado: Ids;
+  outros_agendamentos: Ids;
 };
 
 type Detalhe = {
