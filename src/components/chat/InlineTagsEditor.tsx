@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import AdThumb from "@/components/chat/AdThumb";
 import { ORIGENS_LEAD, ORIGENS_LEAD_INSTAGRAM, origemLeadCanonica } from "@/lib/origensLead";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -280,7 +281,7 @@ export default function InlineTagsEditor({
                   title="Ver lista de anúncios"
                 >
                   {imagemOrigem ? (
-                    <img src={imagemOrigem} alt="Anúncio" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                    <AdThumb src={imagemOrigem} alt="Anúncio" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                   ) : (
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-card">
                       <Video size={18} strokeWidth={1.75} className="text-tertiary" />
@@ -337,7 +338,7 @@ export default function InlineTagsEditor({
                         className={`flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-surface-sunken ${atual ? "bg-primary-soft" : ""}`}
                       >
                         {ad.imagem_origem ? (
-                          <img src={ad.imagem_origem} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                          <AdThumb src={ad.imagem_origem} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                         ) : (
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-sunken">
                             <Video size={14} strokeWidth={1.75} className="text-tertiary" />

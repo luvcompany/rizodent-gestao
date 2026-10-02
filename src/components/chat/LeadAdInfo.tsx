@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import AdThumb from "@/components/chat/AdThumb";
 
 type Props = {
   imagemOrigem?: string | null;
@@ -46,7 +47,7 @@ export default function LeadAdInfo({ imagemOrigem, tituloAnuncio, descricaoAnunc
       <div className="space-y-2">
         {imagemOrigem && (
           <div className="rounded-lg overflow-hidden border border-border">
-            <img
+            <AdThumb
               src={imagemOrigem}
               alt="Anúncio"
               className="w-full h-32 object-cover"

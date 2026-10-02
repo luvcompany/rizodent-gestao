@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import AdThumb from "@/components/chat/AdThumb";
 import { ORIGENS_LEAD, ORIGENS_LEAD_INSTAGRAM, origemLeadCanonica, rotuloOrigemLead } from "@/lib/origensLead";
 import { supabase } from "@/integrations/supabase/client";
 import { getLeadChannel } from "@/lib/leadChannel";
@@ -692,7 +693,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                 <div className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-3">
                   <div className="flex items-start gap-3">
                     {imagemOrigem ? (
-                      <img src={imagemOrigem} alt="Anúncio" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                      <AdThumb src={imagemOrigem} alt="Anúncio" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
                     ) : (
                       <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-card">
                         <Video size={20} strokeWidth={1.75} className="text-tertiary" />
@@ -743,7 +744,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
                           className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-surface-sunken"
                         >
                           {ad.imagem_origem ? (
-                            <img src={ad.imagem_origem} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                            <AdThumb src={ad.imagem_origem} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
                           ) : (
                             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-sunken">
                               <Video size={16} strokeWidth={1.75} className="text-tertiary" />
