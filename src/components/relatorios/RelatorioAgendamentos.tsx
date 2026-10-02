@@ -1,19 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { format } from "date-fns";
 import {
-  startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, subWeeks,
-  startOfMonth, endOfMonth, subMonths, format,
-} from "date-fns";
-import { ptBR } from "date-fns/locale";
-import type { DateRange } from "react-day-picker";
-import {
-  CalendarIcon, UserPlus, CalendarCheck, CheckCircle2, XCircle, Repeat, Ban, Loader2,
-  ChevronDown, Check, ArrowLeft,
+  CalendarCheck, CheckCircle2, XCircle, Repeat, Ban, Loader2, UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,17 +26,6 @@ const TOM: Record<Tom, string> = {
   slate: "bg-slate-soft text-slate-soft-foreground",
   info: "bg-info-soft text-info-soft-foreground",
 };
-
-const hoje = () => new Date();
-const semana = { weekStartsOn: 1 as const };
-const PRESETS: { id: string; label: string; range: () => [Date, Date] }[] = [
-  { id: "hoje", label: "Hoje", range: () => [startOfDay(hoje()), endOfDay(hoje())] },
-  { id: "ontem", label: "Ontem", range: () => [startOfDay(subDays(hoje(), 1)), endOfDay(subDays(hoje(), 1))] },
-  { id: "semana", label: "Esta semana", range: () => [startOfWeek(hoje(), semana), endOfWeek(hoje(), semana)] },
-  { id: "semana-passada", label: "Semana passada", range: () => [startOfWeek(subWeeks(hoje(), 1), semana), endOfWeek(subWeeks(hoje(), 1), semana)] },
-  { id: "mes", label: "Este mês", range: () => [startOfMonth(hoje()), endOfMonth(hoje())] },
-  { id: "mes-passado", label: "Mês passado", range: () => [startOfMonth(subMonths(hoje(), 1)), endOfMonth(subMonths(hoje(), 1))] },
-];
 
 function Kpi({ label, value, icon: Icon, tom, onClick, hint }: {
   label: string; value: number | null; icon: LucideIcon; tom: Tom; onClick?: () => void; hint?: string;
@@ -71,13 +51,8 @@ function Kpi({ label, value, icon: Icon, tom, onClick, hint }: {
   );
 }
 
-export default function RelatorioAgendamentos() {
+export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }) {
   const navigate = useNavigate();
-  const [preset, setPreset] = useState<string>("mes");
-  const [range, setRange] = useState<[Date, Date]>(PRESETS[4].range());
-  const [custom, setCustom] = useState<DateRange | undefined>();
-  const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState<"lista" | "calendario">("lista");
   const [dados, setDados] = useState<Dados | null>(null);
   const [loading, setLoading] = useState(false);
   const [lista, setLista] = useState<{ titulo: string; ids: string[] } | null>(null);
@@ -108,116 +83,13 @@ export default function RelatorioAgendamentos() {
   const n = (k: keyof Dados) => (dados ? (Array.isArray(dados[k]) ? (dados[k] as string[]).length : (dados[k] as number)) : null);
   const abrir = (titulo: string, k: keyof Dados) => () => dados && setLista({ titulo, ids: dados[k] as string[] });
 
-  const rotulo = useMemo(() => {
-    const [a, b] = range;
-    if (format(a, "yyyy-MM-dd") === format(b, "yyyy-MM-dd")) return format(a, "dd/MM/yy");
-    if (format(a, "MMyyyy") === format(b, "MMyyyy")) return `${format(a, "dd")}–${format(b, "dd/MM/yy")}`;
-    if (format(a, "yyyy") === format(b, "yyyy")) return `${format(a, "dd/MM")} – ${format(b, "dd/MM/yy")}`;
-    return `${format(a, "dd/MM/yy")} – ${format(b, "dd/MM/yy")}`;
-  }, [range]);
-
-  const presetLabel = preset === "custom"
-    ? "Personalizado"
-    : PRESETS.find((p) => p.id === preset)?.label ?? "Período";
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Popover
-          open={open}
-          onOpenChange={(o) => {
-            setOpen(o);
-            if (o) setPanel(preset === "custom" ? "calendario" : "lista");
-          }}
-        >
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="h-10 w-auto min-w-[250px] justify-between gap-3 rounded-xl px-3 font-normal">
-              <span className="flex min-w-0 items-center gap-2">
-                <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{presetLabel}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                <span className="text-xs tabular-nums text-muted-foreground">{rotulo}</span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[280px] rounded-2xl p-0" align="end">
-            {panel === "lista" ? (
-              <div className="p-2">
-                <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Período
-                </p>
-                <div className="space-y-0.5">
-                  {PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => { setPreset(p.id); setRange(p.range()); setOpen(false); }}
-                      className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm transition",
-                        preset === p.id
-                          ? "bg-primary-soft font-semibold text-primary-soft-fg"
-                          : "text-foreground hover:bg-surface-sunken",
-                      )}
-                    >
-                      {p.label}
-                      {preset === p.id && <Check className="h-4 w-4 shrink-0" />}
-                    </button>
-                  ))}
-                </div>
-                <div className="my-1 border-t border-border/60" />
-                <button
-                  type="button"
-                  onClick={() => setPanel("calendario")}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
-                    preset === "custom"
-                      ? "bg-primary-soft font-semibold text-primary-soft-fg"
-                      : "text-foreground hover:bg-surface-sunken",
-                  )}
-                >
-                  <CalendarIcon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1 text-left">Personalizado</span>
-                  {preset === "custom" && <Check className="h-4 w-4 shrink-0" />}
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-3">
-                  <button
-                    type="button"
-                    onClick={() => setPanel("lista")}
-                    className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" /> Períodos
-                  </button>
-                  <span className="text-xs tabular-nums text-muted-foreground">{rotulo}</span>
-                </div>
-                <Calendar
-                  mode="range"
-                  locale={ptBR}
-                  selected={custom}
-                  onSelect={(r) => {
-                    setCustom(r);
-                    if (r?.from && r?.to) {
-                      setPreset("custom");
-                      setRange([startOfDay(r.from), endOfDay(r.to)]);
-                      setOpen(false);
-                    }
-                  }}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
-
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">Agendamentos do período</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-foreground">Agendamentos do período</h2>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
           <Kpi label="Leads que chegaram" value={n("chegaram")} icon={UserPlus} tom="info" />
           <Kpi label="Agendados" value={n("agendados")} icon={CalendarCheck} tom="primary" onClick={abrir("Agendados", "agendados")} hint="Primeira consulta no período" />
