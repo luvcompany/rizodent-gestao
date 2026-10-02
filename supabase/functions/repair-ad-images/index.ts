@@ -84,11 +84,11 @@ Deno.serve(async (req) => {
       const ofTenant = whatsappIntegrations.filter((i: any) => i.tenant_id === tenantId);
       const out: string[] = [];
       for (const integ of ofTenant) {
-        const t = (integ.config as any)?.access_token;
+        const t = ((integ.config as any)?.access_token || (integ.config as any)?.token);
         if (t && (integ.config as any)?.pipeline_id === pipelineId && !out.includes(t)) out.push(t);
       }
       for (const integ of ofTenant) {
-        const t = (integ.config as any)?.access_token;
+        const t = ((integ.config as any)?.access_token || (integ.config as any)?.token);
         if (t && !out.includes(t)) out.push(t);
       }
       return out;

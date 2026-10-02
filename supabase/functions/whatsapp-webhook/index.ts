@@ -1127,7 +1127,7 @@ Deno.serve(async (req) => {
               // NUNCA usa token global/env nem de outro tenant — isso vazaria
               // credencial de um cliente para o tráfego de outro.
               const tokens: string[] = [];
-              const primary = (matchedIntegration?.config as any)?.access_token;
+              const primary = ((matchedIntegration?.config as any)?.access_token || (matchedIntegration?.config as any)?.token);
               if (primary) tokens.push(primary);
               try {
                 if (matchedIntegration?.tenant_id) {
@@ -1139,7 +1139,7 @@ Deno.serve(async (req) => {
                     .eq("status", "connected");
                   if (integs) {
                     for (const it of integs) {
-                      const t = (it.config as any)?.access_token;
+                      const t = ((it.config as any)?.access_token || (it.config as any)?.token);
                       if (t && !tokens.includes(t)) tokens.push(t);
                     }
                   }
