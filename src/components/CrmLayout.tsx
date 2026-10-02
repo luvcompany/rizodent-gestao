@@ -449,7 +449,7 @@ const CrmLayout = () => {
             : ""
         } ${
           itemAtivo(item, isActive)
-            ? "crm-nav-ativo bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-primary/25 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-primary/70"
+            ? "crm-nav-ativo bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-primary/25"
             : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`
       }
