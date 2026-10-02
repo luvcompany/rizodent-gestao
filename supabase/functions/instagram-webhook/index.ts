@@ -328,6 +328,7 @@ async function persistMessage(opts: {
     adHeadline: string | null;
     adBody: string | null;
     adSourceUrl: string | null;
+    adImageUrl: string | null;
   } | null;
 }) {
   const profile = await fetchIgProfile(opts.senderId, opts.account.access_token);
@@ -448,6 +449,9 @@ async function persistMessage(opts: {
       }
     }
     const ref = opts.referral ?? null;
+    const persistedAdImage = ref?.adImageUrl
+      ? await downloadAndStoreIgMedia(ref.adImageUrl) || ref.adImageUrl
+      : null;
     await supabase.from("messages").insert({
       lead_id: leadId,
       tenant_id: opts.account.tenant_id,
@@ -464,7 +468,13 @@ async function persistMessage(opts: {
       instagram_post_thumbnail: isComment ? postThumbnail : null,
       instagram_post_permalink: isComment ? postPermalink : null,
       status: "received",
-      ...(ref?.adSourceId ? { ad_source_id: ref.adSourceId } : {}),
+      ...(ref ? {
+        ad_source_id: ref.adSourceId,
+        ad_headline: ref.adHeadline,
+        ad_body: ref.adBody,
+        ad_source_url: ref.adSourceUrl,
+        ad_image_url: persistedAdImage,
+      } : {}),
     });
     await supabase
       .from("crm_leads")
@@ -480,7 +490,7 @@ async function persistMessage(opts: {
       try {
         const { data: leadRow } = await supabase
           .from("crm_leads")
-          .select("ad_id, source, titulo_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
+          .select("ad_id, source, titulo_anuncio, descricao_anuncio, link_anuncio, imagem_origem, ad_account_id, ad_account_name")
           .eq("id", leadId)
           .maybeSingle();
         const updates: Record<string, unknown> = {};
@@ -488,6 +498,7 @@ async function persistMessage(opts: {
         if (ref.adHeadline && !leadRow?.titulo_anuncio) updates.titulo_anuncio = ref.adHeadline;
         if (ref.adBody && !leadRow?.descricao_anuncio) updates.descricao_anuncio = ref.adBody;
         if (ref.adSourceUrl && !leadRow?.link_anuncio) updates.link_anuncio = ref.adSourceUrl;
+        if (persistedAdImage && !leadRow?.imagem_origem) updates.imagem_origem = persistedAdImage;
         if (!leadRow?.source || String(leadRow.source).toLowerCase().startsWith("instagram")) {
           updates.source = "instagram_ad";
         }
@@ -527,6 +538,7 @@ async function persistMessage(opts: {
           updated_at: new Date().toISOString(),
         };
         if (ref.adHeadline) cachePayload.ad_headline = ref.adHeadline;
+        if (persistedAdImage) cachePayload.thumbnail_url = persistedAdImage;
         const corpoOk = typeof ref.adBody === "string"
           && ref.adBody.trim().length > 40
           && !ref.adBody.includes("{{");
@@ -655,6 +667,7 @@ Deno.serve(async (req: Request) => {
                 adHeadline: rref?.headline ?? null,
                 adBody: rref?.body ?? null,
                 adSourceUrl: rref?.source_url ?? null,
+                adImageUrl: rref?.image_url ?? rref?.thumbnail_url ?? null,
               }
             : null;
           await persistMessage({
@@ -687,6 +700,7 @@ Deno.serve(async (req: Request) => {
                   adHeadline: rref?.headline ?? null,
                   adBody: rref?.body ?? null,
                   adSourceUrl: rref?.source_url ?? null,
+                  adImageUrl: rref?.image_url ?? rref?.thumbnail_url ?? null,
                 }
               : null;
             await persistMessage({

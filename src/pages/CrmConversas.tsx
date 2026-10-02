@@ -2033,6 +2033,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         onMediaClick={(url, type) => chat.setMediaPreview({ url, type })}
                         onScrollToMessage={chat.scrollToMessage}
                         igAccountsMap={Object.fromEntries(instagramAccounts.map((a) => [a.id, a.username]))}
+                        leadAd={{
+                          source: selectedLead.source,
+                          headline: selectedLead.titulo_anuncio,
+                          body: selectedLead.descricao_anuncio,
+                          imageUrl: selectedLead.imagem_origem,
+                          sourceUrl: selectedLead.link_anuncio,
+                          sourceId: selectedLead.ad_id,
+                          accountName: (selectedLead as any).ad_account_name,
+                        }}
                       />
                       {convNotes.notesByMessageId(msg.id).map((note) => (
                         <ConversationInlineNote

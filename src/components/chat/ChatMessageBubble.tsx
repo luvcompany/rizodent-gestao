@@ -42,6 +42,15 @@ type Props = {
   onMediaClick: (url: string, type: "image" | "video") => void;
   onScrollToMessage: (msgId: string) => void;
   igAccountsMap?: Record<string, string>;
+  leadAd?: {
+    source?: string | null;
+    headline?: string | null;
+    body?: string | null;
+    imageUrl?: string | null;
+    sourceUrl?: string | null;
+    sourceId?: string | null;
+    accountName?: string | null;
+  };
 };
 
 function getStatusIcon(status: string) {
@@ -84,7 +93,7 @@ function getDefaultErrorMessage(msg: Message) {
 }
 
 const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
-  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage, igAccountsMap }, ref) => {
+  ({ msg, leadName, allMessages, onReply, onForward, onReact, onMediaClick, onScrollToMessage, igAccountsMap, leadAd }, ref) => {
     const quotedMsg = msg.reply_to_message_id
       ? allMessages.find((m) => m.id === msg.reply_to_message_id)
       : null;
@@ -194,36 +203,41 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                 )}
               </div>
             )}
-            {msg.direction === "inbound" && (msg.ad_source_url || msg.ad_headline || msg.ad_image_url) && (() => {
-              const isInstagram = [msg.ad_source_url, msg.ad_source_id, msg.ad_image_url].some(v => v && v.toLowerCase().includes("instagram"));
+            {msg.direction === "inbound" && (msg.ad_source_id || msg.ad_source_url || msg.ad_headline || msg.ad_image_url) && (() => {
+              const adHeadline = msg.ad_headline || leadAd?.headline;
+              const adBody = msg.ad_body || leadAd?.body;
+              const adImageUrl = msg.ad_image_url || leadAd?.imageUrl;
+              const adSourceUrl = msg.ad_source_url || leadAd?.sourceUrl;
+              const adAccountName = msg.ad_account_name || leadAd?.accountName;
+              const isInstagram = leadAd?.source === "instagram_ad" || [adSourceUrl, msg.ad_source_id, adImageUrl].some(v => v && v.toLowerCase().includes("instagram"));
               const adLabel = isInstagram ? "Anúncio do Instagram" : "Anúncio do Facebook";
               const fbIcon = <svg viewBox="0 0 24 24" className="w-3 h-3 fill-[#1877F2]"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>;
               const igIcon = <svg viewBox="0 0 24 24" className="w-3 h-3 fill-[#E4405F]"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>;
               const icon = isInstagram ? igIcon : fbIcon;
               return (
                 <div className="mb-2 rounded-xl overflow-hidden border border-border/60 bg-card shadow-xs">
-                  {msg.ad_image_url && (
+                  {adImageUrl && (
                     <div className="relative">
-                      <img src={msg.ad_image_url} alt="Anúncio" className="w-full h-48 object-cover" />
+                      <img src={adImageUrl} alt="Anúncio" className="w-full h-48 object-cover" loading="lazy" onError={(event) => { event.currentTarget.parentElement?.classList.add("hidden"); }} />
                       <span className="absolute top-2 left-2 flex items-center gap-1 bg-card/95 text-[11px] font-medium text-foreground px-2.5 py-1 rounded-full shadow-xs">
                         {icon}
                         {adLabel}
                       </span>
                     </div>
                   )}
-                  {!msg.ad_image_url && (
+                  {!adImageUrl && (
                     <div className="flex items-center gap-1.5 px-3 pt-2.5">
                       {icon}
                       <span className="text-[11px] font-medium text-muted-foreground">{adLabel}</span>
                     </div>
                   )}
                   <div className="px-3 py-2.5 space-y-1">
-                    {msg.ad_headline && <p className="text-[13px] font-semibold text-foreground leading-tight">{msg.ad_headline}</p>}
-                    {msg.ad_account_name && <p className="text-[11px] text-tertiary font-medium">Conta: {msg.ad_account_name}</p>}
-                    {msg.ad_body && <p className="text-xs text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
-                    {msg.ad_source_url && (
-                      <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-info hover:underline truncate block">
-                        {msg.ad_source_url.replace(/^https?:\/\//, '').slice(0, 50)}
+                    {adHeadline && <p className="text-[13px] font-semibold text-foreground leading-tight">{adHeadline}</p>}
+                    {adAccountName && <p className="text-[11px] text-tertiary font-medium">Conta: {adAccountName}</p>}
+                    {adBody && <p className="text-xs text-muted-foreground line-clamp-2">{adBody}</p>}
+                    {adSourceUrl && (
+                      <a href={adSourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-info hover:underline truncate block">
+                        {adSourceUrl.replace(/^https?:\/\//, '').slice(0, 50)}
                       </a>
                     )}
                   </div>
