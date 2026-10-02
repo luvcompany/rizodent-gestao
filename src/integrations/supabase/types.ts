@@ -6654,6 +6654,13 @@ export type Database = {
           user_id: string
         }[]
       }
+      relatorio_sdr_blocos: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          blocos: Json
+          user_id: string
+        }[]
+      }
       relatorio_sdr_calc: {
         Args: {
           p_ate: string
