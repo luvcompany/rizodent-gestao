@@ -29,16 +29,28 @@ const TenantLogin = () => {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("tenant-login", {
-        body: { slug: tenant.slug, email, password },
+      // Credenciais inválidas são uma resposta esperada (401), não uma falha da
+      // aplicação. O cliente de functions transforma todo status não-2xx em
+      // exceção global, o que aciona a tela de erro do preview mesmo quando o
+      // formulário trata a mensagem. Ler a resposta HTTP diretamente mantém o
+      // formulário aberto e ainda preserva o status correto do servidor.
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tenant-login`, {
+        method: "POST",
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ slug: tenant.slug, email, password }),
       });
-      if (error || (data as any)?.error) {
-        const msg = (data as any)?.error || error?.message || "Falha no login.";
+      const data = await response.json().catch(() => null) as { error?: string; session?: { access_token?: string; refresh_token?: string } } | null;
+      if (!response.ok || data?.error) {
+        const msg = data?.error || "Falha no login.";
         toast.error(msg);
         setLoading(false);
         return;
       }
-      const sess = (data as any)?.session;
+      const sess = data?.session;
       if (!sess?.access_token || !sess?.refresh_token) {
         toast.error("Resposta inválida do servidor.");
         setLoading(false);
