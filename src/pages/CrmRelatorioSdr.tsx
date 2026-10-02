@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/crm-ui";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SdrDiario, buscarSdrDiario, type LinhaDiaria } from "@/components/relatorios/SdrDiario";
 import { cn } from "@/lib/utils";
+import { BlocosSdr, buscarBlocosSdr, type Blocos } from "@/components/relatorios/BlocosSdr";
 
 /**
  * Relatório por SDR — visão do GESTOR da equipe (Fase 5 do rodízio).
@@ -176,6 +177,7 @@ export default function CrmRelatorioSdr() {
   const [estado, setEstado] = useState<EstadoRpc<LinhaRelatorioSdr[]>>({ status: "loading" });
   const [recarga, setRecarga] = useState(0);
   const [diario, setDiario] = useState<EstadoRpc<LinhaDiaria[]>>({ status: "loading" });
+  const [blocos, setBlocos] = useState<Record<string, Blocos> | null>(null);
 
   const intervalo = useMemo(() => getDateRangeFromFilter(periodo), [periodo]);
   const de = intervalo ? asDateParam(intervalo.start) : null;
@@ -202,6 +204,12 @@ export default function CrmRelatorioSdr() {
     buscarSdrDiario(de, ate)
       .then((data) => setDiario({ status: "ok", data }))
       .catch((e) => setDiario({ status: "error", message: e instanceof Error ? e.message : "Não foi possível carregar." }));
+  }, [resolved, isGestor, de, ate, recarga]);
+
+  useEffect(() => {
+    if (!resolved || !isGestor || !de || !ate) return;
+    setBlocos(null);
+    buscarBlocosSdr(de, ate).then(setBlocos).catch(() => setBlocos({}));
   }, [resolved, isGestor, de, ate, recarga]);
 
   // --------------------------------------------------------------- gate
@@ -320,7 +328,7 @@ export default function CrmRelatorioSdr() {
               <h2 className="text-lg font-semibold text-foreground">Por SDR</h2>
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {sdrs.map((l) => (
-                  <CartaoSdr key={l.user_id ?? l.nome} linha={l} />
+                  <CartaoSdr key={l.user_id ?? l.nome} linha={l} blocos={blocos ? (l.user_id ? blocos[l.user_id] ?? {} : {}) : undefined} />
                 ))}
               </div>
             </section>
@@ -374,8 +382,7 @@ export default function CrmRelatorioSdr() {
 
 const GRUPOS: { titulo: string; chaves: string[] }[] = [
   { titulo: "Atendimento", chaves: ["recebidos", "respondidos", "mediana", "media"] },
-  { titulo: "Agendamentos", chaves: ["agendamentos", "compareceram", "faltas", "reagendamentos", "faltas_reag", "leads_2_faltas"] },
-  { titulo: "Resultado", chaves: ["contratados", "fechadas", "pesquisa"] },
+  { titulo: "Resultado", chaves: ["fechadas", "pesquisa"] },
   { titulo: "Jornada", chaves: ["expediente", "pausa"] },
 ];
 
@@ -400,8 +407,8 @@ function Metrica({ coluna, linha }: { coluna: Coluna; linha: LinhaRelatorioSdr }
   );
 }
 
-function CartaoSdr({ linha, titulo, subtitulo, destaque = false }: {
-  linha: LinhaRelatorioSdr; titulo?: string; subtitulo?: string; destaque?: boolean;
+function CartaoSdr({ linha, titulo, subtitulo, destaque = false, blocos }: {
+  linha: LinhaRelatorioSdr; titulo?: string; subtitulo?: string; destaque?: boolean; blocos?: Blocos;
 }) {
   const nome = titulo ?? linha.nome;
   return (
@@ -425,6 +432,9 @@ function CartaoSdr({ linha, titulo, subtitulo, destaque = false }: {
           )}
         </span>
       </header>
+      <div className="mt-5">
+        <BlocosSdr nome={nome} blocos={blocos} />
+      </div>
       <div className="mt-5 grid gap-x-10 gap-y-5 lg:grid-cols-2">
         {GRUPOS.map((g) => (
           <div key={g.titulo}>

@@ -47,9 +47,9 @@ const iniciais = (nome: string) =>
 
 // ---------- Lista de leads (dialogo compartilhado) ----------
 
-type Lista = { titulo: string; leadIds: string[] };
+export type Lista = { titulo: string; leadIds: string[] };
 
-function useListaLeads() {
+export function useListaLeads() {
   const [lista, setLista] = useState<Lista | null>(null);
   const [linhas, setLinhas] = useState<any[] | null>(null);
   useEffect(() => {
@@ -65,7 +65,7 @@ function useListaLeads() {
 const th = "bg-muted/50 px-3 py-2.5 text-left text-xs font-medium text-muted-foreground whitespace-nowrap";
 const td = "px-3 py-2.5 text-sm whitespace-nowrap border-t border-border/60";
 
-function DialogoLeads({ lista, linhas, onClose }: { lista: Lista | null; linhas: any[] | null; onClose: () => void }) {
+export function DialogoLeads({ lista, linhas, onClose }: { lista: Lista | null; linhas: any[] | null; onClose: () => void }) {
   const navigate = useNavigate();
   return (
     <Dialog open={!!lista} onOpenChange={(o) => !o && onClose()}>
