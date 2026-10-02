@@ -25,7 +25,7 @@ const TONS = {
 
 type Item = { rotulo: string; chave: string; tom: keyof typeof TONS };
 
-const BLOCOS: { titulo: string; ajuda: string; itens: Item[] }[] = [
+const BLOCOS: { titulo: string; ajuda: string; itens: Item[]; base?: string }[] = [
   { titulo: "Agendados", ajuda: "Primeira consulta do lead, marcada para o período", itens: [
     { rotulo: "Total", chave: "agd", tom: "total" },
     { rotulo: "Compareceram", chave: "agd_compareceu", tom: "compareceu" },
@@ -40,7 +40,7 @@ const BLOCOS: { titulo: string; ajuda: string; itens: Item[] }[] = [
     { rotulo: "Cancelamentos", chave: "rem_cancelou", tom: "cancelou" },
     { rotulo: "Pendentes", chave: "rem_pendente", tom: "pendente" },
   ] },
-  { titulo: "Geral", ajuda: "Desfecho final de cada lead no período", itens: [
+  { titulo: "Geral", ajuda: "Desfecho final de cada lead no período", base: "ger", itens: [
     { rotulo: "Total", chave: "ger", tom: "total" },
     { rotulo: "Compareceram", chave: "ger_compareceu", tom: "compareceu" },
     { rotulo: "Faltas", chave: "ger_falta", tom: "falta" },
@@ -49,6 +49,7 @@ const BLOCOS: { titulo: string; ajuda: string; itens: Item[] }[] = [
     { rotulo: "Contratados", chave: "contratados", tom: "compareceu" },
   ] },
 ];
+
 
 export function BlocosSdr({ nome, blocos }: { nome: string; blocos: Blocos | undefined }) {
   const { lista, setLista, linhas } = useListaLeads();
