@@ -6686,6 +6686,18 @@ export type Database = {
           user_id: string
         }[]
       }
+      relatorio_sdr_diario: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          appointment_id: string
+          dia_consulta: string
+          dia_marcou: string
+          lead_id: string
+          nome: string
+          situacao: string
+          user_id: string
+        }[]
+      }
       relatorio_sdr_ligacoes: {
         Args: { p_ate: string; p_de: string; p_user_id?: string }
         Returns: {
