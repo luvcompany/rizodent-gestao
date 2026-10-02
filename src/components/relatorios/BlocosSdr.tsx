@@ -65,7 +65,7 @@ export function BlocosSdr({ nome, blocos }: { nome: string; blocos: Blocos | und
             {b.itens.map((it) => {
               const ids = blocos?.[it.chave] ?? [];
               const base = b.base ? (blocos?.[b.base] ?? []).length : 0;
-              const pct = b.base && it.chave !== b.base ? fmtPct(ids.length, base) : null;
+              const pct = b.base && it.chave !== b.base && ids.length > 0 ? fmtPct(ids.length, base) : null;
               return (
                 <button key={it.chave} type="button" disabled={!ids.length}
                   onClick={() => setLista({ titulo: `${nome} · ${b.titulo} · ${it.rotulo} (${ids.length})`, leadIds: ids })}
