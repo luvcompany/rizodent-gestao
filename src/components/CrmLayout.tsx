@@ -197,7 +197,6 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
           // Mesmo rótulo e ícone que os outros papéis usam para Automações (Bot).
           // Dentro de um grupo o renderNavGroup só pinta o rótulo, mas o ícone é
           // obrigatório no tipo NavItem — fica igual ao dos demais menus.
-          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/bots", icon: Bot, label: "Bots" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
@@ -219,7 +218,6 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
         label: "Ferramentas",
         icon: Bot,
         children: [
-          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
@@ -244,7 +242,6 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
         label: "Ferramentas",
         icon: Bot,
         children: [
-          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
