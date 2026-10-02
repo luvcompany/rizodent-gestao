@@ -155,7 +155,6 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true, anuncios: leads.length, repaired, leadsRepaired, falhas: falhas.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-    );
   } catch (err: any) {
     console.error("[REPAIR] Error:", err.message);
     return new Response(
