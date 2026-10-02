@@ -341,7 +341,7 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Produção por SDR</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique num dia para ver os leads.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique no Total ou num dia para ver os leads.</p>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {sdrs.map((s) => (
