@@ -4981,6 +4981,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          action_color: string | null
           branding_version: number
           business_hours: Json | null
           created_at: string
@@ -5002,6 +5003,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          action_color?: string | null
           branding_version?: number
           business_hours?: Json | null
           created_at?: string
@@ -5023,6 +5025,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          action_color?: string | null
           branding_version?: number
           business_hours?: Json | null
           created_at?: string
