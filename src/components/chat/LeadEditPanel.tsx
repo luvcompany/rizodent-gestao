@@ -585,7 +585,7 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
           <div className="min-w-0 space-y-5">
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Nome *</label>
-              <Input className="h-10 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input className="h-10 rounded-xl uppercase" value={name.toLocaleUpperCase("pt-BR")} onChange={(e) => setName(e.target.value.toLocaleUpperCase("pt-BR"))} />
             </div>
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Telefone</label>
