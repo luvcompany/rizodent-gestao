@@ -2024,7 +2024,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       {accSep}
                       <ChatMessageBubble
                         ref={(el) => { chat.messageRefs.current[msg.id] = el; }}
-                        msg={msg}
+                        msg={(() => {
+                          // Cartão do anúncio só na 1ª mensagem recebida com anúncio.
+                          const m: any = msg;
+                          const temAd = (x: any) => x?.direction === "inbound" && (x.ad_source_id || x.ad_source_url || x.ad_headline || x.ad_image_url);
+                          if (!temAd(m)) return msg;
+                          const primeira = chat.messages.find(temAd);
+                          return primeira?.id === msg.id ? msg : ({ ...m, ad_source_id: null, ad_source_url: null, ad_headline: null, ad_image_url: null, ad_body: null } as typeof msg);
+                        })()}
                         leadName={selectedLead.name}
                         allMessages={chat.messages}
                         onReply={chat.setReplyTo}
