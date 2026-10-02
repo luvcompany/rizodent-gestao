@@ -59,7 +59,7 @@ export const AdminLayout = () => {
   if (isSuper === null) return <div className="flex h-screen items-center justify-center text-muted-foreground">Verificando acesso...</div>;
 
   return (
-    <div className="dark flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="admin-shell dark flex min-h-screen bg-slate-950 text-slate-100">
       <aside className="w-60 border-r border-slate-800 bg-slate-900/60 p-4">
         <div className="mb-6 flex items-center gap-2 px-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-orange-500 to-amber-400 font-black text-slate-950">C</div>
