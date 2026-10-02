@@ -444,6 +444,12 @@ async function tasks(tenantId: string, method: string, p: URLSearchParams, body:
     return json({ data });
   }
   if (method === "POST") {
+    // Leads do site já recebem template automático; a tarefa "se não responder, chamar"
+    // só lotava o sistema. Ignora sem quebrar a integração do site.
+    const notas = String(body?.notes ?? "");
+    if (notas.startsWith("Lead novo criado pelo site")) {
+      return json({ skipped: true, reason: "tarefa automática do site desativada" }, 200);
+    }
     const { data, error } = await admin.from("crm_tasks")
       .insert({ ...body, tenant_id: tenantId }).select().single();
     if (error) return json({ error: error.message }, 400);
