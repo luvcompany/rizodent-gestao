@@ -31,6 +31,18 @@ const MIN_PAYMENT_DATE = "2026-07-23"; // sync não processa pagamentos anterior
 // A elegibilidade agora depende só de: origem KOMMO no Dontus OU match com um
 // lead real do CRM (telefone/nome). Para religar, basta voltar para `true`.
 const KOMMO_BASE_ENABLED = false;
+// Origens do Dontus que contam como marketing mesmo sem lead no CRM (dono,
+// 02/10/2026: além do KOMMO, Instagram, Facebook e Google). Fonte do lead
+// criado em "Contratados" para cada uma, para a origem sair certa nos relatórios.
+const ORIGENS_MARKETING_SEM_LEAD: Record<string, string> = {
+  KOMMO: "kommo",
+  INSTAGRAM: "instagram",
+  FACEBOOK: "facebook_ad",
+  GOOGLE: "google_ads",
+};
+function origemMarketingSemLead(origem: string | null | undefined): boolean {
+  return Object.prototype.hasOwnProperty.call(ORIGENS_MARKETING_SEM_LEAD, String(origem || ""));
+}
 const REDIRECT_URI = "http://localhost:8976/callback";
 
 // MULTI-CLIENTE: o Dontus deixou de ser exclusivo da Rizodent. O tenant vem no
@@ -759,8 +771,10 @@ async function findMainPipelineContratado(admin: any): Promise<{ pipeline_id: st
 }
 
 async function ensurePacienteFromItem(admin: any, item: PlanItem, leadId: string | null): Promise<string> {
-  // 1) via vínculo de lead
-  if (leadId) {
+  // 1) via vínculo de lead — NUNCA para família (mesma linha, outro nome):
+  //    o pagamento ia parar na ficha do dono do lead (Maria Domingas na do
+  //    Adinaldo, Tamiles e Davi na da Raissa). O familiar tem ficha própria.
+  if (leadId && !item.is_family_link) {
     const { data: vinc } = await admin.from("crm_lead_pacientes")
       .select("paciente_id").eq("lead_id", leadId).limit(1);
     if (vinc?.length) return vinc[0].paciente_id;
@@ -1275,7 +1289,7 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
               tenant_id: RIZODENT_TENANT_ID,
               name: item.paciente_nome,
               phone: item.telefone,
-              source: "kommo",
+              source: ORIGENS_MARKETING_SEM_LEAD[item.origem_paciente] || "kommo",
               pipeline_id: mainPipeline.pipeline_id,
               stage_id: mainPipeline.stage_id,
               cidade: cidadeDaClinica(item.clinica_nome),
@@ -1379,7 +1393,9 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
         const { data: dup } = await admin.from("pagamentos")
           .select("id").eq("dontus_key", item.dontus_key).maybeSingle();
         if (!dup) {
-          const naoMarketing = pacienteId ? await isWhatsappOrganicoSemAgendamento(pacienteId) : false;
+          // Dono, 02/10/2026: WhatsApp sem agendamento CONTA quando o paciente
+          // está no CRClin. nao_marketing fica só para exclusão manual.
+          const naoMarketing = false;
           const ins = await admin.from("pagamentos").insert({
             paciente_id: pacienteId,
             clinica_id: item.clinica_id,
@@ -1712,11 +1728,12 @@ async function syncClinica(
       }
     }
 
-    // KOMMO: sempre importa. Se não achou lead, gera notificação e segue sem vincular/mover.
-    if (origem === "KOMMO") {
+    // KOMMO, Instagram, Facebook e Google: sempre importa. Se não achou lead,
+    // gera notificação e segue sem vincular/mover.
+    if (origemMarketingSemLead(origem)) {
       if (!leadRow) {
         matched_by = "kommo";
-        notification = "Venda KOMMO sem lead vinculado no CRM — conferir";
+        notification = `Venda ${origem} sem lead vinculado no CRM — conferir`;
       }
       // segue o fluxo (não faz skip)
     } else {
@@ -1786,7 +1803,8 @@ async function syncClinica(
         .select("paciente_id").eq("lead_id", matched_lead_id);
       for (const v of vinc || []) {
         candidatePacIds.add(v.paciente_id);
-        if (!pacienteCrmId) pacienteCrmId = v.paciente_id;
+        // Família: a ficha do lead é de outra pessoa — não herdar.
+        if (!pacienteCrmId && !is_family_link) pacienteCrmId = v.paciente_id;
       }
     }
     if (telefone) {
@@ -1939,7 +1957,7 @@ async function syncClinica(
   const kommoNoLeadByPaciente = new Map<number, PlanItem[]>();
   for (const p of plan) {
     if (p.action === "skip") continue;
-    const isKommoish = p.origem_paciente === "KOMMO" || p.matched_by === "kommo_base";
+    const isKommoish = origemMarketingSemLead(p.origem_paciente) || p.matched_by === "kommo_base";
     if (!isKommoish) continue;
     if (p.matched_lead_id) continue;
     const arr = kommoNoLeadByPaciente.get(p.paciente_id_dontus) || [];
