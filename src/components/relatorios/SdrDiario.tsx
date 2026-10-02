@@ -324,7 +324,9 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <KpiEquipeDia label="Agendamentos feitos" value={feitos.length} icon={CalendarCheck} tom="primary" />
+            <KpiEquipeDia
+              label="Agendamentos feitos" value={feitos.length} icon={CalendarCheck} tom="primary"
+              onClick={feitos.length > 0 ? () => setLista({ titulo: "Agendamentos feitos pela equipe", leadIds: feitos.map((x) => x.lead_id) }) : undefined} />
             <KpiEquipeDia
               label="Média por dia útil"
               value={(feitos.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
@@ -343,7 +345,7 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {sdrs.map((s) => (
-              <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} />
+              <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} onAbrirLista={(t, r) => setLista({ titulo: t, leadIds: r.map((x) => x.lead_id) })} />
             ))}
           </div>
         </div>
