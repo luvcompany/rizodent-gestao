@@ -282,8 +282,7 @@ export default function CrmRelatorioSdr() {
         <Tabs defaultValue="geral" className="w-full">
           <TabsList variant="pill" className="w-full sm:w-auto rounded-xl lg:rounded-full border border-border/60 bg-card p-1.5 shadow-card">
             <TabsTrigger value="geral">Visão geral</TabsTrigger>
-            <TabsTrigger value="feitos">Agendamentos feitos</TabsTrigger>
-            <TabsTrigger value="do_dia">Consultas do dia</TabsTrigger>
+            <TabsTrigger value="feitos">Produção</TabsTrigger>
           </TabsList>
           <TabsContent value="geral" className="mt-6 space-y-6">
         {estado.status === "error" ? (
@@ -361,16 +360,8 @@ export default function CrmRelatorioSdr() {
             ) : diario.status === "error" ? (
               <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">{diario.message}</p>
             ) : (
-              <SdrDiario modo="feitos" linhas={diario.data} de={de ?? ""} ate={ate ?? ""} />
-            )}
-          </TabsContent>
-          <TabsContent value="do_dia" className="mt-6">
-            {diario.status === "loading" ? (
-              <Skeleton className="h-[320px] rounded-2xl" />
-            ) : diario.status === "error" ? (
-              <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">{diario.message}</p>
-            ) : (
-              <SdrDiario modo="do_dia" linhas={diario.data} de={de ?? ""} ate={ate ?? ""} />
+              <SdrDiario modo="feitos" linhas={diario.data} de={de ?? ""} ate={ate ?? ""}
+                extraPorSdr={Object.fromEntries(sdrs.filter((l) => l.user_id).map((l) => [l.user_id as string, <GrupoMetricas key="j" titulo="Jornada" chaves={["expediente", "pausa"]} linha={l} />]))} />
             )}
           </TabsContent>
         </Tabs>
@@ -402,7 +393,6 @@ export default function CrmRelatorioSdr() {
 const GRUPOS: { titulo: string; chaves: string[] }[] = [
   { titulo: "Atendimento", chaves: ["recebidos", "respondidos", "mediana", "media"] },
   { titulo: "Resultado", chaves: ["fechadas", "pesquisa"] },
-  { titulo: "Jornada", chaves: ["expediente", "pausa"] },
 ];
 
 // Balões por bloco: mesma linguagem visual dos blocos de agendamentos (BlocosSdr).
@@ -432,6 +422,19 @@ function Balao({ coluna, linha, tom }: { coluna: Coluna; linha: LinhaRelatorioSd
       <span className="text-[11px] font-medium opacity-80">{coluna.titulo}</span>
       <span className="text-xl font-bold leading-tight tabular-nums">{coluna.render(linha)}</span>
       {apoio ? <span className="text-[11px] leading-tight opacity-75">{apoio}</span> : null}
+    </div>
+  );
+}
+
+function GrupoMetricas({ titulo, chaves, linha }: { titulo: string; chaves: string[]; linha: LinhaRelatorioSdr }) {
+  return (
+    <div>
+      <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {chaves.map((chave) => (
+          <Balao key={chave} coluna={COLUNA_POR_CHAVE[chave]} linha={linha} tom={TOM_METRICA[chave]} />
+        ))}
+      </div>
     </div>
   );
 }
