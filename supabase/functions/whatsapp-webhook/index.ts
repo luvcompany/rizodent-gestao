@@ -1077,7 +1077,8 @@ Deno.serve(async (req) => {
             const referral = msg.referral || msg.context?.referral || null;
             let adHeadline = referral?.headline || null;
             let adBody = referral?.body || null;
-            let adImageUrl = referral?.image_url || null;
+            // Anúncio de vídeo manda a miniatura em thumbnail_url (não em image_url).
+            let adImageUrl = referral?.image_url || referral?.thumbnail_url || null;
             let adSourceUrl = referral?.source_url || null;
             let adSourceId = referral?.source_id || null;
             // ctwa_clid = identificador do clique no anúncio de clique-para-WhatsApp.
