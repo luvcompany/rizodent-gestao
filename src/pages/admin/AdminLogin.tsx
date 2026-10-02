@@ -63,7 +63,7 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-4">
+    <div className="admin-shell flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 backdrop-blur p-8 shadow-2xl">
           <div className="mb-8 flex flex-col items-center gap-3 text-center">
