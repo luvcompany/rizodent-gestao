@@ -1135,7 +1135,7 @@ Deno.serve(async (req) => {
                     .from("integrations")
                     .select("config")
                     .eq("tenant_id", matchedIntegration.tenant_id)
-                    .eq("key", "whatsapp")
+                    .like("key", "whatsapp%")
                     .eq("status", "connected");
                   if (integs) {
                     for (const it of integs) {

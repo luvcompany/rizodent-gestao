@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       .from("integrations")
       .select("key, config, status, tenant_id");
     const whatsappIntegrations = (integrations || []).filter(
-      (i: any) => i.key.startsWith("whatsapp") && i.status === "connected"
+      (i: any) => i.key.startsWith("whatsapp") && i.status !== "disabled"
     );
 
     // Tokens só do MESMO tenant (nunca cruza clientes).
