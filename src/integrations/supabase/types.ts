@@ -6143,6 +6143,7 @@ export type Database = {
           name: string
         }[]
       }
+      get_my_tenant_config: { Args: never; Returns: Json }
       get_public_branding: { Args: { _slug?: string }; Returns: Json }
       get_tenant_by_slug: {
         Args: { _slug: string }
@@ -6195,6 +6196,7 @@ export type Database = {
       is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      kanban_contadores: { Args: { p_pipeline: string }; Returns: Json }
       lead_da_caixa_do_instagram: {
         Args: { _lead_id: string }
         Returns: boolean
