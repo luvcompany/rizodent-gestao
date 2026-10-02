@@ -71,21 +71,19 @@ function iniciaisDe(nome: string): string {
 }
 
 /** Logo (ou lockup de texto) no topo da barra lateral. */
-function MarcaDaBarra({ logo, nome, nomeCurto, naPlaca }: { logo: string | null; nome: string; nomeCurto: string; naPlaca: boolean }) {
+function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
   const [falhou, setFalhou] = useState(false);
   useEffect(() => setFalhou(false), [logo]);
   if (logo && !falhou) {
     return (
-      <span className={naPlaca ? "inline-flex max-w-full rounded-lg bg-white/95 px-2 py-1" : "inline-flex max-w-full"}>
+      <span className="inline-flex max-w-full items-center justify-center">
         <img
           src={logo}
           alt={nome}
           className={
             logo === CRCLIN_DEFAULT_LOGO
               ? "h-8 w-[125px] max-w-full object-cover object-[50%_42%]"
-              : naPlaca
-                ? "h-6 max-w-full object-contain object-left"
-                : "h-8 max-w-full object-contain object-left"
+              : "h-10 max-w-full object-contain object-center"
           }
           onError={() => setFalhou(true)}
         />
@@ -115,11 +113,6 @@ const AppLayout = () => {
   // A barra lateral é escura nos dois temas: a logo é sempre a do fundo escuro
   // (logo escura → logo clara numa placa → lockup de iniciais).
   const logo = escolherLogo(true, marcaCliente, system, effective.poweredBy);
-  const logoNaPlaca =
-    !!logo &&
-    logo !== CRCLIN_DEFAULT_LOGO &&
-    logo !== (marcaCliente?.logo_dark_url?.trim() || null) &&
-    logo !== (system.logo_dark_url?.trim() || null);
   const tagline = system.tagline?.trim() || null;
   const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
 
@@ -158,12 +151,12 @@ const AppLayout = () => {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center gap-3 px-5 pb-5 pt-6">
-          <div className="flex min-w-0 flex-1 items-center justify-start">
-            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} naPlaca={logoNaPlaca} />
+        <div className="relative flex items-center px-5 pb-5 pt-6">
+          <div className="flex min-w-0 w-full items-center justify-center">
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
           </div>
           <button
-            className="ml-auto -mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
+            className="absolute right-4 top-6 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X size={20} />
