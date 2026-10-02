@@ -15,6 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { EmptyState } from "@/components/crm-ui";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SdrDiario, buscarSdrDiario, type LinhaDiaria } from "@/components/relatorios/SdrDiario";
 import { cn } from "@/lib/utils";
 
 /**
@@ -173,6 +175,7 @@ export default function CrmRelatorioSdr() {
   const [periodo, setPeriodo] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [estado, setEstado] = useState<EstadoRpc<LinhaRelatorioSdr[]>>({ status: "loading" });
   const [recarga, setRecarga] = useState(0);
+  const [diario, setDiario] = useState<EstadoRpc<LinhaDiaria[]>>({ status: "loading" });
 
   const intervalo = useMemo(() => getDateRangeFromFilter(periodo), [periodo]);
   const de = intervalo ? asDateParam(intervalo.start) : null;
@@ -192,6 +195,14 @@ export default function CrmRelatorioSdr() {
   useEffect(() => {
     if (resolved && isGestor) void carregar();
   }, [resolved, isGestor, carregar, recarga]);
+
+  useEffect(() => {
+    if (!resolved || !isGestor || !de || !ate) return;
+    setDiario({ status: "loading" });
+    buscarSdrDiario(de, ate)
+      .then((data) => setDiario({ status: "ok", data }))
+      .catch((e) => setDiario({ status: "error", message: e instanceof Error ? e.message : "Não foi possível carregar." }));
+  }, [resolved, isGestor, de, ate, recarga]);
 
   // --------------------------------------------------------------- gate
   // Só `false` vindo do banco fecha a rota. Erro de rede/5xx na RPC NÃO é
@@ -245,6 +256,13 @@ export default function CrmRelatorioSdr() {
           </div>
         </header>
 
+        <Tabs defaultValue="geral" className="w-full">
+          <TabsList variant="pill" className="w-full sm:w-auto rounded-xl lg:rounded-full border border-border/60 bg-card p-1.5 shadow-card">
+            <TabsTrigger value="geral">Visão geral</TabsTrigger>
+            <TabsTrigger value="feitos">Agendamentos feitos</TabsTrigger>
+            <TabsTrigger value="do_dia">Consultas do dia</TabsTrigger>
+          </TabsList>
+          <TabsContent value="geral" className="mt-6 space-y-6">
         {estado.status === "error" ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card px-6 py-10 shadow-card">
             <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
@@ -308,6 +326,27 @@ export default function CrmRelatorioSdr() {
             </section>
           </>
         )}
+
+          </TabsContent>
+          <TabsContent value="feitos" className="mt-6">
+            {diario.status === "loading" ? (
+              <Skeleton className="h-[320px] rounded-2xl" />
+            ) : diario.status === "error" ? (
+              <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">{diario.message}</p>
+            ) : (
+              <SdrDiario modo="feitos" linhas={diario.data} de={de ?? ""} ate={ate ?? ""} />
+            )}
+          </TabsContent>
+          <TabsContent value="do_dia" className="mt-6">
+            {diario.status === "loading" ? (
+              <Skeleton className="h-[320px] rounded-2xl" />
+            ) : diario.status === "error" ? (
+              <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">{diario.message}</p>
+            ) : (
+              <SdrDiario modo="do_dia" linhas={diario.data} de={de ?? ""} ate={ate ?? ""} />
+            )}
+          </TabsContent>
+        </Tabs>
 
         <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-card px-5 py-4 text-xs text-muted-foreground shadow-card">
           <Info size={14} className="mt-0.5 shrink-0" />

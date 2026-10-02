@@ -200,7 +200,7 @@ export function SdrDiario({ modo, linhas, de, ate }: { modo: "feitos" | "do_dia"
                       <td className={cn(td, "tabular-nums")}>{r.telefone}</td>
                       <td className={td}>{r.cidade ?? "—"}</td>
                       <td className={cn(td, "text-right")}>
-                        <Button size="sm" variant="outline" className="rounded-xl" onClick={() => navigate(`../conversas?lead=${r.lead_id}`)}>
+                        <Button size="sm" variant="outline" className="rounded-xl" onClick={() => navigate(`../../conversas?lead=${r.lead_id}`, { relative: "path" })}>
                           <MessageCircle size={14} className="mr-1" /> Ver conversa
                         </Button>
                       </td>
