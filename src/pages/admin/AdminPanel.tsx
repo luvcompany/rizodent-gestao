@@ -222,7 +222,7 @@ export const AdminClientes = () => {
             <button onClick={() => setShowTrash(false)} className={`rounded px-3 py-1.5 text-sm ${!showTrash ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}>Ativos</button>
             <button onClick={() => setShowTrash(true)} className={`flex items-center gap-1 rounded px-3 py-1.5 text-sm ${showTrash ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}><Trash2 size={13} /> Lixeira</button>
           </div>
-          {!showTrash && <Button onClick={() => setOpen(true)} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo cliente</Button>}
+          {!showTrash && <Button onClick={() => setOpen(true)} className="bg-orange-500/15 text-orange-200 ring-1 ring-orange-500/30 hover:bg-orange-500/25"><Plus size={16} /> Novo cliente</Button>}
         </div>
       </div>
 
@@ -368,7 +368,7 @@ export const AdminPlanos = () => {
           <h1 className="text-2xl font-bold">Planos</h1>
           <p className="text-sm text-slate-400">Crie e gerencie os planos da plataforma.</p>
         </div>
-        <Button onClick={openNew} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90"><Plus size={16} /> Novo plano</Button>
+        <Button onClick={openNew} className="bg-orange-500/15 text-orange-200 ring-1 ring-orange-500/30 hover:bg-orange-500/25"><Plus size={16} /> Novo plano</Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -532,7 +532,7 @@ export const AdminCobranca = () => {
           <h1 className="text-2xl font-bold">Cobrança</h1>
           <p className="text-sm text-slate-400">Faturas mensais das assinaturas ativas.</p>
         </div>
-        <Button onClick={generate} disabled={generating} className="bg-gradient-to-r from-orange-500 to-amber-400 text-slate-950 hover:opacity-90">
+        <Button onClick={generate} disabled={generating} className="bg-orange-500/15 text-orange-200 ring-1 ring-orange-500/30 hover:bg-orange-500/25">
           {generating ? <Loader2 className="mr-2 animate-spin" size={14} /> : <Receipt className="mr-2" size={14} />} Gerar faturas do mês
         </Button>
       </div>
