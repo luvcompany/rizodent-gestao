@@ -304,7 +304,9 @@ export function BrandProvider({ slug = null, children }: { slug?: string | null;
     if (ultimaAssinatura.current === assinatura) return;
     ultimaAssinatura.current = assinatura;
     aplicarTemaDaMarca(effective, slugNormalizado);
-    aplicarFavicon(effective.faviconUrl);
+    // CRClin: a aba fica sempre com o favicon do CRClin — a logo da clínica
+    // como favicon ficava pequena e ilegível (decisão anterior ao redesign).
+    aplicarFavicon(null);
     aplicarFonte(effective.fontFamily);
   }, [effective, estado.loading, estado.system, estado.tenant, slugNormalizado]);
 
