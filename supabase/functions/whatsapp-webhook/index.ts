@@ -1119,10 +1119,6 @@ Deno.serve(async (req) => {
               }
             }
 
-            if (referral && adImageUrl) {
-              adImageUrl = await persistAdImage(adImageUrl, adSourceId, supabase);
-            }
-
             // Enrich ad data from Meta Graph API if we have an ad ID but missing image/link
             if (referral && adSourceId) {
               // Coleta tokens do MESMO tenant (integração atual + outras do tenant).
@@ -1268,6 +1264,12 @@ Deno.serve(async (req) => {
               }
             }
 
+            // URLs de miniatura da Meta podem expirar. Guarda a imagem depois de
+            // todos os fallbacks, para cobrir tanto referral quanto Graph/oEmbed.
+            if (referral && adImageUrl) {
+              adImageUrl = await persistAdImage(adImageUrl, adSourceId, supabase);
+            }
+
             // 🔑 CACHE: persiste/atualiza metadados do anúncio para garantir que próximas requisições
             // não dependam mais da Graph API (evita falhas por token expirado, rate limit, etc.)
             if (referral && adSourceId && (adAccountName || adAccountId || adHeadline)) {
@@ -1300,6 +1302,7 @@ Deno.serve(async (req) => {
                 if (adAccountName) cachePayload.ad_account_name = adAccountName;
                 if (adName) cachePayload.ad_name = adName;
                 if (adHeadline) cachePayload.ad_headline = adHeadline;
+                if (adImageUrl) cachePayload.thumbnail_url = adImageUrl;
                 if (inferredCidadeForCache) cachePayload.cidade = inferredCidadeForCache;
                 // ad_body é a CHAVE DE AGRUPAMENTO do relatório: só grava se passar na sanidade
                 const corpoOk = typeof adBody === "string"
