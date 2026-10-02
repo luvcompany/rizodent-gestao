@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      _bkp_pagamentos_tipo_20261002: {
+        Row: {
+          data_pagamento: string | null
+          id: string | null
+          salvo_em: string | null
+          tipo: string | null
+        }
+        Insert: {
+          data_pagamento?: string | null
+          id?: string | null
+          salvo_em?: string | null
+          tipo?: string | null
+        }
+        Update: {
+          data_pagamento?: string | null
+          id?: string | null
+          salvo_em?: string | null
+          tipo?: string | null
+        }
+        Relationships: []
+      }
       _internal_secrets: {
         Row: {
           created_at: string
