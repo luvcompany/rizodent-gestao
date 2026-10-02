@@ -446,6 +446,13 @@ const NewLeadDialog = memo(function NewLeadDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Cidade</Label>
+              <Select value={form.cidade} onValueChange={v => set("cidade", v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione a cidade" /></SelectTrigger>
+                <SelectContent>{cidadesTenant.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
             <div><Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Tags (separadas por vírgula)</Label><Input placeholder={servicosInteresse.length >= 2 ? `ex.: ${servicosInteresse.slice(0, 2).join(", ")}` : "ex.: retorno, avaliação"} value={form.tags} onChange={e => set("tags", e.target.value)} /></div>
             {mostraNumero && (
               <div className="sm:col-span-2">
