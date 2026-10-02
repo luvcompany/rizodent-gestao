@@ -20,7 +20,9 @@ function getSubdomainSlug(): string | null {
     return null;
   }
   const parts = host.split(".");
-  if (parts.length >= 3 && !SUBDOMAIN_SKIP.has(parts[0])) return parts[0];
+  // Domínios de dois níveis (crclin.com.br) precisam de 4 partes para ter subdomínio.
+  const minParts = /\.(com|net|org|co)\.[a-z]{2}$/.test(host) ? 4 : 3;
+  if (parts.length >= minParts && !SUBDOMAIN_SKIP.has(parts[0])) return parts[0];
   return null;
 }
 
