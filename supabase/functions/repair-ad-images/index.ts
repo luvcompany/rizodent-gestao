@@ -41,6 +41,37 @@ Deno.serve(async (req) => {
 
   try {
 
+    let body: any = {};
+    try { body = await req.json(); } catch (_) { /* sem corpo */ }
+    const modoLeads = body?.mode === "leads";
+    const limite = Math.min(Math.max(Number(body?.limit) || 40, 1), 100);
+
+    type Grupo = { adId: string; tenantId: string | null; pipelineId: string; link: string | null; leadIds: Set<string> };
+    const grupos = new Map<string, Grupo>();
+
+    if (modoLeads) {
+      // Retroativo: leads com anúncio cuja miniatura não está guardada no sistema
+      // (vazia ou link da Meta que expira).
+      const { data: ls, error: le } = await supabase
+        .from("crm_leads")
+        .select("id, ad_id, pipeline_id, tenant_id, link_anuncio, imagem_origem")
+        .not("ad_id", "is", null)
+        .or("imagem_origem.is.null,imagem_origem.not.like.*/chat-media/*")
+        .limit(5000);
+      if (le) throw le;
+      const pulados = new Set<string>((body?.skip || []).map(String));
+      for (const l of (ls || []) as any[]) {
+        const key = `${l.tenant_id}|${l.ad_id}`;
+        if (pulados.has(String(l.ad_id))) continue;
+        let g = grupos.get(key);
+        if (!g) {
+          if (grupos.size >= limite) continue;
+          g = { adId: String(l.ad_id), tenantId: l.tenant_id, pipelineId: l.pipeline_id, link: l.link_anuncio || null, leadIds: new Set() };
+          grupos.set(key, g);
+        }
+        g.leadIds.add(l.id);
+      }
+    } else {
     // Busca mensagens de anúncio sem miniatura e agrupa por anúncio:
     // uma consulta à Meta por anúncio, não por lead.
     const { data: msgs, error } = await supabase
@@ -52,8 +83,6 @@ Deno.serve(async (req) => {
       .limit(2000);
     if (error) throw error;
 
-    type Grupo = { adId: string; tenantId: string | null; pipelineId: string; link: string | null; leadIds: Set<string> };
-    const grupos = new Map<string, Grupo>();
     for (const m of (msgs || []) as any[]) {
       const lead = m.crm_leads;
       const key = `${lead.tenant_id}|${m.ad_source_id}`;
@@ -63,6 +92,7 @@ Deno.serve(async (req) => {
         grupos.set(key, g);
       }
       g.leadIds.add(lead.id);
+    }
     }
     const leads = Array.from(grupos.values());
     if (leads.length === 0) {
@@ -135,24 +165,32 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (imageUrl && modoLeads && !imageUrl.includes("/chat-media/")) {
+        // ok, será persistida abaixo
+      }
       if (!imageUrl) { console.log(`[REPAIR] sem imagem ad ${adSourceId} tokens=${tokensDo(g.pipelineId, g.tenantId).length}`); falhas.push(adSourceId); continue; }
 
       imageUrl = await persistAdImage(supabase, imageUrl, adSourceId);
       const ids = Array.from(g.leadIds);
       await supabase.from("messages").update({ ad_image_url: imageUrl })
-        .in("lead_id", ids).eq("ad_source_id", adSourceId).is("ad_image_url", null);
-      await supabase.from("crm_leads").update({ imagem_origem: imageUrl })
-        .in("id", ids).is("imagem_origem", null);
+        .eq("ad_source_id", adSourceId).or("ad_image_url.is.null,ad_image_url.not.like.*/chat-media/*");
+      if (modoLeads) {
+        await supabase.from("crm_leads").update({ imagem_origem: imageUrl }).in("id", ids);
+      } else {
+        await supabase.from("crm_leads").update({ imagem_origem: imageUrl })
+          .in("id", ids).is("imagem_origem", null);
+      }
       if (g.tenantId) {
         await supabase.from("ad_id_mapping").update({ thumbnail_url: imageUrl })
-          .eq("ad_id", adSourceId).eq("tenant_id", g.tenantId).is("thumbnail_url", null);
+          .eq("ad_id", adSourceId).eq("tenant_id", g.tenantId)
+          .or("thumbnail_url.is.null,thumbnail_url.not.like.*/chat-media/*");
       }
       repaired++;
       leadsRepaired += ids.length;
     }
 
     return new Response(
-      JSON.stringify({ success: true, anuncios: leads.length, repaired, leadsRepaired, falhas: falhas.length }),
+      JSON.stringify({ success: true, anuncios: leads.length, repaired, leadsRepaired, falhas: falhas.length, falhaIds: falhas }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
