@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import {
-  CalendarCheck, CheckCircle2, XCircle, Repeat, Ban, Loader2, UserPlus,
+  CalendarCheck, CalendarX, UserCheck, UserX, Users, Repeat, Ban, Loader2, UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -85,30 +85,39 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-foreground">Agendamentos do período</h2>
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="relative">
           <Kpi label="Leads que chegaram" value={n("chegaram")} icon={UserPlus} tom="info" />
-          <Kpi label="Agendados" value={n("agendados")} icon={CalendarCheck} tom="primary" onClick={abrir("Agendados", "agendados")} hint="Primeira consulta no período" />
-          <Kpi label="Compareceram" value={n("compareceram")} icon={CheckCircle2} tom="success" onClick={abrir("Agendados que compareceram", "compareceram")} />
-          <Kpi label="Faltas" value={n("faltas")} icon={XCircle} tom="destructive" onClick={abrir("Faltas dos agendados", "faltas")} hint="Cada lead conta uma vez" />
-          <Kpi label="Remarcados" value={n("remarcados")} icon={Repeat} tom="purple" onClick={abrir("Remarcados", "remarcados")} hint="Já descontados dos agendados" />
-          <Kpi label="Remarcados que compareceram" value={n("rem_compareceram")} icon={CheckCircle2} tom="success" onClick={abrir("Remarcados que compareceram", "rem_compareceram")} />
-          <Kpi label="Faltas dos remarcados" value={n("rem_faltas")} icon={XCircle} tom="destructive" onClick={abrir("Faltas dos remarcados", "rem_faltas")} hint="Cada lead conta uma vez" />
-          <Kpi label="Cancelamentos" value={n("cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} hint="Avisaram e não remarcaram" />
+          {loading && <Loader2 className="absolute right-4 top-4 h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+      </div>
+
+      <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
+        <h2 className="text-lg font-semibold text-foreground">Agendados (primeiro agendamento)</h2>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+          <Kpi label="Agendados" value={n("agendados")} icon={CalendarCheck} tom="primary" onClick={abrir("Agendados", "agendados")} hint="Sem quem remarcou" />
+          <Kpi label="Compareceram" value={n("compareceram")} icon={UserCheck} tom="success" onClick={abrir("Agendados que compareceram", "compareceram")} />
+          <Kpi label="Faltas" value={n("faltas")} icon={UserX} tom="destructive" onClick={abrir("Faltas dos agendados", "faltas")} hint="Cada lead conta uma vez" />
+          <Kpi label="Cancelamentos" value={n("cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} hint="Avisou e não remarcou" />
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">No geral</h2>
-        <p className="text-sm text-muted-foreground -mt-2">Primeiras consultas e remarcações juntas, cada lead contado uma vez.</p>
+      <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
+        <h2 className="text-lg font-semibold text-foreground">Remarcados</h2>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-          <Kpi label="Leads agendados" value={n("geral_agendados")} icon={CalendarCheck} tom="primary" onClick={abrir("Leads agendados (geral)", "geral_agendados")} />
-          <Kpi label="Comparecimentos" value={n("geral_compareceram")} icon={CheckCircle2} tom="success" onClick={abrir("Comparecimentos (geral)", "geral_compareceram")} />
-          <Kpi label="Faltas" value={n("geral_faltas")} icon={XCircle} tom="destructive" onClick={abrir("Faltas (geral)", "geral_faltas")} />
+          <Kpi label="Remarcados" value={n("remarcados")} icon={Repeat} tom="purple" onClick={abrir("Remarcados", "remarcados")} />
+          <Kpi label="Compareceram" value={n("rem_compareceram")} icon={UserCheck} tom="success" onClick={abrir("Remarcados que compareceram", "rem_compareceram")} />
+          <Kpi label="Faltas" value={n("rem_faltas")} icon={UserX} tom="destructive" onClick={abrir("Faltas dos remarcados", "rem_faltas")} hint="Cada lead conta uma vez" />
+          <Kpi label="Cancelamentos" value={n("cancelados")} icon={CalendarX} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} />
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
+        <h2 className="text-lg font-semibold text-foreground">Geral</h2>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+          <Kpi label="Leads agendados" value={n("geral_agendados")} icon={Users} tom="primary" onClick={abrir("Leads agendados (geral)", "geral_agendados")} hint="Sem contar remarcações" />
+          <Kpi label="Comparecimentos" value={n("geral_compareceram")} icon={UserCheck} tom="success" onClick={abrir("Comparecimentos (geral)", "geral_compareceram")} />
+          <Kpi label="Faltas" value={n("geral_faltas")} icon={UserX} tom="destructive" onClick={abrir("Faltas (geral)", "geral_faltas")} />
           <Kpi label="Cancelamentos" value={n("cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} />
         </div>
       </section>
