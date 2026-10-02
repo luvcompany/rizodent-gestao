@@ -122,7 +122,7 @@ export default function RelatorioAgendamentos() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Popover
           open={open}
           onOpenChange={(o) => {
@@ -142,7 +142,7 @@ export default function RelatorioAgendamentos() {
               </span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[280px] rounded-2xl p-0" align="start">
+          <PopoverContent className="w-[280px] rounded-2xl p-0" align="end">
             {panel === "lista" ? (
               <div className="p-2">
                 <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
