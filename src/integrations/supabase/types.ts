@@ -6143,6 +6143,7 @@ export type Database = {
           name: string
         }[]
       }
+      get_public_branding: { Args: { _slug?: string }; Returns: Json }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
