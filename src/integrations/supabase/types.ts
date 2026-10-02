@@ -5673,6 +5673,7 @@ export type Database = {
               stage_name: string
             }[]
           }
+      cidades_do_tenant: { Args: never; Returns: string[] }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
       cleanup_system_logs: { Args: never; Returns: undefined }
       closer_clinicas_do_tenant: {
@@ -6142,6 +6143,7 @@ export type Database = {
           name: string
         }[]
       }
+      get_public_branding: { Args: { _slug?: string }; Returns: Json }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
@@ -6957,6 +6959,7 @@ export type Database = {
         Returns: boolean
       }
       sem_acento: { Args: { p_texto: string }; Returns: string }
+      servicos_do_tenant: { Args: never; Returns: string[] }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
