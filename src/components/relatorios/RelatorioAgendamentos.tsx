@@ -113,45 +113,101 @@ export default function RelatorioAgendamentos() {
     return a === b ? a : `${a} – ${b}`;
   }, [range]);
 
+  const presetLabel = preset === "custom"
+    ? "Personalizado"
+    : PRESETS.find((p) => p.id === preset)?.label ?? "Período";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-xl border border-border/60 bg-card p-1 shadow-card">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => { setPreset(p.id); setRange(p.range()); }}
-              className={cn(
-                "h-8 rounded-lg px-3 text-sm font-medium transition",
-                preset === p.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-surface-sunken",
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <Popover>
+        <Popover
+          open={open}
+          onOpenChange={(o) => {
+            setOpen(o);
+            if (o) setPanel(preset === "custom" ? "calendario" : "lista");
+          }}
+        >
           <PopoverTrigger asChild>
-            <Button variant="outline" className={cn("h-10 rounded-xl gap-2", preset === "custom" && "border-primary text-primary")}>
-              <CalendarIcon className="h-4 w-4" /> {rotulo}
+            <Button variant="outline" className="h-10 w-[280px] justify-between gap-2 rounded-xl font-normal">
+              <span className="flex min-w-0 items-center gap-2">
+                <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{presetLabel}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs tabular-nums text-muted-foreground">{rotulo}</span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="range"
-              locale={ptBR}
-              selected={custom}
-              onSelect={(r) => {
-                setCustom(r);
-                if (r?.from) {
-                  setPreset("custom");
-                  setRange([startOfDay(r.from), endOfDay(r.to ?? r.from)]);
-                }
-              }}
-              initialFocus
-              className="p-3 pointer-events-auto"
-            />
+          <PopoverContent className="w-[280px] rounded-2xl p-0" align="start">
+            {panel === "lista" ? (
+              <div className="p-2">
+                <p className="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Período
+                </p>
+                <div className="space-y-0.5">
+                  {PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setPreset(p.id); setRange(p.range()); setOpen(false); }}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm transition",
+                        preset === p.id
+                          ? "bg-primary-soft font-semibold text-primary-soft-fg"
+                          : "text-foreground hover:bg-surface-sunken",
+                      )}
+                    >
+                      {p.label}
+                      {preset === p.id && <Check className="h-4 w-4 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+                <div className="my-1 border-t border-border/60" />
+                <button
+                  type="button"
+                  onClick={() => setPanel("calendario")}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
+                    preset === "custom"
+                      ? "bg-primary-soft font-semibold text-primary-soft-fg"
+                      : "text-foreground hover:bg-surface-sunken",
+                  )}
+                >
+                  <CalendarIcon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 text-left">Personalizado</span>
+                  {preset === "custom" && <Check className="h-4 w-4 shrink-0" />}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setPanel("lista")}
+                    className="flex items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" /> Períodos
+                  </button>
+                  <span className="text-xs tabular-nums text-muted-foreground">{rotulo}</span>
+                </div>
+                <Calendar
+                  mode="range"
+                  locale={ptBR}
+                  selected={custom}
+                  onSelect={(r) => {
+                    setCustom(r);
+                    if (r?.from && r?.to) {
+                      setPreset("custom");
+                      setRange([startOfDay(r.from), endOfDay(r.to)]);
+                      setOpen(false);
+                    }
+                  }}
+                  initialFocus
+                  className="p-3 pointer-events-auto"
+                />
+              </div>
+            )}
           </PopoverContent>
         </Popover>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
