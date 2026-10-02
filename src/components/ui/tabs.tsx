@@ -66,7 +66,7 @@ const TabsTrigger = React.forwardRef<React.ElementRef<typeof TabsPrimitive.Trigg
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
           efetiva === "pill" &&
-            "crm-tab-pill h-9 rounded-full px-4 py-0 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-crm-brand data-[state=active]:hover:bg-primary",
+            "crm-tab-pill h-9 rounded-full px-4 py-0 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground data-[state=active]:bg-primary-soft data-[state=active]:text-primary-soft-fg data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-primary/20 data-[state=active]:hover:bg-primary-soft-2",
           className,
         )}
         {...props}
