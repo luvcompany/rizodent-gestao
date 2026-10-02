@@ -355,10 +355,12 @@ function iniciais(nome: string) {
 function Metrica({ coluna, linha }: { coluna: Coluna; linha: LinhaRelatorioSdr }) {
   const apoio = coluna.apoio?.(linha);
   return (
-    <div title={coluna.dica} className="rounded-xl bg-muted/40 px-3 py-2.5">
-      <span className="block text-[11px] leading-tight text-muted-foreground">{coluna.titulo}</span>
-      <span className="mt-1 block text-lg font-semibold leading-none tabular-nums text-foreground">{coluna.render(linha)}</span>
-      {apoio ? <span className="mt-1 block text-[11px] leading-tight text-muted-foreground">{apoio}</span> : null}
+    <div title={coluna.dica} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2 last:border-0">
+      <span className="text-xs text-muted-foreground">
+        {coluna.titulo}
+        {apoio ? <span className="block text-[11px] text-muted-foreground/70">{apoio}</span> : null}
+      </span>
+      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{coluna.render(linha)}</span>
     </div>
   );
 }
@@ -388,11 +390,11 @@ function CartaoSdr({ linha, titulo, subtitulo, destaque = false }: {
           )}
         </span>
       </header>
-      <div className="mt-4 space-y-4">
+      <div className="mt-5 grid gap-x-10 gap-y-5 lg:grid-cols-2">
         {GRUPOS.map((g) => (
           <div key={g.titulo}>
-            <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.titulo}</h3>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.titulo}</h3>
+            <div>
               {g.chaves.map((chave) => (
                 <Metrica key={chave} coluna={COLUNA_POR_CHAVE[chave]} linha={linha} />
               ))}
