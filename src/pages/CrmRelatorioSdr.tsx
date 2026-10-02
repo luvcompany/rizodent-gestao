@@ -405,6 +405,18 @@ const GRUPOS: { titulo: string; chaves: string[] }[] = [
   { titulo: "Jornada", chaves: ["expediente", "pausa"] },
 ];
 
+// Balões por bloco: mesma linguagem visual dos blocos de agendamentos (BlocosSdr).
+const TOM_METRICA: Record<string, Tom> = {
+  recebidos: "info",
+  respondidos: "primary",
+  mediana: "muted",
+  media: "muted",
+  fechadas: "muted",
+  pesquisa: "warning",
+  expediente: "muted",
+  pausa: "muted",
+};
+
 const COLUNA_POR_CHAVE = Object.fromEntries(COLUNAS.map((c) => [c.chave, c]));
 
 function iniciais(nome: string) {
@@ -413,15 +425,13 @@ function iniciais(nome: string) {
   return (duas || nome.slice(0, 2) || "?").toUpperCase();
 }
 
-function Metrica({ coluna, linha }: { coluna: Coluna; linha: LinhaRelatorioSdr }) {
+function Balao({ coluna, linha, tom }: { coluna: Coluna; linha: LinhaRelatorioSdr; tom: Tom }) {
   const apoio = coluna.apoio?.(linha);
   return (
-    <div title={coluna.dica} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2 last:border-0">
-      <span className="text-xs text-muted-foreground">
-        {coluna.titulo}
-        {apoio ? <span className="block text-[11px] text-muted-foreground/70">{apoio}</span> : null}
-      </span>
-      <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">{coluna.render(linha)}</span>
+    <div title={coluna.dica} className={cn("flex flex-col items-start rounded-xl px-3 py-2.5", TOM[tom])}>
+      <span className="text-[11px] font-medium opacity-80">{coluna.titulo}</span>
+      <span className="text-xl font-bold leading-tight tabular-nums">{coluna.render(linha)}</span>
+      {apoio ? <span className="text-[11px] leading-tight opacity-75">{apoio}</span> : null}
     </div>
   );
 }
