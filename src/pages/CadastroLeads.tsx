@@ -492,7 +492,7 @@ const CadastroLeads = () => {
             </div>
           )}
 
-          <Button onClick={handleSaveAgendados} disabled={savingAgendados} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90 transition-opacity">
+          <Button onClick={handleSaveAgendados} disabled={savingAgendados} className="w-full border border-primary/20 bg-primary-soft text-primary-soft-fg font-semibold shadow-none hover:bg-primary-soft-2 transition-colors">
             <Save size={18} className="mr-2" />
             {savingAgendados ? "Salvando..." : existingIdAgendados ? "Atualizar Agendados" : "Salvar Agendados"}
           </Button>

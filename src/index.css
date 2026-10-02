@@ -468,18 +468,18 @@
   /* Algumas telas antigas usam botão nativo em vez do Button compartilhado.
      A regra é deliberadamente limitada a controles interativos: não alcança
      menu lateral, avatar, gráfico, indicador de data ou chip informativo. */
-  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where(button, [role="button"], [role="tab"]):where([class~="bg-primary"]) {
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :is(button, [role="button"], [role="tab"]):where([class~="bg-primary"]) {
     border-color: hsl(var(--primary) / 0.2);
     background-color: hsl(var(--primary-soft));
     color: hsl(var(--primary-soft-fg));
     --tw-shadow: 0 0 #0000;
     box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
   }
-  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where(button, [role="button"], [role="tab"]):where([class~="bg-primary"]):hover {
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :is(button, [role="button"], [role="tab"]):where([class~="bg-primary"]):hover {
     background-color: hsl(var(--primary-soft-2));
   }
   /* Ícones/textos filhos dos botões suavizados acompanham o novo contraste. */
-  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where(button, [role="button"], [role="tab"]):where([class~="bg-primary"]) :where([class~="text-primary-foreground"]) {
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :is(button, [role="button"], [role="tab"]):where([class~="bg-primary"]) :where([class~="text-primary-foreground"]) {
     color: hsl(var(--primary-soft-fg));
   }
   :where(html:root:has(.crm-shell)) .crm-btn-outline {
