@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 type Ids = string[];
 type Dados = {
   chegaram: number;
-  agendados: Ids; compareceram: Ids; faltas: Ids; agd_cancelados: Ids; agd_pendentes: Ids;
+  agendados: Ids; compareceram: Ids; faltas: Ids; agd_cancelados: Ids; agd_pendentes: Ids; agd_remarcados: Ids;
   remarcados: Ids; rem_compareceram: Ids; rem_faltas: Ids; rem_cancelados: Ids; rem_pendentes: Ids;
   geral_agendados: Ids; geral_compareceram: Ids; geral_faltas: Ids; cancelados: Ids; geral_pendentes: Ids;
   falta_sem_remarcacao: Ids; falta_novamente: Ids; falta_periodo_anterior: Ids;
@@ -132,6 +132,16 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Cancelamentos" value={n("agd_cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos dos agendados", "agd_cancelados")} hint="Avisou que não iria" />
           <Kpi label="Pendentes" value={n("agd_pendentes")} icon={Clock} tom="warning" onClick={abrir("Pendentes dos agendados", "agd_pendentes")} hint="Sem resultado ainda" />
         </div>
+        {dados && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <button type="button" disabled={!n("agd_remarcados")}
+              onClick={abrir("Primeira consulta remarcada", "agd_remarcados")}
+              className="rounded-full bg-purple-soft px-2.5 py-1 font-medium text-purple-soft-foreground disabled:opacity-50">
+              Primeira consulta remarcada: {n("agd_remarcados")}
+            </button>
+            <span>O resultado desses leads aparece em Remarcados.</span>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
