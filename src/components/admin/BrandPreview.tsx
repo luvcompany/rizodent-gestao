@@ -5,11 +5,13 @@
 export function BrandPreview({
   primary,
   secondary,
+  actionColor,
   name,
   logoUrl,
 }: {
   primary: string;
   secondary: string;
+  actionColor: string;
   name: string;
   logoUrl?: string | null;
 }) {
@@ -31,7 +33,7 @@ export function BrandPreview({
           )}
           <span className="text-xs font-bold">{name || "Clínica"}</span>
         </div>
-        <button className="rounded-md px-2.5 py-1 text-[10px] font-semibold text-white" style={{ background: grad }}>
+        <button className="rounded-md px-2.5 py-1 text-[10px] font-semibold text-white" style={{ background: actionColor }}>
           + Novo Lead
         </button>
       </div>
@@ -64,9 +66,9 @@ export function BrandPreview({
           </div>
 
           <div className="mt-2 flex items-center gap-3">
-            <button className="rounded-md px-2.5 py-1 text-[10px] font-semibold text-white" style={{ background: primary }}>Agendar</button>
-            <button className="rounded-md border px-2.5 py-1 text-[10px] font-semibold" style={{ borderColor: primary, color: primary }}>Detalhes</button>
-            <a className="text-[10px] font-semibold underline" style={{ color: primary }}>Ver conversa</a>
+            <button className="rounded-md px-2.5 py-1 text-[10px] font-semibold text-white" style={{ background: actionColor }}>Agendar</button>
+            <button className="rounded-md border px-2.5 py-1 text-[10px] font-semibold" style={{ borderColor: actionColor, color: actionColor }}>Detalhes</button>
+            <a className="text-[10px] font-semibold underline" style={{ color: actionColor }}>Ver conversa</a>
           </div>
         </div>
       </div>

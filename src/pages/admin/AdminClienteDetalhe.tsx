@@ -51,6 +51,7 @@ type Tenant = {
   id: string; slug: string; name: string; logo_url: string | null;
   logo_dark_url?: string | null;
   favicon_url: string | null; primary_color: string; secondary_color: string;
+  action_color?: string | null;
   tertiary_color: string; status: string; created_at: string;
   timezone?: string | null; trial_ends_at?: string | null;
   branding_version?: number | null;
@@ -411,6 +412,7 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
   const [favicon, setFavicon] = useState(tenant.favicon_url ?? "");
   const [primary, setPrimary] = useState(tenant.primary_color);
   const [secondary, setSecondary] = useState(tenant.secondary_color ?? "#fb923c");
+  const [actionColor, setActionColor] = useState(tenant.action_color ?? tenant.primary_color);
   const [saving, setSaving] = useState(false);
 
   const upload = async (f: File, kind: "logo" | "logo_dark" | "favicon") => {
@@ -441,7 +443,7 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
     const { data, error } = await supabase.functions.invoke("admin-update-tenant", {
       body: { tenant_id: tenant.id, action: "update", patch: {
         logo_url: logo || null, logo_dark_url: logoDark || null, favicon_url: favicon || null,
-        primary_color: primary, secondary_color: secondary,
+        primary_color: primary, secondary_color: secondary, action_color: actionColor,
       } },
     });
     setSaving(false);
@@ -477,18 +479,19 @@ function BrandingTab({ tenant, onSaved }: { tenant: Tenant; onSaved: () => void 
           </div>
           <Input className={`${inputDark} mt-2`} placeholder="ou cole a URL do favicon" value={favicon} onChange={(e) => setFavicon(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <BrandColorField label="Cor principal" value={primary} onChange={setPrimary} />
           <BrandColorField label="Cor secundária" value={secondary} onChange={setSecondary} />
+          <BrandColorField label="Cor dos botões e abas" value={actionColor} onChange={setActionColor} />
         </div>
-        <p className="text-xs text-slate-500">A cor principal pinta botões e destaques; a secundária compõe o gradiente. O restante da interface fica neutro (claro).</p>
+        <p className="text-xs text-slate-500">A cor principal identifica o menu, a secundária compõe o gradiente e a cor dos botões pinta ações e abas ativas.</p>
         <Button onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 animate-spin" size={14} />} Salvar</Button>
       </Card>
 
       {/* Pré-visualização REAL da interface do cliente */}
       <Card className="border-slate-800 bg-slate-900/40 p-5 text-slate-100 space-y-3">
         <p className="flex items-center gap-2 text-sm font-semibold text-slate-300"><Eye size={14} /> Como fica a interface do cliente</p>
-        <BrandPreview primary={primary} secondary={secondary} name={tenant.name} logoUrl={logo || tenant.logo_url} />
+        <BrandPreview primary={primary} secondary={secondary} actionColor={actionColor} name={tenant.name} logoUrl={logo || tenant.logo_url} />
         <p className="text-xs text-slate-500">Usa os valores atuais dos campos, mesmo antes de salvar.</p>
       </Card>
     </div>

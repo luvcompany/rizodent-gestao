@@ -82,6 +82,7 @@ function normalizarSistema(entrada: unknown): SystemBrand {
     primary_color: txt(raw.primary_color) ?? SISTEMA_PADRAO.primary_color,
     primary_color_dark: txt(raw.primary_color_dark),
     secondary_color: txt(raw.secondary_color),
+    action_color: txt(raw.action_color),
     font_family: txt(raw.font_family) ?? SISTEMA_PADRAO.font_family,
     radius_px: num(raw.radius_px) ?? SISTEMA_PADRAO.radius_px,
     primary_domain: txt(raw.primary_domain),

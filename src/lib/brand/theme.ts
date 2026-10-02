@@ -65,6 +65,8 @@ export interface TenantBrand {
   primary_color: string | null;
   primary_color_dark: string | null;
   secondary_color: string | null;
+  /** Cor exclusiva dos botões de ação e abas. null = usar primary_color. */
+  action_color: string | null;
   font_family: string | null;
   radius_px: number | null;
   login_title: string | null;
@@ -89,6 +91,8 @@ export interface EffectiveBrand {
   primaryDark: string | null;
   /** 2º ponto do gradiente. null = primary escurecida. */
   secondary: string | null;
+  /** Cor dos controles de ação; não altera menu, gráficos ou identidade geral. */
+  actionColor: string;
   fontFamily: string;
   radiusPx: number;
   /** Mostrar "Powered by <sistema>". */
@@ -135,7 +139,7 @@ export function chaveDaMarca(slug: string | null | undefined): string {
  * BrandContext e no script do index.html) e na assinatura que decide reaplicar
  * o <style id="brand-theme">, para CSS antigo em cache não prender a tela velha.
  */
-export const VERSAO_GERADOR_TEMA = "2";
+export const VERSAO_GERADOR_TEMA = "3";
 
 export const CHAVE_CSS_DA_MARCA = (slug: string | null | undefined) =>
   `crm:brand_css:v${VERSAO_GERADOR_TEMA}:${chaveDaMarca(slug)}`;
@@ -376,6 +380,7 @@ export function resolverMarcaEfetiva(system: SystemBrand, tenant: TenantBrand | 
   const secondary = primariaCliente
     ? normalizarHex(tenant?.secondary_color)
     : normalizarHex(tenant?.secondary_color) ?? normalizarHex(sys.secondary_color);
+  const actionColor = normalizarHex(tenant?.action_color) ?? primary;
 
   const logoCliente = texto(tenant?.logo_url);
   const logoUrl = logoCliente ?? texto(sys.logo_url);
@@ -395,6 +400,7 @@ export function resolverMarcaEfetiva(system: SystemBrand, tenant: TenantBrand | 
     primary,
     primaryDark,
     secondary,
+    actionColor,
     fontFamily: fontePermitida(texto(tenant?.font_family) ?? texto(sys.font_family)),
     radiusPx: limitar(Math.round(raio), 0, 24),
     poweredBy: !tenant?.hide_system_brand,
@@ -450,6 +456,13 @@ function baseDoModo(effective: EffectiveBrand, modo: Modo): { hex: string; hsl: 
   return { hex, hsl: hexParaHsl(hex)! };
 }
 
+/** Cor dos controles no modo atual; o escuro deriva uma versão legível. */
+function baseDaAcaoDoModo(effective: EffectiveBrand, modo: Modo): { hex: string; hsl: Hsl } {
+  const action = normalizarHex(effective.actionColor) ?? normalizarHex(effective.primary) ?? COR_PADRAO_SISTEMA;
+  const hex = modo === "claro" ? action : derivarCorEscura(action);
+  return { hex, hsl: hexParaHsl(hex) ?? hexParaHsl(COR_PADRAO_SISTEMA)! };
+}
+
 /**
  * Como ajustarParaContraste, mas conferindo o resultado já ARREDONDADO do jeito
  * que vai para o CSS (triplet fino), para o arredondamento não custar o AA.
@@ -473,8 +486,11 @@ function ajustarParaContrasteNoCss(cor: Hsl, fundo: Hsl, direcao: "escurecer" | 
  */
 function tokensLegadosDoModo(effective: EffectiveBrand, modo: Modo): Array<[string, string]> {
   const { hex: baseHex, hsl: base } = baseDoModo(effective, modo);
-  const primaryTriplet = hslParaTriplet(base);
-  const fg = foregroundPara(baseHex);
+  const { hex: actionHex, hsl: action } = baseDaAcaoDoModo(effective, modo);
+  const primaryTriplet = hslParaTriplet(action);
+  const fg = foregroundPara(actionHex);
+  const sidebarPrimaryTriplet = hslParaTriplet(base);
+  const sidebarFg = foregroundPara(baseHex);
 
   // accent: tom sutil da marca de fundo (hover de menus/itens) + a própria cor
   // da marca como texto, ajustada até passar em AA sobre esse fundo.
@@ -497,9 +513,9 @@ function tokensLegadosDoModo(effective: EffectiveBrand, modo: Modo): Array<[stri
     ["--ring", primaryTriplet],
     ["--accent", hslParaTriplet(accentFundo)],
     ["--accent-foreground", hslParaTriplet(accentTexto)],
-    ["--sidebar-primary", primaryTriplet],
-    ["--sidebar-primary-foreground", fg],
-    ["--sidebar-ring", primaryTriplet],
+    ["--sidebar-primary", sidebarPrimaryTriplet],
+    ["--sidebar-primary-foreground", sidebarFg],
+    ["--sidebar-ring", sidebarPrimaryTriplet],
   ];
   for (const passo of PASSOS_DA_ESCALA) tokens.push([`--brand-${passo}`, escala[passo]]);
   tokens.push(
@@ -537,7 +553,8 @@ export function marcaAzul(h: number): boolean {
  * a luminosidade até passar em AA sobre ele (ajustarParaContraste).
  */
 function tokensNovosDoModo(effective: EffectiveBrand, modo: Modo): Array<[string, string]> {
-  const { hsl: base } = baseDoModo(effective, modo);
+  const { hsl: brandBase } = baseDoModo(effective, modo);
+  const { hsl: base } = baseDaAcaoDoModo(effective, modo);
   const claro = modo === "claro";
 
   const hover: Hsl = { h: base.h, s: base.s, l: limitar(base.l + (claro ? -6 : 6), 0, 100) };
@@ -555,8 +572,8 @@ function tokensNovosDoModo(effective: EffectiveBrand, modo: Modo): Array<[string
   // Série 1 = marca; a 2 vira verde se a marca é laranja/âmbar; a 3 vira verde
   // se a marca é azul. No escuro, séries com L < 50 sobem 8 de luminosidade.
   const series = SERIES_FIXAS.map((hex, i) => {
-    if (i === 0 && marcaQuente(base.h)) return SERIE_VERDE;
-    if (i === 1 && marcaAzul(base.h)) return SERIE_VERDE;
+    if (i === 0 && marcaQuente(brandBase.h)) return SERIE_VERDE;
+    if (i === 1 && marcaAzul(brandBase.h)) return SERIE_VERDE;
     return hex;
   }).map((hex) => {
     const hsl = hexParaHsl(hex)!;
@@ -568,7 +585,7 @@ function tokensNovosDoModo(effective: EffectiveBrand, modo: Modo): Array<[string
     ["--primary-soft", hslParaTripletFino(soft)],
     ["--primary-soft-2", hslParaTripletFino(soft2)],
     ["--primary-soft-fg", hslParaTripletFino(softFg)],
-    ["--chart-1", hslParaTriplet(base)],
+    ["--chart-1", hslParaTriplet(brandBase)],
   ];
   series.forEach((hsl, i) => tokens.push([`--chart-${i + 2}`, hslParaTriplet(hsl)]));
   return tokens;

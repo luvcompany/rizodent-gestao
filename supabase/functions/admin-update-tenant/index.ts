@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     // -------- EDITAR --------
     if (action === "update") {
       const allowed: any = {};
-      const fields = ["name", "primary_color", "secondary_color", "tertiary_color", "logo_url", "logo_dark_url", "favicon_url", "status", "timezone", "business_hours", "trial_ends_at"];
+      const fields = ["name", "primary_color", "secondary_color", "action_color", "tertiary_color", "logo_url", "logo_dark_url", "favicon_url", "status", "timezone", "business_hours", "trial_ends_at"];
       for (const f of fields) if (patch?.[f] !== undefined) allowed[f] = patch[f];
       if (patch?.slug !== undefined) {
         const slug = normalizeSlug(patch.slug);
