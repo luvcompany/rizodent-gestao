@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getMyWhatsappNumberId, numeroDoLeadNovo } from "@/lib/mundoNumero";
 import { useNumerosLiberados } from "@/hooks/useNumerosLiberados";
 import { useVocab } from "@/hooks/useVocab";
+import { useCidadesDoTenant } from "@/hooks/useOpcoesDoTenant";
 import { mensagemDeErro } from "@/lib/mensagemDeErro";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { contaComoFaturamento, leadSourceMatchesFilter, hojeNoFuso, rangeNoFuso } from "@/lib/reportKit";
@@ -191,7 +192,8 @@ const NewLeadDialog = memo(function NewLeadDialog({
   const { userRole } = useAuth();
   const { ativos } = useNumerosLiberados();
   const { servicosInteresse } = useVocab();
-  const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "" };
+  const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "", cidade: "" };
+  const cidadesTenant = useCidadesDoTenant();
   const [form, setForm] = useState(emptyForm);
   const [duplicateInfo, setDuplicateInfo] = useState<{
     existingLeadId: string; existingLeadName: string;
@@ -243,6 +245,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
       stage_id: currentForm.stage_id,
       pipeline_id: targetPipeline.id,
       source: currentForm.source || null,
+      ...(currentForm.cidade ? { cidade: currentForm.cidade } : {}),
       tags: tagsArray,
       value: currentForm.value ? parseFloat(currentForm.value) : 0,
       notes: currentForm.notes || null,

@@ -1,0 +1,2 @@
+ALTER TABLE public.crm_leads ADD COLUMN IF NOT EXISTS client_request_id uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS crm_leads_client_request_uniq ON public.crm_leads(client_request_id) WHERE client_request_id IS NOT NULL;
