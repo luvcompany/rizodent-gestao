@@ -62,7 +62,7 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
  * (módulo resolvido e desligado): enquanto a config não chegou, tudo aparece.
  * Grupo que fica sem filhos some.
  */
-const ROTAS_SO_DO_V2 = ["/crm/interno", "/crm/sdr/remarcar", "/crm/recepcao/agenda", "/crm/fechamento", "/crm/todos", "/crm/chegando"];
+const ROTAS_SO_DO_V2 = ["/crm/interno", "/crm/equipe/usuarios", "/crm/sdr/remarcar", "/crm/recepcao/agenda", "/crm/fechamento", "/crm/todos", "/crm/chegando"];
 function semRecursosDoV2(entries: SidebarEntry[]): SidebarEntry[] {
   const fora = (to: string) => ROTAS_SO_DO_V2.some((r) => to === r || to.startsWith(r + "/") || to.startsWith(r + "?"));
   const saida: SidebarEntry[] = [];
