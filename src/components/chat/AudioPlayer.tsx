@@ -109,7 +109,7 @@ export default function AudioPlayer({ src }: { src: string }) {
     <div className="min-w-[220px] max-w-[280px]">
       <audio ref={audioRef} src={src} preload="metadata" />
       <div className="flex items-center gap-2.5">
-        <button onClick={toggle} className="flex-shrink-0 w-9 h-9 rounded-full bg-primary text-primary-foreground shadow-brand flex items-center justify-center hover:bg-primary-hover transition-colors">
+        <button onClick={toggle} className="flex flex-shrink-0 h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none transition-colors hover:bg-primary-soft-2">
           {playing ? <Pause size={14} className="fill-current" /> : <Play size={14} className="ml-0.5 fill-current" />}
         </button>
         <div className="flex-1 min-w-0">

@@ -458,7 +458,7 @@ const CrmLayout = () => {
             : ""
         } ${
           itemAtivo(item, isActive)
-            ? "crm-nav-ativo bg-sidebar-active font-semibold text-sidebar-active-foreground"
+            ? "crm-nav-ativo bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-primary/25 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-primary/70"
             : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`
       }
@@ -514,7 +514,7 @@ const CrmLayout = () => {
                 className={({ isActive }) =>
                   `flex h-9 items-center gap-3 rounded-control px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50 ${
                     isActive
-                      ? "bg-sidebar-active font-semibold text-sidebar-active-foreground"
+                      ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground ring-1 ring-inset ring-sidebar-primary/25"
                       : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`
                 }

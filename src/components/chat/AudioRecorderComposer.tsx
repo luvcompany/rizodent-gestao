@@ -547,7 +547,7 @@ export default function AudioRecorderComposer({
         onClick={startRecording}
         onPointerEnter={aquecerCodificador}
         onFocus={aquecerCodificador}
-        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-primary text-primary-foreground shadow-brand transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none transition-colors hover:bg-primary-soft-2 disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         title="Gravar áudio"
         type="button"
@@ -575,7 +575,7 @@ export default function AudioRecorderComposer({
         <button
           type="button"
           onClick={togglePreviewPlayback}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-brand transition-colors hover:bg-primary-hover"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none transition-colors hover:bg-primary-soft-2"
           title={previewPlaying ? "Pausar prévia" : "Ouvir antes de enviar"}
         >
           {previewPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="ml-0.5 fill-current" />}
@@ -603,7 +603,7 @@ export default function AudioRecorderComposer({
           {formatTime(Math.round(previewDuration || recordingTime))}
         </span>
 
-        <Button type="button" size="sm" onClick={sendDraft} disabled={mode === "sending"} className="h-9 gap-1.5 rounded-full px-4 shadow-brand">
+        <Button type="button" size="sm" onClick={sendDraft} disabled={mode === "sending"} className="h-9 gap-1.5 rounded-full border border-primary/20 bg-primary-soft px-4 text-primary-soft-fg shadow-none hover:bg-primary-soft-2">
           {mode === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send size={14} /> Enviar</>}
         </Button>
       </div>
@@ -666,7 +666,7 @@ export default function AudioRecorderComposer({
       <Button
         type="button"
         size="icon"
-        className="h-9 w-9 rounded-full shadow-brand"
+        className="h-9 w-9 rounded-full border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2"
         onClick={stopRecording}
         disabled={mode === "preparing"}
         title="Finalizar e pré-ouvir"
