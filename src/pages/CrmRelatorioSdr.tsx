@@ -239,6 +239,20 @@ export default function CrmRelatorioSdr() {
   const total = linhas.find((l) => l.is_total) ?? null;
   const carregando = estado.status === "loading";
 
+  // Totais da equipe pela MESMA regra dos blocos por SDR (consultas marcadas
+  // para o período, desfecho final por lead). União dos ids das SDRs: um lead
+  // nunca conta duas vezes, mesmo se duas SDRs o atenderam.
+  const uniao = (chave: string): number | null => {
+    if (!blocos) return null;
+    const ids = new Set<string>();
+    for (const b of Object.values(blocos)) for (const id of b[chave] ?? []) ids.add(id);
+    return ids.size;
+  };
+  const eqAgendamentos = uniao("agd");
+  const eqCompareceram = uniao("ger_compareceu");
+  const eqFaltas = uniao("ger_falta");
+  const eqContratados = uniao("contratados");
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-6 pb-10">
