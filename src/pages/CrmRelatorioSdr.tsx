@@ -329,7 +329,11 @@ export default function CrmRelatorioSdr() {
                     apoio={eqCompareceram !== null && eqFaltas !== null
                       ? (eqCompareceram + eqFaltas > 0 ? `${fmtPct(eqCompareceram, eqCompareceram + eqFaltas)} de comparecimento` : undefined)
                       : (total.compareceram + total.faltas > 0 ? `${taxaComparecimento(total)} de comparecimento` : undefined)} />
-                  <KpiEquipe label="Faltas" value={eqFaltas !== null ? fmtInt(eqFaltas) : fmtInt(total.faltas)} icon={UserX} tom="destructive" />
+                  <KpiEquipe label="Faltas" value={eqFaltas !== null ? fmtInt(eqFaltas) : fmtInt(total.faltas)} icon={UserX} tom="destructive"
+                    apoio={eqFaltas !== null && eqCompareceram !== null
+                      ? (eqCompareceram + eqFaltas > 0 ? `${fmtPct(eqFaltas, eqCompareceram + eqFaltas)} dos que tiveram consulta com desfecho` : undefined)
+                      : (total.compareceram + total.faltas > 0 ? `${fmtPct(total.faltas, total.compareceram + total.faltas)} dos que tiveram consulta com desfecho` : undefined)} />
+
                   <KpiEquipe label="Contratados" value={eqContratados !== null ? fmtInt(eqContratados) : fmtInt(total.contratados)} icon={Handshake} tom="success"
                     apoio={eqContratados !== null && eqCompareceram !== null
                       ? (eqCompareceram > 0 ? `${fmtPct(eqContratados, eqCompareceram)} dos que compareceram` : undefined)
