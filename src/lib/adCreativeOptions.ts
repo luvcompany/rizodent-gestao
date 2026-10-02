@@ -37,8 +37,19 @@ function melhorImagem(a: string | null, b: string | null): string | null {
   return a || b;
 }
 
+/** A Meta manda a mesma conta como "123" ou "act_123"; tratamos como uma só. */
+const accountId = (v: string | null) => (v ?? "").trim().replace(/^act_/i, "");
+
+/** Prefere o nome amigável ("Rizodent Ipiaú") ao código ("CA 01 - RIZODENT (IPIAÚ)"). */
+function melhorConta(a: string | null, b: string | null): string | null {
+  const codigo = (v: string | null) => !!v && /^CA\s*\d+\s*-/i.test(v);
+  if (a && !codigo(a)) return a;
+  if (b && !codigo(b)) return b;
+  return a || b;
+}
+
 export function adGroupKey(ad: AdCandidate): string {
-  const account = normalizedText(ad.ad_account_id || ad.ad_account_name) || "sem-conta";
+  const account = normalizedText(accountId(ad.ad_account_id) || ad.ad_account_name) || "sem-conta";
   const identity = normalizedText(ad.nome_anuncio)
     || normalizedText(ad.descricao_anuncio)
     || normalizedImage(ad.imagem_origem)
@@ -57,7 +68,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
       ad_account_id: current.ad_account_id || candidate.ad_account_id,
-      ad_account_name: current.ad_account_name || candidate.ad_account_name,
+      ad_account_name: melhorConta(current.ad_account_name, candidate.ad_account_name),
     } : candidate);
   }
 
@@ -78,7 +89,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
       ad_account_id: current.ad_account_id || candidate.ad_account_id,
-      ad_account_name: current.ad_account_name || candidate.ad_account_name,
+      ad_account_name: melhorConta(current.ad_account_name, candidate.ad_account_name),
       group_key,
     });
   }
