@@ -143,6 +143,17 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Cancelamentos" value={n("rem_cancelados")} icon={CalendarX} tom="slate" onClick={abrir("Cancelamentos dos remarcados", "rem_cancelados")} />
           <Kpi label="Pendentes" value={n("rem_pendentes")} icon={Clock} tom="warning" onClick={abrir("Pendentes dos remarcados", "rem_pendentes")} />
         </div>
+        {dados && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>Auditoria:</span>
+            <button type="button" disabled={!n("outros_agendamentos")}
+              onClick={abrir("Outros agendamentos de leads com histórico", "outros_agendamentos", "Nova consulta sem usar remarcação")}
+              className="rounded-full bg-slate-soft px-2.5 py-1 font-medium text-slate-soft-foreground disabled:opacity-50">
+              Outros agendamentos de leads com histórico: {n("outros_agendamentos")}
+            </button>
+            <span>Consulta nova criada sem usar a função de remarcar.</span>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
