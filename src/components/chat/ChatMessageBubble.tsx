@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import AdThumb from "@/components/chat/AdThumb";
 import { Check, CheckCheck, Clock, AlertCircle, MessageCircle, ExternalLink, Reply } from "lucide-react";
 import ChatMessageContent from "./ChatMessageContent";
 import MessageActions from "./MessageActions";
@@ -218,7 +219,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                 <div className="mb-2 rounded-xl overflow-hidden border border-border/60 bg-card shadow-xs">
                   {adImageUrl && (
                     <div className="relative">
-                      <img src={adImageUrl} alt="Anúncio" className="w-full h-48 object-cover" loading="lazy" onError={(event) => { event.currentTarget.parentElement?.classList.add("hidden"); }} />
+                      <AdThumb src={adImageUrl} alt="Anúncio" className="w-full h-48 object-cover" loading="lazy" onError={(event) => { event.currentTarget.parentElement?.classList.add("hidden"); }} />
                       <span className="absolute top-2 left-2 flex items-center gap-1 bg-card/95 text-[11px] font-medium text-foreground px-2.5 py-1 rounded-full shadow-xs">
                         {icon}
                         {adLabel}
