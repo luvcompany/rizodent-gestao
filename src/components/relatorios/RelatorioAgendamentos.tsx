@@ -109,8 +109,11 @@ export default function RelatorioAgendamentos() {
   const abrir = (titulo: string, k: keyof Dados) => () => dados && setLista({ titulo, ids: dados[k] as string[] });
 
   const rotulo = useMemo(() => {
-    const a = format(range[0], "dd/MM/yyyy"); const b = format(range[1], "dd/MM/yyyy");
-    return a === b ? a : `${a} – ${b}`;
+    const [a, b] = range;
+    if (format(a, "yyyy-MM-dd") === format(b, "yyyy-MM-dd")) return format(a, "dd/MM/yy");
+    if (format(a, "MMyyyy") === format(b, "MMyyyy")) return `${format(a, "dd")}–${format(b, "dd/MM/yy")}`;
+    if (format(a, "yyyy") === format(b, "yyyy")) return `${format(a, "dd/MM")} – ${format(b, "dd/MM/yy")}`;
+    return `${format(a, "dd/MM/yy")} – ${format(b, "dd/MM/yy")}`;
   }, [range]);
 
   const presetLabel = preset === "custom"
@@ -128,7 +131,7 @@ export default function RelatorioAgendamentos() {
           }}
         >
           <PopoverTrigger asChild>
-            <Button variant="outline" className="h-10 w-[280px] justify-between gap-2 rounded-xl font-normal">
+            <Button variant="outline" className="h-10 w-auto min-w-[250px] justify-between gap-3 rounded-xl px-3 font-normal">
               <span className="flex min-w-0 items-center gap-2">
                 <CalendarIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{presetLabel}</span>
