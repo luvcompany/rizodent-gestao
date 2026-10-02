@@ -6514,6 +6514,22 @@ export type Database = {
         Args: { _fim: string; _inicio: string }
         Returns: Json
       }
+      relatorio_agendamentos_detalhe: {
+        Args: { _ids: string[] }
+        Returns: {
+          cidade: string
+          lead_id: string
+          nome: string
+          origem: string
+          primeiro: string
+          responsavel: string
+          servico: string
+          telefone: string
+          ultima_remarcacao: string
+          ultimo: string
+          ultimo_status: string
+        }[]
+      }
       relatorio_funis: {
         Args: { p_ate: string; p_de: string }
         Returns: {
