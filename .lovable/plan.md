@@ -6,11 +6,11 @@ Na tela Relatório das SDRs, usando o mesmo filtro de período (hoje, semana, m�
 1. **Agendamentos feitos (produção)**: quantas consultas ela marcou em cada dia, pela data em que marcou. Mostra o total do período e a média por dia.
 2. **Consultas do dia (resultado)**: as consultas dela marcadas para acontecer em cada dia, com o que aconteceu. Exemplo de hoje: 5 marcadas, 2 compareceram, 1 remarcou, 1 pendente, 1 faltou/cancelou.
 
-## Como aparece
-- No cartão de cada SDR, os dois blocos lado a lado com os totais do período.
-- Abaixo, uma tabela **dia a dia** (rola dentro do cartão no celular), uma linha por dia, com colunas:
-  Marcou no dia | Consultas do dia | Compareceram | Faltas | Cancelamentos | Remarcados | Pendentes.
-- Linha de total no fim. No bloco "Equipe no período", os mesmos dois números somados da equipe.
+## Como aparece: três abas em pílula, com o filtro de período à direita
+1. **Visão geral**: a tela de hoje (Equipe no período + cartões por SDR), sem mudanças.
+2. **Agendamentos feitos**: por SDR, quantas consultas marcou em cada dia. Tabela com uma linha por dia e uma coluna por SDR, mais total e média por dia.
+3. **Consultas do dia**: escolhe a SDR (ou "Todas"). Tabela com uma linha por dia: Consultas do dia | Compareceram | Faltas | Cancelamentos | Remarcados | Pendentes, com linha de total.
+- Tabelas rolam dentro do próprio cartão no celular.
 - Clicar num número abre a lista dos leads com o botão "Ver conversa", como no relatório geral.
 
 ## Regras de contagem (iguais ao relatório geral)
