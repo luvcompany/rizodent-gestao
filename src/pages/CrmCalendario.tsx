@@ -1232,7 +1232,7 @@ export default function CrmCalendario() {
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-4 flex min-h-[50px] flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
+          <div className="mb-2 flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
             <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
             <h2 className="px-1 text-center text-[22px] font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
               {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
@@ -1244,10 +1244,10 @@ export default function CrmCalendario() {
             </span>
           </div>
           {/* Legenda de cores */}
-          <div className="mb-4 flex flex-shrink-0 flex-wrap items-center gap-2 text-[12px]">
+          <div className="mb-2 flex flex-shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
             <span className="mr-1 font-medium text-tertiary">Legenda:</span>
             {legendaAgendamentos.map((item) => (
-              <span key={item.texto} className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-medium", item.cor)}>
+              <span key={item.texto} className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium", item.cor)}>
                 <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
               </span>
             ))}
@@ -1256,24 +1256,24 @@ export default function CrmCalendario() {
             {presencaDisponivel && (
               <>
                 <span className="ml-2 mr-1 font-medium text-tertiary">Presença:</span>
-                <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-3 font-medium text-success-soft-foreground">
+                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-2.5 font-medium text-success-soft-foreground">
                   <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
                 </span>
-                <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-3 font-medium text-muted-foreground">
+                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-2.5 font-medium text-muted-foreground">
                   <Circle size={12} className="shrink-0" /> Sem confirmação
                 </span>
               </>
             )}
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
-          <div className="min-h-[360px] flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
-            <div className="grid min-h-full min-w-[820px] [--city-col:124px] sm:min-w-[880px] sm:[--city-col:168px]" style={{ gridTemplateColumns: `var(--city-col) repeat(${apptWeekDays.length}, minmax(116px, 1fr))`, gridTemplateRows: `auto repeat(${apptCities.length}, minmax(92px, 1fr)) auto` }}>
+          <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
+            <div className="grid min-w-[820px] [--city-col:124px] sm:min-w-[880px] sm:[--city-col:168px]" style={{ gridTemplateColumns: `var(--city-col) repeat(${apptWeekDays.length}, minmax(116px, 1fr))`, gridTemplateRows: `auto repeat(${apptCities.length}, minmax(64px, auto)) auto` }}>
               {/* Header row: empty corner + day headers */}
-              <div className="sticky left-0 top-0 z-20 flex items-end border-b border-r border-border/60 bg-card px-3 py-3 sm:px-4 text-[11px] font-semibold uppercase tracking-wide text-tertiary">
+              <div className="sticky left-0 top-0 z-20 flex items-end border-b border-r border-border/60 bg-card px-3 py-2 sm:px-4 text-[11px] font-semibold uppercase tracking-wide text-tertiary">
                 {unidadesDaAgenda === null ? "" : agendaPorCidade ? "Cidade" : rotuloUnidade}
               </div>
               {apptWeekDays.map(day => (
-                <div key={day.toISOString()} className={cn("sticky top-0 z-10 flex flex-col items-center gap-1 border-b border-border/60 bg-card px-2 py-3 text-center", isToday(day) && "bg-primary-soft")}>
+                <div key={day.toISOString()} className={cn("sticky top-0 z-10 flex flex-col items-center gap-0.5 border-b border-border/60 bg-card px-2 py-2 text-center", isToday(day) && "bg-primary-soft")}>
                   <div className={cn("text-[12px] font-medium uppercase tracking-wide text-tertiary", isToday(day) && "text-primary-soft-fg")}>{format(day, "EEE", { locale: ptBR })}</div>
                   <div className={cn("flex h-8 w-8 items-center justify-center rounded-full font-bold tabular-nums", isToday(day) ? "bg-primary text-[15px] text-primary-foreground shadow-brand" : "text-[20px] text-foreground")}>{format(day, "d")}</div>
                 </div>
@@ -1283,7 +1283,7 @@ export default function CrmCalendario() {
               {apptCities.map(city => (
                 <div key={city} className="contents">
                   {/* City label */}
-                  <div className="sticky left-0 z-[5] flex flex-col items-start gap-1 border-b border-r border-border/60 bg-card px-3 py-3 sm:px-4">
+                  <div className="sticky left-0 z-[5] flex flex-col items-start gap-0.5 border-b border-r border-border/60 bg-card px-3 py-2 sm:px-4">
                     <span className="text-[13px] font-semibold leading-snug text-foreground break-words">{city}</span>
                     {/* AGENDA-8: com várias unidades, consulta sem cidade cai
                         aqui — diz onde se resolve. */}
@@ -1302,8 +1302,8 @@ export default function CrmCalendario() {
                     ).sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""));
 
                     return (
-                      <div key={`${city}-${dayKey}`} className={cn("min-h-[92px] border-b border-r border-border/40 p-2", isToday(day) && "bg-primary-soft/35")}>
-                        <div className="space-y-1.5">
+                      <div key={`${city}-${dayKey}`} className={cn("min-h-16 border-b border-r border-border/40 p-1.5", isToday(day) && "bg-primary-soft/35")}>
+                        <div className="space-y-1">
                           {cellAppts.map(appt => {
                             // Status normalizado UMA vez. `desfechoEhComparecimento`
                             // e `rotuloDesfecho` já normalizam por dentro, mas os
@@ -1378,7 +1378,7 @@ export default function CrmCalendario() {
                             return (
                               <div
                                 key={appt.id}
-                                className={cn("cursor-pointer rounded-lg px-2 py-1.5 text-[12px] leading-snug shadow-xs transition-shadow hover:shadow-card", statusStyle, "border-l-[3px]")}
+                                className={cn("cursor-pointer rounded-lg px-2 py-1 text-[12px] leading-snug shadow-xs transition-shadow hover:shadow-card", statusStyle, "border-l-[3px]")}
                                 title={statusTitulo}
                                 onClick={() => {
                                   setSelectedAppointment(appt);
@@ -1393,7 +1393,7 @@ export default function CrmCalendario() {
                                    {!statusIcon && remarcada && <span className="mr-1 font-bold text-rescheduled">↻</span>}
                                    {appt.lead_name}
                                  </div>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium tabular-nums">
+                                <div className="flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium tabular-nums">
                                   <span className="opacity-75">{appt.scheduled_time?.slice(0, 5)}</span>
                                   {aberta && presencaDisponivel && (
                                     appt.presenca_confirmada_em
@@ -1412,7 +1412,7 @@ export default function CrmCalendario() {
               ))}
 
               {/* Totals row: per-day counts */}
-              <div className="sticky bottom-0 left-0 z-20 flex items-center border-r border-t border-border/60 bg-card px-3 py-3 sm:px-4 text-[13px] font-semibold text-foreground">
+              <div className="sticky bottom-0 left-0 z-20 flex items-center border-r border-t border-border/60 bg-card px-3 py-2 sm:px-4 text-[13px] font-semibold text-foreground">
                 Total / dia
               </div>
               {apptWeekDays.map(day => {
