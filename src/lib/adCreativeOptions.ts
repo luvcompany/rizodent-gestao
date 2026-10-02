@@ -29,6 +29,14 @@ const normalizedImage = (value: string | null) => {
   }
 };
 
+/** Prefere a miniatura guardada no sistema; links da Meta (fbcdn) expiram. */
+const guardada = (v: string | null) => !!v && v.includes("/chat-media/");
+function melhorImagem(a: string | null, b: string | null): string | null {
+  if (guardada(a)) return a;
+  if (guardada(b)) return b;
+  return a || b;
+}
+
 export function adGroupKey(ad: AdCandidate): string {
   const account = normalizedText(ad.ad_account_id || ad.ad_account_name) || "sem-conta";
   const identity = normalizedText(ad.nome_anuncio)
@@ -44,7 +52,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
     const current = byAdId.get(candidate.ad_id);
     byAdId.set(candidate.ad_id, current ? {
       ad_id: current.ad_id,
-      imagem_origem: current.imagem_origem || candidate.imagem_origem,
+      imagem_origem: melhorImagem(current.imagem_origem, candidate.imagem_origem),
       nome_anuncio: current.nome_anuncio || candidate.nome_anuncio,
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
@@ -65,7 +73,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
 
     grouped.set(group_key, {
       ad_id: current.ad_id || candidate.ad_id,
-      imagem_origem: current.imagem_origem || candidate.imagem_origem,
+      imagem_origem: melhorImagem(current.imagem_origem, candidate.imagem_origem),
       nome_anuncio: current.nome_anuncio || candidate.nome_anuncio,
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
