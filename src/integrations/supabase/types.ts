@@ -6505,6 +6505,10 @@ export type Database = {
           completed_orphans: number
         }[]
       }
+      relatorio_agendamentos: {
+        Args: { _fim: string; _inicio: string }
+        Returns: Json
+      }
       relatorio_funis: {
         Args: { p_ate: string; p_de: string }
         Returns: {
