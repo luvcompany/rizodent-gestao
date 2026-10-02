@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import crclinLogo from "@/assets/crclin-logo-full.png";
+import { BrandProvider } from "@/contexts/BrandContext";
 
 export const CRCLIN_DEFAULT_LOGO = crclinLogo;
 
@@ -206,7 +207,11 @@ function writeTenantCache(slug: string, data: TenantBranding) {
 }
 
 function applyBranding(tenant: TenantBranding) {
-  applyTenantTheme(tenant);
+  // Redesign: o tema da clínica (cores, sidebar grafite, favicon, fonte) é do
+  // BrandProvider do v2, a partir de get_public_branding. Aqui só limpamos as
+  // cores inline antigas — inline vence a folha do brand-theme e misturaria os
+  // dois temas.
+  applyTenantTheme(null);
   // Favicon: mantemos SEMPRE o padrão do CRClin (definido no index.html). A logo
   // do cliente como favicon ficava ruim (ícone pequeno/ilegível na aba).
   document.title = tenant.name;
@@ -247,7 +252,9 @@ export const TenantProvider = ({ children, slugOverride = null }: ProviderProps)
     })();
   }, [slugOverride]);
 
-  return <TenantContext.Provider value={{ tenant, loading }}>{children}</TenantContext.Provider>;
+  const conteudo = <TenantContext.Provider value={{ tenant, loading }}>{children}</TenantContext.Provider>;
+  // Só no app da clínica: sem slug (landing/admin) fica o tema do index.css.
+  return slugOverride ? <BrandProvider slug={slugOverride}>{conteudo}</BrandProvider> : conteudo;
 };
 
 export const useTenant = () => useContext(TenantContext);

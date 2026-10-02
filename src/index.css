@@ -602,3 +602,16 @@
 em-emoji-picker {
   --border-radius: 0px;
 }
+
+/* CRClin: utilitários das telas que ainda são as antigas (Atendimento,
+   Cadastro de leads, Procedimentos, Registro diário). O CSS do v2 não os tem;
+   sem eles o botão principal dessas telas ficava sem fundo. Seguem a cor da
+   marca pelo --primary. */
+@layer utilities {
+  .gradient-orange {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
+  }
+  .shadow-orange {
+    box-shadow: 0 4px 20px -4px hsl(var(--primary) / 0.3);
+  }
+}

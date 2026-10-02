@@ -1,9 +1,57 @@
 <!doctype html>
 <html lang="pt-BR" class="dark">
   <head>
-    <script>document.documentElement.className=localStorage.getItem('app-theme')||'dark'</script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Antes do React: aplica o tema claro/escuro salvo e o CSS da marca que o
+      // BrandContext guardou na última visita, para a tela não piscar.
+      // Tudo em try/catch: localStorage pode estar bloqueado (janela anônima).
+      (function () {
+        var root = document.documentElement;
+        var tema = "dark";
+        try {
+          var pref = localStorage.getItem("app-theme");
+          if (pref === "light" || pref === "dark") tema = pref;
+          else if (pref === "system") {
+            tema = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+        } catch (e) {}
+        root.classList.remove("dark", "light");
+        root.classList.add(tema);
+
+        try {
+          // Mesmo seed de public.reserved_slugs (+ raiz, auth e .lovable): esses
+          // endereços são do sistema, não de clínica. Subdomínio de clínica
+          // segue a mesma regra do src/main.tsx.
+          var reservados = [
+            "", "admin", "auth", "entrar", "login", "change-password", "privacidade", "termos",
+            "exclusao-de-dados", "oauth-close", "www", "app", "api", "sistema", "assets", "crclin",
+            "suporte", "ajuda", ".lovable"
+          ];
+          var host = location.hostname;
+          var slug = null;
+          var plataforma = /lovable\.(app|dev|host)$|lovableproject\.com$/.test(host) || host === "localhost" || host.indexOf("127.") === 0;
+          var partes = host.split(".");
+          if (!plataforma && partes.length >= 3 && ["www", "admin", "app", "api"].indexOf(partes[0]) < 0) {
+            slug = partes[0];
+          } else {
+            var seg = (location.pathname.split("/")[1] || "").toLowerCase();
+            if (reservados.indexOf(seg) < 0) slug = seg;
+          }
+          // Versão do gerador (VERSAO_GERADOR_TEMA em src/lib/brand/theme.ts):
+          // CSS de gerador antigo em cache não é aplicado.
+          var chave = "crm:brand_css:v2:" + (slug ? slug.toLowerCase() : "__sistema__");
+          var css = localStorage.getItem(chave);
+          if (css) {
+            var el = document.createElement("style");
+            el.id = "brand-theme";
+            el.textContent = css;
+            document.head.appendChild(el);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <title>CRClin — CRM para Clínicas e Agendamentos</title>
     <meta name="description" content="O CRClin é um CRM completo para clínicas e empresas de agendamento, centralizando WhatsApp, bots, agenda e gestão financeira em uma só plataforma." />
     <meta name="author" content="CRClin" />
