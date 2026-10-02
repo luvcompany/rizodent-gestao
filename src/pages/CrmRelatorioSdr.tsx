@@ -468,9 +468,9 @@ function CartaoSdr({ linha, titulo, subtitulo, destaque = false, blocos }: {
         {GRUPOS.map((g) => (
           <div key={g.titulo}>
             <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.titulo}</h3>
-            <div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {g.chaves.map((chave) => (
-                <Metrica key={chave} coluna={COLUNA_POR_CHAVE[chave]} linha={linha} />
+                <Balao key={chave} coluna={COLUNA_POR_CHAVE[chave]} linha={linha} tom={TOM_METRICA[chave]} />
               ))}
             </div>
           </div>
