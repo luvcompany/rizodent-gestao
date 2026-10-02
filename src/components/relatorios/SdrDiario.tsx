@@ -150,7 +150,7 @@ function BalaoDia({ titulo, rows, children, className }: { titulo: string; rows:
 
 // ---------- Aba "Agendamentos feitos": comparativo por SDR ----------
 
-function CartaoSdrFeitos({ nome, rows, diasUteis, destaque }: { nome: string; rows: LinhaDiaria[]; diasUteis: number; destaque?: boolean }) {
+function CartaoSdrFeitos({ nome, rows, diasUteis, destaque, extra }: { nome: string; rows: LinhaDiaria[]; diasUteis: number; destaque?: boolean; extra?: React.ReactNode }) {
   const porDia = useMemo(() => {
     const m = new Map<string, LinhaDiaria[]>();
     rows.forEach((r) => { const arr = m.get(r.dia_marcou) ?? []; arr.push(r); m.set(r.dia_marcou, arr); });
@@ -160,55 +160,59 @@ function CartaoSdrFeitos({ nome, rows, diasUteis, destaque }: { nome: string; ro
   const melhor = useMemo(() => {
     let best: { dia: string; n: number } | null = null;
     porDia.forEach((v, k) => { if (!best || v.length > best.n) best = { dia: k, n: v.length }; });
-    return best;
+    return best as { dia: string; n: number } | null;
   }, [porDia]);
-
+  const balao = "flex flex-col items-start rounded-xl px-3 py-2.5";
   return (
-    <section className={cn("rounded-2xl border bg-card shadow-card", destaque ? "border-primary/40" : "border-border/60")}>
-      <div className="flex items-center gap-3 border-b border-border/60 px-5 py-4">
-        <span className={cn("flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold", destaque ? "bg-primary-soft text-primary-soft-fg" : "bg-muted text-muted-foreground")}>
+    <article className={cn("rounded-2xl border bg-card p-5 shadow-card", destaque ? "border-primary/40" : "border-border/60")}>
+      <header className="flex items-center gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-semibold text-primary-soft-fg">
           {destaque ? <Users size={16} /> : iniciais(nome)}
         </span>
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-foreground">{nome}</h3>
-          <p className="text-xs text-muted-foreground">{rows.length} {rows.length === 1 ? "agendamento" : "agendamentos"} no período</p>
+          <p className="truncate font-semibold text-foreground">{nome}</p>
+          <p className="text-xs text-muted-foreground">Produção no período</p>
+        </div>
+      </header>
+      <div className="mt-5">
+        <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Agendamentos feitos</h3>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className={cn(balao, "bg-primary-soft text-primary-soft-fg")}>
+            <span className="text-[11px] font-medium opacity-80">Total</span>
+            <span className="text-xl font-bold leading-tight tabular-nums">{rows.length}</span>
+          </div>
+          <div className={cn(balao, "bg-info-soft text-info-soft-foreground")}>
+            <span className="text-[11px] font-medium opacity-80">Média por dia útil</span>
+            <span className="text-xl font-bold leading-tight tabular-nums">{(rows.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</span>
+          </div>
+          <div className={cn(balao, "bg-success-soft text-success-soft-foreground")}>
+            <span className="flex items-center gap-1 text-[11px] font-medium opacity-80"><Trophy size={11} /> Melhor dia</span>
+            <span className="text-xl font-bold leading-tight tabular-nums">{melhor ? melhor.n : "—"}</span>
+            {melhor ? <span className="text-[11px] leading-tight opacity-75">em {dataBR(melhor.dia).slice(0, 5)}</span> : null}
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 px-5 py-4">
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] text-muted-foreground">Média por dia útil</p>
-          <p className="text-lg font-semibold tabular-nums text-foreground">{(rows.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</p>
-        </div>
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="flex items-center gap-1 text-[11px] text-muted-foreground"><Trophy size={11} /> Melhor dia</p>
-          {melhor ? (
-            <p className="text-lg font-semibold tabular-nums text-foreground">{melhor!.n} <span className="text-xs font-normal text-muted-foreground">em {dataBR(melhor!.dia).slice(0, 5)}</span></p>
-          ) : (
-            <p className="text-lg font-semibold text-muted-foreground">—</p>
-          )}
-        </div>
-      </div>
-      <div className="border-t border-border/60 px-5 py-3">
-        <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Por dia</p>
+      {extra ? <div className="mt-5">{extra}</div> : null}
+      <div className="mt-5">
+        <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Por dia</h3>
         {diasCom.length === 0 ? (
-          <p className="py-2 text-xs text-muted-foreground">Nenhum agendamento no período.</p>
+          <p className="py-3 text-xs text-muted-foreground">Nenhum agendamento no período.</p>
         ) : (
-          <div className="max-h-56 overflow-auto">
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
             {diasCom.map((d) => {
               const r = porDia.get(d)!;
               return (
-                <div key={d} className="flex items-center justify-between border-b border-border/60 py-1 last:border-0">
-                  <span className="text-sm text-foreground"><span className="tabular-nums">{dataBR(d).slice(0, 5)}</span> <span className="text-xs text-muted-foreground">{semana(d)}</span></span>
-                  <BalaoDia titulo={`${nome} marcou em ${dataBR(d)}`} rows={r} className="text-sm font-semibold text-foreground">
-                    {r.length}
-                  </BalaoDia>
-                </div>
+                <BalaoDia key={d} titulo={`${nome} marcou em ${dataBR(d)}`} rows={r}
+                  className="flex w-full flex-col items-start rounded-xl bg-muted px-3 py-2 text-left hover:bg-muted/70">
+                  <span className="text-[11px] text-muted-foreground"><span className="tabular-nums">{dataBR(d).slice(0, 5)}</span> {semana(d)}</span>
+                  <span className="text-lg font-bold leading-tight tabular-nums text-foreground">{r.length}</span>
+                </BalaoDia>
               );
             })}
           </div>
         )}
       </div>
-    </section>
+    </article>
   );
 }
 
@@ -255,7 +259,7 @@ function CartaoDia({ dia, rows, onAbrir }: { dia: string | null; rows: LinhaDiar
 
 // ---------- Componente principal ----------
 
-export function SdrDiario({ modo, linhas, de, ate }: { modo: "feitos" | "do_dia"; linhas: LinhaDiaria[]; de: string; ate: string }) {
+export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feitos" | "do_dia"; linhas: LinhaDiaria[]; de: string; ate: string; extraPorSdr?: Record<string, React.ReactNode> }) {
   const { lista, setLista, linhas: det } = useListaLeads();
   const [sdrSel, setSdrSel] = useState("todas");
   const dias = useMemo(() => diasDoPeriodo(de, ate), [de, ate]);
@@ -272,12 +276,12 @@ export function SdrDiario({ modo, linhas, de, ate }: { modo: "feitos" | "do_dia"
     corpo = (
       <div className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Agendamentos feitos por dia</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique no número do dia para ver os leads.</p>
+          <h2 className="text-lg font-semibold text-foreground">Produção por SDR</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique num dia para ver os leads.</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {sdrs.map((s) => (
-            <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} />
+            <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} />
           ))}
           <CartaoSdrFeitos nome="Equipe" rows={feitos} diasUteis={diasUteis} destaque />
         </div>
