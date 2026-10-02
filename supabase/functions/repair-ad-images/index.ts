@@ -41,22 +41,36 @@ Deno.serve(async (req) => {
 
   try {
 
-    // Find leads with ad_id but missing imagem_origem
-    const { data: leads, error } = await supabase
-      .from("crm_leads")
-      .select("id, ad_id, link_anuncio, pipeline_id, tenant_id")
-      .not("ad_id", "is", null)
-      .is("imagem_origem", null)
-      .limit(50);
-
+    // Busca mensagens de anúncio sem miniatura e agrupa por anúncio:
+    // uma consulta à Meta por anúncio, não por lead.
+    const { data: msgs, error } = await supabase
+      .from("messages")
+      .select("id, lead_id, ad_source_id, ad_source_url, crm_leads!inner(id, pipeline_id, tenant_id, link_anuncio, imagem_origem)")
+      .not("ad_source_id", "is", null)
+      .is("ad_image_url", null)
+      .order("created_at", { ascending: false })
+      .limit(2000);
     if (error) throw error;
-    if (!leads || leads.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: "No leads to repair", count: 0 }), {
+
+    type Grupo = { adId: string; tenantId: string | null; pipelineId: string; link: string | null; leadIds: Set<string> };
+    const grupos = new Map<string, Grupo>();
+    for (const m of (msgs || []) as any[]) {
+      const lead = m.crm_leads;
+      const key = `${lead.tenant_id}|${m.ad_source_id}`;
+      let g = grupos.get(key);
+      if (!g) {
+        g = { adId: String(m.ad_source_id), tenantId: lead.tenant_id, pipelineId: lead.pipeline_id, link: m.ad_source_url || lead.link_anuncio || null, leadIds: new Set() };
+        grupos.set(key, g);
+      }
+      g.leadIds.add(lead.id);
+    }
+    const leads = Array.from(grupos.values());
+    if (leads.length === 0) {
+      return new Response(JSON.stringify({ success: true, message: "No ads to repair", count: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Get integrations for tokens (com tenant — o fallback NUNCA cruza tenants)
     const { data: integrations } = await supabase
       .from("integrations")
       .select("key, config, status, tenant_id");
@@ -64,116 +78,83 @@ Deno.serve(async (req) => {
       (i: any) => i.key.startsWith("whatsapp") && i.status === "connected"
     );
 
-    // Token só do MESMO tenant do lead. Sem integração própria => pula o lead
-    // (antes o fallback usava o token de qualquer tenant conectado).
-    const getToken = (pipelineId: string, tenantId: string | null): string => {
-      if (!tenantId) return "";
+    // Tokens só do MESMO tenant (nunca cruza clientes).
+    const tokensDo = (pipelineId: string, tenantId: string | null): string[] => {
+      if (!tenantId) return [];
       const ofTenant = whatsappIntegrations.filter((i: any) => i.tenant_id === tenantId);
+      const out: string[] = [];
       for (const integ of ofTenant) {
-        const cfg = integ.config as any;
-        if (cfg?.pipeline_id === pipelineId && cfg?.access_token) return cfg.access_token;
+        const t = (integ.config as any)?.access_token;
+        if (t && (integ.config as any)?.pipeline_id === pipelineId && !out.includes(t)) out.push(t);
       }
       for (const integ of ofTenant) {
-        const cfg = integ.config as any;
-        if (cfg?.access_token) return cfg.access_token;
+        const t = (integ.config as any)?.access_token;
+        if (t && !out.includes(t)) out.push(t);
       }
-      return "";
+      return out;
     };
 
     let repaired = 0;
+    let leadsRepaired = 0;
+    const falhas: string[] = [];
 
-    for (const lead of leads) {
-      const adSourceId = lead.ad_id;
-      const token = getToken(lead.pipeline_id, (lead as any).tenant_id ?? null);
-      if (!token || !adSourceId) continue;
-
+    for (const g of leads) {
+      const adSourceId = g.adId;
       let imageUrl: string | null = null;
 
-      // Method 1: Ad creative endpoint
-      try {
-        const adRes = await fetch(
-          `https://graph.facebook.com/v25.0/${encodeURIComponent(adSourceId)}?fields=creative{thumbnail_url,image_url,object_story_spec}&access_token=${token}`
-        );
-        if (adRes.ok) {
-          const adData = await adRes.json();
-          const creative = adData.creative;
-          if (creative) {
-            imageUrl = creative.image_url
-              || creative.thumbnail_url
-              || creative.object_story_spec?.link_data?.picture
-              || creative.object_story_spec?.link_data?.image_url
-              || creative.object_story_spec?.video_data?.image_url
-              || null;
-          }
-        }
-      } catch (_) { /* skip */ }
-
-      // Method 2: adcreatives endpoint
-      if (!imageUrl) {
+      for (const token of tokensDo(g.pipelineId, g.tenantId)) {
+        if (imageUrl) break;
         try {
-          const crRes = await fetch(
-            `https://graph.facebook.com/v25.0/${encodeURIComponent(adSourceId)}/adcreatives?fields=thumbnail_url,image_url,effective_object_story_id&access_token=${token}`
+          const adRes = await fetch(
+            `https://graph.facebook.com/v25.0/${encodeURIComponent(adSourceId)}?fields=creative{thumbnail_url,image_url,object_story_spec,effective_object_story_id}&thumbnail_width=600&thumbnail_height=600&access_token=${token}`
           );
-          if (crRes.ok) {
-            const crData = await crRes.json();
-            const cr = crData.data?.[0];
-            if (cr) {
-              imageUrl = cr.image_url || cr.thumbnail_url || null;
-              const storyId = cr.effective_object_story_id;
-              if (!imageUrl && storyId) {
-                try {
-                  const postRes = await fetch(
-                    `https://graph.facebook.com/v25.0/${encodeURIComponent(storyId)}?fields=full_picture,picture&access_token=${token}`
-                  );
-                  if (postRes.ok) {
-                    const postData = await postRes.json();
-                    imageUrl = postData.full_picture || postData.picture || null;
-                  }
-                } catch (_) { /* skip */ }
+          if (adRes.ok) {
+            const c = (await adRes.json()).creative;
+            if (c) {
+              imageUrl = c.image_url
+                || c.object_story_spec?.link_data?.picture
+                || c.object_story_spec?.link_data?.image_url
+                || c.object_story_spec?.video_data?.image_url
+                || c.thumbnail_url
+                || null;
+              if (!imageUrl && c.effective_object_story_id) {
+                const p = await fetch(`https://graph.facebook.com/v25.0/${encodeURIComponent(c.effective_object_story_id)}?fields=full_picture,picture&access_token=${token}`);
+                if (p.ok) { const pd = await p.json(); imageUrl = pd.full_picture || pd.picture || null; }
               }
             }
+          } else {
+            await adRes.text();
           }
         } catch (_) { /* skip */ }
+
+        if (!imageUrl && g.link && /instagram\.com\/(p|reel)\//.test(g.link)) {
+          try {
+            const o = await fetch(`https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(g.link)}&access_token=${token}`);
+            if (o.ok) imageUrl = (await o.json()).thumbnail_url || null; else await o.text();
+          } catch (_) { /* skip */ }
+        }
       }
 
-      // Method 3: oEmbed for Instagram posts
-      if (!imageUrl && lead.link_anuncio) {
-        try {
-          const igMatch = lead.link_anuncio.match(/instagram\.com\/p\/([^/?]+)/);
-          if (igMatch) {
-            const oembedRes = await fetch(
-              `https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(lead.link_anuncio)}&access_token=${token}`
-            );
-            if (oembedRes.ok) {
-              const oembedData = await oembedRes.json();
-              imageUrl = oembedData.thumbnail_url || null;
-            }
-          }
-        } catch (_) { /* skip */ }
+      if (!imageUrl) { falhas.push(adSourceId); continue; }
+
+      imageUrl = await persistAdImage(supabase, imageUrl, adSourceId);
+      const ids = Array.from(g.leadIds);
+      await supabase.from("messages").update({ ad_image_url: imageUrl })
+        .in("lead_id", ids).eq("ad_source_id", adSourceId).is("ad_image_url", null);
+      await supabase.from("crm_leads").update({ imagem_origem: imageUrl })
+        .in("id", ids).is("imagem_origem", null);
+      if (g.tenantId) {
+        await supabase.from("ad_id_mapping").update({ thumbnail_url: imageUrl })
+          .eq("ad_id", adSourceId).eq("tenant_id", g.tenantId).is("thumbnail_url", null);
       }
-
-      if (imageUrl) {
-        imageUrl = await persistAdImage(supabase, imageUrl, String(adSourceId));
-        await supabase.from("crm_leads").update({ imagem_origem: imageUrl }).eq("id", lead.id);
-
-        // Also update the first inbound message with ad info
-        await supabase
-          .from("messages")
-          .update({ ad_image_url: imageUrl })
-          .eq("lead_id", lead.id)
-          .not("ad_source_id", "is", null)
-          .is("ad_image_url", null);
-
-        repaired++;
-        console.log(`[REPAIR] Lead ${lead.id}: image set to ${imageUrl}`);
-      } else {
-        console.log(`[REPAIR] Lead ${lead.id}: no image found for ad ${adSourceId}`);
-      }
+      repaired++;
+      leadsRepaired += ids.length;
     }
 
     return new Response(
-      JSON.stringify({ success: true, total: leads.length, repaired }),
+      JSON.stringify({ success: true, anuncios: leads.length, repaired, leadsRepaired, falhas: falhas.length }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
     );
   } catch (err: any) {
     console.error("[REPAIR] Error:", err.message);
