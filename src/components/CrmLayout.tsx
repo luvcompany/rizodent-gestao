@@ -264,15 +264,16 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
     { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
     { to: "/crm/ligacoes", icon: Phone, label: "Ligações" },
   ];
-  if (role === "posvenda" || role === "gerente" || role === "crc" || role === "superadmin") {
+  // Pós-Venda só no menu do usuário de pós-venda (os demais não veem a aba).
+  if (role === "posvenda") {
     items.push({ to: "/crm/posvenda", icon: Heart, label: "Pós-Venda" });
   }
+  // "Funil e automações" saiu do menu: acesso pelo botão Automatize no Kanban.
   items.push(
     {
       label: "Automações",
       icon: Bot,
       children: [
-        { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
         { to: "/crm/bots", icon: Bot, label: "Bots" },
         { to: "/crm/modelos", icon: FileText, label: "Modelos" },
         { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
