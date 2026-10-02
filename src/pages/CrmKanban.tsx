@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getMyWhatsappNumberId, numeroDoLeadNovo } from "@/lib/mundoNumero";
 import { useNumerosLiberados } from "@/hooks/useNumerosLiberados";
 import { useVocab } from "@/hooks/useVocab";
+import { useCidadesDoTenant } from "@/hooks/useOpcoesDoTenant";
 import { mensagemDeErro } from "@/lib/mensagemDeErro";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { contaComoFaturamento, leadSourceMatchesFilter, hojeNoFuso, rangeNoFuso } from "@/lib/reportKit";
@@ -191,7 +192,8 @@ const NewLeadDialog = memo(function NewLeadDialog({
   const { userRole } = useAuth();
   const { ativos } = useNumerosLiberados();
   const { servicosInteresse } = useVocab();
-  const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "" };
+  const emptyForm = { name: "", phone: "", stage_id: defaultStageId, source: "", tags: "", value: "", notes: "", pipeline_id: "", cidade: "" };
+  const cidadesTenant = useCidadesDoTenant();
   const [form, setForm] = useState(emptyForm);
   const [duplicateInfo, setDuplicateInfo] = useState<{
     existingLeadId: string; existingLeadName: string;
@@ -243,6 +245,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
       stage_id: currentForm.stage_id,
       pipeline_id: targetPipeline.id,
       source: currentForm.source || null,
+      ...(currentForm.cidade ? { cidade: currentForm.cidade } : {}),
       tags: tagsArray,
       value: currentForm.value ? parseFloat(currentForm.value) : 0,
       notes: currentForm.notes || null,
@@ -441,6 +444,13 @@ const NewLeadDialog = memo(function NewLeadDialog({
                     <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                   )}
                 </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Cidade</Label>
+              <Select value={form.cidade} onValueChange={v => set("cidade", v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione a cidade" /></SelectTrigger>
+                <SelectContent>{cidadesTenant.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div><Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Tags (separadas por vírgula)</Label><Input placeholder={servicosInteresse.length >= 2 ? `ex.: ${servicosInteresse.slice(0, 2).join(", ")}` : "ex.: retorno, avaliação"} value={form.tags} onChange={e => set("tags", e.target.value)} /></div>

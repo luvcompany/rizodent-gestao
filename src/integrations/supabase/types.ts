@@ -2380,6 +2380,7 @@ export type Database = {
           blocked_at: string | null
           blocked_by: string | null
           cidade: string | null
+          client_request_id: string | null
           comment_only: boolean
           conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
@@ -2437,6 +2438,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_by?: string | null
           cidade?: string | null
+          client_request_id?: string | null
           comment_only?: boolean
           conversa_fechada_auto?: boolean
           conversa_fechada_em?: string | null
@@ -2494,6 +2496,7 @@ export type Database = {
           blocked_at?: string | null
           blocked_by?: string | null
           cidade?: string | null
+          client_request_id?: string | null
           comment_only?: boolean
           conversa_fechada_auto?: boolean
           conversa_fechada_em?: string | null
@@ -5741,6 +5744,7 @@ export type Database = {
           blocked_at: string | null
           blocked_by: string | null
           cidade: string | null
+          client_request_id: string | null
           comment_only: boolean
           conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
@@ -6075,6 +6079,7 @@ export type Database = {
           blocked_at: string | null
           blocked_by: string | null
           cidade: string | null
+          client_request_id: string | null
           comment_only: boolean
           conversa_fechada_auto: boolean
           conversa_fechada_em: string | null
