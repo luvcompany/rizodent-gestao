@@ -72,6 +72,20 @@ Deno.serve(async (req) => {
         }
         g.leadIds.add(l.id);
       }
+      // Anúncios que só existem na lista (sem lead ainda) também entram.
+      let mq = supabase
+        .from("ad_id_mapping")
+        .select("ad_id, tenant_id, thumbnail_url")
+        .or("thumbnail_url.is.null,thumbnail_url.not.like.*/chat-media/*");
+      if (typeof body?.tenant_id === "string") mq = mq.eq("tenant_id", body.tenant_id);
+      const { data: ms } = await mq.limit(2000);
+      for (const m of (ms || []) as any[]) {
+        if (grupos.size >= limite) break;
+        if (pulados.has(String(m.ad_id))) continue;
+        const key = `${m.tenant_id}|${m.ad_id}`;
+        if (grupos.has(key)) continue;
+        grupos.set(key, { adId: String(m.ad_id), tenantId: m.tenant_id, pipelineId: "", link: null, atual: m.thumbnail_url || null, leadIds: new Set() });
+      }
     } else {
     // Busca mensagens de anúncio sem miniatura e agrupa por anúncio:
     // uma consulta à Meta por anúncio, não por lead.
@@ -133,6 +147,7 @@ Deno.serve(async (req) => {
       const adSourceId = g.adId;
       let imageUrl: string | null = null;
 
+      if (modoLeads) await new Promise((r) => setTimeout(r, 800)); // respeita o limite da Meta
       for (const token of tokensDo(g.pipelineId, g.tenantId)) {
         if (imageUrl) break;
         try {
@@ -177,10 +192,11 @@ Deno.serve(async (req) => {
 
       imageUrl = await persistAdImage(supabase, imageUrl, adSourceId);
       const ids = Array.from(g.leadIds);
+      if (!imageUrl.includes("/chat-media/")) { falhas.push(adSourceId); continue; }
       await supabase.from("messages").update({ ad_image_url: imageUrl })
         .eq("ad_source_id", adSourceId).or("ad_image_url.is.null,ad_image_url.not.like.*/chat-media/*");
       if (modoLeads) {
-        await supabase.from("crm_leads").update({ imagem_origem: imageUrl }).in("id", ids);
+        if (ids.length) await supabase.from("crm_leads").update({ imagem_origem: imageUrl }).in("id", ids);
       } else {
         await supabase.from("crm_leads").update({ imagem_origem: imageUrl })
           .in("id", ids).is("imagem_origem", null);
