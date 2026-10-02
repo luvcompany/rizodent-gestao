@@ -1636,13 +1636,13 @@ export default function CrmKanban() {
           <div className="order-3 sm:order-4 inline-flex items-center gap-0.5 rounded-full border border-border/60 bg-card p-1 shadow-xs">
             <button
               onClick={() => setViewMode("kanban")}
-              className={`h-7 sm:h-8 w-9 sm:w-10 rounded-full flex items-center justify-center transition-all ${viewMode === "kanban" ? "bg-primary text-primary-foreground shadow-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              className={`h-7 sm:h-8 w-9 sm:w-10 rounded-full flex items-center justify-center transition-all ${viewMode === "kanban" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >
               <LayoutGrid size={16} strokeWidth={1.75} />
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`h-7 sm:h-8 w-9 sm:w-10 rounded-full flex items-center justify-center transition-all ${viewMode === "list" ? "bg-primary text-primary-foreground shadow-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              className={`h-7 sm:h-8 w-9 sm:w-10 rounded-full flex items-center justify-center transition-all ${viewMode === "list" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >
               <List size={16} strokeWidth={1.75} />
             </button>

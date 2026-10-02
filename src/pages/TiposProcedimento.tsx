@@ -312,7 +312,7 @@ const TiposProcedimento = () => {
               <Label>Valor de Referência (R$)</Label>
               <Input type="number" step="0.01" min="0" placeholder="0,00" value={valorReferencia} onChange={(e) => setValorReferencia(e.target.value)} className="bg-secondary border-border" />
             </div>
-            <Button type="submit" disabled={saving} className="w-full gradient-orange text-primary-foreground font-semibold shadow-orange hover:opacity-90">
+            <Button type="submit" disabled={saving} className="w-full border border-primary/20 bg-primary-soft text-primary-soft-fg font-semibold shadow-none hover:bg-primary-soft-2">
               {saving ? "Salvando..." : editingId ? "Atualizar" : "Cadastrar"}
             </Button>
           </form>

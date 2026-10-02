@@ -379,7 +379,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                   key={tag}
                   className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                     currentValue === tag
-                      ? "bg-primary text-primary-foreground border-primary"
+                      ? "border-primary/20 bg-primary-soft text-primary-soft-fg"
                       : "bg-secondary text-secondary-foreground border-border hover:border-primary/50"
                   }`}
                   onClick={() => { update("tag", tag); setTagInput(""); }}
@@ -1307,7 +1307,7 @@ function SaveToVariableField({
                 key={v}
                 className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                   currentField === v
-                    ? "bg-primary text-primary-foreground border-primary"
+                    ? "border-primary/20 bg-primary-soft text-primary-soft-fg"
                     : "bg-secondary text-secondary-foreground border-border hover:border-primary/50"
                 }`}
                 onClick={() => { setVarInput(v); onChange(v); }}

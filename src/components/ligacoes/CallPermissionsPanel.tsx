@@ -180,11 +180,11 @@ export default function CallPermissionsPanel() {
             key={f.key}
             onClick={() => setFilter(f.key)}
             className={`inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-              filter === f.key ? "bg-primary text-primary-foreground shadow-brand" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              filter === f.key ? "border border-primary/20 bg-primary-soft text-primary-soft-fg" : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
             {f.label}
-            <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${filter === f.key ? "bg-primary-foreground/25 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+            <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${filter === f.key ? "bg-primary/10 text-primary-soft-fg" : "bg-muted text-muted-foreground"}`}>
               {counts[f.key] ?? 0}
             </span>
           </button>

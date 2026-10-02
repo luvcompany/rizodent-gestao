@@ -385,7 +385,7 @@ export default function CrmLigacoes() {
               onClick={() => setFilter(f.key)}
               className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 filter === f.key
-                  ? "bg-primary text-primary-foreground shadow-brand"
+                  ? "border border-primary/20 bg-primary-soft text-primary-soft-fg"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
