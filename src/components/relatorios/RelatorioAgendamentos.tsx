@@ -132,16 +132,6 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Cancelamentos" value={n("agd_cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos dos agendados", "agd_cancelados")} hint="Avisou que não iria" />
           <Kpi label="Pendentes" value={n("agd_pendentes")} icon={Clock} tom="warning" onClick={abrir("Pendentes dos agendados", "agd_pendentes")} hint="Sem resultado ainda" />
         </div>
-        {dados && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <button type="button" disabled={!n("agd_remarcados")}
-              onClick={abrir("Primeira consulta remarcada", "agd_remarcados")}
-              className="rounded-full bg-purple-soft px-2.5 py-1 font-medium text-purple-soft-foreground disabled:opacity-50">
-              Primeira consulta remarcada: {n("agd_remarcados")}
-            </button>
-            <span>O resultado desses leads aparece em Remarcados.</span>
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
@@ -153,17 +143,6 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Cancelamentos" value={n("rem_cancelados")} icon={CalendarX} tom="slate" onClick={abrir("Cancelamentos dos remarcados", "rem_cancelados")} />
           <Kpi label="Pendentes" value={n("rem_pendentes")} icon={Clock} tom="warning" onClick={abrir("Pendentes dos remarcados", "rem_pendentes")} />
         </div>
-        {dados && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>Auditoria:</span>
-            <button type="button" disabled={!n("outros_agendamentos")}
-              onClick={abrir("Outros agendamentos de leads com histórico", "outros_agendamentos", "Nova consulta sem usar remarcação")}
-              className="rounded-full bg-slate-soft px-2.5 py-1 font-medium text-slate-soft-foreground disabled:opacity-50">
-              Outros agendamentos de leads com histórico: {n("outros_agendamentos")}
-            </button>
-            <span>Consulta nova criada sem usar a função de remarcar. Já incluídos em Remarcados.</span>
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
@@ -175,22 +154,6 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Cancelamentos" value={n("cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} />
           <Kpi label="Pendentes" value={n("geral_pendentes")} icon={Clock} tom="warning" onClick={abrir("Pendentes (geral)", "geral_pendentes")} />
         </div>
-        {dados && (
-          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span>Pendentes por motivo:</span>
-            {([
-              ["Agendamento futuro", "pend_agendamento_futuro"],
-              ["Remarcação futura", "pend_remarcacao_futura"],
-              ["Consulta hoje", "pend_hoje"],
-              ["Agendamento sem resultado", "pend_sem_resultado"],
-            ] as [string, keyof Dados][]).map(([t, k]) => (
-              <button key={k} type="button" disabled={!n(k)} onClick={abrir(t, k, t)}
-                className="rounded-full bg-warning-soft px-2.5 py-1 font-medium text-warning-soft-foreground disabled:opacity-50">
-                {t}: {n(k)}
-              </button>
-            ))}
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl bg-card p-5 shadow-sm space-y-4">
