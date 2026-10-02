@@ -52,12 +52,13 @@ Deno.serve(async (req) => {
     if (modoLeads) {
       // Retroativo: leads com anúncio cuja miniatura não está guardada no sistema
       // (vazia ou link da Meta que expira).
-      const { data: ls, error: le } = await supabase
+      let q = supabase
         .from("crm_leads")
         .select("id, ad_id, pipeline_id, tenant_id, link_anuncio, imagem_origem")
         .not("ad_id", "is", null)
-        .or("imagem_origem.is.null,imagem_origem.not.like.*/chat-media/*")
-        .limit(5000);
+        .or("imagem_origem.is.null,imagem_origem.not.like.*/chat-media/*");
+      if (typeof body?.tenant_id === "string") q = q.eq("tenant_id", body.tenant_id);
+      const { data: ls, error: le } = await q.limit(5000);
       if (le) throw le;
       const pulados = new Set<string>((body?.skip || []).map(String));
       for (const l of (ls || []) as any[]) {
