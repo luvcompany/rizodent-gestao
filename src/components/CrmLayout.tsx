@@ -134,21 +134,19 @@ function iniciaisDe(nome: string): string {
 }
 
 /** Logo (ou lockup de texto) no topo da barra lateral. */
-function MarcaDaBarra({ logo, nome, nomeCurto, naPlaca }: { logo: string | null; nome: string; nomeCurto: string; naPlaca: boolean }) {
+function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
   const [falhou, setFalhou] = useState(false);
   useEffect(() => setFalhou(false), [logo]);
   if (logo && !falhou) {
     return (
-      <span className={naPlaca ? "inline-flex max-w-full rounded-lg bg-white/95 px-2 py-1" : "inline-flex max-w-full"}>
+      <span className="inline-flex max-w-full items-center justify-center">
         <img
           src={logo}
           alt={nome}
           className={
             logo === CRCLIN_DEFAULT_LOGO
               ? "h-8 w-[125px] max-w-full object-cover object-[50%_42%]"
-              : naPlaca
-                ? "h-6 max-w-full object-contain object-left"
-                : "h-8 max-w-full object-contain object-left"
+              : "h-10 max-w-full object-contain object-center"
           }
           onError={() => setFalhou(true)}
         />
@@ -323,11 +321,7 @@ const CrmLayout = () => {
   // A barra lateral é escura nos dois temas: a logo é sempre a do fundo escuro
   // (logo escura → logo clara numa placa → lockup de iniciais).
   const logo = escolherLogo(true, marcaCliente, system, effective.poweredBy);
-  const logoNaPlaca =
-    !!logo &&
-    logo !== CRCLIN_DEFAULT_LOGO &&
-    logo !== (marcaCliente?.logo_dark_url?.trim() || null) &&
-    logo !== (system.logo_dark_url?.trim() || null);
+  const temLogoCliente = !!(marcaCliente?.logo_dark_url?.trim() || marcaCliente?.logo_url?.trim());
   const tagline = system.tagline?.trim() || null;
   // "Powered by" só faz sentido dentro de um cliente (sem cliente, a marca já é a do sistema).
   const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
@@ -562,23 +556,25 @@ const CrmLayout = () => {
           sidebarCollapsed ? "-translate-x-full" : "crm-sidebar-aberta lg:translate-x-0"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center gap-3 px-5 pb-4 pt-6">
-          <div className="flex min-w-0 flex-1 items-center justify-start">
-            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} naPlaca={logoNaPlaca} />
+        <div className="relative flex items-center gap-3 px-5 pb-4 pt-6">
+          <div className="flex min-w-0 flex-1 items-center justify-center">
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
           </div>
           <button
-            className="ml-auto -mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
+            className="absolute right-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="mx-3 mb-3 flex items-center justify-between gap-1 border-b border-sidebar-border px-1 pb-4">
-          <div className="min-w-0">
-            <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-white">{effective.name}</h2>
-            {tagline && <p className="mt-0.5 line-clamp-2 break-words text-xs text-sidebar-muted">{tagline}</p>}
-          </div>
+        <div className={`mx-3 mb-3 flex items-center gap-1 border-b border-sidebar-border px-1 pb-4 ${temLogoCliente ? "justify-end" : "justify-between"}`}>
+          {!temLogoCliente && (
+            <div className="min-w-0">
+              <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-white">{effective.name}</h2>
+              {tagline && <p className="mt-0.5 line-clamp-2 break-words text-xs text-sidebar-muted">{tagline}</p>}
+            </div>
+          )}
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
             <button
               onClick={() => navigate("/dashboard")}
