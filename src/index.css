@@ -456,8 +456,25 @@
      o seletor de atributo evita que o Tailwind trate bg-primary como classe
      desta regra e gere cópias dela com variantes (hover:bg-primary etc.). */
   :where(html:root:has(.crm-shell)) .crm-btn-default:where([class~="bg-primary"]) {
-    --tw-shadow: var(--crm-btn-shadow);
+    border: 1px solid hsl(var(--primary) / 0.2);
+    background-color: hsl(var(--primary-soft));
+    color: hsl(var(--primary-soft-fg));
+    --tw-shadow: 0 0 #0000;
     box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  :where(html:root:has(.crm-shell)) .crm-btn-default:where([class~="bg-primary"]):hover {
+    background-color: hsl(var(--primary-soft-2));
+  }
+  /* Algumas telas antigas usam botão nativo em vez do Button compartilhado. */
+  :where(html:root:has(.crm-shell)) button:where([class~="bg-primary"]) {
+    border-color: hsl(var(--primary) / 0.2);
+    background-color: hsl(var(--primary-soft));
+    color: hsl(var(--primary-soft-fg));
+    --tw-shadow: 0 0 #0000;
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  :where(html:root:has(.crm-shell)) button:where([class~="bg-primary"]):hover {
+    background-color: hsl(var(--primary-soft-2));
   }
   :where(html:root:has(.crm-shell)) .crm-btn-outline {
     --crm-btn-outline-border: hsl(var(--border));
