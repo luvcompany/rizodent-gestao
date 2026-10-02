@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      _bkp_messages_ad_20261002: {
+        Row: {
+          ad_account_name: string | null
+          ad_body: string | null
+          ad_headline: string | null
+          ad_image_url: string | null
+          ad_source_url: string | null
+          id: string | null
+        }
+        Insert: {
+          ad_account_name?: string | null
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_image_url?: string | null
+          ad_source_url?: string | null
+          id?: string | null
+        }
+        Update: {
+          ad_account_name?: string | null
+          ad_body?: string | null
+          ad_headline?: string | null
+          ad_image_url?: string | null
+          ad_source_url?: string | null
+          id?: string | null
+        }
+        Relationships: []
+      }
       _bkp_pagamentos_tipo_20261002: {
         Row: {
           data_pagamento: string | null
