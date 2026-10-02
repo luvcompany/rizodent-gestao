@@ -1276,7 +1276,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   onClick={handleSendMessage}
                   disabled={envioTravado}
                    title={tituloTravado}
-                    className="h-9 w-9 shrink-0 rounded-full shadow-brand"
+                    className="h-9 w-9 shrink-0 rounded-full border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2"
                 >
                   <Send size={18} />
                 </Button>
