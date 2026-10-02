@@ -135,6 +135,12 @@ const mesmaMensagem = (a: LinhaDaMensagem, b: LinhaDaMensagem): boolean =>
   a.whatsapp_message_id === b.whatsapp_message_id &&
   a.deleted_at === b.deleted_at &&
   a.transcription === b.transcription &&
+  a.ad_headline === b.ad_headline &&
+  a.ad_body === b.ad_body &&
+  a.ad_image_url === b.ad_image_url &&
+  a.ad_source_url === b.ad_source_url &&
+  a.ad_source_id === b.ad_source_id &&
+  a.ad_account_name === b.ad_account_name &&
   JSON.stringify(a.reactions ?? []) === JSON.stringify(b.reactions ?? []) &&
   JSON.stringify(a.template_snapshot ?? null) === JSON.stringify(b.template_snapshot ?? null);
 

@@ -6,6 +6,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
 };
 
+async function persistAdImage(supabase: any, url: string, adId: string): Promise<string> {
+  if (url.includes("/storage/v1/object/public/chat-media/")) return url;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return url;
+    const blob = await response.blob();
+    const mime = (response.headers.get("content-type") || blob.type || "image/jpeg").split(";")[0];
+    if (!mime.startsWith("image/")) return url;
+    const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+    const path = `ads/${adId.replace(/[^a-zA-Z0-9_-]/g, "")}_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("chat-media").upload(path, blob, { contentType: mime, upsert: false });
+    if (error) return url;
+    return supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl || url;
+  } catch {
+    return url;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -135,6 +153,7 @@ Deno.serve(async (req) => {
       }
 
       if (imageUrl) {
+        imageUrl = await persistAdImage(supabase, imageUrl, String(adSourceId));
         await supabase.from("crm_leads").update({ imagem_origem: imageUrl }).eq("id", lead.id);
 
         // Also update the first inbound message with ad info

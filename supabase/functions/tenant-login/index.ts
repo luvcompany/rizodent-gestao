@@ -11,6 +11,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/[a-z0-9-]+\.lovable\.app$/i,
   /^https:\/\/[a-z0-9-]+\.lovableproject\.com$/i,
   /^https:\/\/[a-z0-9-]+\.lovable\.dev$/i,
+  /^http:\/\/localhost(?::\d+)?$/i,
 ];
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") || "";

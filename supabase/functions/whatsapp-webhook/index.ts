@@ -786,6 +786,30 @@ async function downloadAndStoreMedia(
   }
 }
 
+function adOriginFromReferral(sourceUrl: string | null | undefined): "instagram_ad" | "facebook_ad" {
+  const value = String(sourceUrl || "").toLowerCase();
+  return value.includes("instagram.com") || value.includes("instagram") ? "instagram_ad" : "facebook_ad";
+}
+
+async function persistAdImage(url: string | null, adId: string | null, supabase: any): Promise<string | null> {
+  if (!url || url.includes("/storage/v1/object/public/chat-media/")) return url;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return url;
+    const blob = await response.blob();
+    const mime = (response.headers.get("content-type") || blob.type || "image/jpeg").split(";")[0];
+    if (!mime.startsWith("image/")) return url;
+    const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+    const safeId = String(adId || crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g, "");
+    const path = `ads/${safeId}_${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("chat-media").upload(path, blob, { contentType: mime, upsert: false });
+    if (error) return url;
+    return supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl || url;
+  } catch {
+    return url;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1075,8 +1099,9 @@ Deno.serve(async (req) => {
               try {
                 const { data: cached } = await supabase
                   .from("ad_id_mapping")
-                  .select("ad_account_id, ad_account_name, ad_name, ad_headline, ad_body")
+                  .select("ad_account_id, ad_account_name, ad_name, ad_headline, ad_body, thumbnail_url")
                   .eq("ad_id", adSourceId)
+                  .eq("tenant_id", tenantId)
                   .maybeSingle();
                 if (cached) {
                   if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;
@@ -1084,6 +1109,7 @@ Deno.serve(async (req) => {
                   if (!adName && (cached as any).ad_name) adName = (cached as any).ad_name;
                   if (!adHeadline && cached.ad_headline) adHeadline = cached.ad_headline;
                   if (!adBody && cached.ad_body) adBody = cached.ad_body;
+                  if (!adImageUrl && cached.thumbnail_url) adImageUrl = cached.thumbnail_url;
                   console.log(`[AD-CACHE] HIT ad_id=${adSourceId} => account=${adAccountName}`);
                 } else {
                   console.log(`[AD-CACHE] MISS ad_id=${adSourceId} - vai consultar Graph API`);
@@ -1238,6 +1264,12 @@ Deno.serve(async (req) => {
               }
             }
 
+            // URLs de miniatura da Meta podem expirar. Guarda a imagem depois de
+            // todos os fallbacks, para cobrir tanto referral quanto Graph/oEmbed.
+            if (referral && adImageUrl) {
+              adImageUrl = await persistAdImage(adImageUrl, adSourceId, supabase);
+            }
+
             // 🔑 CACHE: persiste/atualiza metadados do anúncio para garantir que próximas requisições
             // não dependam mais da Graph API (evita falhas por token expirado, rate limit, etc.)
             if (referral && adSourceId && (adAccountName || adAccountId || adHeadline)) {
@@ -1270,6 +1302,7 @@ Deno.serve(async (req) => {
                 if (adAccountName) cachePayload.ad_account_name = adAccountName;
                 if (adName) cachePayload.ad_name = adName;
                 if (adHeadline) cachePayload.ad_headline = adHeadline;
+                if (adImageUrl) cachePayload.thumbnail_url = adImageUrl;
                 if (inferredCidadeForCache) cachePayload.cidade = inferredCidadeForCache;
                 // ad_body é a CHAVE DE AGRUPAMENTO do relatório: só grava se passar na sanidade
                 const corpoOk = typeof adBody === "string"
@@ -1387,7 +1420,7 @@ Deno.serve(async (req) => {
                     stage_id: stage.id,
                     tenant_id: tenantId,
                     source: referral
-                      ? "facebook_ad"
+                      ? adOriginFromReferral(adSourceUrl)
                       : (detectarOrigemPorTexto(content) || "whatsapp"),
                     // Marca já como janela aberta — o lead nasce por causa de uma
                     // mensagem inbound que acabou de chegar. Sem isso, automações
@@ -1553,7 +1586,9 @@ Deno.serve(async (req) => {
                     }
                   } catch (_e) { /* engole — não bloqueia update do lead */ }
                 }
-                if (!lead.source || lead.source === "whatsapp") updates.source = "facebook_ad";
+                if (!lead.source || lead.source === "whatsapp" || lead.source === "facebook_ad" || lead.source === "instagram_ad") {
+                  updates.source = adOriginFromReferral(adSourceUrl);
+                }
               }
               if (Object.keys(updates).length > 0) {
                 await supabase.from("crm_leads").update(updates).eq("id", lead.id);
