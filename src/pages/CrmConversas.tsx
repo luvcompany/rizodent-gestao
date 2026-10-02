@@ -1588,9 +1588,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                         style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vRow.start}px)` }}
                         className={`relative group flex items-start gap-0 rounded-xl border-b-2 border-transparent bg-clip-padding transition-colors ${
                           isActive
-                            ? "bg-primary-soft shadow-xs ring-1 ring-inset ring-primary/30 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-primary"
+                            ? "bg-primary/20 shadow-xs ring-1 ring-inset ring-primary/50"
                             : isUnread
-                              ? "bg-primary-soft-2/50 dark:bg-primary-soft-2/30 hover:bg-primary-soft-2 before:absolute before:inset-y-5 before:left-0 before:w-[3px] before:rounded-full before:bg-primary/70"
+                              ? "bg-primary/10 hover:bg-primary/15"
                               : "hover:bg-surface-sunken"
                         }`}>
                         <button
