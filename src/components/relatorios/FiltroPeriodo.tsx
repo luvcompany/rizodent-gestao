@@ -20,7 +20,7 @@ export const PRESETS: { id: string; label: string; range: () => [Date, Date] }[]
   { id: "semana", label: "Esta semana", range: () => [startOfWeek(hoje(), semana), endOfWeek(hoje(), semana)] },
   { id: "semana-passada", label: "Semana passada", range: () => [startOfWeek(subWeeks(hoje(), 1), semana), endOfWeek(subWeeks(hoje(), 1), semana)] },
   { id: "mes", label: "Este mês", range: () => [startOfMonth(hoje()), endOfMonth(hoje())] },
-  { id: "mes-passado", label: "Mês passado", range: () => [startOfMonth(subMonths(hoje(), 1)), endOfMonth(hoje(), 1))] },
+  { id: "mes-passado", label: "Mês passado", range: () => [startOfMonth(subMonths(hoje(), 1)), endOfMonth(subMonths(hoje(), 1))] },
 ];
 
 export type Periodo = { preset: string; range: [Date, Date] };
