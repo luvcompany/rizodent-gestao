@@ -4,7 +4,6 @@ import { useGestorEquipe } from "@/hooks/useGestorEquipe";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import { asDateParam } from "@/lib/reportKit";
 import {
@@ -297,56 +296,18 @@ export default function CrmRelatorioSdr() {
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-foreground">Por SDR</h2>
-              <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[1240px]">
-                    <TableHeader>
-                      <TableRow className="border-border/60 bg-muted/50 hover:bg-muted/50">
-                        <TableHead className="sticky left-0 z-10 bg-muted/50 text-xs font-medium text-muted-foreground">SDR</TableHead>
-                        {COLUNAS.map((c) => (
-                          <TableHead key={c.chave} className="whitespace-nowrap text-right text-xs font-medium text-muted-foreground" title={c.dica}>
-                            {c.titulo}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sdrs.map((l) => (
-                        <TableRow key={l.user_id ?? l.nome} className={cn("border-border/60", l.bloqueada && "opacity-70")}>
-                          <TableCell className="sticky left-0 z-10 bg-card">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-medium text-foreground">{l.nome}</span>
-                              <span className="text-xs text-muted-foreground">{l.email}</span>
-                              <span className="flex flex-wrap gap-1">
-                                {l.bloqueada && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Bloqueada</Badge>}
-                                {!l.bloqueada && l.no_rodizio === false && (
-                                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">Fora do rodízio</Badge>
-                                )}
-                              </span>
-                            </div>
-                          </TableCell>
-                          {COLUNAS.map((c) => (
-                            <CelulaNumero key={c.chave} valor={c.render(l)} apoio={c.apoio?.(l)} />
-                          ))}
-                        </TableRow>
-                      ))}
-                      {total && (
-                        <TableRow className="border-t-2 border-border bg-muted font-semibold hover:bg-muted">
-                          {/* Fundo sólido na célula fixa: translúcido deixaria as colunas roladas aparecerem por baixo. */}
-                          <TableCell className="sticky left-0 z-10 bg-muted text-foreground">
-                            Equipe (total)
-                            <span className="block text-xs font-normal text-muted-foreground">
-                              {sdrs.length} {sdrs.length === 1 ? "SDR" : "SDRs"}
-                            </span>
-                          </TableCell>
-                          {COLUNAS.map((c) => (
-                            <CelulaNumero key={c.chave} valor={c.render(total)} apoio={c.apoio?.(total)} destaque />
-                          ))}
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {sdrs.map((l) => (
+                  <CartaoSdr key={l.user_id ?? l.nome} linha={l} />
+                ))}
+                {total && (
+                  <CartaoSdr
+                    linha={total}
+                    titulo="Equipe (total)"
+                    subtitulo={`${sdrs.length} ${sdrs.length === 1 ? "SDR" : "SDRs"}`}
+                    destaque
+                  />
+                )}
               </div>
             </section>
           </>
@@ -376,11 +337,69 @@ export default function CrmRelatorioSdr() {
   );
 }
 
-function CelulaNumero({ valor, apoio, destaque = false }: { valor: React.ReactNode; apoio?: React.ReactNode; destaque?: boolean }) {
+const GRUPOS: { titulo: string; chaves: string[] }[] = [
+  { titulo: "Atendimento", chaves: ["recebidos", "respondidos", "mediana", "media"] },
+  { titulo: "Agendamentos", chaves: ["agendamentos", "compareceram", "faltas", "reagendamentos", "faltas_reag", "leads_2_faltas"] },
+  { titulo: "Resultado", chaves: ["contratados", "fechadas", "pesquisa"] },
+  { titulo: "Jornada", chaves: ["expediente", "pausa"] },
+];
+
+const COLUNA_POR_CHAVE = Object.fromEntries(COLUNAS.map((c) => [c.chave, c]));
+
+function iniciais(nome: string) {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  const duas = [partes[0]?.[0], partes.length > 1 ? partes[partes.length - 1][0] : ""].join("");
+  return (duas || nome.slice(0, 2) || "?").toUpperCase();
+}
+
+function Metrica({ coluna, linha }: { coluna: Coluna; linha: LinhaRelatorioSdr }) {
+  const apoio = coluna.apoio?.(linha);
   return (
-    <TableCell className="whitespace-nowrap text-right align-top">
-      <span className={`block font-mono tabular-nums ${destaque ? "text-foreground" : ""}`}>{valor}</span>
-      {apoio ? <span className="block text-[11px] font-normal text-muted-foreground">{apoio}</span> : null}
-    </TableCell>
+    <div title={coluna.dica} className="rounded-xl bg-muted/40 px-3 py-2.5">
+      <span className="block text-[11px] leading-tight text-muted-foreground">{coluna.titulo}</span>
+      <span className="mt-1 block text-lg font-semibold leading-none tabular-nums text-foreground">{coluna.render(linha)}</span>
+      {apoio ? <span className="mt-1 block text-[11px] leading-tight text-muted-foreground">{apoio}</span> : null}
+    </div>
+  );
+}
+
+function CartaoSdr({ linha, titulo, subtitulo, destaque = false }: {
+  linha: LinhaRelatorioSdr; titulo?: string; subtitulo?: string; destaque?: boolean;
+}) {
+  const nome = titulo ?? linha.nome;
+  return (
+    <article className={cn(
+      "rounded-2xl border bg-card p-5 shadow-card",
+      destaque ? "border-primary/40" : "border-border/60",
+      linha.bloqueada && "opacity-70",
+    )}>
+      <header className="flex items-center gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-semibold text-primary-soft-fg">
+          {iniciais(nome)}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-foreground">{nome}</p>
+          <p className="truncate text-xs text-muted-foreground">{subtitulo ?? linha.email}</p>
+        </div>
+        <span className="ml-auto flex shrink-0 flex-wrap gap-1">
+          {linha.bloqueada && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Bloqueada</Badge>}
+          {!linha.bloqueada && linha.no_rodizio === false && (
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">Fora do rodízio</Badge>
+          )}
+        </span>
+      </header>
+      <div className="mt-4 space-y-4">
+        {GRUPOS.map((g) => (
+          <div key={g.titulo}>
+            <h3 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{g.titulo}</h3>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {g.chaves.map((chave) => (
+                <Metrica key={chave} coluna={COLUNA_POR_CHAVE[chave]} linha={linha} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </article>
   );
 }
