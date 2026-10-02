@@ -13,7 +13,7 @@ type Dados = {
   chegaram: number;
   agendados: string[]; compareceram: string[]; faltas: string[];
   remarcados: string[]; rem_compareceram: string[]; rem_faltas: string[];
-  cancelados: string[];
+  cancelados: string[]; agd_cancelados: string[]; rem_cancelados: string[];
   geral_agendados: string[]; geral_compareceram: string[]; geral_faltas: string[];
 };
 
@@ -98,7 +98,7 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Agendados" value={n("agendados")} icon={CalendarCheck} tom="primary" onClick={abrir("Agendados", "agendados")} hint="Sem quem remarcou" />
           <Kpi label="Compareceram" value={n("compareceram")} icon={UserCheck} tom="success" onClick={abrir("Agendados que compareceram", "compareceram")} />
           <Kpi label="Faltas" value={n("faltas")} icon={UserX} tom="destructive" onClick={abrir("Faltas dos agendados", "faltas")} hint="Cada lead conta uma vez" />
-          <Kpi label="Cancelamentos" value={n("cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} hint="Avisou e não remarcou" />
+          <Kpi label="Cancelamentos" value={n("agd_cancelados")} icon={Ban} tom="slate" onClick={abrir("Cancelamentos dos agendados", "agd_cancelados")} hint="Avisou e não remarcou" />
         </div>
       </section>
 
@@ -108,7 +108,7 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
           <Kpi label="Remarcados" value={n("remarcados")} icon={Repeat} tom="purple" onClick={abrir("Remarcados", "remarcados")} />
           <Kpi label="Compareceram" value={n("rem_compareceram")} icon={UserCheck} tom="success" onClick={abrir("Remarcados que compareceram", "rem_compareceram")} />
           <Kpi label="Faltas" value={n("rem_faltas")} icon={UserX} tom="destructive" onClick={abrir("Faltas dos remarcados", "rem_faltas")} hint="Cada lead conta uma vez" />
-          <Kpi label="Cancelamentos" value={n("cancelados")} icon={CalendarX} tom="slate" onClick={abrir("Cancelamentos", "cancelados")} />
+          <Kpi label="Cancelamentos" value={n("rem_cancelados")} icon={CalendarX} tom="slate" onClick={abrir("Cancelamentos dos remarcados", "rem_cancelados")} />
         </div>
       </section>
 
