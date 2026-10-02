@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, MessageCircle, CalendarX, Trophy, Users } from "lucide-react";
+import { Loader2, AlertTriangle, MessageCircle, CalendarCheck, TrendingUp, Trophy, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -145,6 +145,31 @@ function BalaoDia({ titulo, rows, children, className }: { titulo: string; rows:
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ---------- KPI da equipe no topo (mesmo padrão do "Equipe no período" da Visão geral) ----------
+
+const TOM_KPI: Record<string, string> = {
+  primary: "bg-primary-soft text-primary-soft-fg",
+  info: "bg-info-soft text-info-soft-foreground",
+  success: "bg-success-soft text-success-soft-foreground",
+};
+
+function KpiEquipeDia({ label, value, apoio, icon: Icon, tom }: {
+  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: React.ComponentType<{ size?: number }>; tom: keyof typeof TOM_KPI;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-sm leading-snug text-muted-foreground">{label}</span>
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TOM_KPI[tom])}>
+          <Icon size={16} />
+        </span>
+      </div>
+      <div className="mt-3 text-[30px] font-bold leading-none tabular-nums text-foreground">{value}</div>
+      {apoio ? <p className="mt-2 text-xs text-muted-foreground">{apoio}</p> : null}
+    </div>
   );
 }
 
