@@ -11,8 +11,12 @@ import {
   buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento,
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
-import { AlertTriangle, BarChart3, Info, Loader2, RefreshCw, Users } from "lucide-react";
+import {
+  AlertTriangle, BarChart3, CalendarCheck, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply,
+  type LucideIcon,
+} from "lucide-react";
 import { EmptyState } from "@/components/crm-ui";
+import { cn } from "@/lib/utils";
 
 /**
  * Relatório por SDR — visão do GESTOR da equipe (Fase 5 do rodízio).
@@ -138,6 +142,32 @@ const COLUNAS: Coluna[] = [
   },
 ];
 
+type Tom = "primary" | "success" | "destructive" | "info" | "warning";
+const TOM: Record<Tom, string> = {
+  primary: "bg-primary-soft text-primary-soft-fg",
+  success: "bg-success-soft text-success-soft-foreground",
+  destructive: "bg-destructive-soft text-destructive-soft-foreground",
+  info: "bg-info-soft text-info-soft-foreground",
+  warning: "bg-warning-soft text-warning-soft-foreground",
+};
+
+function KpiEquipe({ label, value, apoio, icon: Icon, tom }: {
+  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: Tom;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-sm leading-snug text-muted-foreground">{label}</span>
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TOM[tom])}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <div className="mt-3 text-[30px] font-bold leading-none tabular-nums text-foreground">{value}</div>
+      {apoio ? <p className="mt-2 text-xs text-muted-foreground">{apoio}</p> : null}
+    </div>
+  );
+}
+
 export default function CrmRelatorioSdr() {
   const { isGestor, resolved, erro: erroGestor, tentarDeNovo } = useGestorEquipe();
 
@@ -193,14 +223,14 @@ export default function CrmRelatorioSdr() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-5 pb-10">
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 pb-10">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground"><BarChart3 size={20} /></span>
-              <h1 className="text-3xl font-bold text-foreground">Relatório por SDR</h1>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-soft-fg"><BarChart3 size={22} /></span>
+              <h1 className="text-[28px] font-bold leading-tight text-foreground">Relatório por SDR</h1>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1.5 text-sm text-muted-foreground">
               Leads, respostas, agendamentos, pesquisa e expediente de cada SDR no período.{" "}
               <Link to="/crm/equipe" className="underline underline-offset-2 hover:text-foreground">Ver a equipe</Link>
             </p>
@@ -216,83 +246,113 @@ export default function CrmRelatorioSdr() {
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-card border border-border bg-card shadow-card">
-          {estado.status === "error" ? (
-            <div className="flex flex-wrap items-center gap-3 px-6 py-10">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
-              <div className="min-w-[200px] flex-1">
-                <p className="text-sm font-medium text-destructive">Não foi possível carregar o relatório</p>
-                <p className="mt-0.5 break-words text-xs text-muted-foreground">{estado.message}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>Tentar novamente</Button>
+        {estado.status === "error" ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card px-6 py-10 shadow-card">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
+            <div className="min-w-[200px] flex-1">
+              <p className="text-sm font-medium text-destructive">Não foi possível carregar o relatório</p>
+              <p className="mt-0.5 break-words text-xs text-muted-foreground">{estado.message}</p>
             </div>
-          ) : estado.status === "loading" ? (
-            <div className="space-y-3 p-6">
+            <Button variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>Tentar novamente</Button>
+          </div>
+        ) : carregando ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
+            </div>
+            <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-6 shadow-card">
               <Skeleton className="h-5 w-1/3" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : sdrs.length === 0 ? (
+          </div>
+        ) : sdrs.length === 0 ? (
+          <div className="rounded-2xl border border-border/60 bg-card shadow-card">
             <EmptyState icon={Users} title="Nenhuma SDR cadastrada" description="O relatório aparece assim que a primeira SDR for criada na aba Equipe." action={
               <Button size="sm" variant="outline" asChild>
                 <Link to="/crm/equipe"><Users size={14} className="mr-1" /> Abrir a Equipe</Link>
               </Button>
             } />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[1240px]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 z-10 bg-surface-sunken">SDR</TableHead>
-                    {COLUNAS.map((c) => (
-                      <TableHead key={c.chave} className="whitespace-nowrap text-right" title={c.dica}>
-                        {c.titulo}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sdrs.map((l) => (
-                    <TableRow key={l.user_id ?? l.nome} className={l.bloqueada ? "opacity-70" : ""}>
-                      <TableCell className="sticky left-0 z-10 bg-card">
-                        <div className="flex flex-col gap-1">
-                          <span className="font-medium text-foreground">{l.nome}</span>
-                          <span className="text-xs text-muted-foreground">{l.email}</span>
-                          <span className="flex flex-wrap gap-1">
-                            {l.bloqueada && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Bloqueada</Badge>}
-                            {!l.bloqueada && l.no_rodizio === false && (
-                              <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">Fora do rodízio</Badge>
-                            )}
-                          </span>
-                        </div>
-                      </TableCell>
-                      {COLUNAS.map((c) => (
-                        <CelulaNumero key={c.chave} valor={c.render(l)} apoio={c.apoio?.(l)} />
-                      ))}
-                    </TableRow>
-                  ))}
-                  {total && (
-                    <TableRow className="border-t-2 border-border bg-muted font-semibold hover:bg-muted">
-                      {/* Fundo sólido na célula fixa: translúcido deixaria as colunas roladas aparecerem por baixo. */}
-                      <TableCell className="sticky left-0 z-10 bg-muted text-foreground">
-                        Equipe (total)
-                        <span className="block text-xs font-normal text-muted-foreground">
-                          {sdrs.length} {sdrs.length === 1 ? "SDR" : "SDRs"}
-                        </span>
-                      </TableCell>
-                      {COLUNAS.map((c) => (
-                        <CelulaNumero key={c.chave} valor={c.render(total)} apoio={c.apoio?.(total)} destaque />
-                      ))}
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </section>
+          </div>
+        ) : (
+          <>
+            {total && (
+              <section className="space-y-3">
+                <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+                  <KpiEquipe label="Leads recebidos" value={fmtInt(total.leads_recebidos)} icon={Inbox} tom="info" />
+                  <KpiEquipe label="Respondidos" value={fmtInt(total.leads_respondidos)} icon={MessageSquareReply} tom="primary"
+                    apoio={fmtPct(total.leads_respondidos, total.leads_recebidos)} />
+                  <KpiEquipe label="Agendamentos" value={fmtInt(total.agendamentos)} icon={CalendarCheck} tom="primary"
+                    apoio={total.agend_cancelados > 0 ? `${fmtInt(total.agend_cancelados)} cancelados (dentro da conta)` : undefined} />
+                  <KpiEquipe label="Compareceram" value={fmtInt(total.compareceram)} icon={UserCheck} tom="success"
+                    apoio={total.compareceram + total.faltas > 0 ? `${taxaComparecimento(total)} de comparecimento` : undefined} />
+                  <KpiEquipe label="Faltas" value={fmtInt(total.faltas)} icon={UserX} tom="destructive" />
+                  <KpiEquipe label="Contratados" value={fmtInt(total.contratados)} icon={Handshake} tom="success"
+                    apoio={total.compareceram > 0 ? `${fmtPct(total.contratados, total.compareceram)} dos que compareceram` : undefined} />
+                </div>
+              </section>
+            )}
 
-        <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-foreground">Por SDR</h2>
+              <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[1240px]">
+                    <TableHeader>
+                      <TableRow className="border-border/60 bg-muted/50 hover:bg-muted/50">
+                        <TableHead className="sticky left-0 z-10 bg-muted/50 text-xs font-medium text-muted-foreground">SDR</TableHead>
+                        {COLUNAS.map((c) => (
+                          <TableHead key={c.chave} className="whitespace-nowrap text-right text-xs font-medium text-muted-foreground" title={c.dica}>
+                            {c.titulo}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sdrs.map((l) => (
+                        <TableRow key={l.user_id ?? l.nome} className={cn("border-border/60", l.bloqueada && "opacity-70")}>
+                          <TableCell className="sticky left-0 z-10 bg-card">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium text-foreground">{l.nome}</span>
+                              <span className="text-xs text-muted-foreground">{l.email}</span>
+                              <span className="flex flex-wrap gap-1">
+                                {l.bloqueada && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Bloqueada</Badge>}
+                                {!l.bloqueada && l.no_rodizio === false && (
+                                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">Fora do rodízio</Badge>
+                                )}
+                              </span>
+                            </div>
+                          </TableCell>
+                          {COLUNAS.map((c) => (
+                            <CelulaNumero key={c.chave} valor={c.render(l)} apoio={c.apoio?.(l)} />
+                          ))}
+                        </TableRow>
+                      ))}
+                      {total && (
+                        <TableRow className="border-t-2 border-border bg-muted font-semibold hover:bg-muted">
+                          {/* Fundo sólido na célula fixa: translúcido deixaria as colunas roladas aparecerem por baixo. */}
+                          <TableCell className="sticky left-0 z-10 bg-muted text-foreground">
+                            Equipe (total)
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              {sdrs.length} {sdrs.length === 1 ? "SDR" : "SDRs"}
+                            </span>
+                          </TableCell>
+                          {COLUNAS.map((c) => (
+                            <CelulaNumero key={c.chave} valor={c.render(total)} apoio={c.apoio?.(total)} destaque />
+                          ))}
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        <div className="flex items-start gap-2 rounded-2xl border border-border/60 bg-card px-5 py-4 text-xs text-muted-foreground shadow-card">
           <Info size={14} className="mt-0.5 shrink-0" />
           <div className="space-y-1">
             <p>
