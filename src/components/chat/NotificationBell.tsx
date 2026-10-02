@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useId } from "react";
-import { Bell, BellRing } from "lucide-react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { Bell, BellOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNavigate } from "react-router-dom";
+import { avisarNoNavegador, categoriaDaNotificacao } from "@/lib/notificacoesNavegador";
 
 type Notification = {
   id: string;
@@ -27,6 +28,9 @@ type Notification = {
 const NotificationBell = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Em ref: o canal do realtime não pode ser refeito a cada troca de rota.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   // Nome de canal por INSTÂNCIA. Com um nome fixo, dois sinos na mesma página
   // pegavam o mesmo canal e o segundo chamava `.on()` depois do `subscribe()`
   // do primeiro — o cliente lança ali, e sem ErrorBoundary o React derrubava a
@@ -71,6 +75,19 @@ const NotificationBell = () => {
           // `id` da própria notificação: se houver mais de um sino montado, os
           // dois avisam a mesma coisa e o usuário vê um aviso só.
           toast.info(n.title, { id: n.id, description: n.body || undefined });
+          // Notificação do navegador pelas preferências da aba Notificações
+          // (INTEG-4). A `tag` faz o mesmo papel do `id` do toast.
+          const tipo = categoriaDaNotificacao(n);
+          if (tipo) {
+            void avisarNoNavegador(user.id, tipo, {
+              titulo: n.title,
+              corpo: n.body,
+              tag: `crm-notif-${n.id}`,
+              aoClicar: (n as { type?: string }).type === "chat_interno"
+                ? () => navigateRef.current("/crm/interno")
+                : n.lead_id ? () => navigateRef.current(`/crm/conversa/${n.lead_id}`) : undefined,
+            });
+          }
         }
       )
       .subscribe();
@@ -139,7 +156,9 @@ const NotificationBell = () => {
   const handleClick = (n: Notification) => {
     markAsRead(n.id);
     setOpen(false);
-    if (n.lead_id) {
+    if ((n as { type?: string }).type === "chat_interno") {
+      navigate("/crm/interno");
+    } else if (n.lead_id) {
       navigate(`/crm/conversa/${n.lead_id}`);
     }
   };
@@ -147,67 +166,68 @@ const NotificationBell = () => {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative rounded-control text-muted-foreground hover:bg-primary-soft hover:text-primary-soft-foreground" aria-label="Abrir notificações">
-          <Bell size={20} />
+        <button
+          type="button"
+          aria-label={unreadCount > 0 ? `Notificações (${unreadCount} não lidas)` : "Notificações"}
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-primary-soft data-[state=open]:text-primary-soft-fg"
+        >
+          <Bell size={18} />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-none tabular-nums text-destructive-foreground ring-2 ring-background">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-        </Button>
+        </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[min(22rem,calc(100vw-1rem))] overflow-hidden p-0" align="end" sideOffset={10}>
-        <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 place-items-center rounded-control bg-primary-soft text-primary-soft-foreground">
-              <BellRing className="h-4 w-4" />
-            </span>
-            <div>
-              <h4 className="text-sm font-semibold text-foreground">Notificações</h4>
-              {unreadCount > 0 && <p className="text-xs text-muted-foreground">{unreadCount} não {unreadCount === 1 ? "lida" : "lidas"}</p>}
-            </div>
-          </div>
+      <PopoverContent
+        className="w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border-border/60 p-0 shadow-float"
+        align="end"
+      >
+        <div className="flex min-h-[3.25rem] items-center justify-between gap-2 border-b border-border/60 px-4 py-2.5">
+          <h4 className="text-[15px] font-semibold leading-6 text-foreground">Notificações</h4>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-xs text-primary hover:bg-primary-soft hover:text-primary-soft-foreground"
+              className="-mr-1.5 h-8 shrink-0 rounded-full px-3 text-xs font-semibold text-primary-soft-fg hover:bg-primary-soft hover:text-primary-soft-fg"
               onClick={markAllAsRead}
             >
               Marcar todas como lidas
             </Button>
           )}
         </div>
-        <ScrollArea className="max-h-96 bg-popover">
+        <ScrollArea className="[&>[data-radix-scroll-area-viewport]]:max-h-[min(26rem,calc(100vh-9rem))]">
           {notifications.length === 0 ? (
-            <div className="flex flex-col items-center px-6 py-10 text-center text-sm text-muted-foreground">
-              <span className="mb-3 grid h-10 w-10 place-items-center rounded-full bg-slate-soft text-slate-soft-foreground">
-                <Bell className="h-4 w-4" />
+            <div className="flex flex-col items-center gap-3 px-6 py-10 text-center text-[13px] font-medium text-muted-foreground">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-tertiary">
+                <BellOff size={20} />
               </span>
               Nenhuma notificação
             </div>
           ) : (
             notifications.map((n) => (
-              <Button
-                variant="ghost"
+              <button
                 key={n.id}
                 onClick={() => handleClick(n)}
-                className={`h-auto w-full justify-start rounded-none border-b border-border/60 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-sunken ${
-                  !n.is_read ? "bg-primary-soft/60" : "bg-popover"
+                className={`group relative w-full border-b border-border/60 px-4 py-3 text-left transition-colors last:border-0 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none ${
+                  !n.is_read ? "crm-notif-nova bg-primary-soft-2" : ""
                 }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-tertiary group-[.crm-notif-nova]:bg-primary-soft group-[.crm-notif-nova]:text-primary-soft-fg">
+                    <Bell size={16} />
+                  </span>
                   {!n.is_read && (
-                    <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
+                    <span className="absolute right-4 top-[18px] h-2 w-2 rounded-full bg-primary" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{n.title}</p>
+                    <p className="truncate text-sm font-medium leading-5 text-foreground group-[.crm-notif-nova]:pr-5 group-[.crm-notif-nova]:font-semibold">{n.title}</p>
                     {n.body && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                      <p className="mt-0.5 line-clamp-2 break-words text-[13px] leading-[18px] text-muted-foreground">
                         {n.body}
                       </p>
                     )}
-                    <p className="text-[11px] text-muted-foreground mt-1">
+                    <p className="mt-1 text-xs text-tertiary">
                       {formatDistanceToNow(new Date(n.created_at), {
                         addSuffix: true,
                         locale: ptBR,
@@ -215,7 +235,7 @@ const NotificationBell = () => {
                     </p>
                   </div>
                 </div>
-              </Button>
+              </button>
             ))
           )}
         </ScrollArea>

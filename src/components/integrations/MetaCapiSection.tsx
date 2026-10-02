@@ -62,7 +62,7 @@ const EVENTOS: { nome: string; quando: string }[] = [
   { nome: "LeadSubmitted", quando: "Entrou lead vindo de anúncio de WhatsApp (com identificador do clique)" },
   { nome: "QualifiedLead", quando: "Agendou (consulta confirmada)" },
   { nome: "InitiateCheckout", quando: "Compareceu (consulta marcada como compareceu ou contratou)" },
-  { nome: "Purchase", quando: "Pagou (pagamento lançado ou importado do Dontus), com o valor" },
+  { nome: "Purchase", quando: "Pagou (pagamento lançado ou importado do sistema de gestão), com o valor" },
 ];
 
 const STATUS_LABEL: Record<string, string> = {
@@ -77,6 +77,33 @@ const rpc = supabase.rpc.bind(supabase) as unknown as (
   fn: string,
   args?: Record<string, unknown>,
 ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+
+/**
+ * INTEG-9: motivo de uma ação do meta-capi-worker. As validações da tela vêm
+ * com HTTP 200 e { ok: false, erro }; permissão (403), módulo desligado (403,
+ * chave `error`) e sessão (401) vêm como não-2xx, com o corpo em error.context.
+ * Lê as duas chaves (`erro` do worker, `error` do padrão das functions) para
+ * nunca cair no "Edge Function returned a non-2xx status code".
+ */
+async function motivoDoWorker(data: unknown, error: unknown, padrao: string): Promise<string> {
+  const deCorpo = (b: unknown): string | null => {
+    const o = (b ?? {}) as { erro?: unknown; error?: unknown };
+    const m = o.erro ?? o.error;
+    return typeof m === "string" && m.trim() ? m : null;
+  };
+  const direto = deCorpo(data);
+  if (direto) return direto;
+  const ctx = (error as { context?: { clone?: () => Response } } | null)?.context;
+  if (ctx && typeof ctx.clone === "function") {
+    try {
+      const doCorpo = deCorpo(await ctx.clone().json());
+      if (doCorpo) return doCorpo;
+    } catch {
+      /* corpo não-JSON: cai no padrão */
+    }
+  }
+  return padrao;
+}
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -150,13 +177,20 @@ export default function MetaCapiSection() {
       body: { action: "testar", test_event_code: cfg?.test_event_code || undefined },
     });
     setTestando(false);
-    if (error) { setResultadoTeste(`Erro: ${error.message}`); return; }
+    if (error) {
+      setResultadoTeste(await motivoDoWorker(data, error, "Não foi possível enviar o evento de teste. Tente de novo."));
+      return;
+    }
     const r = data as { ok: boolean; erro?: string | null; resposta?: unknown; modo?: string; http?: number };
     if (r?.ok) {
-      setResultadoTeste(`Evento de teste aceito pela Meta (modo ${r.modo}). Confira na aba Eventos de teste do Gerenciador de Eventos.`);
+      setResultadoTeste(`Evento de teste aceito pela Meta (modo ${r.modo === "business_messaging" ? "WhatsApp" : "CRM"}). Confira na aba Eventos de teste do Gerenciador de Eventos.`);
       toast.success("Evento de teste enviado");
+    } else if (r?.http) {
+      // A Meta respondeu e recusou: o motivo dela, legível.
+      setResultadoTeste(`A Meta recusou o evento (HTTP ${r.http}): ${r.erro || "motivo não informado"}`);
     } else {
-      setResultadoTeste(`A Meta recusou (HTTP ${r?.http ?? "?"}): ${r?.erro || JSON.stringify(r?.resposta ?? r)}`);
+      // Recusa da própria tela (falta dataset, token ou código de teste).
+      setResultadoTeste(r?.erro || "Não foi possível enviar o evento de teste.");
     }
   };
 
@@ -167,7 +201,7 @@ export default function MetaCapiSection() {
       body: { action: criar ? "criar_dataset" : "descobrir_dataset" },
     });
     setDescobrindo(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) { toast.error(await motivoDoWorker(data, error, "Não foi possível consultar a Meta. Tente de novo.")); return; }
     const r = data as { ok: boolean; erro?: string | null; datasets?: string[]; waba_id?: string };
     if (!r?.ok) { toast.error(r?.erro || "A Meta não respondeu"); return; }
     if (!r.datasets?.length) {
@@ -185,10 +219,23 @@ export default function MetaCapiSection() {
     carregar();
   };
 
-  if (loading) return <Card className="p-4 text-sm text-muted-foreground">Carregando…</Card>;
+  if (loading) return <Card className="rounded-card border-border/60 p-4 text-sm text-muted-foreground shadow-card">Carregando…</Card>;
   if (!cfg) return null;
 
   const total7d = Object.values(status?.por_status ?? {}).reduce((a, b) => a + b, 0);
+
+  // INTEG-9: o teste usa o que está SALVO (conjunto de dados e token) e o
+  // código de teste da tela. Sem um deles o botão fica desligado, com a dica.
+  const datasetSalvo = !!original?.dataset_id?.trim();
+  const datasetMudou = (cfg.dataset_id ?? "").trim() !== (original?.dataset_id ?? "").trim();
+  const temCodigoTeste = !!cfg.test_event_code?.trim();
+  const motivoSemTeste = !cfg.tem_token
+    ? "Para testar, cole e salve o token do conjunto de dados."
+    : !datasetSalvo || datasetMudou
+      ? "Para testar, salve o conjunto de dados."
+      : !temCodigoTeste
+        ? "Para testar, preencha o código de evento de teste (aba Eventos de teste do Gerenciador de Eventos)."
+        : null;
 
   return (
     <div className="space-y-4">
@@ -202,7 +249,7 @@ export default function MetaCapiSection() {
         </p>
       </div>
 
-      <Card className="p-4 space-y-4 max-w-3xl">
+      <Card className="max-w-3xl space-y-4 rounded-card border-border/60 p-4 shadow-card">
         <div className="flex items-center gap-3">
           <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
           <div>
@@ -215,15 +262,15 @@ export default function MetaCapiSection() {
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="capi-dataset">Conjunto de dados (dataset / pixel)</Label>
-            <Input id="capi-dataset" inputMode="numeric" value={cfg.dataset_id}
-              onChange={(e) => setCfg({ ...cfg, dataset_id: e.target.value })} placeholder="1616335282799813" className="font-mono text-xs" />
+             <Input id="capi-dataset" inputMode="numeric" value={cfg.dataset_id}
+               onChange={(e) => setCfg({ ...cfg, dataset_id: e.target.value })} placeholder="1616335282799813" className="h-10 rounded-xl font-mono text-xs" />
             <p className="text-xs text-muted-foreground mt-1">Gerenciador de Eventos → Conjuntos de dados → Identificação.</p>
           </div>
           <div>
             <Label htmlFor="capi-waba">Conta do WhatsApp Business (WABA) do número dos anúncios</Label>
             <Input id="capi-waba" inputMode="numeric" value={cfg.waba_id}
               onChange={(e) => setCfg({ ...cfg, waba_id: e.target.value })}
-              placeholder={cfg.waba_sugerido || "ID da conta do WhatsApp Business"} className="font-mono text-xs" />
+               placeholder={cfg.waba_sugerido || "ID da conta do WhatsApp Business"} className="h-10 rounded-xl font-mono text-xs" />
             <p className="text-xs text-muted-foreground mt-1">
               {cfg.waba_sugerido ? `Vazio usa a conta do número principal (${cfg.waba_sugerido}).` : "Vazio usa a conta do número principal cadastrado."}
             </p>
@@ -232,11 +279,11 @@ export default function MetaCapiSection() {
 
         <div>
           <Label htmlFor="capi-token">Token de acesso do conjunto de dados</Label>
-          <div className="flex gap-2">
+           <div className="flex min-w-0 flex-wrap gap-2 sm:flex-nowrap">
             <Input id="capi-token" type={showToken ? "text" : "password"} value={token} autoComplete="off"
               onChange={(e) => setToken(e.target.value)}
               placeholder={cfg.tem_token ? "Já existe um token salvo. Cole outro só para trocar." : "Cole o token gerado no Gerenciador de Eventos"}
-              className="font-mono text-xs" />
+               className="h-10 min-w-[180px] flex-1 rounded-xl font-mono text-xs" />
             <Button type="button" variant="outline" size="icon" onClick={() => setShowToken((s) => !s)} aria-label="Mostrar token">
               {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
             </Button>
@@ -253,7 +300,7 @@ export default function MetaCapiSection() {
         <div>
           <Label htmlFor="capi-url">Site do cliente (event_source_url)</Label>
           <Input id="capi-url" inputMode="url" value={cfg.event_source_url}
-            onChange={(e) => setCfg({ ...cfg, event_source_url: e.target.value })} placeholder="https://rizodent.com.br/" className="font-mono text-xs" />
+            onChange={(e) => setCfg({ ...cfg, event_source_url: e.target.value })} placeholder="https://suaclinica.com.br/" className="font-mono text-xs" />
           <p className="text-xs text-muted-foreground mt-1">
             Vai em todo evento. Conjunto de dados em categoria restrita (saúde) bloqueia evento de servidor sem URL.
           </p>
@@ -290,10 +337,11 @@ export default function MetaCapiSection() {
           <Button variant="outline" onClick={() => descobrir(true)} disabled={descobrindo}>
             Criar conjunto para o WhatsApp
           </Button>
-          <Button variant="outline" onClick={testar} disabled={testando || !cfg.tem_token}>
+          <Button variant="outline" onClick={testar} disabled={testando || !!motivoSemTeste}>
             <Send size={16} className="mr-1" /> {testando ? "Enviando…" : "Enviar evento de teste"}
           </Button>
         </div>
+        {motivoSemTeste && <p className="text-xs text-muted-foreground">{motivoSemTeste}</p>}
         {resultadoTeste && <p className="text-sm whitespace-pre-wrap">{resultadoTeste}</p>}
 
         {cfg.numeros.length > 0 && (

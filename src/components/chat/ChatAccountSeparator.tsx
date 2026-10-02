@@ -4,8 +4,8 @@ type Props = { username: string };
 
 export default function ChatAccountSeparator({ username }: Props) {
   return (
-    <div className="w-full py-3 select-none">
-      <div className="w-full flex items-center justify-center gap-2 bg-primary/10 px-4 py-2">
+    <div className="flex w-full justify-center py-3 select-none">
+      <div className="flex items-center justify-center gap-2 rounded-full border border-border/60 bg-card px-4 py-1.5 shadow-xs">
         <img
           src={instagramLogo}
           alt="Instagram"
@@ -14,9 +14,9 @@ export default function ChatAccountSeparator({ username }: Props) {
           className="opacity-90"
           loading="lazy"
         />
-        <span className="text-xs font-medium text-primary tracking-wide">
+        <span className="text-xs font-medium text-tertiary">
           Conversando com{" "}
-          <span className="font-semibold">@{username}</span>
+          <span className="font-semibold text-foreground">@{username}</span>
         </span>
       </div>
     </div>

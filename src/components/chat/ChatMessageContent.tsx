@@ -372,7 +372,7 @@ function TemplateMessageBubble({
   const botoes = Array.isArray(registro.buttons) ? registro.buttons : [];
 
   return (
-    <div className="min-w-[220px]">
+    <div className="min-w-0 max-w-full overflow-hidden sm:min-w-[220px]">
       {falhou && (
         <p className="text-[11px] font-medium text-destructive mb-1">Modelo não enviado — o paciente não recebeu esta mensagem.</p>
       )}
@@ -409,7 +409,7 @@ function TemplateMessageBubble({
           ) : null}
         </div>
       )}
-      <p className="text-sm whitespace-pre-wrap text-foreground">{registro.body}</p>
+      <p className="break-words text-sm whitespace-pre-wrap text-foreground">{registro.body}</p>
       {registro.footer && (
         <p className="text-[11px] text-muted-foreground mt-1">{registro.footer}</p>
       )}
@@ -457,6 +457,15 @@ function useSignedUrl(mediaUrl: string | null): string | null {
   return signedUrl;
 }
 
+/** Conteúdo que o sync de histórico gravava no lugar da mídia (linhas antigas; S29-12). */
+const MARCADOR_MIDIA_DO_HISTORICO = /^\s*\[media_placeholder\]\s*$/i;
+/**
+ * Texto que o whatsapp-webhook grava hoje (com o tipo de mídia e sem
+ * media_url) — MESMO texto de supabase/functions/whatsapp-webhook/historico.ts
+ * (TEXTO_MIDIA_DO_HISTORICO). Depois dele pode vir a legenda, numa linha nova.
+ */
+const TEXTO_MIDIA_DO_HISTORICO = "📎 Mídia do histórico do WhatsApp (não disponível)";
+
 export default function ChatMessageContent({
   message,
   onMediaClick,
@@ -494,6 +503,26 @@ export default function ChatMessageContent({
     }
     toast.success("Figurinha salva");
   }, [tenant?.id, user?.id, message.media_url]);
+
+  // S29-12 (exibição): mídia do histórico importado da coexistência chega do
+  // WhatsApp só como o marcador "[media_placeholder]" — o arquivo não vem.
+  // Mostra um texto que a pessoa entende, em vez do marcador cru.
+  if (MARCADOR_MIDIA_DO_HISTORICO.test(message.content ?? "") && !isMediaUrl(resolvedUrl)) {
+    return (
+      <p className="text-sm italic text-muted-foreground">Mídia do histórico do WhatsApp (não disponível)</p>
+    );
+  }
+  // Linha nova do sync (tipo de mídia, sem arquivo): só o texto e a legenda,
+  // nunca "carregando…" (o arquivo não existe e não vai chegar).
+  if ((message.content ?? "").startsWith(TEXTO_MIDIA_DO_HISTORICO) && !message.media_url) {
+    const legenda = (message.content ?? "").slice(TEXTO_MIDIA_DO_HISTORICO.length).trim();
+    return (
+      <div className="space-y-1">
+        <p className="text-sm italic text-muted-foreground">Mídia do histórico do WhatsApp (não disponível)</p>
+        {legenda && <p className="text-sm whitespace-pre-wrap break-words">{legenda}</p>}
+      </div>
+    );
+  }
 
   // Instagram: reel/story/shared post — render distinctive clickable card
   const igSpecial = detectInstagramSpecial(message.content);
@@ -662,6 +691,14 @@ export default function ChatMessageContent({
         <FileIcon size={18} />
         <span className="truncate">{getDocumentLabel(message)} — carregando arquivo...</span>
       </div>
+    );
+  }
+
+  if (message.type === "unsupported") {
+    return (
+      <p className="text-sm italic text-muted-foreground">
+        Mensagem não compatível com o WhatsApp Business
+      </p>
     );
   }
 

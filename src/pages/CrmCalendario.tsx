@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { anotarNoHistorico } from "@/lib/notaDeSistema";
 import { Button } from "@/components/ui/button";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +23,22 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
-import { cancelAppointment, rescheduleAppointment, toastDbError, marcarComparecimentoSdr } from "@/lib/appointmentActions";
+import { registrarDesfechoDaConsulta } from "@/lib/appointmentOutcome";
+import {
+  cancelAppointment, rescheduleAppointment, marcarComparecimentoSdr, compareceuEAgendou,
+  excluirAgendamento, formatBahiaLabel, isBeforeScheduled,
+} from "@/lib/appointmentActions";
 import { corDesfecho, desfechoEhComparecimento, escondeDesfechoDeVenda, rotuloDesfecho } from "@/lib/desfechoLabel";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
+import { contagem, plural } from "@/lib/plural";
+import { TIPOS_DE_TAREFA, ROTULO_TIPO_DE_TAREFA, iconeTipoDeTarefa, rotuloTipoDeTarefa, tarefaDoTipo } from "@/lib/tarefaTipo";
+import {
+  agendaSeparaPorCidade, colunaDePresencaAusente, consultaAberta, diaDaSemanaAberto, diasDaGradeDaSemana, horasDaGradeSemanal,
+  consultaEmDiaFuturo, podeAnteciparDesfecho, podeExcluirAgendamento, podeReabrirAgendamento,
+} from "@/lib/regrasDaAgenda";
+import { fusoDoTenant } from "@/lib/fuso";
+import { useTenantConfig } from "@/hooks/useTenantConfig";
+import { useNumerosLiberados } from "@/hooks/useNumerosLiberados";
 
 type Task = {
   id: string;
@@ -54,24 +68,90 @@ type Appointment = {
   lead_name?: string;
   lead_cidade?: string | null;
   is_rescheduled?: boolean;
+  /** Origem do desfecho (automático x manual): decide Reabrir/Excluir. */
+  outcome_source?: string | null;
+  /** AGENDA-11 (migration 20260929002100): presença separada do status. */
+  presenca_confirmada_em?: string | null;
+  presenca_confirmada_por?: string | null;
 };
 
 type Stage = { id: string; name: string; color: string; pipeline_id: string };
 type Pipeline = { id: string; name: string };
+type Unidade = { nome: string | null; cidade: string | null };
+/** Unidades ativas: a lista que a pessoa consegue ler + a contagem do servidor (AGENDA-8). */
+type UnidadesDaAgenda = { lista: Unidade[]; quantas: number | null };
 
-const typeLabels: Record<string, string> = {
-  agendamento: "Agendamento",
-  ligacao: "Ligação",
-  followup: "Acompanhar",
-  personalizado: "Personalizado",
-};
+/**
+ * AGENDA-8. A lista (nome/cidade) vem de `clinicas` ou, para closer/recepção
+ * (policies *_sem_acesso_clinicas), da RPC closer_clinicas_do_tenant. A SDR não
+ * lê nenhuma das duas; a contagem (agenda_quantas_unidades, migration
+ * 20260929002320) diz a ela — e a todos — se a agenda separa por cidade.
+ * `quantas` = null quando a RPC ainda não existe no banco.
+ */
+async function buscarUnidadesDaAgenda(): Promise<UnidadesDaAgenda> {
+  const [direto, viaCloser, contagemDoServidor] = await Promise.all([
+    supabase.from("clinicas").select("nome, cidade").eq("ativa", true),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("closer_clinicas_do_tenant"),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("agenda_quantas_unidades"),
+  ]);
+  let lista = (direto.data || []) as Unidade[];
+  if (lista.length === 0) lista = (viaCloser.data || []) as Unidade[];
+  const quantas = !contagemDoServidor.error && typeof contagemDoServidor.data === "number"
+    ? contagemDoServidor.data
+    : null;
+  return { lista, quantas };
+}
 
-const typeIcons: Record<string, any> = {
-  agendamento: CalendarDays,
-  ligacao: Phone,
-  followup: MessageSquare,
-  personalizado: Clock,
-};
+// Rótulo e ícone do tipo de tarefa: src/lib/tarefaTipo.ts (fonte única; traduz
+// também 'call' e 'follow_up', que as automações gravam).
+
+// Consultas da semana. A presença (presenca_confirmada_*) ainda não está nos
+// tipos gerados (G2) e só existe depois da migration 20260929002100: se o banco
+// ainda não a tem, a agenda continua, só sem o selo de presença.
+const COLUNAS_DA_CONSULTA =
+  "id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade, outcome_source";
+const COLUNAS_DE_PRESENCA = "presenca_confirmada_em, presenca_confirmada_por";
+
+type LinhaDaConsulta = Record<string, unknown>;
+type ErroDaLeitura = { code?: string; message?: string } | null;
+
+async function buscarConsultasDaSemana(
+  inicio: string,
+  fim: string,
+): Promise<{ data: LinhaDaConsulta[] | null; error: ErroDaLeitura; presenca: boolean }> {
+  const buscar = (colunas: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("crm_appointments")
+      .select(colunas)
+      .gte("scheduled_date", inicio)
+      .lte("scheduled_date", fim)
+      .order("scheduled_date")
+      .order("scheduled_time");
+  const comPresenca = await buscar(`${COLUNAS_DA_CONSULTA}, ${COLUNAS_DE_PRESENCA}`);
+  if (comPresenca.error && colunaDePresencaAusente(comPresenca.error)) {
+    const semPresenca = await buscar(COLUNAS_DA_CONSULTA);
+    return { data: semPresenca.data, error: semPresenca.error, presenca: false };
+  }
+  return { data: comPresenca.data, error: comPresenca.error, presenca: true };
+}
+
+/** "pelo paciente em 29/09 às 14:02" / "pela equipe …" (fuso da clínica). */
+function presencaTexto(a: Appointment): string {
+  if (!a.presenca_confirmada_em) return "";
+  const d = new Date(a.presenca_confirmada_em);
+  if (Number.isNaN(d.getTime())) return "";
+  const timeZone = fusoDoTenant();
+  const dia = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone });
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone });
+  return `${a.presenca_confirmada_por ? "pela equipe" : "pelo paciente"} em ${dia} às ${hora}`;
+}
+
+const normStatus = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+/** Fora do número principal do "Total / dia" (AGENDA-16): o horário antigo da remarcação e a cancelada. */
+const foraDoTotal = (s: string | null | undefined) => ["cancelled", "rescheduled"].includes(normStatus(s));
 
 function getTaskStatus(task: Task) {
   if (task.status === "done") return "done";
@@ -80,15 +160,15 @@ function getTaskStatus(task: Task) {
 }
 
 function statusColor(st: string) {
-  if (st === "done") return "bg-green-500/20 text-green-600 border-green-500/30";
-  if (st === "late") return "bg-destructive/15 text-destructive border-destructive/30";
-  return "bg-card text-foreground border-border";
+  if (st === "done") return "bg-card text-foreground border-border/60 border-l-[3px] border-l-success";
+  if (st === "late") return "bg-destructive-soft/50 text-foreground border-destructive/30 border-l-[3px] border-l-destructive";
+  return "bg-card text-foreground border-border/60 border-l-[3px] border-l-info";
 }
 
 function statusBg(st: string) {
-  if (st === "done") return "bg-green-500 text-white";
-  if (st === "late") return "bg-destructive text-white";
-  return "bg-primary/10 text-primary";
+  if (st === "done") return "border-transparent bg-success-soft text-success-soft-foreground hover:bg-success-soft";
+  if (st === "late") return "border-transparent bg-destructive-soft text-destructive-soft-foreground hover:bg-destructive-soft";
+  return "border-transparent bg-info-soft text-info-soft-foreground hover:bg-info-soft";
 }
 
 // Page-level cache to avoid refetching on every render.
@@ -100,6 +180,8 @@ const calendarCache = {
   appointments: null as Appointment[] | null,
   stages: null as Stage[] | null,
   pipelines: null as Pipeline[] | null,
+  // Com o dono junto: o prefetch e a própria tela gravam em momentos diferentes.
+  unidades: null as { userId: string; dados: UnidadesDaAgenda } | null,
   timestamp: 0,
 };
 const CALENDAR_CACHE_TTL = 2 * 60_000;
@@ -111,6 +193,7 @@ export const invalidateCalendarCache = () => {
   calendarCache.appointments = null;
   calendarCache.stages = null;
   calendarCache.pipelines = null;
+  calendarCache.unidades = null;
   calendarCache.timestamp = 0;
 };
 
@@ -151,12 +234,13 @@ export const prefetchCrmCalendarioData = async (userId: string | null | undefine
     const today = new Date();
     const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
     const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
+    const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes, unidadesDaAgenda] = await Promise.all([
       supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekStart).lte("scheduled_date", weekEnd).order("scheduled_date").order("scheduled_time"),
+      buscarConsultasDaSemana(weekStart, weekEnd),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
+      buscarUnidadesDaAgenda(),
     ]);
     const apptLeadIds = (apptsRes.data || []).filter((a: any) => !a.lead_name || !a.lead_cidade).map((a: any) => a.lead_id).filter(Boolean);
     const taskLeadIds = (tasksRes.data || []).map((t: any) => t.lead_id).filter(Boolean);
@@ -187,6 +271,7 @@ export const prefetchCrmCalendarioData = async (userId: string | null | undefine
     calendarCache.appointments = rawAppts;
     calendarCache.stages = stgs;
     calendarCache.pipelines = pipes;
+    calendarCache.unidades = { userId, dados: unidadesDaAgenda };
     calendarCache.timestamp = Date.now();
     writeCalendarLS(userId, { tasks: rawTasks, profiles: profs, stages: stgs, pipelines: pipes });
   } catch (e) {
@@ -205,7 +290,11 @@ export default function CrmCalendario() {
   const [tasks, setTasks] = useState<Task[]>(() => (_sameUserModuleCache && calendarCache.tasks) || _lsInit?.tasks || []);
   const [profiles, setProfiles] = useState<Profile[]>(() => (_sameUserModuleCache && calendarCache.profiles) || _lsInit?.profiles || []);
   const [appointments, setAppointments] = useState<Appointment[]>(() => (_sameUserModuleCache && calendarCache.appointments) || []);
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // `?data=AAAA-MM-DD` abre a agenda naquele dia (vindo da visão "Todos os clientes").
+  const [currentDate, setCurrentDate] = useState(() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(new URLSearchParams(window.location.search).get("data") ?? "");
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date();
+  });
   // `?view=tarefas` abre direto na aba de tarefas — é o item "Tarefas" do menu
   // da SDR (mesma tela, sem duplicar página). Sem o parâmetro, agendamentos.
   const [searchParams] = useSearchParams();
@@ -220,38 +309,80 @@ export default function CrmCalendario() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [deleteApptConfirm, setDeleteApptConfirm] = useState<string | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [apptMoveStageId, setApptMoveStageId] = useState("");
   const [crmStages, setCrmStages] = useState<Stage[]>(() => (_sameUserModuleCache && calendarCache.stages) || _lsInit?.stages || []);
   const [crmPipelines, setCrmPipelines] = useState<Pipeline[]>(() => (_sameUserModuleCache && calendarCache.pipelines) || _lsInit?.pipelines || []);
   const [apptMovePipelineId, setApptMovePipelineId] = useState("");
-  const [tenantCities, setTenantCities] = useState<string[]>([]);
+  // Clínicas ativas do cliente (null = ainda carregando). Com 0 ou 1 a agenda
+  // é UMA linha; com 2 ou mais, uma linha por cidade (AGENDA-8). Vem do cache
+  // do módulo quando há, para a grade não trocar de forma ao abrir.
+  const [unidadesDaAgenda, setUnidadesDaAgenda] = useState<UnidadesDaAgenda | null>(
+    () => (user?.id && calendarCache.unidades?.userId === user.id ? calendarCache.unidades.dados : null),
+  );
   // Desfecho / remarcação / cancelamento do agendamento
-  const [apptStep, setApptStep] = useState<"init" | "compareceu" | "reschedule">("init");
+  const [apptStep, setApptStep] = useState<"init" | "compareceu" | "reschedule" | "agendou">("init");
   const [apptBusy, setApptBusy] = useState(false);
   const [apptNewDate, setApptNewDate] = useState("");
   const [apptNewTime, setApptNewTime] = useState("09:00");
   const [cancelApptFor, setCancelApptFor] = useState<Appointment | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  // Excluir = RPC sdr_excluir_agendamento (status 'cancelled' + motivo + nota no chat).
+  const [excluirApptFor, setExcluirApptFor] = useState<Appointment | null>(null);
+  const [excluirMotivo, setExcluirMotivo] = useState("");
+  // Desfecho antes do horário (AGENDA-14): a ação espera a confirmação.
+  const [antecipar, setAntecipar] = useState<{ acao: "compareceu" | "no_show" } | null>(null);
+  // false só na janela em que o banco ainda não tem as colunas de presença.
+  const [presencaDisponivel, setPresencaDisponivel] = useState(true);
+  // POS-01: o perfil não alcança nenhum funil.
+  const [semFunil, setSemFunil] = useState(false);
 
-  const isManager = userRole === "gerente" || userRole === "superadmin";
+  // Gestão da clínica (AGENDA-1, modelo "dono = gerente"): quem reabre
+  // desfecho e registra resultado antes do horário é ehGestaoDaClinica
+  // (src/lib/roles.ts) — a régua do banco (stamp_appointment_update,
+  // trg_a_desfecho_nao_antecipado). As perguntas passam por
+  // podeReabrirAgendamento / podeAnteciparDesfecho (src/lib/regrasDaAgenda.ts).
+
+  const { config: tenantConfig } = useTenantConfig();
+  const horario = tenantConfig?.businessHours ?? null;
+  const rotuloUnidade = tenantConfig?.vocabulary.unidade || "Unidade";
+  // REC-07: recepção/closer sem número liberado — a agenda avisa o motivo.
+  const { semNumeroLiberado, aviso: avisoSemNumero } = useNumerosLiberados();
 
   useEffect(() => {
-    (async () => {
-      // O closer não lê `clinicas` (policy closer_sem_acesso_clinicas), então a
-      // consulta direta volta vazia para ele. A RPC devolve só id/nome/cidade
-      // das clínicas ativas do próprio cliente, sem abrir a tabela.
-      const { data } = await supabase.from("clinicas").select("cidade").eq("ativa", true);
-      let linhas = (data || []) as { cidade: string | null }[];
-      if (linhas.length === 0) {
-        const { data: viaRpc } = await (supabase as any).rpc("closer_clinicas_do_tenant");
-        linhas = (viaRpc || []) as { cidade: string | null }[];
-      }
-      const unique = Array.from(new Set(linhas.map((c) => c.cidade).filter(Boolean) as string[]));
-      setTenantCities(unique);
-    })();
-  }, []);
+    let ativo = true;
+    buscarUnidadesDaAgenda()
+      .then((u) => {
+        if (!ativo) return;
+        setUnidadesDaAgenda(u);
+        if (user?.id) calendarCache.unidades = { userId: user.id, dados: u };
+      })
+      // Falha de rede: sem lista nem contagem, a grade decide pelas cidades das consultas.
+      .catch(() => { if (ativo) setUnidadesDaAgenda({ lista: [], quantas: null }); });
+    return () => { ativo = false; };
+  }, [user?.id]);
+
+  const unidades = unidadesDaAgenda?.lista ?? null;
+  const tenantCities = useMemo(
+    () => Array.from(new Set((unidades ?? []).map((c) => c.cidade).filter(Boolean) as string[])),
+    [unidades],
+  );
+  // AGENDA-8: a matriz por cidade é organização de clínica com várias
+  // unidades. Com uma só (ou nenhuma cadastrada), tudo numa linha só — antes a
+  // linha da unidade ficava vazia e as consultas caíam em "Sem cidade". Quem
+  // decide é a contagem do servidor (a SDR não lê `clinicas`, e a agenda dela
+  // virava uma linha só num cliente com várias unidades); sem ela, lista vazia é "não
+  // sei" e valem as cidades das consultas, como antes. Enquanto carrega, a
+  // grade fica sem linhas (ver apptCities) em vez de desenhar uma forma e
+  // trocar pela outra.
+  const cidadesDasConsultas = useMemo(
+    () => new Set(appointments.map((a) => a.lead_cidade).filter(Boolean)).size,
+    [appointments],
+  );
+  const agendaPorCidade = agendaSeparaPorCidade(unidadesDaAgenda?.quantas, unidades?.length ?? 0, cidadesDasConsultas);
+  const rotuloLinhaUnica = unidades?.length === 1
+    ? (unidades[0].nome || unidades[0].cidade || "Agenda").trim() || "Agenda"
+    : "Agenda";
 
   const weekRange = useMemo(() => ({
     start: format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd"),
@@ -274,10 +405,14 @@ export default function CrmCalendario() {
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       // crm_appointments has denormalized lead_name/lead_cidade columns (populated by triggers)
       // — no join needed, immune to RLS restrictions on crm_leads
-      supabase.from("crm_appointments").select("id, lead_id, scheduled_date, scheduled_time, status, notes, is_rescheduled, lead_name, lead_cidade").gte("scheduled_date", weekRange.start).lte("scheduled_date", weekRange.end).order("scheduled_date").order("scheduled_time"),
+      buscarConsultasDaSemana(weekRange.start, weekRange.end),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
       supabase.from("crm_pipelines").select("id, name"),
     ]);
+    setPresencaDisponivel(apptsRes.presenca);
+    // POS-01: perfil sem nenhum funil acessível (a RLS devolve lista vazia) —
+    // a tela explica em vez de mostrar uma agenda vazia sem motivo.
+    if (!pipelinesRes.error) setSemFunil((pipelinesRes.data || []).length === 0);
 
     // Build a fallback leads map for any appointment/task missing denormalized data
     // (e.g. legacy rows before the migration ran, or tasks which don't have snapshot columns yet).
@@ -342,7 +477,7 @@ export default function CrmCalendario() {
     // O `.select()` torna a resposta verificável: RLS que recusa devolve
     // sucesso com ZERO linhas, não erro.
     const { data, error } = await supabase.from("crm_tasks").update({ status: "done" }).eq("id", task.id).select("id");
-    if (error) { toast.error("Erro ao concluir tarefa: " + error.message); return; }
+    if (error) { toast.error("Erro ao concluir tarefa: " + mensagemDeErro(error)); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para concluir esta tarefa."); return; }
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "done" } : t));
     setSelectedTask(null);
@@ -350,7 +485,7 @@ export default function CrmCalendario() {
 
   const handleDeleteTask = async (taskId: string) => {
     const { data, error } = await supabase.from("crm_tasks").delete().eq("id", taskId).select("id");
-    if (error) { toast.error("Erro ao excluir tarefa: " + error.message); return; }
+    if (error) { toast.error("Erro ao excluir tarefa: " + mensagemDeErro(error)); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta tarefa."); return; }
     toast.success("Tarefa excluída");
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
@@ -358,13 +493,32 @@ export default function CrmCalendario() {
     setDeleteConfirm(null);
   };
 
-  const handleDeleteAppointment = async (apptId: string) => {
-    const { data, error } = await supabase.from("crm_appointments").delete().eq("id", apptId).select("id");
-    if (error) { toast.error("Erro ao excluir agendamento: " + error.message); return; }
-    if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir este agendamento."); return; }
-    toast.success("Agendamento excluído");
-    setAppointments((prev) => prev.filter((a) => a.id !== apptId));
-    setDeleteApptConfirm(null);
+  /**
+   * "Excluir agendamento" (AGENDA-19): a mesma RPC do chat
+   * (sdr_excluir_agendamento, via excluirAgendamento). Não apaga a linha:
+   * grava 'cancelled' com o motivo, escreve no chat do lead, tira dos
+   * relatórios e devolve o lead a "Conversando" quando não sobra consulta
+   * viva. Antes o calendário fazia DELETE físico — a consulta sumia sem motivo
+   * nem rastro e o crédito da SDR desaparecia do relatório.
+   */
+  const handleExcluirAgendamento = async () => {
+    if (!excluirApptFor) return;
+    setApptBusy(true);
+    try {
+      const ok = await excluirAgendamento({ appointmentId: excluirApptFor.id, motivo: excluirMotivo });
+      if (ok) {
+        refreshAppt(excluirApptFor.id, "cancelled");
+        setExcluirApptFor(null);
+        setExcluirMotivo("");
+        setSelectedAppointment(null);
+        // A RPC pode ter mudado a etapa do lead: a agenda relê.
+        await fetchTasks();
+      }
+    } catch (e) {
+      toast.error(mensagemDeErro(e, "Não foi possível excluir o agendamento."));
+    } finally {
+      setApptBusy(false);
+    }
   };
 
   const refreshAppt = (apptId: string, status: string) => {
@@ -374,17 +528,106 @@ export default function CrmCalendario() {
   const handleApptOutcome = async (appt: Appointment, outcome: "contracted" | "not_contracted" | "no_show") => {
     setApptBusy(true);
     try {
-      const ok = await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
-      if (!ok) { toast.error("Este agendamento já recebeu desfecho — recarregando"); await fetchTasks(); return; }
+      const r = await registrarDesfechoDaConsulta({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      if (!r.ok) { toast.error("Este agendamento já recebeu desfecho — recarregando"); await fetchTasks(); return; }
       refreshAppt(appt.id, outcome);
-      toast.success("Desfecho registrado");
+      const acao = outcome === "no_show" ? "Não compareceu" : outcome === "contracted" ? "Contratou" : "Não contratou";
+      if (r.falhaDeEtapa) {
+        toast.warning(`Marcado como ${acao}, mas o lead não foi movido de etapa: ${r.falhaDeEtapa}`);
+      } else {
+        toast.success("Desfecho registrado");
+      }
       setSelectedAppointment(null);
     } catch (e) {
-      toastDbError(e, "Erro ao registrar desfecho");
+      // A recusa do banco vem em português (ex.: "A consulta é só em …",
+      // gatilho do SDR-01): é ela que o usuário precisa ler. E a tela relê os
+      // dados, para mostrar o que de fato ficou gravado.
+      toast.error(mensagemDeErro(e, "Erro ao registrar desfecho"));
+      await fetchTasks();
+      setSelectedAppointment(null);
     } finally {
       setApptBusy(false);
       setApptStep("init");
     }
+  };
+
+  /**
+   * Desfecho antes do horário marcado (AGENDA-14 / SDR-01): a gestão confirma
+   * ("A consulta é só em … — registrar o resultado agora?"); os outros papéis
+   * são recusados pelo banco, então a tela explica em vez de oferecer o clique.
+   */
+  const guardarAntecipado = (appt: Appointment, acao: "compareceu" | "no_show", executar: () => void) => {
+    if (isBeforeScheduled(appt.scheduled_date, appt.scheduled_time)) {
+      setAntecipar({ acao });
+      return;
+    }
+    executar();
+  };
+
+  const executarCompareceu = (appt: Appointment) => {
+    // SDR: "Compareceu" fecha o ciclo dela na RPC própria e NÃO abre o segundo
+    // passo — ela não decide contrato (mesma regra do chat).
+    if (escondeDesfechoDeVenda(userRole)) handleApptComparecimentoSdr(appt);
+    else setApptStep("compareceu");
+  };
+
+  /** Agendamento criado por bot/API, aguardando a equipe — a mesma ação do chat. */
+  const handleConfirmarPendente = async (appt: Appointment) => {
+    setApptBusy(true);
+    try {
+      const { data, error } = await supabase
+        .from("crm_appointments")
+        .update({ status: "confirmed" })
+        .eq("id", appt.id)
+        .eq("status", "pending")
+        .select("id");
+      if (error) { toast.error(mensagemDeErro(error, "Erro ao confirmar agendamento")); return; }
+      if (!data || data.length === 0) {
+        toast.error("Este agendamento já foi confirmado ou alterado — recarregando");
+        await fetchTasks();
+        return;
+      }
+      await anotarNoHistorico(appt.lead_id, `✅ Agendamento confirmado: ${appt.scheduled_date.split("-").reverse().join("/")} às ${appt.scheduled_time?.slice(0, 5)}`);
+      toast.success("Agendamento confirmado!");
+      refreshAppt(appt.id, "confirmed");
+      // O diálogo segue aberto, agora com as ações de consulta agendada.
+      setSelectedAppointment((prev) => (prev && prev.id === appt.id ? { ...prev, status: "confirmed" } : prev));
+    } finally {
+      setApptBusy(false);
+    }
+  };
+
+  /** "Compareceu e agendou" (AGENDA-14): desfecho no atual + consulta nova + etapa pela função. */
+  const handleApptAgendou = async (appt: Appointment) => {
+    if (!apptNewDate) { toast.error("Selecione a data da nova consulta"); return; }
+    setApptBusy(true);
+    try {
+      const ok = await compareceuEAgendou({
+        leadId: appt.lead_id,
+        old: { id: appt.id, scheduled_date: appt.scheduled_date, scheduled_time: appt.scheduled_time },
+        newDate: apptNewDate,
+        newTime: apptNewTime,
+      });
+      // Mesmo sem o movimento de etapa (ok false) o desfecho e a consulta nova
+      // já estão gravados: a tela relê para mostrar o que ficou.
+      if (ok) setSelectedAppointment(null);
+      await fetchTasks();
+    } catch (e) {
+      toast.error(mensagemDeErro(e, "Erro ao registrar o comparecimento"));
+    } finally {
+      setApptBusy(false);
+      setApptStep("init");
+    }
+  };
+
+  /** Aviso ao marcar data em dia que a clínica não abre (CRC-10). */
+  const avisoDiaFechado = (dia: string): string | null => {
+    if (!dia) return null;
+    const d = new Date(`${dia}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    return diaDaSemanaAberto(horario, d.getDay()) === false
+      ? "A clínica não abre neste dia da semana (Horário comercial). Confira a data antes de salvar."
+      : null;
   };
 
   /**
@@ -421,7 +664,7 @@ export default function CrmCalendario() {
       await fetchTasks();
       setSelectedAppointment(null);
     } catch (e) {
-      toastDbError(e, "Erro ao registrar comparecimento");
+      toast.error(mensagemDeErro(e, "Erro ao registrar comparecimento"));
     } finally {
       setApptBusy(false);
       setApptStep("init");
@@ -440,7 +683,7 @@ export default function CrmCalendario() {
       });
       if (ok) { setSelectedAppointment(null); await fetchTasks(); }
     } catch (e) {
-      toastDbError(e, "Erro ao remarcar agendamento");
+      toast.error(mensagemDeErro(e, "Erro ao remarcar agendamento"));
     } finally {
       setApptBusy(false);
       setApptStep("init");
@@ -459,7 +702,7 @@ export default function CrmCalendario() {
         setSelectedAppointment(null);
       }
     } catch (e) {
-      toastDbError(e, "Erro ao cancelar agendamento");
+      toast.error(mensagemDeErro(e, "Erro ao cancelar agendamento"));
     } finally {
       setApptBusy(false);
     }
@@ -469,30 +712,42 @@ export default function CrmCalendario() {
     setApptBusy(true);
     const { data, error } = await supabase.from("crm_appointments").update({ status: "confirmed" }).eq("id", appt.id).select("id");
     setApptBusy(false);
-    if (error) { toastDbError(error, "Erro ao reabrir agendamento"); return; }
+    if (error) { toast.error(mensagemDeErro(error, "Erro ao reabrir agendamento")); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para reabrir este agendamento."); return; }
     refreshAppt(appt.id, "confirmed");
     toast.success("Agendamento reaberto");
     setSelectedAppointment(null);
   };
 
+  /**
+   * "Mover lead para" (BACK-10): só o UPDATE de crm_leads, conferido. O
+   * histórico de etapa é escrito pelo gatilho sync_lead_stage_history (o
+   * único escritor; a policy de INSERT saiu na migration 20260929002320). O
+   * código antigo fechava as passagens e inseria uma à mão ANTES do UPDATE —
+   * sobrava uma passagem de duração zero e, com o índice único do P06, o
+   * INSERT passaria a falhar. pipeline_id só vai no UPDATE quando o funil muda
+   * (o mesmo payload de moverLeadParaFuncao, src/lib/etapaFuncao.ts).
+   */
   const handleApptMoveStage = async (appt: Appointment) => {
     if (!apptMoveStageId) return;
-    await supabase.from("crm_lead_stage_history")
-      .update({ exited_at: new Date().toISOString() })
-      .eq("lead_id", appt.lead_id)
-      .is("exited_at", null);
-    // Mostra o motivo real se o histórico falhar, mas não bloqueia: o passo
-    // decisivo é o update do lead logo abaixo, que é conferido.
-    const { error: histError } = await supabase.from("crm_lead_stage_history").insert({ lead_id: appt.lead_id, stage_id: apptMoveStageId });
-    if (histError) toastDbError(histError, "Erro ao registrar o histórico de etapa");
-    const { data, error } = await supabase.from("crm_leads")
-      .update({ stage_id: apptMoveStageId, pipeline_id: apptMovePipelineId })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const etapa = crmStages.find((s) => s.id === apptMoveStageId);
+    const { data: lead, error: leadErr } = await db
+      .from("crm_leads")
+      .select("id, stage_id, pipeline_id")
       .eq("id", appt.lead_id)
-      .select("id");
-    if (error) { toastDbError(error, "Erro ao mover o lead"); return; }
+      .maybeSingle();
+    if (leadErr) { toast.error(mensagemDeErro(leadErr, "Erro ao mover o lead")); return; }
+    if (!lead) { toast.error("Seu perfil não tem acesso a este lead."); return; }
+    if (lead.stage_id === apptMoveStageId) { toast.info("O lead já está nessa etapa."); return; }
+    const payload: Record<string, unknown> = { stage_id: apptMoveStageId, updated_at: new Date().toISOString() };
+    const funilDestino = etapa?.pipeline_id || apptMovePipelineId;
+    if (funilDestino && funilDestino !== lead.pipeline_id) payload.pipeline_id = funilDestino;
+    const { data, error } = await db.from("crm_leads").update(payload).eq("id", appt.lead_id).select("id");
+    if (error) { toast.error(mensagemDeErro(error, "Erro ao mover o lead")); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para mover este lead."); return; }
-    toast.success("Lead movido de etapa");
+    toast.success(`Lead movido para ${etapa?.name?.trim() || "a etapa escolhida"}`);
     setSelectedAppointment(null);
   };
 
@@ -513,7 +768,8 @@ export default function CrmCalendario() {
         if (!matchesRole && !matchesAssignee) return false;
       }
       if (filterUser && t.assigned_to !== filterUser) return false;
-      if (filterType && t.type !== filterType) return false;
+      // 'call'/'follow_up' (gravados pelas automações) casam com Ligação/Follow-up.
+      if (filterType && !tarefaDoTipo(t.type, filterType)) return false;
       return true;
     });
   }, [tasks, filterUser, filterType, userRole, user?.id]);
@@ -566,43 +822,55 @@ export default function CrmCalendario() {
     return map;
   }, [filtered]);
 
-  const hours = Array.from({ length: 14 }, (_, i) => i + 7);
+  // Horas da visão Semana (AGENDA-9): 7h–20h ampliadas para o expediente e
+  // para as tarefas desta semana — tarefa às 21h ou às 6h não some da grade.
+  const hours = useMemo(() => {
+    const horasDasTarefas: number[] = [];
+    if (taskView === "week") {
+      for (const day of days) {
+        for (const t of tasksByDay.get(format(day, "yyyy-MM-dd")) || []) {
+          horasDasTarefas.push(new Date(t.due_date).getHours());
+        }
+      }
+    }
+    return horasDaGradeSemanal(horario, horasDasTarefas);
+  }, [days, tasksByDay, taskView, horario]);
 
   const renderTaskCard = (task: Task, compact = false) => {
     const st = getTaskStatus(task);
-    const typeLabel = typeLabels[task.type] || task.type;
+    const typeLabel = rotuloTipoDeTarefa(task.type);
     return (
       <div
         key={task.id}
         onClick={() => setSelectedTask(task)}
-        className={cn("border rounded-md p-2.5 cursor-pointer hover:shadow-md transition-all", statusColor(st))}
+        className={cn("rounded-xl border p-3 cursor-pointer shadow-xs transition-shadow hover:shadow-card", statusColor(st))}
       >
-        <div className="font-medium text-sm truncate">{task.lead_name}</div>
+        <div className="text-sm font-semibold leading-snug break-words">{task.lead_name}</div>
         {!compact && (
           <>
-            <div className="text-xs text-muted-foreground mt-0.5">{format(new Date(task.due_date), "dd/MM/yyyy HH:mm")}</div>
-            <div className="flex items-center gap-1 mt-1 text-xs">
-              {st === "late" ? <AlertTriangle size={11} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={11} className="text-green-500" /> : <Circle size={11} className="text-primary" />}
-              <span>{typeLabel}</span>
+            <div className="mt-1 text-xs tabular-nums text-tertiary">{format(new Date(task.due_date), "dd/MM/yyyy HH:mm")}</div>
+            <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-sunken px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              {st === "late" ? <AlertTriangle size={12} className="shrink-0 text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="shrink-0 text-success" /> : <Circle size={12} className="shrink-0 text-info" />}
+              <span className="break-all">{typeLabel}</span>
             </div>
-            {task.notes && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.title}: {task.notes}</p>}
+            {task.notes && <p className="mt-2 text-xs leading-relaxed text-muted-foreground break-words">{task.title}: {task.notes}</p>}
           </>
         )}
         {compact && (
-          <div className="text-[10px] text-muted-foreground truncate mt-0.5">{format(new Date(task.due_date), "HH:mm")} {typeLabel}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground break-words">{format(new Date(task.due_date), "HH:mm")} {typeLabel}</div>
         )}
       </div>
     );
   };
 
   const renderEventsColumn = (title: string, tasks: Task[]) => (
-    <div className="flex-1 min-w-[220px] flex flex-col">
-      <div className="text-center py-3 border-b border-border">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-foreground">{title}</h3>
-        <span className="text-xs text-muted-foreground">{tasks.length} eventos</span>
+    <div className="flex min-w-[180px] flex-1 basis-0 flex-col overflow-hidden rounded-card border border-border/60 border-t-[3px] border-t-[hsl(var(--col))] bg-[hsl(var(--col)/0.045)] xl:min-w-0">
+       <div className="flex min-h-[56px] flex-wrap items-center justify-between gap-1.5 bg-[hsl(var(--col)/0.10)] px-3 py-3 xl:flex-nowrap xl:px-3.5">
+        <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground before:h-2 before:w-2 before:shrink-0 before:rounded-full before:bg-[hsl(var(--col))] before:content-['']">{title}</h3>
+        <span className="inline-flex h-6 shrink-0 items-center whitespace-nowrap rounded-full bg-card px-2.5 text-[11px] font-medium tabular-nums text-muted-foreground shadow-xs">{contagem(tasks.length, "evento", "eventos")}</span>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {tasks.length === 0 && <div className="text-center text-xs text-muted-foreground py-8">Nenhum evento</div>}
+      <div className="flex-1 space-y-2.5 overflow-y-auto p-3">
+        {tasks.length === 0 && <div className="rounded-xl border border-dashed border-border py-8 text-center text-[13px] text-tertiary">Nenhum evento</div>}
         {tasks.map((t) => renderTaskCard(t))}
       </div>
     </div>
@@ -610,26 +878,43 @@ export default function CrmCalendario() {
 
   const dayTasks = selectedDay ? tasksByDay.get(format(selectedDay, "yyyy-MM-dd")) || [] : [];
 
-  // Appointment week days (Mon-Sat, no Sunday)
-  const apptWeekDays = useMemo(() => {
-    const all = eachDayOfInterval({
-      start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-      end: endOfWeek(currentDate, { weekStartsOn: 1 }),
-    });
-    return all.filter(d => d.getDay() !== 0); // Exclude Sunday
-  }, [currentDate]);
+  // Colunas da grade de agendamentos (AGENDA-9 / CRC-10): segunda a sábado e o
+  // domingo quando a clínica abre no domingo (Horário comercial) OU quando há
+  // consulta no domingo desta semana. Antes o domingo era cortado sempre e a
+  // consulta dele sumia, embora o contador a contasse.
+  const apptWeekDays = useMemo(
+    () => diasDaGradeDaSemana(
+      startOfWeek(currentDate, { weekStartsOn: 1 }),
+      horario,
+      appointments.map((a) => a.scheduled_date),
+      (d) => format(d, "yyyy-MM-dd"),
+    ),
+    [currentDate, horario, appointments],
+  );
+  const apptWeekDayKeys = useMemo(() => new Set(apptWeekDays.map((d) => format(d, "yyyy-MM-dd"))), [apptWeekDays]);
+  // Contador do cabeçalho = soma dos "Total / dia" da grade: os mesmos dias e
+  // sem o horário antigo das remarcações nem as canceladas (CRC-10, AGENDA-16).
+  const totalAgendamentosDaSemana = useMemo(
+    () => appointments.filter((a) => apptWeekDayKeys.has(a.scheduled_date) && !foraDoTotal(a.status)).length,
+    [appointments, apptWeekDayKeys],
+  );
 
-  // City rows: start with known cities from clinicas, then add any cities
-  // found in this week's appointments (including "Sem cidade" for leads
-  // with no cidade set). This prevents appointments from disappearing when
-  // a lead's cidade is null or doesn't match a clinica city.
+  // Linhas da grade. Uma clínica só (ou nenhuma cadastrada): UMA linha com
+  // todas as consultas (AGENDA-8). Várias: as cidades das clínicas e, depois,
+  // as cidades achadas nas consultas desta semana (inclusive "Sem cidade" para
+  // lead sem cidade) — consulta nunca some por falta de cidade.
+  const SEM_CIDADE = "Sem cidade";
   const apptCities = useMemo(() => {
+    // Ainda sem saber quantas unidades há: nenhuma linha por um instante (o
+    // cache do módulo e o prefetch já trazem a resposta na maioria das vezes).
+    if (unidadesDaAgenda === null) return [];
+    if (!agendaPorCidade) return [rotuloLinhaUnica];
     const known = new Set(tenantCities);
-    const fromAppts = appointments.map(a => a.lead_cidade || "Sem cidade");
+    const fromAppts = appointments.map(a => a.lead_cidade || SEM_CIDADE);
     const extra = fromAppts.filter(c => !known.has(c));
     const uniqueExtra = [...new Set(extra)];
     return [...tenantCities, ...uniqueExtra];
-  }, [tenantCities, appointments]);
+  }, [unidadesDaAgenda, agendaPorCidade, rotuloLinhaUnica, tenantCities, appointments]);
 
   // Legenda do calendário de agendamentos.
   // Para a SDR, os dois desfechos de comparecimento ('contracted' e
@@ -637,40 +922,52 @@ export default function CrmCalendario() {
   // decide contrato é o pagamento, não ela. Duas entradas ensinariam a ler o
   // contrato pela cor — exatamente o que o rótulo esconde. Para os demais
   // papéis os itens continuam sendo os mesmos de antes, na mesma ordem.
+  //
+  // AGENDA-11: 'confirmed' quer dizer "agendada" (todo agendamento nasce
+  // assim), não "o paciente confirmou" — a legenda diz "Agendado". A presença
+  // tem coluna própria e selo próprio (legendaPresenca). AGENDA-16: "Pendente"
+  // (criado por bot/API, aguardando a equipe) e "Remarcada" (o horário antigo
+  // de uma remarcação, tracejado) ganharam cor.
   const legendaAgendamentos = useMemo(() => {
-    const confirmado = { cor: "bg-blue-500/40 border border-blue-500/60", texto: "Confirmado" };
-    const compareceuCor = "bg-emerald-500/40 border border-emerald-500/60";
-    const naoCompareceu = { cor: "bg-warning/40 border border-warning/60", texto: "Não compareceu" };
-    const reagendado = { cor: "bg-purple-500/40 border border-purple-500/60", texto: "Reagendado" };
-    const cancelado = { cor: "bg-muted border border-border", texto: "Cancelado" };
+    const agendado = { cor: "bg-info-soft text-info-soft-foreground", texto: "Agendado" };
+    const pendente = { cor: "bg-orange-soft text-orange-soft-foreground", texto: "Pendente" };
+    const compareceuCor = "bg-success-soft text-success-soft-foreground";
+    const naoCompareceu = { cor: "bg-warning-soft text-warning-soft-foreground", texto: "Não compareceu" };
+    const reagendado = { cor: "bg-rescheduled-soft text-rescheduled-soft-foreground", texto: "Reagendado" };
+    const remarcada = { cor: "bg-card text-muted-foreground border border-dashed border-rescheduled/60", texto: "Remarcada" };
+    const cancelado = { cor: "bg-muted text-muted-foreground ring-1 ring-inset ring-border", texto: "Cancelado" };
     if (escondeDesfechoDeVenda(userRole)) {
       return [
-        confirmado,
+        agendado,
+        pendente,
         { cor: compareceuCor, texto: rotuloDesfecho("contracted", userRole) },
         naoCompareceu,
         reagendado,
+        remarcada,
         cancelado,
       ];
     }
     return [
-      confirmado,
+      agendado,
+      pendente,
       { cor: compareceuCor, texto: "Contratado" },
       naoCompareceu,
-      { cor: "bg-red-500/40 border border-red-500/60", texto: "Não contratou" },
+      { cor: "bg-destructive-soft text-destructive-soft-foreground", texto: "Não contratou" },
       reagendado,
+      remarcada,
       cancelado,
     ];
   }, [userRole]);
 
   return (
-    <div className="flex flex-col h-full -m-6 p-4" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="relative flex flex-col h-full -m-2 sm:-m-4 lg:-m-6 overflow-y-auto bg-background px-4 py-5 sm:px-6 lg:px-8 lg:py-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* MAIN VIEW TOGGLE */}
-      <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-        <div className="flex bg-secondary rounded-lg p-1 gap-1">
+      <div className="mb-4 flex flex-shrink-0 items-center gap-3 xl:absolute xl:right-8 xl:top-6 xl:mb-0">
+        <div className="flex w-full gap-1 rounded-full border border-border/60 bg-card p-1 shadow-card sm:w-auto">
           <Button
             variant={mainView === "agendamentos" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-9 px-6 text-sm font-medium", mainView === "agendamentos" && "gradient-brand text-primary-foreground shadow-sm")}
+            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "agendamentos" ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("agendamentos")}
           >
             <CalendarDays size={16} className="mr-2" />
@@ -679,7 +976,7 @@ export default function CrmCalendario() {
           <Button
             variant={mainView === "tarefas" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-9 px-6 text-sm font-medium", mainView === "tarefas" && "gradient-brand text-primary-foreground shadow-sm")}
+            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "tarefas" ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("tarefas")}
           >
             <Clock size={16} className="mr-2" />
@@ -688,65 +985,85 @@ export default function CrmCalendario() {
         </div>
       </div>
 
+      {/* Avisos de acesso: sem funil (POS-01) e sem número liberado (REC-07).
+          A agenda vazia sem motivo era exatamente o defeito relatado. */}
+      {(semFunil || semNumeroLiberado) && (
+        <div className="mb-4 flex flex-shrink-0 flex-col gap-2 xl:pr-[330px]">
+          {semFunil && (
+            <p role="status" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-soft-foreground">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              Seu perfil ainda não tem funil — peça ao(à) gestor(a).
+            </p>
+          )}
+          {semNumeroLiberado && (
+            <p role="status" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-soft-foreground">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              {avisoSemNumero}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ==================== TAREFAS VIEW ==================== */}
       {mainView === "tarefas" && (
         <>
           {/* Sub-nav */}
-          <div className="flex items-center justify-between mb-3 flex-shrink-0 gap-2 flex-wrap">
-            <div className="flex items-center gap-1">
+          <div className="mb-4 flex min-h-[50px] flex-shrink-0 flex-wrap items-center justify-between gap-3 xl:pr-[330px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
               {(["events", "list", "week", "month"] as TaskViewMode[]).map((v) => (
                 <Button
                   key={v}
                   variant={taskView === v ? "default" : "ghost"}
                   size="sm"
-                  className={cn("h-8 text-xs", taskView === v && "bg-primary text-primary-foreground")}
+                  className={cn("h-8 rounded-full px-3.5 text-[13px] font-medium", taskView === v ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
                   onClick={() => setTaskView(v)}
                 >
                   {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : "Mês"}
                 </Button>
               ))}
+              </div>
 
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-8 text-xs w-[120px] ml-2"><SelectValue placeholder="Tipo" /></SelectTrigger>
+              {/* "Todos" é o valor sentinela 'all' do Select, não um filtro:
+                  vira "" no estado (AGENDA-7 — antes esvaziava a lista). */}
+              <Select value={filterType || "all"} onValueChange={(v) => setFilterType(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-10 w-[150px] rounded-full bg-card text-[13px] shadow-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="agendamento">Agendamento</SelectItem>
-                  <SelectItem value="ligacao">Ligação</SelectItem>
-                  <SelectItem value="followup">Follow-up</SelectItem>
-                  <SelectItem value="personalizado">Personalizado</SelectItem>
+                  {TIPOS_DE_TAREFA.map((t) => <SelectItem key={t} value={t}>{ROTULO_TIPO_DE_TAREFA[t]}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={filterUser} onValueChange={setFilterUser}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Responsável" /></SelectTrigger>
+              <Select value={filterUser || "all"} onValueChange={(v) => setFilterUser(v === "all" ? "" : v)}>
+                <SelectTrigger className="h-10 w-[170px] rounded-full bg-card text-[13px] shadow-xs"><SelectValue placeholder="Responsável" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   {profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
               {(filterType || filterUser) && (
-                <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setFilterType(""); setFilterUser(""); }}>Limpar</Button>
+                <Button variant="ghost" size="sm" className="h-10 rounded-full px-4 text-[13px] font-medium text-muted-foreground hover:text-foreground" onClick={() => { setFilterType(""); setFilterUser(""); }}>Limpar</Button>
               )}
             </div>
-            <span className="text-sm text-muted-foreground">{filtered.length} tarefas</span>
+            <span className="inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">{contagem(filtered.length, "tarefa", "tarefas")}</span>
           </div>
 
           {/* Nav for month/week */}
           {(taskView === "month" || taskView === "week") && (
-            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)}><ChevronLeft size={16} /></Button>
-              <h2 className="text-sm font-bold text-foreground min-w-[180px] text-center capitalize">
+            <div className="mb-4 flex flex-shrink-0 flex-wrap items-center gap-2">
+              <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl bg-card shadow-xs" onClick={() => nav(-1)}><ChevronLeft size={16} /></Button>
+              <h2 className="min-w-[200px] text-center text-xl font-bold capitalize tracking-tight text-foreground sm:text-2xl">
                 {taskView === "month"
                   ? format(currentDate, "MMMM yyyy", { locale: ptBR })
                   : `Sem. ${format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — ${format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}`}
               </h2>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)}><ChevronRight size={16} /></Button>
-              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+              <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl bg-card shadow-xs" onClick={() => nav(1)}><ChevronRight size={16} /></Button>
+              <Button variant="outline" size="sm" className="ml-1 h-9 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             </div>
           )}
 
           {/* EVENTS */}
           {taskView === "events" && (
-            <div className="flex-1 flex gap-px bg-border rounded-lg overflow-hidden min-h-0">
+            <div className="flex min-h-[420px] flex-1 gap-3 overflow-x-auto pb-1 [&>div:nth-child(1)]:[--col:var(--success)] [&>div:nth-child(2)]:[--col:var(--destructive)] [&>div:nth-child(3)]:[--col:var(--info)] [&>div:nth-child(4)]:[--col:var(--purple)] [&>div:nth-child(5)]:[--col:var(--slate)]">
               {renderEventsColumn("Concluídas", eventsView.done)}
               {renderEventsColumn("Atrasadas", eventsView.late)}
               {renderEventsColumn("Hoje", eventsView.today)}
@@ -757,38 +1074,38 @@ export default function CrmCalendario() {
 
           {/* LIST */}
           {taskView === "list" && (
-            <div className="flex-1 overflow-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/50 sticky top-0 z-10">
+            <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead className="sticky top-0 z-10 bg-card shadow-[0_1px_0_hsl(var(--border))]">
                   <tr className="text-left">
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Vencimento</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Responsável</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Lead</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Tipo</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Comentário</th>
-                    <th className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase">Status</th>
+                    <th className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Vencimento</th>
+                    <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Responsável</th>
+                    <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Lead</th>
+                    <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Tipo</th>
+                    <th className="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Comentário</th>
+                    <th className="px-5 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-tertiary">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody className="divide-y divide-border/60">
                   {filtered.sort((a, b) => new Date(b.due_date).getTime() - new Date(a.due_date).getTime()).map((t) => {
                     const st = getTaskStatus(t);
                     const assignedProfile = profiles.find((p) => p.id === t.assigned_to);
                     return (
-                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer hover:bg-secondary/50 transition-colors", st === "late" && "bg-destructive/5", st === "done" && "bg-green-500/5")}>
-                        <td className="px-3 py-2.5 text-xs whitespace-nowrap">{format(new Date(t.due_date), "dd/MM/yyyy HH:mm")}</td>
-                        <td className="px-3 py-2.5 text-xs">{assignedProfile?.nome || "—"}</td>
-                        <td className="px-3 py-2.5">
-                          <button onClick={(e) => { e.stopPropagation(); navigate(`/crm/conversa/${t.lead_id}`); }} className="text-xs text-primary hover:underline font-medium">{t.lead_name}</button>
+                      <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("h-14 cursor-pointer transition-colors hover:bg-surface-sunken/70", st === "late" && "bg-destructive-soft/30", st === "done" && "bg-success-soft/30")}>
+                        <td className="whitespace-nowrap px-5 py-3 text-[13px] font-medium tabular-nums text-foreground">{format(new Date(t.due_date), "dd/MM/yyyy HH:mm")}</td>
+                        <td className="px-4 py-3 text-[13px] text-muted-foreground">{assignedProfile?.nome || "—"}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={(e) => { e.stopPropagation(); navigate(`/crm/conversa/${t.lead_id}`); }} className="text-left text-[13px] font-semibold text-primary-soft-fg hover:underline">{t.lead_name}</button>
                         </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-1.5 text-xs">
-                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-green-500" /> : <Circle size={12} className="text-primary" />}
-                            {typeLabels[t.type] || t.type}
+                        <td className="px-4 py-3">
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            {st === "late" ? <AlertTriangle size={12} className="text-destructive" /> : st === "done" ? <CheckCircle2 size={12} className="text-success" /> : <Circle size={12} className="text-info" />}
+                            {rotuloTipoDeTarefa(t.type)}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{t.notes || t.title}</td>
-                        <td className="px-3 py-2.5">
-                          <Badge variant="outline" className={cn("text-[10px]", st === "done" && "border-green-500 text-green-600", st === "late" && "border-destructive text-destructive")}>
+                        <td className="min-w-[220px] max-w-[360px] px-4 py-3 text-[13px] leading-relaxed text-muted-foreground break-words">{t.notes || t.title}</td>
+                        <td className="px-5 py-3">
+                          <Badge variant="outline" className={cn("h-6 rounded-full border-transparent px-2.5 text-[11px] font-medium bg-warning-soft text-warning-soft-foreground", st === "done" && "bg-success-soft text-success-soft-foreground", st === "late" && "bg-destructive-soft text-destructive-soft-foreground")}>
                             {st === "done" ? "Concluída" : st === "late" ? "Atrasada" : "Pendente"}
                           </Badge>
                         </td>
@@ -796,7 +1113,7 @@ export default function CrmCalendario() {
                     );
                   })}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">Nenhuma tarefa encontrada</td></tr>
+                    <tr><td colSpan={6} className="py-14 text-center text-sm text-tertiary">Nenhuma tarefa encontrada</td></tr>
                   )}
                 </tbody>
               </table>
@@ -806,68 +1123,74 @@ export default function CrmCalendario() {
           {/* MONTH */}
           {taskView === "month" && (
             <>
-              <div className="grid grid-cols-7 mb-1 flex-shrink-0">
+            <div className="flex flex-none flex-col overflow-x-auto rounded-card border border-border/60 bg-card shadow-card sm:min-h-0 sm:flex-1">
+            <div className="flex min-w-[680px] flex-1 flex-col sm:min-w-[720px]">
+              <div className="grid flex-shrink-0 grid-cols-7 border-b border-border/60">
                 {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
-                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1">{d}</div>
+                  <div key={d} className="py-3 text-center text-[12px] font-semibold uppercase tracking-wide text-tertiary">{d}</div>
                 ))}
               </div>
-              <div className="grid grid-cols-7 flex-1 gap-px bg-border rounded-lg overflow-hidden">
+              <div className="grid flex-1 auto-rows-[minmax(96px,auto)] grid-cols-7 gap-px bg-border/50">
                 {days.map((day) => {
                   const key = format(day, "yyyy-MM-dd");
                   const dayTs = tasksByDay.get(key) || [];
                   const hasLate = dayTs.some((t) => getTaskStatus(t) === "late");
                   const inMonth = isSameMonth(day, currentDate);
                   return (
-                    <div key={key} onClick={() => setSelectedDay(day)} className={cn("bg-card p-1 min-h-[90px] cursor-pointer hover:bg-secondary/30 transition-colors relative", !inMonth && "opacity-30", isToday(day) && "ring-1 ring-primary/50", selectedDay && isSameDay(day, selectedDay) && "bg-primary/5")}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className={cn("text-xs font-medium", isToday(day) ? "bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center" : "text-foreground")}>{format(day, "d")}</span>
-                        {hasLate && <span className="w-2 h-2 rounded-full bg-destructive" />}
+                    <div key={key} onClick={() => setSelectedDay(day)} className={cn("relative min-h-[96px] cursor-pointer bg-card p-1.5 transition-colors sm:p-2 hover:bg-surface-sunken/70", !inMonth && "bg-surface-sunken/60 [&>*]:opacity-50", selectedDay && isSameDay(day, selectedDay) && "bg-primary-soft/40 ring-2 ring-inset ring-primary/40")}>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className={cn("flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums", isToday(day) ? "bg-primary text-primary-foreground shadow-brand" : "text-foreground")}>{format(day, "d")}</span>
+                        {hasLate && <span className="h-2 w-2 rounded-full bg-destructive" />}
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {dayTs.slice(0, 3).map((t) => {
                           const st = getTaskStatus(t);
                           return (
-                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("text-[10px] px-1 py-0.5 rounded truncate cursor-pointer font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
-                              {t.lead_name} {format(new Date(t.due_date), "HH:mm")} {typeLabels[t.type]}
+                            <div key={t.id} onClick={(e) => { e.stopPropagation(); setSelectedTask(t); }} className={cn("cursor-pointer rounded-md border-l-[3px] px-1.5 py-1 text-[11px] font-medium leading-tight break-words", st === "done" && "border-l-success bg-success-soft text-success-soft-foreground", st === "late" && "border-l-destructive bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "border-l-info bg-info-soft text-info-soft-foreground")}>
+                              {t.lead_name} {format(new Date(t.due_date), "HH:mm")} {rotuloTipoDeTarefa(t.type)}
                             </div>
                           );
                         })}
-                        {dayTs.length > 3 && <div className="text-[9px] text-muted-foreground pl-1">+{dayTs.length - 3}</div>}
+                        {dayTs.length > 3 && <div className="pl-1 text-[11px] font-semibold text-tertiary">+{dayTs.length - 3}</div>}
                       </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+            </div>
             </>
           )}
 
           {/* WEEK */}
           {taskView === "week" && (
             <>
-              <div className="grid flex-shrink-0" style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}>
+            <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
+            <div className="min-w-[780px]">
+              <div className="sticky top-0 z-10 grid flex-shrink-0 border-b border-border/60 bg-card" style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}>
                 <div />
                 {days.map((day) => (
-                  <div key={day.toISOString()} className={cn("text-center py-2 text-xs font-medium border-b border-border", isToday(day) && "text-primary")}>
+                  <div key={day.toISOString()} className={cn("flex flex-col items-center gap-1 py-3 text-center text-[12px] font-medium uppercase tracking-wide text-tertiary", isToday(day) && "text-primary-soft-fg")}>
                     <div>{format(day, "EEE", { locale: ptBR })}</div>
-                    <div className={cn("text-sm font-bold", isToday(day) && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto")}>{format(day, "d")}</div>
+                    <div className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[20px] font-bold normal-case tabular-nums text-foreground", isToday(day) && "bg-primary text-[15px] text-primary-foreground shadow-brand")}>{format(day, "d")}</div>
                   </div>
                 ))}
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <div className="grid" style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}>
+              <div>
+                <div className="grid" style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}>
                   {hours.map((hour) => (
                     <div key={hour} className="contents">
-                      <div className="text-[10px] text-muted-foreground text-right pr-2 pt-1 border-r border-border h-[60px]">{String(hour).padStart(2, "0")}:00</div>
+                      <div className="min-h-[64px] border-r border-border/50 pr-2 pt-1.5 text-right text-[11px] tabular-nums text-tertiary">{String(hour).padStart(2, "0")}:00</div>
                       {days.map((day) => {
                         const key = format(day, "yyyy-MM-dd");
                         const hourTasks = (tasksByDay.get(key) || []).filter((t) => new Date(t.due_date).getHours() === hour);
                         return (
-                          <div key={`${key}-${hour}`} className="border-r border-b border-border h-[60px] p-0.5 relative">
+                          <div key={`${key}-${hour}`} className={cn("relative min-h-[64px] space-y-1 border-b border-r border-border/50 p-1", isToday(day) && "bg-primary-soft/25")}>
                             {hourTasks.map((t) => {
                               const st = getTaskStatus(t);
                               return (
-                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("text-[9px] px-1 py-0.5 rounded cursor-pointer truncate mb-0.5 font-medium", st === "done" && "bg-green-500 text-white", st === "late" && "bg-destructive text-white", st === "pending" && "bg-primary/15 text-foreground")}>
-                                  {t.lead_name}, {typeLabels[t.type]}
+                                <div key={t.id} onClick={() => setSelectedTask(t)} className={cn("cursor-pointer rounded-lg border-l-[3px] px-2 py-1.5 text-[12px] font-semibold leading-tight break-words transition-shadow hover:shadow-card", st === "done" && "border-l-event-green-bar bg-event-green-bg text-event-green-fg", st === "late" && "border-l-destructive bg-destructive-soft text-destructive-soft-foreground", st === "pending" && "border-l-event-blue-bar bg-event-blue-bg text-event-blue-fg")}>
+                                  {t.lead_name}, {rotuloTipoDeTarefa(t.type)}
                                 </div>
                               );
                             })}
@@ -878,23 +1201,25 @@ export default function CrmCalendario() {
                   ))}
                 </div>
               </div>
+            </div>
+            </div>
             </>
           )}
 
           {/* Day summary (month) */}
           {taskView === "month" && selectedDay && dayTasks.length > 0 && (
-            <div className="mt-3 p-3 bg-card border border-border rounded-lg flex-shrink-0 max-h-[200px] overflow-y-auto">
-              <h3 className="text-sm font-medium text-foreground mb-2">Tarefas de {format(selectedDay, "dd 'de' MMMM", { locale: ptBR })}</h3>
-              <div className="space-y-1.5">
+            <div className="mt-4 max-h-[260px] flex-shrink-0 overflow-y-auto rounded-card border border-border/60 bg-card p-5 shadow-card">
+              <h3 className="mb-3 text-base font-semibold text-foreground">Tarefas de {format(selectedDay, "dd 'de' MMMM", { locale: ptBR })}</h3>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {dayTasks.map((t) => {
                   const st = getTaskStatus(t);
-                  const Icon = typeIcons[t.type] || Clock;
+                  const Icon = iconeTipoDeTarefa(t.type);
                   return (
-                    <div key={t.id} onClick={() => setSelectedTask(t)} className="flex items-center gap-2 p-2 rounded-md bg-secondary/50 text-xs cursor-pointer hover:bg-secondary transition-colors">
-                      {st === "done" ? <CheckCircle2 size={14} className="text-green-500" /> : st === "late" ? <AlertTriangle size={14} className="text-destructive" /> : <Circle size={14} className="text-primary" />}
-                      <Icon size={12} className="text-muted-foreground" />
-                      <span className="flex-1 truncate font-medium">{t.lead_name} — {t.title}</span>
-                      <span className={cn("text-muted-foreground", st === "late" && "text-destructive")}>{format(new Date(t.due_date), "HH:mm")}</span>
+                    <div key={t.id} onClick={() => setSelectedTask(t)} className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-[13px] shadow-xs transition-shadow hover:shadow-card">
+                      {st === "done" ? <CheckCircle2 size={16} className="shrink-0 text-success" /> : st === "late" ? <AlertTriangle size={16} className="shrink-0 text-destructive" /> : <Circle size={16} className="shrink-0 text-info" />}
+                      <Icon size={14} className="shrink-0 text-tertiary" />
+                      <span className="min-w-0 flex-1 font-medium leading-snug text-foreground break-words">{t.lead_name} — {t.title}</span>
+                      <span className={cn("shrink-0 text-xs font-semibold tabular-nums text-tertiary", st === "late" && "text-destructive")}>{format(new Date(t.due_date), "HH:mm")}</span>
                     </div>
                   );
                 })}
@@ -906,42 +1231,51 @@ export default function CrmCalendario() {
 
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
-            <h2 className="text-sm font-bold text-foreground min-w-[200px] text-center capitalize">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-4 flex min-h-[50px] flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+            <h2 className="px-1 text-center text-[22px] font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
               {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
             </h2>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
-            <span className="text-sm text-muted-foreground ml-auto">
-              {appointments.filter(a => {
-                const ws = format(startOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
-                const we = format(endOfWeek(currentDate, { weekStartsOn: 1 }), "yyyy-MM-dd");
-                return a.scheduled_date >= ws && a.scheduled_date <= we;
-              }).length} agendamentos
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+            <Button variant="outline" size="sm" className="ml-1 h-9 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+            <span className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
+              {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
             </span>
           </div>
           {/* Legenda de cores */}
-          <div className="flex items-center gap-3 mb-2 flex-shrink-0 flex-wrap text-[11px]">
-            <span className="text-muted-foreground font-medium">Legenda:</span>
+          <div className="mb-4 flex flex-shrink-0 flex-wrap items-center gap-2 text-[12px]">
+            <span className="mr-1 font-medium text-tertiary">Legenda:</span>
             {legendaAgendamentos.map((item) => (
-              <span key={item.texto} className="flex items-center gap-1">
-                <span className={cn("w-3 h-3 rounded", item.cor)} /> {item.texto}
+              <span key={item.texto} className={cn("inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-3 font-medium", item.cor)}>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
               </span>
             ))}
+            {/* Presença (AGENDA-11): coluna própria, independente da cor do
+                status — só nas consultas em aberto. */}
+            {presencaDisponivel && (
+              <>
+                <span className="ml-2 mr-1 font-medium text-tertiary">Presença:</span>
+                <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-3 font-medium text-success-soft-foreground">
+                  <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
+                </span>
+                <span className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-3 font-medium text-muted-foreground">
+                  <Circle size={12} className="shrink-0" /> Sem confirmação
+                </span>
+              </>
+            )}
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
-          <div className="flex-1 overflow-auto rounded-lg border border-border">
-            <div className="grid min-w-[700px]" style={{ gridTemplateColumns: `140px repeat(${apptWeekDays.length}, 1fr)` }}>
+          <div className="min-h-[360px] flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
+            <div className="grid min-h-full min-w-[820px] [--city-col:124px] sm:min-w-[880px] sm:[--city-col:168px]" style={{ gridTemplateColumns: `var(--city-col) repeat(${apptWeekDays.length}, minmax(116px, 1fr))`, gridTemplateRows: `auto repeat(${apptCities.length}, minmax(92px, 1fr)) auto` }}>
               {/* Header row: empty corner + day headers */}
-              <div className="bg-secondary/70 border-b border-r border-border p-2 text-xs font-semibold text-muted-foreground uppercase sticky top-0 z-10">
-                Cidade
+              <div className="sticky left-0 top-0 z-20 flex items-end border-b border-r border-border/60 bg-card px-3 py-3 sm:px-4 text-[11px] font-semibold uppercase tracking-wide text-tertiary">
+                {unidadesDaAgenda === null ? "" : agendaPorCidade ? "Cidade" : rotuloUnidade}
               </div>
               {apptWeekDays.map(day => (
-                <div key={day.toISOString()} className={cn("bg-secondary/70 border-b border-border p-2 text-center sticky top-0 z-10", isToday(day) && "bg-primary/10")}>
-                  <div className="text-xs font-medium text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</div>
-                  <div className={cn("text-sm font-bold", isToday(day) ? "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center mx-auto" : "text-foreground")}>{format(day, "d")}</div>
+                <div key={day.toISOString()} className={cn("sticky top-0 z-10 flex flex-col items-center gap-1 border-b border-border/60 bg-card px-2 py-3 text-center", isToday(day) && "bg-primary-soft")}>
+                  <div className={cn("text-[12px] font-medium uppercase tracking-wide text-tertiary", isToday(day) && "text-primary-soft-fg")}>{format(day, "EEE", { locale: ptBR })}</div>
+                  <div className={cn("flex h-8 w-8 items-center justify-center rounded-full font-bold tabular-nums", isToday(day) ? "bg-primary text-[15px] text-primary-foreground shadow-brand" : "text-[20px] text-foreground")}>{format(day, "d")}</div>
                 </div>
               ))}
 
@@ -949,20 +1283,27 @@ export default function CrmCalendario() {
               {apptCities.map(city => (
                 <div key={city} className="contents">
                   {/* City label */}
-                  <div className="bg-card border-b border-r border-border p-2 flex items-start">
-                    <span className="text-xs font-semibold text-foreground">{city}</span>
+                  <div className="sticky left-0 z-[5] flex flex-col items-start gap-1 border-b border-r border-border/60 bg-card px-3 py-3 sm:px-4">
+                    <span className="text-[13px] font-semibold leading-snug text-foreground break-words">{city}</span>
+                    {/* AGENDA-8: com várias unidades, consulta sem cidade cai
+                        aqui — diz onde se resolve. */}
+                    {agendaPorCidade && city === SEM_CIDADE && (
+                      <span className="text-[11px] leading-snug text-tertiary break-words">
+                        Defina a cidade do paciente na conversa
+                      </span>
+                    )}
                   </div>
                   {/* Cells for each day */}
                   {apptWeekDays.map(day => {
                     const dayKey = format(day, "yyyy-MM-dd");
                     const cellAppts = appointments.filter(a =>
                       a.scheduled_date === dayKey &&
-                      (a.lead_cidade || "Sem cidade") === city
-                    ).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+                      (!agendaPorCidade || (a.lead_cidade || SEM_CIDADE) === city)
+                    ).sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""));
 
                     return (
-                      <div key={`${city}-${dayKey}`} className={cn("bg-card border-b border-border p-1.5 min-h-[80px]", isToday(day) && "bg-primary/5")}>
-                        <div className="space-y-1">
+                      <div key={`${city}-${dayKey}`} className={cn("min-h-[92px] border-b border-r border-border/40 p-2", isToday(day) && "bg-primary-soft/35")}>
+                        <div className="space-y-1.5">
                           {cellAppts.map(appt => {
                             // Status normalizado UMA vez. `desfechoEhComparecimento`
                             // e `rotuloDesfecho` já normalizam por dentro, mas os
@@ -978,21 +1319,26 @@ export default function CrmCalendario() {
                             // Os dois desfechos de comparecimento saem do helper:
                             // para a SDR ele devolve a MESMA cor nos dois casos
                             // (decisão D3) e, para os outros papéis, exatamente as
-                            // classes que este calendário já usava. Os demais
-                            // ramos ficam como estavam — inclusive a precedência
-                            // de is_rescheduled sobre 'confirmed'.
+                            // classes que este calendário já usava. AGENDA-16:
+                            // status 'rescheduled' (o horário ANTIGO de uma
+                            // remarcação) vem antes de is_rescheduled (a consulta
+                            // NOVA, roxa) e é tracejado; 'pending' tem cor própria.
                             const statusStyle =
                               ehComparecimento
                                 ? corDesfecho(statusNorm, userRole)
                                 : statusNorm === "no_show"
-                                ? "bg-warning/15 text-warning border border-warning/50"
+                                ? "bg-warning-soft text-warning-soft-foreground border border-warning/30 border-l-warning"
                                 : statusNorm === "cancelled"
-                                ? "bg-muted text-muted-foreground border border-border line-through"
+                                ? "bg-muted text-muted-foreground border border-border line-through border-l-tertiary"
+                                : statusNorm === "rescheduled"
+                                ? "bg-card text-muted-foreground border border-dashed border-rescheduled/60 border-l-rescheduled shadow-none"
                                 : remarcada
-                                ? "bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30"
+                                ? "bg-rescheduled-soft text-rescheduled-soft-foreground border border-rescheduled/30 border-l-rescheduled"
+                                : statusNorm === "pending"
+                                ? "bg-orange-soft text-orange-soft-foreground border border-orange/30 border-l-orange"
                                 : statusNorm === "confirmed"
-                                ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                                : "bg-primary/10 text-foreground border border-border";
+                                ? "bg-info-soft text-info-soft-foreground border border-info/25 border-l-info"
+                                : "bg-slate-soft text-slate-soft-foreground border border-slate/25 border-l-slate";
                             // O ícone segue a mesma regra de sigilo do rótulo: se a
                             // SDR visse 🤝 x ❌, o emoji contaria o contrato. Para
                             // ela os dois desfechos usam o mesmo símbolo neutro.
@@ -1003,36 +1349,58 @@ export default function CrmCalendario() {
                                 ? "🚫"
                                 : statusNorm === "cancelled"
                                 ? "🗑️"
+                                : statusNorm === "rescheduled"
+                                ? "↪"
                                 : null;
                             // Balão na MESMA ordem de precedência da cor: quando a
                             // consulta veio de uma remarcação o chip pinta roxo, que
                             // na legenda desta tela é "Reagendado". O balão anterior
                             // ignorava is_rescheduled e escrevia "Confirmado" em cima
                             // de um chip roxo — contradizendo a legenda ao lado.
+                            // 'confirmed' = agendada (AGENDA-11): o balão diz
+                            // "Agendado" e a presença vem da coluna própria.
+                            const aberta = consultaAberta(statusNorm);
+                            const presencaTitulo = aberta && presencaDisponivel
+                              ? (appt.presenca_confirmada_em ? " · Presença confirmada" : " · Sem confirmação de presença")
+                              : "";
                             const statusTitulo =
-                              ehComparecimento || statusNorm === "no_show" || statusNorm === "cancelled"
+                              (ehComparecimento || statusNorm === "no_show" || statusNorm === "cancelled"
                                 ? rotuloDesfecho(statusNorm, userRole)
+                                : statusNorm === "rescheduled"
+                                ? "Remarcada — horário antigo, não conta no total"
                                 : remarcada
                                 ? "Reagendado"
-                                : rotuloDesfecho(statusNorm, userRole);
+                                : statusNorm === "pending"
+                                ? "Pendente — aguardando a equipe confirmar o agendamento"
+                                : statusNorm === "confirmed"
+                                ? "Agendado"
+                                : rotuloDesfecho(statusNorm, userRole)) + presencaTitulo;
                             return (
                               <div
                                 key={appt.id}
-                                className={cn("text-[10px] px-1.5 py-1 rounded transition-colors cursor-pointer hover:shadow-sm", statusStyle)}
+                                className={cn("cursor-pointer rounded-lg px-2 py-1.5 text-[12px] leading-snug shadow-xs transition-shadow hover:shadow-card", statusStyle, "border-l-[3px]")}
                                 title={statusTitulo}
                                 onClick={() => {
                                   setSelectedAppointment(appt);
                                   setApptStep("init");
+                                  setAntecipar(null);
                                   setApptMoveStageId("");
                                   setApptMovePipelineId("");
                                 }}
                               >
-                                <div className="font-medium break-words leading-tight">
-                                   {statusIcon && <span className="mr-0.5">{statusIcon}</span>}
-                                   {!statusIcon && remarcada && <span className="text-purple-500 mr-0.5">↻</span>}
+                                <div className="font-semibold leading-snug break-words">
+                                   {statusIcon && <span className="mr-1">{statusIcon}</span>}
+                                   {!statusIcon && remarcada && <span className="mr-1 font-bold text-rescheduled">↻</span>}
                                    {appt.lead_name}
                                  </div>
-                                <div className="opacity-70">{appt.scheduled_time?.slice(0, 5)}</div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium tabular-nums">
+                                  <span className="opacity-75">{appt.scheduled_time?.slice(0, 5)}</span>
+                                  {aberta && presencaDisponivel && (
+                                    appt.presenca_confirmada_em
+                                      ? <span className="inline-flex items-center gap-0.5 text-success-soft-foreground"><CheckCircle2 size={11} className="shrink-0" /> confirmada</span>
+                                      : <span className="opacity-75">sem confirmação</span>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -1044,13 +1412,17 @@ export default function CrmCalendario() {
               ))}
 
               {/* Totals row: per-day counts */}
-              <div className="bg-secondary/70 border-t-2 border-r border-border p-2 text-xs font-semibold text-foreground sticky bottom-0 z-10">
+              <div className="sticky bottom-0 left-0 z-20 flex items-center border-r border-t border-border/60 bg-card px-3 py-3 sm:px-4 text-[13px] font-semibold text-foreground">
                 Total / dia
               </div>
               {apptWeekDays.map(day => {
                 const dayKey = format(day, "yyyy-MM-dd");
-                const dayAppts = appointments.filter(a => a.scheduled_date === dayKey);
+                const doDia = appointments.filter(a => a.scheduled_date === dayKey);
+                // AGENDA-16: o horário antigo de uma remarcação e a cancelada
+                // ficam fora do número principal (antes somavam como consultas).
+                const dayAppts = doDia.filter(a => !foraDoTotal(a.status));
                 const total = dayAppts.length;
+                const fora = doDia.length - total;
                 const contratados = dayAppts.filter(a => a.status === "contracted").length;
                 const naoContratados = dayAppts.filter(a => a.status === "not_contracted").length;
                 // Para a SDR os dois desfechos somam um número só: dois contadores
@@ -1061,17 +1433,22 @@ export default function CrmCalendario() {
                   <div
                     key={`totals-${dayKey}`}
                     className={cn(
-                      "bg-secondary/70 border-t-2 border-border p-2 text-center sticky bottom-0 z-10 space-y-0.5",
-                      isToday(day) && "bg-primary/10",
+                      "sticky bottom-0 z-10 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-border/60 bg-card px-2 py-3 text-center",
+                      isToday(day) && "bg-primary-soft",
                     )}
                   >
-                    <div className="text-[10px] font-bold text-foreground">{total} agend.</div>
+                    <div className="basis-full text-[12px] font-bold tabular-nums text-foreground">{total} agend.</div>
+                    {fora > 0 && (
+                      <div className="basis-full text-[11px] tabular-nums text-tertiary">
+                        + {fora} {plural(fora, "remarcada ou cancelada", "remarcadas ou canceladas")}
+                      </div>
+                    )}
                     {escondeDesfechoDeVenda(userRole) ? (
-                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
+                      <div className="text-[12px] font-semibold tabular-nums text-success-soft-foreground" title={rotuloDesfecho("contracted", userRole)}>✅ {compareceram}</div>
                     ) : (
                       <>
-                        <div className="text-[10px] text-emerald-700 dark:text-emerald-300">🤝 {contratados}</div>
-                        <div className="text-[10px] text-red-700 dark:text-red-300">❌ {naoContratados}</div>
+                        <div className="text-[12px] font-semibold tabular-nums text-success-soft-foreground">🤝 {contratados}</div>
+                        <div className="text-[12px] font-semibold tabular-nums text-destructive-soft-foreground">❌ {naoContratados}</div>
                       </>
                     )}
                   </div>
@@ -1084,33 +1461,35 @@ export default function CrmCalendario() {
 
       {/* Task detail dialog */}
       <Dialog open={!!selectedTask && !deleteConfirm} onOpenChange={(o) => { if (!o) setSelectedTask(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>{selectedTask?.title}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle className="pr-6 text-lg font-bold leading-snug tracking-tight break-words">{selectedTask?.title}</DialogTitle></DialogHeader>
           {selectedTask && (() => {
             const st = getTaskStatus(selectedTask);
             const assignedProfile = profiles.find((p) => p.id === selectedTask.assigned_to);
             return (
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge className={cn(statusBg(st))}>{st === "done" ? "Concluída" : st === "late" ? "Atrasada" : "Pendente"}</Badge>
-                  <Badge variant="outline">{typeLabels[selectedTask.type]}</Badge>
+              <div className="space-y-4 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={cn("h-6 rounded-full px-2.5 text-[11px] font-medium", statusBg(st))}>{st === "done" ? "Concluída" : st === "late" ? "Atrasada" : "Pendente"}</Badge>
+                  <Badge variant="outline" className="h-6 rounded-full border-transparent bg-surface-sunken px-2.5 text-[11px] font-medium text-muted-foreground empty:hidden">{rotuloTipoDeTarefa(selectedTask.type)}</Badge>
                 </div>
-                <div className="text-muted-foreground">
-                  <CalendarDays size={14} className="inline mr-1" />
+                <div className="space-y-2.5 rounded-xl bg-surface-sunken p-4">
+                <div className="flex items-center font-medium tabular-nums text-foreground">
+                  <CalendarDays size={16} className="mr-2 inline shrink-0 text-tertiary" />
                   {format(new Date(selectedTask.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                 </div>
-                {selectedTask.lead_name && <div><span className="text-muted-foreground">Lead: </span><span className="font-medium">{selectedTask.lead_name}</span></div>}
-                {assignedProfile && <div><span className="text-muted-foreground">Responsável: </span><span className="font-medium">{assignedProfile.nome}</span></div>}
-                {selectedTask.notes && <p className="text-muted-foreground bg-secondary/50 p-2 rounded">{selectedTask.notes}</p>}
+                {selectedTask.lead_name && <div className="break-words"><span className="text-muted-foreground">Lead: </span><span className="font-semibold text-foreground">{selectedTask.lead_name}</span></div>}
+                {assignedProfile && <div className="break-words"><span className="text-muted-foreground">Responsável: </span><span className="font-semibold text-foreground">{assignedProfile.nome}</span></div>}
+                {selectedTask.notes && <p className="!mt-3.5 rounded-lg bg-card p-3 leading-relaxed text-muted-foreground break-words">{selectedTask.notes}</p>}
+                </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => { setSelectedTask(null); navigate(`/crm/conversa/${selectedTask.lead_id}`); }}>Ir para conversa</Button>
+                  <Button size="sm" variant="outline" className="h-10 flex-1 rounded-xl" onClick={() => { setSelectedTask(null); navigate(`/crm/conversa/${selectedTask.lead_id}`); }}>Ir para conversa</Button>
                   {st !== "done" && (
-                    <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleMarkDone(selectedTask)}>
+                    <Button size="sm" className="h-10 flex-1 rounded-xl bg-success text-success-foreground hover:bg-success/90" onClick={() => handleMarkDone(selectedTask)}>
                       <CheckCircle2 size={14} className="mr-1" /> Concluir
                     </Button>
                   )}
                 </div>
-                <Button size="sm" variant="destructive" className="w-full gap-1" onClick={() => setDeleteConfirm(selectedTask.id)}>
+                <Button size="sm" variant="destructive" className="h-10 w-full gap-1 rounded-xl" onClick={() => setDeleteConfirm(selectedTask.id)}>
                   <Trash2 size={14} /> Excluir tarefa
                 </Button>
               </div>
@@ -1131,84 +1510,154 @@ export default function CrmCalendario() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete appointment confirm */}
-      <Dialog open={!!deleteApptConfirm} onOpenChange={(o) => { if (!o) setDeleteApptConfirm(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Excluir agendamento?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita.</p>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setDeleteApptConfirm(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={() => deleteApptConfirm && handleDeleteAppointment(deleteApptConfirm)}>Excluir</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Appointment result dialog */}
-      <Dialog open={!!selectedAppointment && !cancelApptFor} onOpenChange={(o) => { if (!o) { setSelectedAppointment(null); setApptStep("init"); } }}>
+      <Dialog open={!!selectedAppointment && !cancelApptFor && !excluirApptFor} onOpenChange={(o) => { if (!o) { setSelectedAppointment(null); setApptStep("init"); setAntecipar(null); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Resultado do Agendamento</DialogTitle></DialogHeader>
           {selectedAppointment && (() => {
             const appt = selectedAppointment;
-            const isOpen = appt.status === "confirmed";
+            const statusNorm = normStatus(appt.status);
+            // 'pending' (criado por bot/API) é consulta ABERTA (AGENDA-16 /
+            // CRC-08): nunca "Desfecho já registrado".
+            const isOpen = consultaAberta(statusNorm);
+            const isPending = statusNorm === "pending";
+            const isConfirmed = statusNorm === "confirmed";
+            const quando = formatBahiaLabel(appt.scheduled_date, appt.scheduled_time);
+            const avisoNovaData = avisoDiaFechado(apptNewDate);
             return (
               <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium">{appt.lead_name}</p>
-                  <p className="text-xs text-muted-foreground">{appt.scheduled_date} às {appt.scheduled_time?.slice(0, 5)}</p>
+                <div className="rounded-xl bg-surface-sunken p-4">
+                  <p className="text-[15px] font-semibold leading-snug text-foreground break-words">{appt.lead_name}</p>
+                  <p className="mt-1 text-[13px] tabular-nums text-muted-foreground first-letter:uppercase">{quando}</p>
+                  {/* Presença (AGENDA-11): coluna própria, não o status. */}
+                  {isOpen && presencaDisponivel && (
+                    appt.presenca_confirmada_em ? (
+                      <p className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-full bg-success-soft px-2.5 py-0.5 text-[11px] font-medium text-success-soft-foreground">
+                        <CheckCircle2 size={11} className="shrink-0" /> Presença confirmada
+                        <span className="font-normal opacity-80">· {presencaTexto(appt)}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        <Circle size={11} className="shrink-0" /> Sem confirmação de presença
+                      </p>
+                    )
+                  )}
                 </div>
 
-                {isOpen && apptStep === "init" && (
+                {/* Desfecho antes do horário (AGENDA-14 / SDR-01). */}
+                {isConfirmed && antecipar && (
+                  <div className="space-y-2 rounded-xl border border-warning/40 bg-warning-soft px-3.5 py-3">
+                    {podeAnteciparDesfecho(userRole, consultaEmDiaFuturo(appt.scheduled_date)) ? (
+                      <>
+                        <p className="text-[13px] leading-relaxed text-warning-soft-foreground">
+                          A consulta é só em {quando} — registrar o resultado agora?
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button size="sm" variant="outline" className="h-10 rounded-xl bg-card" disabled={apptBusy} onClick={() => setAntecipar(null)}>Voltar</Button>
+                          <Button
+                            size="sm"
+                            className="h-10 rounded-xl"
+                            disabled={apptBusy}
+                            onClick={() => {
+                              const acao = antecipar.acao;
+                              setAntecipar(null);
+                              if (acao === "compareceu") executarCompareceu(appt);
+                              else handleApptOutcome(appt, "no_show");
+                            }}
+                          >
+                            Registrar agora
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[13px] leading-relaxed text-warning-soft-foreground">
+                          A consulta é só em {quando}. O resultado pode ser registrado a partir do dia da consulta — antes disso, só o gerente.
+                        </p>
+                        <Button size="sm" variant="outline" className="h-10 w-full rounded-xl bg-card" onClick={() => setAntecipar(null)}>Entendi</Button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Pendente: a mesma ação do chat — a equipe confirma o
+                    agendamento criado pelo bot/API; depois vêm as ações de
+                    consulta agendada (CRC-08). */}
+                {isPending && (
+                  <div className="space-y-2">
+                    <p className="rounded-xl bg-orange-soft px-3.5 py-2.5 text-[13px] text-orange-soft-foreground">
+                      Aguardando a equipe confirmar o agendamento.
+                    </p>
+                    <Button size="sm" className="h-10 w-full rounded-xl bg-success text-success-foreground hover:bg-success/90" disabled={apptBusy} onClick={() => handleConfirmarPendente(appt)}>
+                      <CheckCircle2 size={14} className="mr-1" /> Confirmar agendamento
+                    </Button>
+                  </div>
+                )}
+
+                {isConfirmed && !antecipar && apptStep === "init" && (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       {/* SDR: "Compareceu" fecha o ciclo dela na RPC própria e
                           NÃO abre o segundo passo — ela não decide contrato nem
                           pode ler as duas palavras (mesma regra do chat, em
                           AppointmentConfirmBar.tsx). */}
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={apptBusy} onClick={() => escondeDesfechoDeVenda(userRole) ? handleApptComparecimentoSdr(appt) : setApptStep("compareceu")}>
+                      <Button size="sm" className="h-10 rounded-xl bg-success text-success-foreground hover:bg-success/90" disabled={apptBusy} onClick={() => guardarAntecipado(appt, "compareceu", () => executarCompareceu(appt))}>
                         <CheckCircle2 size={14} className="mr-1" /> Compareceu
                       </Button>
-                      <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "no_show")}>
+                      <Button size="sm" variant="outline" className="h-10 rounded-xl border-destructive/40 text-destructive hover:bg-destructive-soft hover:text-destructive" disabled={apptBusy} onClick={() => guardarAntecipado(appt, "no_show", () => handleApptOutcome(appt, "no_show"))}>
                         Não compareceu
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" variant="outline" disabled={apptBusy} onClick={() => { setApptStep("reschedule"); setApptNewDate(""); setApptNewTime("09:00"); }}>
+                      <Button size="sm" variant="outline" className="h-10 rounded-xl" disabled={apptBusy} onClick={() => { setApptStep("reschedule"); setApptNewDate(""); setApptNewTime(appt.scheduled_time?.slice(0, 5) || "09:00"); }}>
                         Reagendar
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={apptBusy} onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
+                      {/* Um só "Cancelar", com motivo (AGENDA-19 / SDR-11). */}
+                      <Button size="sm" variant="ghost" className="h-10 rounded-xl text-muted-foreground" disabled={apptBusy} onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
                         Cancelar
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* Resultado da avaliação (Contratou / Não contratou) é da
-                    gestão: para a SDR este bloco não é renderizado. */}
-                {isOpen && apptStep === "compareceu" && !escondeDesfechoDeVenda(userRole) && (
+                {/* Resultado da avaliação (Contratou / Não contratou / Agendou)
+                    é da gestão: para a SDR este bloco não é renderizado. */}
+                {isConfirmed && apptStep === "compareceu" && !escondeDesfechoDeVenda(userRole) && (
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold">Resultado da avaliação</Label>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button size="sm" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "contracted")}>Contratou</Button>
-                      <Button size="sm" variant="outline" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "not_contracted")}>Não contratou</Button>
+                      <Button size="sm" className="h-10 rounded-xl" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "contracted")}>Contratou</Button>
+                      <Button size="sm" variant="outline" className="h-10 rounded-xl" disabled={apptBusy} onClick={() => handleApptOutcome(appt, "not_contracted")}>Não contratou</Button>
                     </div>
+                    {/* "Compareceu e agendou" — igual ao chat (AGENDA-14). */}
+                    <Button size="sm" variant="outline" className="h-10 w-full rounded-xl border-info/40 text-info-soft-foreground hover:bg-info-soft" disabled={apptBusy} onClick={() => { setApptStep("agendou"); setApptNewDate(""); setApptNewTime("09:00"); }}>
+                      <CalendarDays size={14} className="mr-1" /> Agendou
+                    </Button>
                     <Button size="sm" variant="ghost" className="w-full text-xs" onClick={() => setApptStep("init")}>← Voltar</Button>
                   </div>
                 )}
 
-                {isOpen && apptStep === "reschedule" && (
+                {isConfirmed && (apptStep === "reschedule" || apptStep === "agendou") && (
                   <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Novo horário</Label>
-                    <Input type="date" value={apptNewDate} onChange={(e) => setApptNewDate(e.target.value)} className="h-8 text-xs" />
-                    <Input type="time" value={apptNewTime} onChange={(e) => setApptNewTime(e.target.value)} className="h-8 text-xs" />
+                    <Label className="text-xs font-semibold">
+                      {apptStep === "agendou" ? "Nova consulta agendada na clínica" : "Novo horário"}
+                    </Label>
+                    <Input type="date" aria-label="Data" value={apptNewDate} onChange={(e) => setApptNewDate(e.target.value)} className="h-10 rounded-xl text-sm" />
+                    <Input type="time" aria-label="Hora" value={apptNewTime} onChange={(e) => setApptNewTime(e.target.value)} className="h-10 rounded-xl text-sm" />
+                    {avisoNovaData && (
+                      <p className="text-[11px] leading-snug text-warning-soft-foreground">{avisoNovaData}</p>
+                    )}
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setApptStep("init")}>Voltar</Button>
-                      <Button size="sm" className="flex-1" disabled={apptBusy} onClick={() => handleApptReschedule(appt)}>Remarcar</Button>
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setApptStep(apptStep === "agendou" ? "compareceu" : "init")}>Voltar</Button>
+                      <Button size="sm" className="flex-1" disabled={apptBusy} onClick={() => (apptStep === "agendou" ? handleApptAgendou(appt) : handleApptReschedule(appt))}>
+                        {apptStep === "agendou" ? "Salvar" : "Remarcar"}
+                      </Button>
                     </div>
                   </div>
                 )}
 
                 {!isOpen && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-muted-foreground">
                     Desfecho já registrado: {rotuloDesfecho(appt.status, userRole)}.
                   </p>
                 )}
@@ -1216,14 +1665,14 @@ export default function CrmCalendario() {
                 <div>
                   <Label className="text-xs font-semibold">Mover lead para (opcional)</Label>
                   <Select value={apptMovePipelineId} onValueChange={(v) => { setApptMovePipelineId(v); setApptMoveStageId(""); }}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Funil..." /></SelectTrigger>
+                    <SelectTrigger className="mt-1.5 h-10 rounded-xl"><SelectValue placeholder="Funil..." /></SelectTrigger>
                     <SelectContent>
                       {crmPipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   {apptMovePipelineId && (
                     <Select value={apptMoveStageId} onValueChange={setApptMoveStageId}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Etapa..." /></SelectTrigger>
+                      <SelectTrigger className="mt-2 h-10 rounded-xl"><SelectValue placeholder="Etapa..." /></SelectTrigger>
                       <SelectContent>
                         {crmStages.filter(s => s.pipeline_id === apptMovePipelineId).map(s => (
                           <SelectItem key={s.id} value={s.id}>
@@ -1237,27 +1686,25 @@ export default function CrmCalendario() {
                     </Select>
                   )}
                   {apptMoveStageId && (
-                    <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => handleApptMoveStage(appt)}>Mover lead</Button>
+                    <Button size="sm" variant="outline" className="mt-2 h-10 w-full rounded-xl" onClick={() => handleApptMoveStage(appt)}>Mover lead</Button>
                   )}
                 </div>
 
-                <Button variant="outline" size="sm" className="w-full" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>Ir para conversa</Button>
+                <Button variant="outline" size="sm" className="h-10 w-full rounded-xl" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>Ir para conversa</Button>
 
-                {!isOpen && isManager && (
-                  <Button variant="outline" size="sm" className="w-full" disabled={apptBusy} onClick={() => handleApptReopen(appt)}>Reabrir</Button>
+                {/* Reabrir: só a gestão da clínica (AGENDA-1, a régua do
+                    gatilho stamp_appointment_update); remarcada e contrato do
+                    pagamento/integração não reabrem. */}
+                {podeReabrirAgendamento(userRole, appt) && (
+                  <Button variant="outline" size="sm" className="h-10 w-full rounded-xl" disabled={apptBusy} onClick={() => handleApptReopen(appt)}>Reabrir</Button>
                 )}
 
-                {/* Excluir é direito de todo papel para agendamento ABERTO
-                    (decisão de 31/08); com desfecho registrado, só gerência —
-                    o banco protege a régua com um gatilho, e aqui o botão
-                    acompanha para não oferecer o que será recusado. */}
-                {isOpen && (
-                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setCancelApptFor(appt); setCancelReason(""); }}>
-                    Cancelar agendamento
-                  </Button>
-                )}
-                {(isManager || isOpen) && (
-                  <Button variant="destructive" size="sm" className="w-full" onClick={() => { setDeleteApptConfirm(appt.id); setSelectedAppointment(null); }}>
+                {/* Excluir (AGENDA-19): pede motivo e passa pela RPC
+                    sdr_excluir_agendamento — fica no histórico do paciente e sai
+                    dos relatórios. Só aparece para quem a RPC aceita (SDR dona
+                    do lead, crc e gestão) e nos status que ela aceita. */}
+                {podeExcluirAgendamento(userRole, appt) && (
+                  <Button variant="destructive" size="sm" className="h-10 w-full rounded-xl" disabled={apptBusy} onClick={() => { setExcluirApptFor(appt); setExcluirMotivo(""); }}>
                     <Trash2 size={14} className="mr-1" /> Excluir agendamento
                   </Button>
                 )}
@@ -1271,14 +1718,34 @@ export default function CrmCalendario() {
       <Dialog open={!!cancelApptFor} onOpenChange={(o) => { if (!o) { setCancelApptFor(null); setCancelReason(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Cancelar agendamento</DialogTitle></DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            {cancelApptFor && `${cancelApptFor.scheduled_date} às ${cancelApptFor.scheduled_time?.slice(0, 5)}`}
+          <p className="text-xs text-muted-foreground first-letter:uppercase">
+            {cancelApptFor && formatBahiaLabel(cancelApptFor.scheduled_date, cancelApptFor.scheduled_time)}
           </p>
-          <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Motivo do cancelamento (obrigatório)" className="text-sm" />
+          <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Motivo do cancelamento (obrigatório)" className="min-h-[96px] rounded-xl text-sm" />
           <div className="flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => { setCancelApptFor(null); setCancelReason(""); }}>Voltar</Button>
             <Button variant="destructive" size="sm" disabled={apptBusy || cancelReason.trim().length < 3} onClick={handleApptCancel}>
               {apptBusy ? "Cancelando..." : "Cancelar agendamento"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Excluir agendamento com motivo (RPC sdr_excluir_agendamento) */}
+      <Dialog open={!!excluirApptFor} onOpenChange={(o) => { if (!o) { setExcluirApptFor(null); setExcluirMotivo(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir agendamento</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground first-letter:uppercase">
+            {excluirApptFor && formatBahiaLabel(excluirApptFor.scheduled_date, excluirApptFor.scheduled_time)}
+          </p>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
+            O agendamento sai dos relatórios e fica no histórico do paciente, com o motivo.
+          </p>
+          <Textarea value={excluirMotivo} onChange={(e) => setExcluirMotivo(e.target.value)} placeholder="Motivo da exclusão (obrigatório)" className="min-h-[96px] rounded-xl text-sm" />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setExcluirApptFor(null); setExcluirMotivo(""); }}>Voltar</Button>
+            <Button variant="destructive" size="sm" disabled={apptBusy || excluirMotivo.trim().length < 3} onClick={handleExcluirAgendamento}>
+              {apptBusy ? "Excluindo..." : "Excluir agendamento"}
             </Button>
           </div>
         </DialogContent>

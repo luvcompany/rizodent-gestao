@@ -21,8 +21,15 @@ export const MOTIVO_OUTRO = "Outro";
 const normalizar = (s: string) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-export function ehEtapaDesqualificado(nomeDaEtapa: string | null | undefined): boolean {
-  return normalizar(nomeDaEtapa || "").includes("desqualific");
+/** Decide pela função da etapa quando ela veio (`funcao` não undefined); senão, pelo nome. */
+export function ehEtapaDesqualificado(
+  etapa: { funcao?: string | null; name?: string | null } | string | null | undefined,
+): boolean {
+  if (etapa && typeof etapa === "object") {
+    if (etapa.funcao !== undefined) return etapa.funcao === "desqualificado";
+    return normalizar(etapa.name || "").includes("desqualific");
+  }
+  return normalizar((etapa as string | null | undefined) || "").includes("desqualific");
 }
 
 /**

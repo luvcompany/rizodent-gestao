@@ -98,7 +98,7 @@ export function ConversaFechadaBadge({ fechadaEm }: { fechadaEm: string | null |
   const quando = new Date(fechadaEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-soft-foreground"
+      className="col-start-5 row-start-1 justify-self-end inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-success-soft px-2.5 text-[11px] font-medium text-success-soft-foreground [@container(max-width:29rem)]:col-start-6 [@container(max-width:29rem)]:row-start-2"
       title={`Fechada em ${quando}. Uma mensagem nova do lead reabre sozinha.`}
     >
       <CheckCircle2 size={11} /> Fechada
@@ -124,7 +124,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
           <Button
-            variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-surface-sunken hover:text-foreground"
             aria-label="Reabrir conversa" disabled={ocupado}
             onClick={async () => {
               setOcupado(true);
@@ -133,7 +133,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
               if (ok) onChange(null);
             }}
           >
-            {ocupado ? <Loader2 size={16} className="animate-spin" /> : <Unlock size={16} />}
+            {ocupado ? <Loader2 size={16} className="animate-spin" /> : <Unlock size={16} strokeWidth={1.75} />}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -150,10 +150,10 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogTrigger asChild>
             <Button
               variant="ghost" size="icon"
-              className="h-8 w-8 text-success hover:bg-success-soft hover:text-success-soft-foreground"
+              className="h-8 w-8 rounded-lg text-success hover:bg-success-soft hover:text-success"
               aria-label="Fechar conversa" disabled={ocupado}
             >
-              {ocupado ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              {ocupado ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} strokeWidth={1.75} />}
             </Button>
           </AlertDialogTrigger>
         </TooltipTrigger>
@@ -167,7 +167,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
           <AlertDialogDescription>{TEXTO_FECHAR}</AlertDialogDescription>
         </AlertDialogHeader>
         <label
-          className={`flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm ${
+          className={`flex items-start gap-2.5 rounded-xl border border-border/60 bg-surface-sunken px-3.5 py-3 text-sm ${
             oferta.pode ? "cursor-pointer" : "cursor-not-allowed opacity-60"
           }`}
         >

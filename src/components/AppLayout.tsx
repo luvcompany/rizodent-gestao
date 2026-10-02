@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, useNavigate, Outlet } from "react-router-dom";
+import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
-  LayoutDashboard, UserPlus, Users, FileBarChart, Megaphone, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon, ScrollText,
+  LayoutDashboard, UserPlus, Users, FileBarChart, LogOut, Menu, X, TrendingUp, Shield, Stethoscope, Settings, ClipboardList, Sun, Moon, ScrollText,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -14,6 +14,11 @@ import { useModulos, podeMostrar } from "@/hooks/useModule";
 import { useVocab, type Vocab } from "@/hooks/useVocab";
 import { moduloDaRota } from "@/lib/modulos";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import NotificationBell from "@/components/chat/NotificationBell";
+import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { tituloDaAba } from "@/lib/tituloDaAba";
 
 type ItemDoMenu = { to: string; icon: any; label: string; roles?: string[] };
 
@@ -23,7 +28,6 @@ const montarItens = (vocab: Vocab): ItemDoMenu[] => [
   { to: "/atendimento", icon: UserPlus, label: "Atendimento" },
   { to: "/pacientes", icon: Users, label: vocab.pessoaPlural },
   { to: "/relatorios", icon: FileBarChart, label: "Relatórios" },
-  { to: "/marketing", icon: Megaphone, label: "Marketing" },
   { to: "/crm", icon: Users, label: "CRM" },
   { to: "/procedimentos", icon: Stethoscope, label: vocab.servicoPlural },
   { to: "/acessos", icon: ScrollText, label: "Logs de acesso", roles: ["crc", "gerente", "superadmin"] },
@@ -67,24 +71,40 @@ function iniciaisDe(nome: string): string {
 }
 
 /** Logo (ou lockup de texto) no topo da barra lateral. */
-function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
+function MarcaDaBarra({ logo, nome, nomeCurto, naPlaca }: { logo: string | null; nome: string; nomeCurto: string; naPlaca: boolean }) {
   const [falhou, setFalhou] = useState(false);
   useEffect(() => setFalhou(false), [logo]);
   if (logo && !falhou) {
-    return <img src={logo} alt={nome} className="h-7 max-w-full object-contain" onError={() => setFalhou(true)} />;
+    return (
+      <span className={naPlaca ? "inline-flex max-w-full rounded-lg bg-white/95 px-2 py-1" : "inline-flex max-w-full"}>
+        <img
+          src={logo}
+          alt={nome}
+          className={
+            logo === CRCLIN_DEFAULT_LOGO
+              ? "h-8 w-[125px] max-w-full object-cover object-[50%_42%]"
+              : naPlaca
+                ? "h-6 max-w-full object-contain object-left"
+                : "h-8 max-w-full object-contain object-left"
+          }
+          onError={() => setFalhou(true)}
+        />
+      </span>
+    );
   }
   return (
-    <div className="flex min-w-0 items-center gap-2" title={nome}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-brand text-xs font-bold text-primary-foreground">
+    <div className="flex min-w-0 items-center gap-2.5" title={nome}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
         {iniciaisDe(nomeCurto)}
       </span>
-      <span className="truncate text-sm font-semibold text-sidebar-foreground">{nomeCurto}</span>
+      <span className="truncate text-[15px] font-semibold text-white">{nomeCurto}</span>
     </div>
   );
 }
 
 const AppLayout = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, profile, user, refreshProfile, userRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
@@ -92,7 +112,14 @@ const AppLayout = () => {
   const { system, tenant: marcaCliente, effective } = useBrand();
   const { ligado: moduloLigado } = useModulos();
   const vocab = useVocab();
-  const logo = escolherLogo(theme === "dark", marcaCliente, system, effective.poweredBy);
+  // A barra lateral é escura nos dois temas: a logo é sempre a do fundo escuro
+  // (logo escura → logo clara numa placa → lockup de iniciais).
+  const logo = escolherLogo(true, marcaCliente, system, effective.poweredBy);
+  const logoNaPlaca =
+    !!logo &&
+    logo !== CRCLIN_DEFAULT_LOGO &&
+    logo !== (marcaCliente?.logo_dark_url?.trim() || null) &&
+    logo !== (system.logo_dark_url?.trim() || null);
   const tagline = system.tagline?.trim() || null;
   const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
 
@@ -107,6 +134,8 @@ const AppLayout = () => {
       }),
     [vocab, userRole, moduloLigado],
   );
+  usePageTitle(tituloDaAba(location.pathname, location.search, itensVisiveis));
+
 
   const handleLogout = async () => {
     await signOut();
@@ -116,7 +145,7 @@ const AppLayout = () => {
   const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
 
   return (
-    <div className="flex min-h-screen">
+    <div className="crm-shell flex min-h-screen bg-background">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -125,33 +154,37 @@ const AppLayout = () => {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-sidebar text-sidebar-foreground transition-transform crm-sidebar-aberta lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
-          <div className="flex flex-1 items-center justify-center">
-            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
+        <div className="flex items-center gap-3 px-5 pb-5 pt-6">
+          <div className="flex min-w-0 flex-1 items-center justify-start">
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} naPlaca={logoNaPlaca} />
           </div>
           <button
-            className="ml-auto text-sidebar-foreground lg:hidden"
+            className="ml-auto -mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X size={20} />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
           {itensVisiveis.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                `flex h-10 items-center gap-3 rounded-control px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50 ${
+                  item.to === (itensVisiveis.some((i) => i.to === "/acessos") ? "/acessos" : "/configuracoes")
+                    ? "relative !mt-7 before:pointer-events-none before:absolute before:-top-[15px] before:left-3 before:right-3 before:border-t before:border-sidebar-border"
+                    : ""
+                } ${
                   isActive
-                    ? "gradient-brand text-primary-foreground shadow-brand"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    ? "bg-sidebar-active font-semibold text-sidebar-active-foreground"
+                    : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 }`
               }
             >
@@ -161,58 +194,66 @@ const AppLayout = () => {
           ))}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4">
+        <div className="space-y-0.5 border-t border-sidebar-border p-3">
           {profile && (
             <button
               onClick={() => setEditProfileOpen(true)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-2 hover:bg-sidebar-accent transition-colors group"
+              className="group mb-1.5 flex w-full items-center gap-3 rounded-card bg-white/[0.04] px-2.5 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
             >
-              <Avatar className="h-9 w-9 border border-border">
+              <Avatar className="h-9 w-9 shrink-0">
                 <AvatarImage src={profile.avatar_url || undefined} />
-                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                <AvatarFallback className="bg-primary text-sm font-bold text-primary-foreground">{initials}</AvatarFallback>
               </Avatar>
               <div className="flex-1 text-left min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
-                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+                <p className="truncate text-[13px] font-semibold text-white">{profile.nome}</p>
+                <p className="truncate text-xs text-sidebar-muted">{profile.email}</p>
               </div>
-              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Settings size={14} className="shrink-0 text-sidebar-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
           )}
           <button
             onClick={toggleTheme}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="flex h-9 w-full items-center gap-3 rounded-control px-3 text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
           </button>
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="flex h-9 w-full items-center gap-3 rounded-control px-3 text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
           >
             <LogOut size={18} />
             Sair
           </button>
           {mostrarPoweredBy && (
-            <p className="px-3 pt-2 text-[10px] text-muted-foreground">Powered by {system.name}</p>
+            <p className="px-3 pt-2 text-[10px] text-sidebar-muted">Powered by {system.name}</p>
           )}
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col lg:ml-64">
-        <header className="flex h-16 items-center gap-4 border-b border-border px-6">
+      <div className="flex min-w-0 flex-1 flex-col lg:ml-64">
+        <header className="flex h-16 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur lg:px-6">
           <button
-            className="text-foreground lg:hidden"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-control text-foreground transition-colors hover:bg-muted lg:hidden"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu size={22} />
           </button>
-          <div className="ml-auto text-sm text-muted-foreground">
-            {tagline ? `${effective.name} — ${tagline}` : effective.name}
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+            <div className="shrink-0">
+              <NotificationBell />
+            </div>
+            <div className="min-w-0 truncate border-l border-border/60 pl-3 text-sm font-medium text-foreground">
+              {tagline ? `${effective.name} — ${tagline}` : effective.name}
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+        <main className="flex-1 overflow-auto bg-background p-3 sm:p-4 lg:p-6">
+          <TaskReminderWatcher />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

@@ -15,16 +15,16 @@ type Props = {
 
 export default function ChatReplyPreview({ replyTo, leadName, onCancel }: Props) {
   return (
-    <div className="flex-shrink-0 bg-secondary/80 border-t border-border px-4 py-2 flex items-center gap-3">
-      <div className="w-1 h-8 rounded-full bg-primary flex-shrink-0" />
+    <div className="mx-3 mb-2 flex flex-shrink-0 items-center gap-3 rounded-xl border border-border/60 bg-surface-sunken px-3 py-2">
+      <div className="h-9 w-[3px] flex-shrink-0 rounded-full bg-primary" />
       <div className="flex-1 min-w-0">
-        <div className="text-xs font-medium text-primary">
+        <div className="text-xs font-semibold text-primary">
           {replyTo.direction === "inbound" ? leadName : "Você"}
         </div>
-        <div className="text-xs text-muted-foreground truncate">{replyTo.content || `[${replyTo.type}]`}</div>
+        <div className="truncate text-[13px] text-muted-foreground">{replyTo.content || `[${replyTo.type}]`}</div>
       </div>
-      <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
-        <X size={16} />
+      <button onClick={onCancel} className="flex h-7 w-7 items-center justify-center rounded-full text-tertiary transition-colors hover:bg-card hover:text-foreground">
+        <X size={16} strokeWidth={1.75} />
       </button>
     </div>
   );

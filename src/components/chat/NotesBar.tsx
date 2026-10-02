@@ -58,25 +58,25 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
       {/* Pinned latest note bar */}
       <button
         onClick={() => setAllOpen(true)}
-        className="flex w-full flex-shrink-0 items-start gap-3 border-b border-warning/25 bg-warning-soft px-4 py-2.5 text-left transition-colors hover:bg-warning-soft/80"
+        className="mx-3 mt-3 flex w-[calc(100%-1.5rem)] flex-shrink-0 items-start gap-3 rounded-xl border border-warning/20 bg-warning-soft/60 px-3 py-2.5 text-left transition-colors hover:bg-warning-soft"
       >
-        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning/15">
-          <StickyNote size={14} className="text-warning-soft-foreground" />
+        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">
+          <StickyNote size={16} strokeWidth={1.75} />
         </div>
         <div className="flex-1 min-w-0">
           {latest.timestamp && (
-            <p className="text-[11px] text-muted-foreground">{latest.timestamp}</p>
+            <p className="text-[11px] text-tertiary tabular-nums">{latest.timestamp}</p>
           )}
-          <p className="text-sm text-foreground line-clamp-2">{latest.text}</p>
+          <p className="line-clamp-2 text-[13px] text-foreground">{latest.text}</p>
         </div>
         {parsed.length > 1 && (
-          <span className="text-[10px] text-primary flex-shrink-0 mt-1">+{parsed.length - 1}</span>
+          <span className="mt-1 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-card px-1.5 text-[11px] font-semibold text-muted-foreground">+{parsed.length - 1}</span>
         )}
       </button>
 
       {/* All notes modal */}
       <Dialog open={allOpen} onOpenChange={setAllOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle>Todas as Notas</DialogTitle>
             <DialogDescription>Histórico completo de notas deste lead.</DialogDescription>
@@ -87,7 +87,7 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                 <p className="text-sm text-muted-foreground text-center py-4">Nenhuma nota registrada.</p>
               ) : (
                 parsed.map((n, i) => (
-                  <div key={i} className="border-l-2 border-primary/30 pl-3 py-1.5 group/note">
+                  <div key={i} className="group/note rounded-xl border border-border/60 bg-surface-sunken px-3 py-2.5">
                     {editIdx === i ? (
                       <div className="flex gap-2">
                         <Input
@@ -95,9 +95,9 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditIdx(null); }}
-                          className="h-8 text-sm"
+                          className="h-9 rounded-xl text-sm"
                         />
-                        <Button size="sm" onClick={saveEdit} className="h-8">Salvar</Button>
+                        <Button size="sm" onClick={saveEdit} className="h-9 rounded-xl">Salvar</Button>
                       </div>
                     ) : (
                       <>
@@ -115,20 +115,20 @@ export default function NotesBar({ notes, onUpdateNotes }: Props) {
                             <button
                               onClick={() => handleEdit(i)}
                               title="Editar nota"
-                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                              className="flex items-center gap-1 rounded-lg border border-border/60 bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             >
                               <Pencil size={12} /> Editar
                             </button>
                             <button
                               onClick={() => handleDelete(i)}
                               title="Excluir nota"
-                              className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              className="flex items-center gap-1 rounded-lg border border-border/60 bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-destructive-soft hover:text-destructive"
                             >
                               <Trash2 size={12} /> Excluir
                             </button>
                           </div>
                         </div>
-                        {n.timestamp && <p className="text-[10px] text-muted-foreground mt-0.5">{n.timestamp}</p>}
+                        {n.timestamp && <p className="mt-1 text-[11px] text-tertiary tabular-nums">{n.timestamp}</p>}
                       </>
                     )}
                   </div>

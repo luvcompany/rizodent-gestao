@@ -4,15 +4,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { X, Trash2, Plus, Minus, Upload, Search, Loader2 } from "lucide-react";
+import { X, Trash2, Plus, Minus, Upload, Search, Loader2, AlertTriangle } from "lucide-react";
 import { NODE_DEFINITIONS } from "@/types/bot";
 import VariableTextarea from "./VariableTextarea";
 import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
 import BotAudioRecorder from "./BotAudioRecorder";
 import type { Node } from "@xyflow/react";
 import { supabase } from "@/integrations/supabase/client";
-import { getUploadedFileUrl } from "@/lib/mediaUtils";
+import { createChatMediaPath, getUploadedFileUrl } from "@/lib/mediaUtils";
 import { compressImage } from "@/components/chat/imageCompressor";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
+import { mensagemDeErroDoUpload, modeloAprovado, rotuloStatusModelo } from "@/lib/bots";
 
 type Props = {
   node: Node;
@@ -23,6 +26,8 @@ type Props = {
 };
 
 export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onClose, onDelete }: Props) {
+  const { user } = useAuth();
+  const { tenant } = useTenant();
   const def = NODE_DEFINITIONS.find((d) => d.type === node.type);
   const [stages, setStages] = useState<{ id: string; name: string; color: string; pipeline_id: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
@@ -34,6 +39,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   const [existingSources, setExistingSources] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [publishedBots, setPublishedBots] = useState<{ id: string; name: string }[]>([]);
+  const [modelosCarregados, setModelosCarregados] = useState(false);
 
   useEffect(() => {
     supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position").then(({ data }) => {
@@ -42,8 +48,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     supabase.from("crm_pipelines").select("id, name").then(({ data }) => {
       if (data) setPipelines(data);
     });
-    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text, status").order("created_at", { ascending: false }).limit(2000).then(({ data }) => {
+    // Só modelo APROVADO sai pelo WhatsApp (AUTO-29): rascunho, pendente ou
+    // rejeitado falharia no envio e o bloco seguiria pelo ramo "Timeout".
+    supabase.from("crm_whatsapp_templates").select("id, name, body_text, buttons, language, header_type, footer_text, status").eq("status", "APPROVED").order("created_at", { ascending: false }).limit(2000).then(({ data }) => {
       if (data) setTemplates(deduplicateTemplates(data));
+      setModelosCarregados(true);
     });
     // Fetch unique tags
     supabase.from("crm_leads").select("tags").then(({ data }) => {
@@ -125,6 +134,21 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     return templates.find(t => t.id === tid) || null;
   }, [node.data.templateId, templates]);
 
+  // Modelo escolhido que NÃO está na lista de aprovados (deixou de ser
+  // aprovado, ou foi excluído): busca o status para o aviso do bloco.
+  const [modeloForaDaLista, setModeloForaDaLista] = useState<{ id: string; name: string | null; status: string | null } | null>(null);
+  useEffect(() => {
+    const tid = (node.data.templateId as string) || "";
+    if (!tid || selectedTemplate || !modelosCarregados) { setModeloForaDaLista(null); return; }
+    let ativo = true;
+    supabase.from("crm_whatsapp_templates").select("id, name, status").eq("id", tid).maybeSingle().then(({ data }) => {
+      if (!ativo) return;
+      setModeloForaDaLista({ id: tid, name: (data as any)?.name ?? null, status: (data as any)?.status ?? null });
+    });
+    return () => { ativo = false; };
+  }, [node.data.templateId, selectedTemplate, modelosCarregados]);
+  const modeloNaoAprovado = modeloForaDaLista && !modeloAprovado(modeloForaDaLista.status) ? modeloForaDaLista : null;
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField = "fileUrl") => {
     let file = e.target.files?.[0];
     if (!file) return;
@@ -170,8 +194,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return;
       }
 
-      const ext = file.name.split(".").pop() || "bin";
-      const fileName = `bot-files/${Date.now()}.${ext}`;
+      // Caminho por cliente/usuário (<tenant>/<usuário>/bot-files/…), o único
+      // que a policy "chat-media scoped upload" aceita (AUTO-10). Antes ia para
+      // `bot-files/<data>.<ext>` e todo upload era recusado. O nome já é único:
+      // sem x-upsert (sobrescrever exigiria a policy de UPDATE).
+      const fileName = await createChatMediaPath("bot-files", file.name, tenant.id, user?.id);
 
       // Use XMLHttpRequest for progress tracking
       const { data: { session } } = await supabase.auth.getSession();
@@ -185,7 +212,6 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         xhr.setRequestHeader("apikey", anonKey);
         xhr.setRequestHeader("Content-Type", file!.type || "application/octet-stream");
-        xhr.setRequestHeader("x-upsert", "true");
 
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) {
@@ -200,20 +226,24 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             const url = await getUploadedFileUrl(fileName);
             resolve(url);
           } else {
-            reject(new Error(`Upload failed: ${xhr.status}`));
+            // O motivo real vem no corpo do Storage (ex.: permissão, tamanho).
+            reject(new Error(mensagemDeErroDoUpload(xhr.status, xhr.responseText)));
           }
         };
 
-        xhr.onerror = () => reject(new Error("Upload network error"));
+        xhr.onerror = () => reject(new Error("Sem conexão com o servidor. Confira a internet e tente de novo."));
         xhr.send(file);
       });
 
       if (signedUrl) {
         update(targetField, signedUrl);
+      } else {
+        toast.error("O arquivo subiu, mas não foi possível gerar o link dele. Tente de novo.");
       }
     } catch (err) {
       console.error("Bot file upload error:", err);
-      toast.error("Erro ao enviar arquivo.");
+      const motivo = err instanceof Error && err.message ? err.message : "";
+      toast.error(motivo ? `Erro ao enviar arquivo: ${motivo}` : "Erro ao enviar arquivo.");
     }
     setUploading(false);
     setUploadProgress(0);
@@ -229,7 +259,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   // Render audio recorder component
   const renderAudioRecorder = (urlField = "audioUrl") => (
     <div className="space-y-2">
-      <Label className="text-xs">Áudio</Label>
+      <Label className="text-xs font-medium text-muted-foreground">Áudio</Label>
       <BotAudioRecorder
         value={(node.data[urlField] as string) || ""}
         onChange={(url) => update(urlField, url)}
@@ -240,9 +270,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   // Render file uploader component
   const renderFileUploader = (urlField = "fileUrl") => (
     <div className="space-y-2">
-      <Label className="text-xs">Tipo de Mídia</Label>
+      <Label className="text-xs font-medium text-muted-foreground">Tipo de Mídia</Label>
       <Select value={(node.data.fileType as string) || "image"} onValueChange={(v) => update("fileType", v)}>
-        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
         <SelectContent>
           <SelectItem value="image">📷 Imagem</SelectItem>
           <SelectItem value="video">🎬 Vídeo</SelectItem>
@@ -250,7 +280,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         </SelectContent>
       </Select>
       <div>
-        <Label className="text-xs">Arquivo</Label>
+        <Label className="text-xs font-medium text-muted-foreground">Arquivo</Label>
         {(node.data[urlField] as string) ? (
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-muted-foreground truncate flex-1">{String(node.data[urlField]).split("/").pop()}</span>
@@ -261,7 +291,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         ) : (
           <div className="mt-1">
             {uploading ? (
-              <div className="space-y-2 px-3 py-3 border border-dashed border-border rounded-md">
+              <div className="space-y-2 px-3 py-3 border border-dashed border-border rounded-xl bg-surface-sunken/60">
                 <div className="flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin text-primary" />
                   <span className="text-xs text-muted-foreground">
@@ -276,7 +306,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                 </div>
               </div>
             ) : (
-              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-border rounded-md cursor-pointer hover:bg-secondary/50 transition-colors">
+              <label className="flex items-center gap-2 min-h-10 px-3 py-2 border border-dashed border-border rounded-xl cursor-pointer text-muted-foreground hover:bg-primary-soft/60 hover:border-primary/40 hover:text-foreground transition-colors">
                 <Upload size={14} className="text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Clique para enviar</span>
                 <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, urlField)} />
@@ -291,7 +321,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
   // Render timeout fields
   const renderTimeoutFields = (label = "Timeout sem resposta") => (
     <div>
-      <Label className="text-xs">{label}</Label>
+      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
       <div className="grid grid-cols-3 gap-2 mt-1">
         <div>
           <Label className="text-[10px] text-muted-foreground">Horas</Label>
@@ -315,7 +345,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     return (
       <div className="space-y-3">
         <div className="relative">
-          <Label className="text-xs">{isRemove ? "Tag para remover" : "Nome da tag"}</Label>
+          <Label className="text-xs font-medium text-muted-foreground">{isRemove ? "Tag para remover" : "Nome da tag"}</Label>
           <Input
             value={currentValue}
             onChange={(e) => {
@@ -327,11 +357,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             className="mt-1"
           />
           {tagInput && tagSuggestions.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 border border-border rounded-md bg-popover shadow-md max-h-32 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-1 border border-border rounded-xl bg-popover shadow-float p-1 max-h-32 overflow-y-auto">
               {tagSuggestions.map((tag) => (
                 <button
                   key={tag}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                  className="w-full text-left px-3 py-1.5 rounded-lg text-xs hover:bg-accent transition-colors"
                   onClick={() => { update("tag", tag); setTagInput(""); }}
                 >
                   🏷️ {tag}
@@ -398,11 +428,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
       return (
         <>
           <div>
-            <Label className="text-xs">Funil</Label>
+            <Label className="text-xs font-medium text-muted-foreground">Funil</Label>
             <Select value={selectedPipeline || "__all__"} onValueChange={(v) => {
               updateMultiple({ conditionPipelineId: v === "__all__" ? "" : v, value: "" });
             }}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">Todos os funis</SelectItem>
                 {pipelines.map(p => (
@@ -412,9 +442,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             </Select>
           </div>
           <div>
-            <Label className="text-xs">Etapa</Label>
+            <Label className="text-xs font-medium text-muted-foreground">Etapa</Label>
             <Select value={(node.data.value as string) || ""} onValueChange={(v) => update("value", v)}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
               <SelectContent>
                 {filteredStages.map(s => {
                   const pName = pipelines.find(p => p.id === s.pipeline_id)?.name;
@@ -437,10 +467,10 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     if (field === "lead.source") {
       return (
         <div>
-          <Label className="text-xs">Origem</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Origem</Label>
           {existingSources.length > 0 ? (
             <Select value={(node.data.value as string) || ""} onValueChange={(v) => update("value", v)}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a origem..." /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione a origem..." /></SelectTrigger>
               <SelectContent>
                 {existingSources.map(s => (
                   <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -458,10 +488,10 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
       const currentValue = (node.data.value as string) || "";
       return (
         <div className="relative">
-          <Label className="text-xs">Tag</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Tag</Label>
           {existingTags.length > 0 ? (
             <Select value={currentValue || "__custom__"} onValueChange={(v) => update("value", v === "__custom__" ? "" : v)}>
-              <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione a tag..." /></SelectTrigger>
+              <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione a tag..." /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__custom__">Digitar manualmente...</SelectItem>
                 {existingTags.map(t => (
@@ -482,8 +512,8 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
     // Default: free text input
     return (
       <div>
-        <Label className="text-xs">Valor</Label>
-        <Input value={(node.data.value as string) || ""} onChange={(e) => update("value", e.target.value)} className="mt-1" />
+        <Label className="text-xs font-medium text-muted-foreground">Valor</Label>
+        <Input value={(node.data.value as string) || ""} onChange={(e) => update("value", e.target.value)} className="mt-1.5 rounded-xl" />
       </div>
     );
   };
@@ -498,11 +528,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           <div className="space-y-3">
             {templates.length > 0 && (
               <div>
-                <Label className="text-xs">Usar Modelo (opcional)</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Usar Modelo (opcional)</Label>
                 <div className="relative mt-1 mb-1">
-                  <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" />
                   <input
-                    className="w-full pl-7 pr-3 py-1.5 text-xs border border-border rounded-md bg-secondary text-foreground focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
+                    className="w-full h-9 pl-8 pr-3 text-xs border border-transparent rounded-xl bg-surface-sunken text-foreground focus:outline-none focus:bg-card focus:border-border focus:ring-2 focus:ring-primary/30 placeholder:text-tertiary"
                     placeholder="Pesquisar modelo..."
                     value={templateSearch}
                     onChange={(e) => setTemplateSearch(e.target.value)}
@@ -520,10 +550,39 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </div>
             )}
 
+            {/* Modelo escolhido que deixou de ser aprovado (ou foi excluído):
+                o bot não é publicado enquanto este bloco usar esse modelo. */}
+            {modeloNaoAprovado && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-3 space-y-2" role="alert">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-foreground leading-relaxed">
+                    O modelo <strong>{displayTemplateName(modeloNaoAprovado.name || (node.data.templateName as string) || "sem nome")}</strong> não
+                    está aprovado ({rotuloStatusModelo(modeloNaoAprovado.status)}). A Meta recusa o envio: escolha um modelo
+                    aprovado — o bot não é publicado enquanto este bloco usar esse modelo.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => handleTemplateSelect("")}>
+                  Tirar o modelo deste bloco
+                </Button>
+              </div>
+            )}
+            {/* Aprovado, mas fora da lista (outra versão do mesmo nome). */}
+            {modeloForaDaLista && !modeloNaoAprovado && (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-surface-sunken px-3 py-2">
+                <span className="text-xs text-foreground truncate">
+                  {displayTemplateName(modeloForaDaLista.name || (node.data.templateName as string) || "Modelo")}
+                </span>
+                <button onClick={() => handleTemplateSelect("")} className="text-muted-foreground hover:text-destructive" title="Tirar o modelo" aria-label="Tirar o modelo">
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+
             {/* Template Preview */}
             {selectedTemplate && (
-              <div className="border border-border rounded-lg overflow-hidden bg-secondary/30">
-                <div className="px-3 py-2 bg-secondary/50 border-b border-border flex items-center justify-between">
+              <div className="border border-border/60 rounded-xl overflow-hidden bg-card shadow-xs">
+                <div className="px-3 py-2 bg-surface-sunken border-b border-border/60 flex items-center justify-between">
                   <span className="text-xs font-medium text-foreground">{displayTemplateName(selectedTemplate.name)}</span>
                   <button onClick={() => handleTemplateSelect("")} className="text-muted-foreground hover:text-destructive">
                     <X size={12} />
@@ -542,7 +601,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                   {Array.isArray(selectedTemplate.buttons) && selectedTemplate.buttons.length > 0 && (
                     <div className="border-t border-border pt-2 space-y-1">
                       {(selectedTemplate.buttons as any[]).map((btn: any, i: number) => (
-                        <div key={i} className="text-xs text-primary text-center py-1 border border-primary/20 rounded-md bg-primary/5">
+                        <div key={i} className="text-xs font-medium text-primary-soft-fg text-center py-1.5 rounded-lg bg-primary-soft">
                           {btn.text || btn.title || `Botão ${i + 1}`}
                         </div>
                       ))}
@@ -554,7 +613,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
             {!(node.data.templateId as string) && (
               <div>
-                <Label className="text-xs">Mensagem</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Mensagem</Label>
                 <VariableTextarea extraVariables={botVariables}
                   value={(node.data.text as string) || ""}
                   onChange={(v) => update("text", v)}
@@ -579,7 +638,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
           <div className="space-y-3">
             {renderFileUploader("fileUrl")}
             <div>
-              <Label className="text-xs">Texto junto (opcional)</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Texto junto (opcional)</Label>
               <VariableTextarea extraVariables={botVariables}
                 value={(node.data.caption as string) || ""}
                 onChange={(v) => update("caption", v)}
@@ -597,9 +656,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Tipo</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Tipo</Label>
               <Select value={menuType} onValueChange={(v) => update("menuType", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="buttons">Botões (máx. 3)</SelectItem>
                   <SelectItem value="list">Lista de opções</SelectItem>
@@ -607,7 +666,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Texto da mensagem</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Texto da mensagem</Label>
               <VariableTextarea extraVariables={botVariables}
                 value={(node.data.bodyText as string) || ""}
                 onChange={(v) => update("bodyText", v)}
@@ -617,7 +676,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             </div>
             {menuType === "buttons" && (
               <div>
-                <Label className="text-xs">Botões</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Botões</Label>
                 <div className="space-y-1.5 mt-1">
                   {buttons.map((btn, i) => (
                     <div key={btn.id} className="flex items-center gap-1.5">
@@ -650,20 +709,20 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               return (
                 <div className="space-y-3">
                   <div>
-                    <Label className="text-xs">Cabeçalho (opcional)</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Cabeçalho (opcional)</Label>
                     <Input value={(node.data.headerText as string) || ""} onChange={(e) => update("headerText", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Título da mensagem..." />
                   </div>
                   <div>
-                    <Label className="text-xs">Rodapé (opcional)</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Rodapé (opcional)</Label>
                     <Input value={(node.data.footerText as string) || ""} onChange={(e) => update("footerText", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Rodapé..." />
                   </div>
                   <div>
-                    <Label className="text-xs">Texto do botão de ação</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Texto do botão de ação</Label>
                     <Input value={(node.data.buttonLabel as string) || "Menu"} onChange={(e) => update("buttonLabel", e.target.value)} className="mt-1 h-8 text-xs" placeholder="Ver opções" />
                   </div>
 
                   {sections.map((section, si) => (
-                    <div key={si} className="border border-primary/30 rounded-lg p-2.5 space-y-2 bg-primary/5">
+                    <div key={si} className="border border-primary/25 rounded-xl p-3 space-y-2 bg-primary-soft/50">
                       <div className="flex items-center gap-1.5">
                         <Input
                           value={section.title}
@@ -739,7 +798,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Tempo de espera</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Tempo de espera</Label>
               <div className="flex gap-2 mt-1">
                 <Input
                   type="number"
@@ -774,22 +833,22 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             />
 
             <div className="border-t border-border pt-3">
-              <Label className="text-xs">Validar resposta como</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Validar resposta como</Label>
               <Select value={validateAs} onValueChange={(v) => update("validateAs", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhuma</SelectItem>
                   <SelectItem value="full_name">Nome completo</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground mt-1">
-                Se ativado, respostas que parecem perguntas ou saudações não avançam o fluxo — o bot re-pergunta até 2 vezes.
+                Se ativado, respostas que parecem perguntas ou saudações não avançam o fluxo — o bot re-pergunta até 2 vezes. Na 3ª resposta, guarda o que veio e segue.
               </p>
             </div>
 
             {validateAs !== "none" && (
               <div>
-                <Label className="text-xs">Mensagem de re-pergunta</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Mensagem de re-pergunta</Label>
                 <VariableTextarea
                   extraVariables={botVariables}
                   value={(node.data.invalidReplyMessage as string) || ""}
@@ -809,9 +868,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Modo</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Modo</Label>
               <Select value={(node.data.scheduleMode as string) || "next_day"} onValueChange={(v) => update("scheduleMode", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="next_day">Próximo dia</SelectItem>
                   <SelectItem value="next_business_day">Próximo dia útil</SelectItem>
@@ -820,20 +879,20 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Horário de envio</Label>
-              <Input type="time" value={(node.data.scheduleTime as string) || "09:00"} onChange={(e) => update("scheduleTime", e.target.value)} className="mt-1" />
+              <Label className="text-xs font-medium text-muted-foreground">Horário de envio</Label>
+              <Input type="time" value={(node.data.scheduleTime as string) || "09:00"} onChange={(e) => update("scheduleTime", e.target.value)} className="mt-1.5 rounded-xl" />
             </div>
             {(node.data.scheduleMode as string) === "custom" && (
               <div>
-                <Label className="text-xs">Data</Label>
-                <Input type="date" value={(node.data.scheduleDate as string) || ""} onChange={(e) => update("scheduleDate", e.target.value)} className="mt-1" />
+                <Label className="text-xs font-medium text-muted-foreground">Data</Label>
+                <Input type="date" value={(node.data.scheduleDate as string) || ""} onChange={(e) => update("scheduleDate", e.target.value)} className="mt-1.5 rounded-xl" />
               </div>
             )}
 
             <div className="border-t border-border pt-3">
               <Label className="text-xs font-semibold">Mensagem a enviar</Label>
               <Select value={msgType} onValueChange={(v) => update("messageType", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="text">💬 Texto</SelectItem>
                   <SelectItem value="audio">🎙️ Áudio</SelectItem>
@@ -844,7 +903,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
             {msgType === "text" && (
               <div>
-                <Label className="text-xs">Mensagem</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Mensagem</Label>
                 <VariableTextarea extraVariables={botVariables} value={(node.data.text as string) || ""} onChange={(v) => update("text", v)} rows={4} className="mt-1" />
               </div>
             )}
@@ -853,7 +912,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               <>
                 {renderFileUploader("fileUrl")}
                 <div>
-                  <Label className="text-xs">Legenda</Label>
+                  <Label className="text-xs font-medium text-muted-foreground">Legenda</Label>
                   <VariableTextarea extraVariables={botVariables} value={(node.data.caption as string) || ""} onChange={(v) => update("caption", v)} rows={2} className="mt-1" />
                 </div>
               </>
@@ -866,11 +925,11 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Campo</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Campo</Label>
               <Select value={(node.data.field as string) || ""} onValueChange={(v) => {
                 updateMultiple({ field: v, value: "", conditionPipelineId: "" });
               }}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="last_reply">Última resposta</SelectItem>
                   <SelectItem value="lead.name">Nome do lead</SelectItem>
@@ -881,9 +940,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Operador</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Operador</Label>
               <Select value={(node.data.operator as string) || "equals"} onValueChange={(v) => update("operator", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="equals">Igual a</SelectItem>
                   <SelectItem value="not_equals">Diferente de</SelectItem>
@@ -909,7 +968,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Funil</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Funil</Label>
               <Select
                 value={selectedPipelineId}
                 onValueChange={(v) => {
@@ -920,7 +979,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                   }
                 }}
               >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o funil..." /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione o funil..." /></SelectTrigger>
                 <SelectContent>
                   {pipelines.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -929,13 +988,13 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Etapa de destino</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Etapa de destino</Label>
               <Select
                 value={currentStageId}
                 onValueChange={(v) => update("stageId", v)}
                 disabled={!selectedPipelineId}
               >
-                <SelectTrigger className="mt-1"><SelectValue placeholder={selectedPipelineId ? "Selecione a etapa..." : "Selecione o funil primeiro"} /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder={selectedPipelineId ? "Selecione a etapa..." : "Selecione o funil primeiro"} /></SelectTrigger>
                 <SelectContent>
                   {filteredStages.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
@@ -962,7 +1021,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Nota</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Nota</Label>
               <VariableTextarea extraVariables={botVariables} value={(node.data.note as string) || ""} onChange={(v) => update("note", v)} placeholder="Texto da nota... Use [ para variáveis" rows={4} className="mt-1" />
             </div>
           </div>
@@ -972,7 +1031,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Título da tarefa</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Título da tarefa</Label>
               <VariableTextarea extraVariables={botVariables}
                 value={(node.data.title as string) || ""}
                 onChange={(v) => update("title", v)}
@@ -982,9 +1041,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               />
             </div>
             <div>
-              <Label className="text-xs">Tipo da tarefa</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Tipo da tarefa</Label>
               <Select value={(node.data.taskType as string) || "personalizado"} onValueChange={(v) => update("taskType", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="personalizado">📋 Personalizado</SelectItem>
                   <SelectItem value="agendamento">📅 Agendamento</SelectItem>
@@ -994,9 +1053,9 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Quando agendar</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Quando agendar</Label>
               <Select value={(node.data.dueMode as string) || "hours"} onValueChange={(v) => update("dueMode", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hours">Em X horas</SelectItem>
                   <SelectItem value="days">Em X dias</SelectItem>
@@ -1010,45 +1069,45 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
             {(node.data.dueMode === "hours" || !node.data.dueMode) && (
               <div>
-                <Label className="text-xs">Horas a partir de agora</Label>
-                <Input type="number" min={1} value={(node.data.dueHours as number) || 24} onChange={(e) => update("dueHours", parseInt(e.target.value) || 24)} className="mt-1" />
+                <Label className="text-xs font-medium text-muted-foreground">Horas a partir de agora</Label>
+                <Input type="number" min={1} value={(node.data.dueHours as number) || 24} onChange={(e) => update("dueHours", parseInt(e.target.value) || 24)} className="mt-1.5 rounded-xl" />
               </div>
             )}
 
             {node.data.dueMode === "days" && (
               <div>
-                <Label className="text-xs">Dias a partir de agora</Label>
-                <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1" />
+                <Label className="text-xs font-medium text-muted-foreground">Dias a partir de agora</Label>
+                <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1.5 rounded-xl" />
               </div>
             )}
 
             {node.data.dueMode === "days_at_time" && (
               <div className="space-y-2">
                 <div>
-                  <Label className="text-xs">Dias a partir de agora</Label>
-                  <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1" />
+                  <Label className="text-xs font-medium text-muted-foreground">Dias a partir de agora</Label>
+                  <Input type="number" min={1} value={(node.data.dueDays as number) || 1} onChange={(e) => update("dueDays", parseInt(e.target.value) || 1)} className="mt-1.5 rounded-xl" />
                 </div>
                 <div>
-                  <Label className="text-xs">Horário</Label>
-                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                  <Label className="text-xs font-medium text-muted-foreground">Horário</Label>
+                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1.5 rounded-xl" />
                 </div>
               </div>
             )}
 
             {node.data.dueMode === "next_day_first" && (
               <div>
-                <Label className="text-xs">Primeiro horário</Label>
-                <Input type="time" value={(node.data.dueTime as string) || "08:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                <Label className="text-xs font-medium text-muted-foreground">Primeiro horário</Label>
+                <Input type="time" value={(node.data.dueTime as string) || "08:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1.5 rounded-xl" />
                 <p className="text-[10px] text-muted-foreground mt-1">Será agendado para o dia seguinte neste horário</p>
               </div>
             )}
 
             {node.data.dueMode === "next_business_day" && (
               <div>
-                <Label className="text-xs">Horário</Label>
-                <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                <Label className="text-xs font-medium text-muted-foreground">Horário</Label>
+                <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1.5 rounded-xl" />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Será agendado para o próximo dia útil neste horário (pula sábados, domingos e feriados cadastrados).
+                  Será agendado para o próximo dia em que a clínica abre, neste horário — segue o horário de atendimento de Configurações e pula os feriados cadastrados da clínica.
                 </p>
               </div>
             )}
@@ -1056,18 +1115,18 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
             {node.data.dueMode === "specific" && (
               <div className="space-y-2">
                 <div>
-                  <Label className="text-xs">Data</Label>
-                  <Input type="date" value={(node.data.dueDate as string) || ""} onChange={(e) => update("dueDate", e.target.value)} className="mt-1" />
+                  <Label className="text-xs font-medium text-muted-foreground">Data</Label>
+                  <Input type="date" value={(node.data.dueDate as string) || ""} onChange={(e) => update("dueDate", e.target.value)} className="mt-1.5 rounded-xl" />
                 </div>
                 <div>
-                  <Label className="text-xs">Horário</Label>
-                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1" />
+                  <Label className="text-xs font-medium text-muted-foreground">Horário</Label>
+                  <Input type="time" value={(node.data.dueTime as string) || "09:00"} onChange={(e) => update("dueTime", e.target.value)} className="mt-1.5 rounded-xl" />
                 </div>
               </div>
             )}
 
             <div>
-              <Label className="text-xs">Observações (opcional)</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Observações (opcional)</Label>
               <VariableTextarea extraVariables={botVariables}
                 value={(node.data.taskNotes as string) || ""}
                 onChange={(v) => update("taskNotes", v)}
@@ -1076,7 +1135,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                 className="mt-1"
               />
             </div>
-            <div className="bg-secondary/50 rounded-md p-2 border border-border">
+            <div className="bg-info-soft/60 rounded-xl p-3 border border-info/20">
               <p className="text-[10px] text-muted-foreground leading-relaxed">
                 💡 <strong>Dica:</strong> Use variáveis como <code className="bg-secondary px-1 rounded">[lead.nome]</code>, <code className="bg-secondary px-1 rounded">[resposta.ultima]</code> para criar tarefas dinâmicas baseadas nas respostas do lead.
               </p>
@@ -1085,13 +1144,17 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
         );
 
       case "transfer_human":
-        return <p className="text-sm text-muted-foreground">O bot será encerrado e a conversa voltará ao modo manual.</p>;
+        return (
+          <p className="text-sm text-muted-foreground">
+            O bot é encerrado e a conversa volta ao modo manual. O responsável pelo lead — ou, sem responsável, o(a) gestor(a) da equipe — recebe uma notificação, e a conversa ganha a mensagem "Bot transferiu para atendimento humano".
+          </p>
+        );
 
       case "trigger_bot":
         return (
           <div className="space-y-3">
             <div>
-              <Label className="text-xs">Bot a acionar</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Bot a acionar</Label>
               <Select
                 value={(node.data.botId as string) || ""}
                 onValueChange={(v) => {
@@ -1099,7 +1162,7 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
                   updateMultiple({ botId: v, botName: bot?.name || "" });
                 }}
               >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione o bot..." /></SelectTrigger>
+                <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue placeholder="Selecione o bot..." /></SelectTrigger>
                 <SelectContent>
                   {publishedBots.length === 0 && <SelectItem value="none" disabled>Nenhum bot publicado</SelectItem>}
                   {publishedBots.filter(b => b.id !== (node as any)._botId).map((b) => (
@@ -1119,42 +1182,47 @@ export default function NodePropertiesPanel({ node, allNodes = [], onUpdate, onC
 
   return (
     <div
-      className="flex h-full w-[min(320px,calc(100vw-2rem))] shrink-0 flex-col border-l border-border/60 bg-card"
+      className="w-[320px] border-l border-border/60 bg-card flex flex-col h-full"
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between border-b border-border/60 p-4">
-        <div className="flex items-center gap-2">
-          <span>{def?.icon}</span>
-          <h3 className="font-semibold text-sm">{def?.label || "Propriedades"}</h3>
+      <div className="flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border/60">
+        <div className="flex items-center gap-3 min-w-0">
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-base"
+            style={def ? { backgroundColor: `color-mix(in srgb, ${def.color} 14%, transparent)` } : undefined}
+          >{def?.icon}</span>
+          <h3 className="text-base font-semibold leading-tight text-foreground">{def?.label || "Propriedades"}</h3>
         </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-lg" onClick={onClose}>
           <X size={14} />
         </Button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto bg-surface-sunken/40 p-4">
-        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
-          <Label className="text-xs text-muted-foreground">Tipo: {def?.label || node.type}</Label>
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        <div className="space-y-3 pb-4 border-b border-border/60">
+        <div>
+          <Label className="text-xs text-tertiary">Tipo: {def?.label || node.type}</Label>
         </div>
-        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
-          <Label className="text-xs">Descrição do bloco (opcional)</Label>
+        <div>
+          <Label className="text-xs font-medium text-muted-foreground">Descrição do bloco (opcional)</Label>
           <Input
             value={(node.data.description as string) || ""}
             onChange={(e) => update("description", e.target.value)}
-            className="mt-1"
+            className="mt-1.5 rounded-xl"
             placeholder="Descreva o que este bloco faz..."
           />
         </div>
+        </div>
 
-        <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">{renderFields()}</div>
+        {renderFields()}
       </div>
 
       {node.type !== "start" && (
-        <div className="border-t border-border/60 bg-card p-4">
-          <Button variant="destructive" size="sm" className="w-full gap-1.5" onClick={() => onDelete(node.id)}>
+        <div className="p-4 border-t border-border/60">
+          <Button variant="outline" size="sm" className="w-full h-10 gap-1.5 rounded-xl border-destructive/40 text-destructive hover:bg-destructive-soft hover:text-destructive" onClick={() => onDelete(node.id)}>
             <Trash2 size={14} /> Excluir bloco
           </Button>
         </div>
@@ -1195,7 +1263,7 @@ function SaveToVariableField({
 
   return (
     <div>
-      <Label className="text-xs">Salvar resposta na variável</Label>
+      <Label className="text-xs font-medium text-muted-foreground">Salvar resposta na variável</Label>
       <div className="relative mt-1">
         <Input
           value={varInput}
@@ -1209,11 +1277,11 @@ function SaveToVariableField({
           placeholder="Digite o nome da variável (ex: horario_preferido)"
         />
         {varDropdownOpen && filteredVars.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 border border-border rounded-md bg-popover shadow-md max-h-32 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 border border-border rounded-xl bg-popover shadow-float p-1 max-h-32 overflow-y-auto">
             {filteredVars.map((v) => (
               <button
                 key={v}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors ${v === currentField ? "bg-accent/50 font-medium" : ""}`}
+                className={`w-full text-left px-3 py-1.5 rounded-lg text-xs hover:bg-accent transition-colors ${v === currentField ? "bg-accent/50 font-medium" : ""}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setVarInput(v);

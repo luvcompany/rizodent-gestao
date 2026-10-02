@@ -61,7 +61,7 @@ export const PageHeader = React.forwardRef<HTMLDivElement, PageHeaderProps>(
                 <span>{title}</span>
               </h1>
             ) : (
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+              <h1 className="text-[28px] font-bold tracking-tight text-foreground md:text-[32px]">{title}</h1>
             )}
             {subtitle != null && subtitle !== false ? (
               <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>

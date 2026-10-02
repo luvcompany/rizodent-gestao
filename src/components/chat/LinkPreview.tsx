@@ -48,7 +48,7 @@ export function LinkPreview({ url }: { url: string }) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-2 block rounded-md border border-border/60 bg-muted/30 p-2 text-xs text-muted-foreground animate-pulse"
+        className="mt-2 block rounded-xl border border-border/60 bg-card/70 px-3 py-2 text-xs text-muted-foreground animate-pulse"
         onClick={(e) => e.stopPropagation()}
       >
         Carregando prévia...
@@ -64,7 +64,7 @@ export function LinkPreview({ url }: { url: string }) {
       href={data.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-2 block overflow-hidden rounded-md border border-border/60 bg-muted/30 hover:bg-muted/50 transition-colors"
+      className="mt-2 block overflow-hidden rounded-xl border border-border/60 bg-card shadow-xs hover:bg-surface-sunken transition-colors"
       onClick={(e) => e.stopPropagation()}
     >
       {data.image && !imgError && (
@@ -76,18 +76,18 @@ export function LinkPreview({ url }: { url: string }) {
           loading="lazy"
         />
       )}
-      <div className="p-2">
-        <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="px-3 py-2.5">
+        <div className="flex items-center gap-1 text-[11px] text-tertiary">
           <ExternalLink size={10} />
           <span className="truncate">{data.siteName || data.host}</span>
         </div>
         {data.title && (
-          <div className="text-xs font-semibold text-foreground line-clamp-2 mt-0.5">
+          <div className="text-[13px] font-semibold text-foreground line-clamp-2 mt-0.5">
             {data.title}
           </div>
         )}
         {data.description && (
-          <div className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
+          <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
             {data.description}
           </div>
         )}

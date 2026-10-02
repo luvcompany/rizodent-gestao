@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,9 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, Power, RefreshCw, Shuffle } from "lucide-react";
+import { AlertTriangle, Loader2, Power, RefreshCw, Shuffle } from "lucide-react";
 import { mensagemDeErroRpc, rpcAusente } from "@/lib/relatorioSdr";
+import { InitialsAvatar } from "@/components/crm-ui";
 
 /**
  * Painel do motor do rodízio, dentro da aba Equipe (só o gestor chega aqui).
@@ -84,6 +86,12 @@ interface Estado {
   /** Funis escolhidos para o rodízio; opcionais porque o banco pode estar sem a migration. */
   funis_ids?: string[] | null;
   funis?: { id: string; nome: string }[] | null;
+  /**
+   * Horário comercial confirmado pela clínica (tenants.business_hours_confirmado_em,
+   * migration do horário). `false` = ainda é o padrão que o sistema pôs; sem a
+   * chave (banco sem a migration) a tela não afirma nada.
+   */
+  horario_confirmado?: boolean;
 }
 interface LinhaDistribuicao {
   lead_id: string; lead_nome: string | null; lead_telefone: string | null; etapa: string | null;
@@ -103,9 +111,9 @@ const rpc = (fn: string, args?: Record<string, unknown>) => (supabase as any).rp
 
 const ROTULO: Record<Modo, string> = { desligado: "Desligado", sombra: "Modo sombra", ligado: "Ligado" };
 const COR: Record<Modo, string> = {
-  desligado: "bg-muted text-muted-foreground",
-  sombra: "bg-warning/15 text-foreground dark:text-warning border-warning/30",
-  ligado: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  desligado: "h-6 rounded-full border-transparent bg-slate-soft px-2.5 text-[11px] font-semibold text-slate-soft-foreground",
+  sombra: "h-6 rounded-full border-transparent bg-warning-soft px-2.5 text-[11px] font-semibold text-warning-soft-foreground",
+  ligado: "h-6 rounded-full border-transparent bg-success-soft px-2.5 text-[11px] font-semibold text-success-soft-foreground",
 };
 const ESTADO_PONTO: Record<string, string> = {
   aberta: "Em expediente", pausada: "Em pausa", encerrada: "Encerrou o expediente",
@@ -188,6 +196,15 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     const { data, error } = await rpc("rodizio_estado");
     setCarregando(false);
     if (error) { setErro(mensagemDeErroRpc(error, "Não foi possível ler o estado do rodízio.", TEXTO_AUSENTE)); return; }
+    // rodizio_estado devolve NULL quando o cliente não tem linha de config:
+    // sem isto a tela ficava para sempre em "Lendo o estado do rodízio..."
+    // (TypeError dentro do async). Hoje toda clínica tem a linha (onboarding e
+    // backfill da migration 20260929002000); é defesa.
+    if (!data) {
+      setEstado(null);
+      setErro("O rodízio ainda não foi configurado para esta clínica. Fale com o suporte.");
+      return;
+    }
     setErro(null);
     const e = data as Estado;
     setEstado(e);
@@ -381,15 +398,15 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
 
   if (erro) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+      <div className="rounded-card border border-destructive/20 bg-destructive-soft px-5 py-4 text-sm text-destructive-soft-foreground shadow-card">
         {erro}
-        <Button variant="link" size="sm" className="ml-2 h-auto p-0" onClick={carregar}>Tentar de novo</Button>
+        <Button variant="link" size="sm" className="ml-2 h-auto p-0 font-semibold text-destructive-soft-foreground" onClick={carregar}>Tentar de novo</Button>
       </div>
     );
   }
   if (!estado) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-card border border-border/60 bg-card px-5 py-6 text-sm text-muted-foreground shadow-card">
         <Loader2 className="animate-spin" size={14} /> Lendo o estado do rodízio...
       </div>
     );
@@ -448,40 +465,52 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
     : "Ao confirmar, cada um vai para a SDR indicada (ou fica reservado se ela não estiver em expediente).";
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Power size={18} className="text-primary" />
-          <h2 className="font-semibold text-foreground">Distribuição automática</h2>
+    <section className="rounded-card border border-border/60 bg-card p-5 shadow-card lg:p-6">
+      {estado.horario_confirmado === false && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning-soft-foreground">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+          <span>
+            Horário comercial ainda não confirmado —{" "}
+            <Link to="/crm/configuracoes" className="font-medium underline underline-offset-2">confira em Configurações</Link>.
+            Ele decide o expediente das SDRs e quando o rodízio distribui.
+          </span>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+            <Power size={20} strokeWidth={1.75} />
+          </span>
+          <h2 className="text-base font-semibold text-foreground">Distribuição automática</h2>
           <Badge variant="outline" className={COR[modo]}>{ROTULO[modo]}</Badge>
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-tertiary">
           {estado.em_expediente ? "Em horário comercial" : "Fora do horário comercial"}
           {" · "}{estado.dia_util ? "dia útil" : "não é dia útil"}
           {estado.modo_alterado_em && ` · modo desde ${fmtHora(estado.modo_alterado_em)}`}
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={carregar} disabled={carregando} title="Atualizar">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-9 w-9 rounded-xl p-0" onClick={carregar} disabled={carregando} title="Atualizar">
             <RefreshCw size={14} className={carregando ? "animate-spin" : ""} />
           </Button>
           {(["desligado", "sombra", "ligado"] as Modo[]).filter((m) => m !== modo).map((m) => (
-            <Button key={m} size="sm" variant={m === "ligado" ? "default" : "outline"} onClick={() => setAlvo(m)}>
+            <Button key={m} size="sm" variant={m === "ligado" ? "default" : "outline"} className="h-9 rounded-xl px-4" onClick={() => setAlvo(m)}>
               {m === "desligado" ? "Desligar" : m === "sombra" ? "Modo sombra" : "Ligar"}
             </Button>
           ))}
         </div>
       </div>
 
-      <p className="mt-2 text-sm text-muted-foreground">{descricao[modo]}</p>
+      <p className="mt-4 rounded-xl bg-surface-sunken px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">{descricao[modo]}</p>
       {estado.reservas_aviso && (
-        <p className="mt-1 text-sm text-foreground dark:text-warning">{estado.reservas_aviso}</p>
+        <p className="mt-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-2.5 text-sm text-warning-soft-foreground">{estado.reservas_aviso}</p>
       )}
 
       {estado.equipe.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-border/60">
+          <Table className="min-w-[560px]">
+            <TableHeader className="bg-surface-sunken">
+              <TableRow className="hover:bg-transparent">
                 <TableHead>SDR</TableHead>
                 <TableHead>Expediente</TableHead>
                 <TableHead>Horário hoje</TableHead>
@@ -492,11 +521,23 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
             <TableBody>
               {estado.equipe.map((m) => (
                 <TableRow key={m.user_id}>
-                  <TableCell className="font-medium">{m.nome}</TableCell>
-                  <TableCell>{ESTADO_PONTO[m.estado] ?? m.estado}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{m.entrada_hoje ? `${m.entrada_hoje}–${m.saida_hoje ?? ""}` : "não trabalha hoje"}</TableCell>
-                  <TableCell className="text-right tabular-nums">{m.carga}</TableCell>
-                  <TableCell className="text-right tabular-nums">{m.reservas}</TableCell>
+                  <TableCell className="py-3 font-semibold text-foreground">
+                    <span className="flex items-center gap-2.5">
+                      <InitialsAvatar size={28} />
+                      {m.nome}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3">
+                    <Badge
+                      variant={m.estado === "aberta" || m.estado === "aberto" ? "soft-success" : m.estado === "pausada" || m.estado === "pausado" ? "soft-warning" : m.estado === "ausente" ? "soft-destructive" : "soft-slate"}
+                      className="whitespace-nowrap"
+                    >
+                      {ESTADO_PONTO[m.estado] ?? m.estado}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-3 font-mono text-xs tabular-nums text-muted-foreground">{m.entrada_hoje ? `${m.entrada_hoje}–${m.saida_hoje ?? ""}` : "não trabalha hoje"}</TableCell>
+                  <TableCell className="py-3 text-right text-sm font-semibold tabular-nums text-foreground">{m.carga}</TableCell>
+                  <TableCell className="py-3 text-right text-sm font-semibold tabular-nums text-foreground">{m.reservas}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -504,21 +545,21 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
-        <span className="text-muted-foreground">Realocar lead sem resposta humana após</span>
+      <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-xl border border-border/60 bg-surface-sunken/50 p-4 text-sm">
+        <span className="font-medium text-foreground">Realocar lead sem resposta humana após</span>
         <input
           type="number" min={0} max={240} value={minutos} onChange={(e) => setMinutos(e.target.value)}
-          className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+          className="h-10 w-24 rounded-xl border border-input bg-card px-3 text-sm font-semibold tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Minutos de expediente da SDR sem resposta"
         />
         <span className="text-muted-foreground">{relogioDaSdr ? "min de expediente da SDR (0 desliga)" : "min (0 desliga)"}</span>
-        <Button size="sm" variant="outline" onClick={salvarMinutos} disabled={salvandoMin || String(estado.realocar_sem_resposta_min) === minutos}>
+        <Button size="sm" variant="outline" className="h-10 rounded-xl px-4" onClick={salvarMinutos} disabled={salvandoMin || String(estado.realocar_sem_resposta_min) === minutos}>
           {salvandoMin ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
         </Button>
         {/* O relógio é o dela, não o da clínica: sem esta linha o gestor lê "30
             min" e cobra 30 minutos de parede — inclusive o almoço. Em banco sem
             a migration a linha diz o que vale lá: o relógio da clínica. */}
-        <span className="w-full text-xs text-muted-foreground">
+        <span className="w-full text-xs leading-relaxed text-muted-foreground">
           {relogioDaSdr
             ? "O tempo corre só enquanto a dona está com o expediente aberto e sem pausa: almoço, pausa, depois de encerrar, fim de semana e feriado não contam. Se ela não abriu o expediente no dia, o tempo é contado no horário da clínica e o lead é realocado normalmente."
             : "Neste banco o tempo ainda é contado no horário comercial da clínica, inclusive durante a pausa e o almoço da SDR: o relógio por expediente entra depois de publicar as migrations."}
@@ -532,21 +573,21 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
           devolve a chave: banco sem a migration do relógio justo não tem coluna
           para gravar, e campo que não salva é pior do que campo nenhum. */}
       {typeof estado.realocar_carencia_abertura_min === "number" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
-          <span className="text-muted-foreground">Quem escreveu fora do horário da SDR (noite, fim de semana, folga) ganha</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-xl border border-border/60 bg-surface-sunken/50 p-4 text-sm">
+          <span className="font-medium text-foreground">Quem escreveu fora do horário da SDR (noite, fim de semana, folga) ganha</span>
           <input
             type="number" min={0} max={480} value={carenciaAbertura} onChange={(e) => setCarenciaAbertura(e.target.value)}
-            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            className="h-10 w-24 rounded-xl border border-input bg-card px-3 text-sm font-semibold tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Minutos a mais antes da realocação quando a mensagem chegou fora do horário da SDR"
           />
           <span className="text-muted-foreground">min a mais antes de realocar (0 desliga)</span>
           <Button
-            size="sm" variant="outline" onClick={salvarCarenciaAbertura}
+            size="sm" variant="outline" className="h-10 rounded-xl px-4" onClick={salvarCarenciaAbertura}
             disabled={salvandoCarenciaAbertura || String(estado.realocar_carencia_abertura_min) === carenciaAbertura}
           >
             {salvandoCarenciaAbertura ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
           </Button>
-          <span className="w-full text-xs text-muted-foreground">
+          <span className="w-full text-xs leading-relaxed text-muted-foreground">
             Vale só para o horário contratado dela (aba Equipe → Editar) e para dia não útil. Pausa e
             almoço não entram aqui: o relógio da própria SDR já para nesses períodos, e somar as duas
             coisas empurraria para a tarde o lead que escreveu na hora do almoço.
@@ -556,22 +597,22 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       )}
 
       {typeof estado.entrega_gestor_apos_min === "number" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
-          <span className="text-muted-foreground">Depois do comparecimento, o lead fica com a SDR por</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-xl border border-border/60 bg-surface-sunken/50 p-4 text-sm">
+          <span className="font-medium text-foreground">Depois do comparecimento, o lead fica com a SDR por</span>
           <input
             type="number" min={0} max={168} value={carenciaH} onChange={(e) => setCarenciaH(e.target.value)}
-            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            className="h-10 w-24 rounded-xl border border-input bg-card px-3 text-sm font-semibold tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Horas de carência antes de passar ao administrador"
           />
           <span className="text-muted-foreground">h antes de passar para o administrador (0 = na hora)</span>
           <Button
-            size="sm" variant="outline" onClick={salvarCarencia}
+            size="sm" variant="outline" className="h-10 rounded-xl px-4" onClick={salvarCarencia}
             disabled={salvandoCarencia || String(Math.round(estado.entrega_gestor_apos_min / 60)) === carenciaH}
           >
             {salvandoCarencia ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
           </Button>
           {(estado.entregas_pendentes ?? 0) > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="inline-flex h-6 items-center rounded-full bg-info-soft px-2.5 text-xs font-medium text-info-soft-foreground">
               {estado.entregas_pendentes} lead{estado.entregas_pendentes === 1 ? "" : "s"} na carência agora.
             </span>
           )}
@@ -579,16 +620,16 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       )}
 
       {typeof estado.corte_tolerancia_min === "number" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm">
-          <span className="text-muted-foreground">Reserva de quem não abriu o expediente passa para quem abriu</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-xl border border-border/60 bg-surface-sunken/50 p-4 text-sm">
+          <span className="font-medium text-foreground">Reserva de quem não abriu o expediente passa para quem abriu</span>
           <input
             type="number" min={0} max={480} value={tolerancia} onChange={(e) => setTolerancia(e.target.value)}
-            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            className="h-10 w-24 rounded-xl border border-input bg-card px-3 text-sm font-semibold tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Minutos depois da entrada"
           />
           <span className="text-muted-foreground">min depois da entrada dela (horário na aba Equipe → Editar)</span>
           <Button
-            size="sm" variant="outline" onClick={salvarTolerancia}
+            size="sm" variant="outline" className="h-10 rounded-xl px-4" onClick={salvarTolerancia}
             disabled={salvandoTolerancia || String(estado.corte_tolerancia_min) === tolerancia}
           >
             {salvandoTolerancia ? <Loader2 className="animate-spin" size={14} /> : "Salvar"}
@@ -597,7 +638,7 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
               hoje" na realocação por silêncio (relógio justo). O gestor mexe em
               um número e move duas regras: precisa saber disso antes. */}
           {relogioDaSdr && (
-            <span className="w-full text-xs text-muted-foreground">
+            <span className="w-full text-xs leading-relaxed text-muted-foreground">
               Este mesmo prazo decide quando a SDR conta como ausente no dia: passado ele sem expediente
               aberto, os leads dela voltam a ser contados pelo relógio da clínica e podem ser realocados.
             </span>
@@ -607,25 +648,25 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
 
       {/* Funis que entram no rodízio. Antes o motor olhava um funil só: lead que
           caía num funil por procedimento nunca chegava a uma SDR. */}
-      <div className="mt-3 border-t border-border pt-3 text-sm">
-        <p className="font-medium text-foreground">Funis que entram no rodízio</p>
+      <div className="mt-3 rounded-xl border border-border/60 bg-surface-sunken/50 p-4 text-sm">
+        <p className="font-semibold text-foreground">Funis que entram no rodízio</p>
         {!funisNoBanco && (
-          <p className="mt-1 text-xs text-foreground dark:text-warning">
+          <p className="mt-2 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning-soft-foreground">
             Este banco ainda não devolve os funis do rodízio (migration pendente): a marcação só passa
             a valer depois de publicar as migrations.
           </p>
         )}
         {erroFunis ? (
-          <p className="mt-1 text-xs text-destructive">{erroFunis}</p>
+          <p className="mt-2 rounded-lg bg-destructive-soft px-3 py-2 text-xs text-destructive-soft-foreground">{erroFunis}</p>
         ) : funisDisponiveis.length === 0 ? (
           <p className="mt-1 text-xs text-muted-foreground">
             Nenhum funil de vendas cadastrado. Funis de Instagram e de pós-venda não entram no rodízio.
           </p>
         ) : (
           <>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {funisDisponiveis.map((f) => (
-                <label key={f.id} className="flex cursor-pointer items-center gap-2">
+                <label key={f.id} className="flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-border/70 bg-card px-3 transition-colors hover:bg-muted/40 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary-soft-2">
                   <Checkbox checked={funisSel.includes(f.id)} onCheckedChange={(c) => alternarFunil(f.id, !!c)} />
                   <span className="text-foreground">
                     {f.name}
@@ -634,8 +675,8 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
                 </label>
               ))}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={salvarFunis} disabled={salvandoFunis || !funisMudaram}>
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <Button size="sm" variant="outline" className="h-10 rounded-xl px-4" onClick={salvarFunis} disabled={salvandoFunis || !funisMudaram}>
                 {salvandoFunis ? <Loader2 className="animate-spin" size={14} /> : "Salvar funis"}
               </Button>
               {/* A legenda dizia só "lead NOVO nele entra na distribuição" —
@@ -656,17 +697,17 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       </div>
 
       {modo !== "desligado" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          <Button variant="outline" size="sm" onClick={simular} disabled={distribuindo}>
+        <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-xl border border-dashed border-primary/40 bg-primary-soft-2 p-4">
+          <Button variant="outline" size="sm" className="h-10 rounded-xl bg-card px-4" onClick={simular} disabled={distribuindo}>
             <Shuffle size={14} className="mr-1" /> Distribuir os leads sem resposta agora
           </Button>
-          <span className="text-xs text-muted-foreground">no máximo</span>
+          <span className="text-[13px] text-muted-foreground">no máximo</span>
           <input
             type="number" min={1} max={500} value={maxPorSdr} onChange={(e) => setMaxPorSdr(e.target.value)}
-            className="h-8 w-20 rounded-md border border-border bg-background px-2 text-sm tabular-nums"
+            className="h-10 w-24 rounded-xl border border-input bg-card px-3 text-sm font-semibold tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Máximo de leads por SDR nesta rodada"
           />
-          <span className="text-xs text-muted-foreground">
+          <span className="min-w-[200px] flex-1 text-xs leading-relaxed text-muted-foreground">
             por SDR nesta rodada (em branco = sem teto). Mostra a lista antes de mover.
             {/* Dizia "em modo sombra só anota, não move" — promessa falsa: o
                 banco recusa a execução real fora do modo ligado, então em sombra
@@ -677,9 +718,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       )}
 
       <AlertDialog open={!!alvo} onOpenChange={(o) => !o && setAlvo(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] rounded-2xl sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>
+            <AlertDialogTitle className="text-lg font-semibold tracking-tight">
               {alvo === "ligado" ? "Ligar a distribuição automática?" : alvo === "sombra" ? "Passar para o modo sombra?" : "Desligar a distribuição?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -698,9 +739,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
       </AlertDialog>
 
       <AlertDialog open={previa !== null} onOpenChange={(o) => !o && setPrevia(null)}>
-        <AlertDialogContent className="max-w-2xl">
+        <AlertDialogContent className="max-h-[calc(100vh-2rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl sm:max-w-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Distribuição inicial dos leads sem resposta</AlertDialogTitle>
+            <AlertDialogTitle className="text-lg font-semibold tracking-tight">Distribuição inicial dos leads sem resposta</AlertDialogTitle>
             <AlertDialogDescription>
               {previa && previa.length === 0
                 ? "Nenhum lead do administrador está aguardando resposta agora."
@@ -712,9 +753,9 @@ export default function RodizioPainel({ aoMudar }: { aoMudar?: () => void }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {previa && previa.length > 0 && (
-            <div className="max-h-72 overflow-auto rounded-lg border border-border">
+            <div className="max-h-72 overflow-auto rounded-xl border border-border/60">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-surface-sunken">
                   <TableRow>
                     <TableHead>Lead</TableHead>
                     <TableHead>Etapa</TableHead>

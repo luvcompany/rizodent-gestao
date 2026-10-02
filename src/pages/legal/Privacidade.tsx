@@ -27,14 +27,40 @@ const Privacidade = () => {
       <section>
         <h2>3. Como usamos os dados</h2>
         <p>
-          Utilizamos os dados para: prestar e operar o atendimento e o CRM; organizar leads no funil de vendas; enviar e responder mensagens nos canais conectados; executar automações e follow-ups configurados por você; gerar relatórios e métricas; e melhorar o serviço. Não vendemos dados pessoais.
+          Utilizamos os dados para: prestar e operar o atendimento e o CRM; organizar leads no funil de vendas; enviar e responder mensagens nos canais conectados; executar automações e follow-ups configurados por você; transcrever áudios e ligações gravadas; gerar, com inteligência artificial, sugestões de resposta, resumos e análises das conversas; realizar e gravar ligações; gerar relatórios e métricas; e melhorar o serviço. Não vendemos dados pessoais.
         </p>
       </section>
 
       <section>
-        <h2>4. Compartilhamento</h2>
+        <h2>4. Compartilhamento e suboperadores</h2>
         <p>
-          Compartilhamos dados apenas com: provedores de infraestrutura necessários à operação (por exemplo, Supabase, para banco de dados e armazenamento) e as próprias plataformas Meta, quando o envio/recebimento de mensagens exige. Podemos divulgar dados quando exigido por lei ou ordem judicial.
+          Compartilhamos dados apenas com os fornecedores abaixo, cada um na medida necessária à finalidade indicada, e com autoridades quando exigido por lei ou ordem judicial:
+        </p>
+        <ul>
+          <li>
+            <strong>Supabase e Lovable (Lovable Cloud)</strong>: hospedagem da plataforma, banco de dados, armazenamento de arquivos (inclusive áudios, imagens, documentos e gravações de ligações) e execução das funções do servidor.
+          </li>
+          <li>
+            <strong>Meta (WhatsApp, Instagram e Messenger)</strong>: envio e recebimento das mensagens nos canais conectados; e, quando a clínica ativa a mensuração de anúncios, envio de eventos de conversão pela API de Conversões, com telefone, nome e cidade do contato pseudonimizados (hash SHA-256) e o identificador do clique no anúncio, informando a etapa alcançada no atendimento (por exemplo, lead qualificado ou compra, com o valor). Como o evento indica que o contato procurou ou contratou um serviço de saúde, ele é tratado com o mesmo cuidado dos dados de saúde descritos abaixo.
+          </li>
+          <li>
+            <strong>Gateway de IA da Lovable</strong> (que encaminha as solicitações aos modelos do Google Gemini e da OpenAI): transcrição de áudios recebidos e de ligações gravadas; sugestões de resposta, resumos e análises das conversas; e geração de vetores de busca a partir dos exemplos de atendimento aprovados pela equipe.
+          </li>
+          <li>
+            <strong>OpenAI</strong>: transcrição de áudio, quando a clínica escolhe um modelo de transcrição da OpenAI.
+          </li>
+          <li>
+            <strong>Anthropic</strong>: sugestões de resposta e resumos das conversas, quando a clínica escolhe um modelo Claude.
+          </li>
+          <li>
+            <strong>Api4Com</strong>: telefonia (discagem, gravação e registro das ligações), quando a clínica usa o módulo de ligações.
+          </li>
+          <li>
+            <strong>Google Fonts</strong>: entrega das fontes da interface; o navegador de quem usa a plataforma se conecta aos servidores do Google, que recebem o endereço IP e dados técnicos do navegador.
+          </li>
+        </ul>
+        <p>
+          O que vai aos provedores de IA inclui o conteúdo das conversas, dos áudios e das ligações, que pode conter dados de saúde (dados pessoais sensíveis, art. 11 da LGPD). Esses dados são enviados só para gerar o resultado pedido (transcrição, sugestão, resumo, análise ou vetor de busca) e ficam sujeitos também às políticas de privacidade de cada provedor. As sugestões, os resumos e as análises por IA são habilitados por clínica.
         </p>
       </section>
 

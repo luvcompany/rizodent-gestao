@@ -412,46 +412,48 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
   const lastMenuMessage = [...messages].reverse().find((m) => m.type === "menu" && m.from === "bot");
 
   return (
-    <div className="flex h-full w-[min(340px,calc(100vw-2rem))] shrink-0 flex-col border-l border-border/60 bg-card">
-      <div className="flex items-center justify-between border-b border-border/60 bg-card px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Smartphone size={16} className="text-primary" />
-          <span className="text-xs font-semibold">Pré-visualização</span>
+    <div className="flex flex-col w-[340px] border-l border-border/60 bg-card h-full">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-border/60 bg-card sm:px-4">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary-soft-fg sm:h-8 sm:w-8 sm:rounded-xl">
+            <Smartphone size={16} />
+          </span>
+          <span className="text-xs font-semibold text-foreground sm:text-sm">Pré-visualização</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={startSimulation} title="Reiniciar">
+          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg sm:h-8 sm:w-8" onClick={startSimulation} title="Reiniciar">
             <RotateCcw size={14} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg sm:h-8 sm:w-8" onClick={onClose}>
             <X size={14} />
           </Button>
         </div>
       </div>
 
-      <div className="mx-3 my-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-border/60 bg-card shadow-float">
-        <div className="flex items-center justify-center py-1.5 bg-card border-b border-border">
-          <div className="w-20 h-1 rounded-full bg-muted-foreground/30" />
+      <div className="flex-1 flex flex-col min-h-0 mx-3 my-3 rounded-[24px] border-4 sm:mx-4 sm:my-4 sm:rounded-[28px] sm:border-[6px] border-foreground/10 bg-card overflow-hidden shadow-float">
+        <div className="flex items-center justify-center py-2 bg-primary">
+          <div className="w-16 h-1 rounded-full bg-primary-foreground/40" />
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-border">
-          <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
-            <span className="text-xs">🤖</span>
+        <div className="flex items-center gap-2.5 px-3.5 pb-3 pt-1 bg-primary text-primary-foreground">
+          <div className="w-8 h-8 rounded-full bg-primary-foreground/20 flex items-center justify-center">
+            <span className="text-sm">🤖</span>
           </div>
           <div>
-            <p className="text-xs font-semibold text-foreground">Bot Teste</p>
-            <p className="text-[10px] text-muted-foreground">Simulação</p>
+            <p className="text-[13px] font-semibold text-primary-foreground">Bot Teste</p>
+            <p className="text-[11px] text-primary-foreground/80">Simulação</p>
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto bg-surface-sunken p-3">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-2.5 bg-surface-sunken">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
               {msg.type === "system" ? (
-                <div className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-1 rounded-md text-center w-full italic">
+                <div className="text-[11px] text-tertiary bg-card/70 border border-border/40 px-3 py-1 rounded-full text-center w-full">
                   {msg.content}
                 </div>
               ) : msg.type === "audio" ? (
-                <div className={`max-w-[90%] px-2 py-2 rounded-xl ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                <div className={`max-w-[90%] px-3 py-2.5 rounded-2xl ${msg.from === "user" ? "bg-primary-soft text-foreground rounded-tr-md" : "bg-card border border-border/60 text-foreground shadow-xs rounded-tl-md"}`}>
                   <p className="text-[10px] text-muted-foreground mb-1">🎵 Áudio</p>
                   {msg.content.startsWith("http") ? (
                     <audio controls preload="metadata" className="w-[200px] h-10">
@@ -468,7 +470,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                   )}
                 </div>
               ) : msg.type === "image" ? (
-                <div className={`max-w-[85%] rounded-xl overflow-hidden ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                <div className={`max-w-[85%] rounded-2xl overflow-hidden ${msg.from === "user" ? "bg-primary-soft text-foreground rounded-tr-md" : "bg-card border border-border/60 text-foreground shadow-xs rounded-tl-md"}`}>
                   {msg.content.startsWith("http") && (
                     <img src={msg.content} alt="Imagem" className="max-w-full max-h-40 object-cover" />
                   )}
@@ -480,7 +482,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                   )}
                 </div>
               ) : msg.type === "file" ? (
-                <div className={`max-w-[85%] rounded-xl overflow-hidden ${msg.from === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-card border border-border text-card-foreground rounded-bl-sm"}`}>
+                <div className={`max-w-[85%] rounded-2xl overflow-hidden ${msg.from === "user" ? "bg-primary-soft text-foreground rounded-tr-md" : "bg-card border border-border/60 text-foreground shadow-xs rounded-tl-md"}`}>
                   <div className="px-3 py-2">
                     {msg.content.startsWith("http") ? (
                       <a href={msg.content} target="_blank" rel="noopener noreferrer" className="text-xs underline flex items-center gap-1">
@@ -496,10 +498,10 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                 </div>
               ) : (
                 <div
-                  className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
+                  className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed ${
                     msg.from === "user"
-                      ? "bg-primary-soft text-primary-soft-foreground rounded-br-sm"
-                      : "bg-card border border-border/60 text-card-foreground rounded-bl-sm shadow-card"
+                      ? "bg-primary-soft text-foreground rounded-tr-md"
+                      : "bg-card border border-border/60 text-foreground shadow-xs rounded-tl-md"
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -513,7 +515,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
               {lastMenuMessage.menuType === "buttons" && lastMenuMessage.buttons?.map((btn) => (
                 <button
                   key={btn.id}
-                  className="w-full text-xs py-2 px-3 rounded-lg border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors text-center"
+                  className="w-full text-xs font-medium py-2.5 px-3 rounded-xl border border-primary/25 bg-card text-primary shadow-xs hover:bg-primary-soft transition-colors text-center"
                   onClick={() => handleUserReply(btn.title, btn.id)}
                 >
                   {btn.title}
@@ -527,7 +529,7 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
                   {section.rows.map((row) => (
                     <button
                       key={row.id}
-                      className="w-full text-left text-xs py-2 px-3 rounded-lg border border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10 transition-colors"
+                      className="w-full text-left text-xs py-2.5 px-3 rounded-xl border border-primary/25 bg-card text-foreground shadow-xs hover:bg-primary-soft transition-colors"
                       onClick={() => handleUserReply(row.title, row.id)}
                     >
                       <span className="font-medium">{row.title}</span>
@@ -540,8 +542,8 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
           )}
         </div>
 
-        <div className="border-t border-border p-2 bg-card">
-          <div className="flex items-center gap-1.5">
+        <div className="border-t border-border/60 p-2.5 bg-card">
+          <div className="flex items-center gap-2">
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -553,11 +555,11 @@ export default function BotSimulator({ nodes, edges, onHighlightNode, onClose }:
               }}
               placeholder={waitingReply ? "Digite sua resposta..." : "Aguarde..."}
               disabled={!waitingReply}
-              className="h-8 text-xs"
+              className="h-9 text-xs rounded-full bg-surface-sunken border-transparent px-4 focus-visible:bg-card"
             />
             <Button
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-9 w-9 shrink-0 rounded-full shadow-crm-brand"
               disabled={!waitingReply || !input.trim()}
               onClick={() => handleUserReply(input)}
             >

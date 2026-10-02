@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Settings2 } from "lucide-react";
+import { Plus, Trash2, Settings2, ListChecks } from "lucide-react";
 
 type CustomField = {
   id: string;
@@ -149,7 +149,7 @@ export default function LeadCustomFields({ leadId }: Props) {
             type="number"
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="h-10 rounded-xl bg-surface-sunken text-sm"
+            className="h-10 rounded-xl border-input bg-card text-sm"
           />
         );
       case "date":
@@ -158,13 +158,13 @@ export default function LeadCustomFields({ leadId }: Props) {
             type="date"
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="h-10 rounded-xl bg-surface-sunken text-sm"
+            className="h-10 rounded-xl border-input bg-card text-sm"
           />
         );
       case "select":
         return (
           <Select value={val} onValueChange={(v) => saveValue(field.id, v)}>
-            <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
+            <SelectTrigger className="h-10 rounded-xl border-input bg-card text-sm">
               <SelectValue placeholder="Selecione..." />
             </SelectTrigger>
             <SelectContent>
@@ -179,7 +179,7 @@ export default function LeadCustomFields({ leadId }: Props) {
           <Input
             value={val}
             onChange={(e) => saveValue(field.id, e.target.value)}
-            className="h-10 rounded-xl bg-surface-sunken text-sm"
+            className="h-10 rounded-xl border-input bg-card text-sm"
             placeholder="..."
           />
         );
@@ -187,21 +187,24 @@ export default function LeadCustomFields({ leadId }: Props) {
   };
 
   return (
-    <section className="border-b border-border/60 px-5 py-5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[15px] font-semibold text-foreground">Campos personalizados</h3>
-        <button onClick={() => setManageOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground">
-          <Settings2 size={14} />
+    <div className="border-b border-border/60 px-5 py-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <ListChecks size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+          <span className="text-[15px] font-semibold text-foreground">Outros campos personalizados</span>
+        </span>
+        <button onClick={() => setManageOpen(true)} className="-mr-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <Settings2 size={16} strokeWidth={1.75} />
         </button>
       </div>
 
       {fields.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum campo personalizado.</p>
+        <p className="text-[13px] text-muted-foreground">Nenhum campo personalizado.</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3.5">
           {fields.map((field) => (
             <div key={field.id}>
-              <label className="text-xs text-muted-foreground">{field.name}</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground [overflow-wrap:anywhere]">{field.name}</label>
               {renderFieldInput(field)}
             </div>
           ))}
@@ -209,37 +212,37 @@ export default function LeadCustomFields({ leadId }: Props) {
       )}
 
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Campos Personalizados</DialogTitle>
+            <DialogTitle className="text-lg font-semibold tracking-tight">Outros campos personalizados</DialogTitle>
             <DialogDescription>Gerencie os campos que aparecerão em todos os leads.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 max-h-60 overflow-y-auto">
+          <div className="max-h-60 space-y-2 overflow-y-auto">
             {fields.map((field) => (
-              <div key={field.id} className="flex items-center justify-between p-2 bg-secondary rounded">
-                <div>
+              <div key={field.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-sunken px-3.5 py-2.5">
+                <div className="min-w-0">
                   <span className="text-sm font-medium text-foreground">{field.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">({field.field_type})</span>
+                  <span className="ml-2 text-xs text-tertiary">({field.field_type})</span>
                 </div>
-                <button onClick={() => deleteField(field.id)} className="text-destructive hover:text-destructive/80">
-                  <Trash2 size={14} />
+                <button onClick={() => deleteField(field.id)} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-destructive transition-colors hover:bg-destructive-soft">
+                  <Trash2 size={15} strokeWidth={1.75} />
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="border-t border-border pt-3 space-y-2">
+          <div className="space-y-2.5 border-t border-border/60 pt-4">
             <div className="flex gap-2">
               <Input
                 value={newFieldName}
                 onChange={(e) => setNewFieldName(e.target.value)}
                 placeholder="Nome do campo"
-                className="text-sm"
+                className="h-10 rounded-xl text-sm"
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField(); } }}
               />
               <Select value={newFieldType} onValueChange={setNewFieldType}>
-                <SelectTrigger className="w-28 text-sm">
+                <SelectTrigger className="h-10 w-32 shrink-0 rounded-xl text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -250,16 +253,16 @@ export default function LeadCustomFields({ leadId }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <Button size="sm" onClick={addField} disabled={saving || !newFieldName.trim()} className="w-full">
-              <Plus size={14} className="mr-1" /> Adicionar Campo
+            <Button size="sm" onClick={addField} disabled={saving || !newFieldName.trim()} className="h-10 w-full gap-1.5 rounded-xl">
+              <Plus size={15} strokeWidth={1.75} /> Adicionar Campo
             </Button>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setManageOpen(false)}>Fechar</Button>
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setManageOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </div>
   );
 }

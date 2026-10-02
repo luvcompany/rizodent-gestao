@@ -78,12 +78,12 @@ function BotNode({ data, selected, type, id }: NodeProps) {
 
   return (
     <div
-      className={`min-w-[220px] max-w-[280px] rounded-lg border-2 shadow-lg transition-all ${
+      className={`min-w-[220px] max-w-[280px] rounded-xl bg-card transition-all ${
         isHighlighted
-          ? "border-green-500 ring-4 ring-green-500/30 scale-105"
+          ? "border-2 border-success ring-4 ring-success/30 shadow-float scale-105"
           : selected
-            ? "border-primary ring-2 ring-primary/20"
-            : "border-border"
+            ? "border-2 border-primary ring-2 ring-primary/40 shadow-float"
+            : "border border-border/70 shadow-crm-card hover:shadow-float"
       }`}
       style={{ background: "hsl(var(--card))" }}
     >
@@ -91,33 +91,33 @@ function BotNode({ data, selected, type, id }: NodeProps) {
         <Handle
           type="target"
           position={Position.Top}
-          className="!w-3 !h-3 !border-2 !border-background"
+          className="!w-2.5 !h-2.5 !border-2 !border-card !shadow-xs"
           style={{ background: def.color }}
         />
       )}
 
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-md text-xs font-semibold relative"
+        className="flex items-center gap-2 min-h-9 px-2.5 py-1.5 rounded-t-[11px] text-[13px] font-semibold leading-tight relative"
         style={{ background: def.color, color: "#fff" }}
       >
-        <span>{def.icon}</span>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/20 text-xs">{def.icon}</span>
         <span className="flex-1">{String(data.label || def.label)}</span>
         {!isStart && (
           <div ref={menuRef} className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="p-0.5 rounded hover:bg-white/20 transition-colors"
+              className="p-1 rounded-md hover:bg-white/20 transition-colors"
             >
               <MoreVertical size={14} />
             </button>
             {menuOpen && (
               <div
-                className="absolute right-0 top-full mt-1 z-50 min-w-[140px] rounded-md border shadow-lg py-1"
+                className="absolute right-0 top-full mt-1 z-50 min-w-[150px] rounded-xl border shadow-float p-1"
                 style={{ background: "hsl(var(--popover))", borderColor: "hsl(var(--border))" }}
               >
                 <button
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-popover-foreground transition-colors"
+                  className="flex items-center gap-2 w-full h-8 px-2.5 rounded-lg text-xs font-medium hover:bg-accent text-popover-foreground transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpen(false);
@@ -127,7 +127,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
                   <Copy size={12} /> Duplicar
                 </button>
                 <button
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-destructive/10 text-destructive transition-colors"
+                  className="flex items-center gap-2 w-full h-8 px-2.5 rounded-lg text-xs font-medium hover:bg-destructive-soft text-destructive transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpen(false);
@@ -143,14 +143,14 @@ function BotNode({ data, selected, type, id }: NodeProps) {
       </div>
 
       {/* Body */}
-      <div className="px-3 py-2 min-h-[32px]">
+      <div className="px-3 py-2.5 min-h-[36px]">
         {(data.description as string) && (
-          <p className="text-[10px] text-muted-foreground/70 italic mb-1">{String(data.description).slice(0, 50)}</p>
+          <p className="text-[11px] font-medium text-foreground/80 mb-1">{String(data.description).slice(0, 50)}</p>
         )}
         {preview ? (
           <p className="text-xs text-muted-foreground truncate">{preview}</p>
         ) : (
-          <p className="text-xs text-muted-foreground/50 italic">Clique para configurar</p>
+          <p className="text-xs text-tertiary italic">Clique para configurar</p>
         )}
       </div>
 
@@ -166,14 +166,14 @@ function BotNode({ data, selected, type, id }: NodeProps) {
                 type="source"
                 position={Position.Bottom}
                 id={h.id}
-                className="!w-3 !h-3 !border-2 !border-background"
+                className="!w-2.5 !h-2.5 !border-2 !border-card !shadow-xs"
                 style={{ background: h.color, left: `${pct}%` }}
               />
             );
           })}
           <div className="flex justify-between px-2 pb-1 gap-1">
             {branchHandles.map((h) => (
-              <span key={h.id} className="text-[9px] truncate text-center flex-1" style={{ color: h.color }}>
+              <span key={h.id} className="text-[10px] font-semibold truncate text-center flex-1" style={{ color: h.color }}>
                 {h.label}
               </span>
             ))}
@@ -183,7 +183,7 @@ function BotNode({ data, selected, type, id }: NodeProps) {
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!w-3 !h-3 !border-2 !border-background"
+          className="!w-2.5 !h-2.5 !border-2 !border-card !shadow-xs"
           style={{ background: def.color }}
         />
       )}

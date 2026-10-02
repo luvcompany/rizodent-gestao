@@ -175,19 +175,41 @@ export function desfechoEhComparecimento(status: string | null | undefined): boo
 }
 
 /**
+ * 'not_contracted' gravado pela MARCAÇÃO DE PRESENÇA (outcome_source 'sdr': o
+ * "Compareceu" da SDR, ou a correção de presença sem escolher o resultado) não
+ * é decisão de venda: é o estado neutro "compareceu, contrato em aberto". Até a
+ * gestão escolher "Contratou"/"Não contratou" (origem 'ui'), ninguém — nem a
+ * gestão — deve ler "Não contratado" ali (AGENDA-5): parecia uma venda perdida
+ * que ninguém decidiu.
+ */
+function comparecimentoSemDecisao(status: string, origem: string | null | undefined): boolean {
+  return status === "not_contracted" && normaliza(origem) === "sdr";
+}
+
+/**
  * Rótulo do desfecho para mostrar na tela.
  *
  * - 'contracted' | 'not_contracted' → "Compareceu", a menos que o papel esteja
  *   positivamente reconhecido como de gestão (decisão D3);
+ * - 'not_contracted' com `origem` 'sdr' (outcome_source da consulta) →
+ *   "Compareceu" para TODOS: é presença marcada, não decisão de venda;
  * - qualquer outro caso → o texto que o sistema já usa hoje;
  * - status vazio/nulo → "—";
  * - status desconhecido → o próprio valor cru (mesmo fallback do
  *   AppointmentConfirmBar), para o defeito aparecer em vez de virar "Pendente".
+ *
+ * `origem` é opcional: quem não tem o outcome_source à mão continua com a
+ * leitura antiga (só pelo papel).
  */
-export function rotuloDesfecho(status: string | null | undefined, papel: PapelUsuario): string {
+export function rotuloDesfecho(
+  status: string | null | undefined,
+  papel: PapelUsuario,
+  origem?: string | null,
+): string {
   const s = normaliza(status);
   if (!s) return "—";
   if (desfechoEhComparecimento(s) && escondeDesfechoDeVenda(papel)) return ROTULO_COMPARECEU;
+  if (comparecimentoSemDecisao(s, origem)) return ROTULO_COMPARECEU;
   return ROTULO_POR_STATUS[s] ?? s;
 }
 
@@ -196,11 +218,18 @@ export function rotuloDesfecho(status: string | null | undefined, papel: PapelUs
  * <Badge className={corDesfecho(...)}> ou para uma <span> no calendário.
  *
  * Para quem não lê contrato, 'contracted' e 'not_contracted' devolvem a MESMA
- * classe — senão a cor contaria o que o rótulo esconde.
+ * classe — senão a cor contaria o que o rótulo esconde. `origem`: ver
+ * rotuloDesfecho.
  */
-export function corDesfecho(status: string | null | undefined, papel: PapelUsuario): string {
+export function corDesfecho(
+  status: string | null | undefined,
+  papel: PapelUsuario,
+  origem?: string | null,
+): string {
   const s = normaliza(status);
   if (!s) return COR_DESCONHECIDA;
   if (desfechoEhComparecimento(s) && escondeDesfechoDeVenda(papel)) return COR_COMPARECEU;
+  // Mesma régua do rótulo: "Compareceu" não pode sair pintado de perda.
+  if (comparecimentoSemDecisao(s, origem)) return COR_COMPARECEU;
   return COR_POR_STATUS[s] ?? COR_DESCONHECIDA;
 }

@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { toLocalDateISO } from "@/lib/utils";
+import { hojeNoFusoDaClinica } from "@/lib/horaDaConsulta";
+import { instanteNoFusoMs } from "@/lib/fuso";
 import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
   ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
-  Activity, Phone, Users, Clock,
+  Activity, Phone, Users, Clock, UserCog, Lock,
 } from "lucide-react";
+import { useCanaisInternos } from "@/hooks/useChatInterno";
+import { useFaltaRegistrar } from "@/pages/recepcao/AgendaRecepcao";
+import { useFilaRemarcar } from "@/pages/SdrRemarcar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGestorEquipe } from "@/hooks/useGestorEquipe";
+import { itensDoGrupoEquipe, ROTA_USUARIOS_DA_CLINICA, type ItemDoGrupoEquipe } from "@/lib/acessoUsuariosDaClinica";
 import { useTheme } from "@/hooks/useTheme";
 import { CRCLIN_DEFAULT_LOGO } from "@/contexts/TenantContext";
 import { useBrand, type SystemBrand, type TenantBrand } from "@/contexts/BrandContext";
@@ -18,11 +23,16 @@ import { useVocab, type Vocab } from "@/hooks/useVocab";
 import { moduloDaRota, type ModuloKey } from "@/lib/modulos";
 import { supabase } from "@/integrations/supabase/client";
 import NotificationBell from "@/components/chat/NotificationBell";
+import SeletorCliente from "@/components/SeletorCliente";
+import AtalhoChegando from "@/components/setores/AtalhoChegando";
 import TaskReminderWatcher from "@/components/chat/TaskReminderWatcher";
 import AvisoFimExpediente from "@/components/sdr/AvisoFimExpediente";
 import EditProfileDialog from "@/components/EditProfileDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import crclinLogoLight from "@/assets/crclin-logo-light.png";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { usePageTitle } from "@/hooks/usePageTitle";
+import { tituloDaAba } from "@/lib/tituloDaAba";
 
 type NavItem = {
   to: string;
@@ -52,6 +62,21 @@ function isGroup(entry: SidebarEntry): entry is NavGroup {
  * (módulo resolvido e desligado): enquanto a config não chegou, tudo aparece.
  * Grupo que fica sem filhos some.
  */
+const ROTAS_SO_DO_V2 = ["/crm/interno", "/crm/sdr/remarcar", "/crm/recepcao/agenda", "/crm/fechamento", "/crm/todos", "/crm/chegando"];
+function semRecursosDoV2(entries: SidebarEntry[]): SidebarEntry[] {
+  const fora = (to: string) => ROTAS_SO_DO_V2.some((r) => to === r || to.startsWith(r + "/") || to.startsWith(r + "?"));
+  const saida: SidebarEntry[] = [];
+  for (const entry of entries) {
+    if (isGroup(entry)) {
+      const children = entry.children.filter((c) => !fora(c.to));
+      if (children.length > 0) saida.push({ ...entry, children });
+    } else if (!fora(entry.to)) {
+      saida.push(entry);
+    }
+  }
+  return saida;
+}
+
 function filtrarPorModulo(
   entries: SidebarEntry[],
   ligado: (key: ModuloKey) => boolean | undefined,
@@ -109,21 +134,45 @@ function iniciaisDe(nome: string): string {
 }
 
 /** Logo (ou lockup de texto) no topo da barra lateral. */
-function MarcaDaBarra({ logo, nome, nomeCurto }: { logo: string | null; nome: string; nomeCurto: string }) {
+function MarcaDaBarra({ logo, nome, nomeCurto, naPlaca }: { logo: string | null; nome: string; nomeCurto: string; naPlaca: boolean }) {
   const [falhou, setFalhou] = useState(false);
   useEffect(() => setFalhou(false), [logo]);
   if (logo && !falhou) {
-    return <img src={logo} alt={nome} className="h-7 max-w-full object-contain" onError={() => setFalhou(true)} />;
+    return (
+      <span className={naPlaca ? "inline-flex max-w-full rounded-lg bg-white/95 px-2 py-1" : "inline-flex max-w-full"}>
+        <img
+          src={logo}
+          alt={nome}
+          className={
+            logo === CRCLIN_DEFAULT_LOGO
+              ? "h-8 w-[125px] max-w-full object-cover object-[50%_42%]"
+              : naPlaca
+                ? "h-6 max-w-full object-contain object-left"
+                : "h-8 max-w-full object-contain object-left"
+          }
+          onError={() => setFalhou(true)}
+        />
+      </span>
+    );
   }
   return (
-    <div className="flex min-w-0 items-center gap-2" title={nome}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg gradient-brand text-xs font-bold text-primary-foreground">
+    <div className="flex min-w-0 items-center gap-2.5" title={nome}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
         {iniciaisDe(nomeCurto)}
       </span>
-      <span className="truncate text-sm font-semibold text-sidebar-foreground">{nomeCurto}</span>
+      <span className="truncate text-[15px] font-semibold text-white">{nomeCurto}</span>
     </div>
   );
 }
+
+// Itens do grupo Equipe (a escolha de quais aparecem: itensDoGrupoEquipe).
+const ITENS_DA_EQUIPE: Record<ItemDoGrupoEquipe, NavItem> = {
+  sdrs: { to: "/crm/equipe", icon: Users, label: "SDRs", end: true },
+  "relatorio-sdr": { to: "/crm/equipe/relatorio-sdr", icon: BarChart3, label: "Relatório das SDRs" },
+  ponto: { to: "/crm/equipe/ponto", icon: Clock, label: "Ponto e pausas" },
+  pesquisa: { to: "/crm/equipe/pesquisa", icon: Heart, label: "Pesquisa de satisfação" },
+  usuarios: { to: ROTA_USUARIOS_DA_CLINICA, icon: UserCog, label: "Usuários" },
+};
 
 const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: Vocab): SidebarEntry[] => {
   // SDR do rodízio: base da recepção, isolada por "leads dela" (não por número).
@@ -136,6 +185,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
   if (role === "sdr") {
     return [
       { to: "/crm/sdr", icon: Home, label: "Início", end: true },
+      { to: "/crm/sdr/remarcar", icon: CalendarDays, label: "Remarcar", badgeKey: "remarcar" },
       { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       { to: "/crm/calendario", icon: CalendarDays, label: "Calendário" },
@@ -149,7 +199,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
           // Mesmo rótulo e ícone que os outros papéis usam para Automações (Bot).
           // Dentro de um grupo o renderNavGroup só pinta o rótulo, mas o ícone é
           // obrigatório no tipo NavItem — fica igual ao dos demais menus.
-          { to: "/crm/automacoes", icon: Bot, label: "Automações" },
+          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/bots", icon: Bot, label: "Bots" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
@@ -171,6 +221,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
         label: "Ferramentas",
         icon: Bot,
         children: [
+          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
@@ -188,12 +239,14 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
     // perfis com itens escondidos — é uma lista pensada para este trabalho.
     return [
       { to: "/crm/recepcao", icon: Home, label: "Início", end: true },
+      { to: "/crm/recepcao/agenda", icon: CalendarDays, label: "Agenda do dia", badgeKey: "falta" },
       { to: "/crm/conversas", icon: MessageSquare, label: "Conversas", badgeKey: "unread" },
       { to: "/crm", icon: LayoutGrid, label: "Funil", end: true },
       {
         label: "Ferramentas",
         icon: Bot,
         children: [
+          { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
           { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
           { to: "/crm/modelos", icon: FileText, label: "Modelos" },
           { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
@@ -211,7 +264,7 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
     { to: "/crm/calendario", icon: CalendarDays, label: "Calendário", badgeKey: "tasks" },
     { to: "/crm/ligacoes", icon: Phone, label: "Ligações" },
   ];
-  if (role === "posvenda") {
+  if (role === "posvenda" || role === "gerente" || role === "crc" || role === "superadmin") {
     items.push({ to: "/crm/posvenda", icon: Heart, label: "Pós-Venda" });
   }
   items.push(
@@ -219,31 +272,31 @@ const buildCrmNavItems = (role: string | null, isGestorEquipe: boolean, vocab: V
       label: "Automações",
       icon: Bot,
       children: [
+        { to: "/crm/automacoes", icon: Bot, label: "Funil e automações" },
         { to: "/crm/bots", icon: Bot, label: "Bots" },
         { to: "/crm/modelos", icon: FileText, label: "Modelos" },
         { to: "/crm/respostas-rapidas", icon: FileText, label: "Respostas Rápidas" },
         { to: "/crm/campanhas", icon: Send, label: "Transmissão" },
       ],
     },
-    
-    { to: "/crm/integracoes", icon: Link2, label: "Integrações" },
-    { to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" },
   );
-  // Equipe (SDRs do rodízio): só para quem o servidor confirma como gestor
-  // (is_gestor_equipe). Papel não basta — o usuário do Meta App Review é crc.
-  // Grupo com as três telas do gestor: cadastro das SDRs, relatório do rodízio
-  // e pesquisa de satisfação (cada página repete o gate por dentro).
-  if (isGestorEquipe) {
-    items.push({
-      label: "Equipe",
-      icon: Users,
-      children: [
-        { to: "/crm/equipe", icon: Users, label: "SDRs", end: true },
-        { to: "/crm/equipe/relatorio-sdr", icon: BarChart3, label: "Relatório das SDRs" },
-        { to: "/crm/equipe/ponto", icon: Clock, label: "Ponto e pausas" },
-        { to: "/crm/equipe/pesquisa", icon: Heart, label: "Pesquisa de satisfação" },
-      ],
-    });
+  if (role !== "posvenda") {
+    items.push({ to: "/crm/integracoes", icon: Link2, label: "Integrações" });
+  }
+  if (role === "gerente" || role === "crc" || role === "superadmin") {
+    items.push({ to: "/crm/recepcao/agenda", icon: CalendarDays, label: "Registro de consultas", badgeKey: "falta" });
+    items.push({ to: "/crm/fechamento", icon: FileText, label: "Fechamento" });
+  }
+  items.push({ to: "/crm/relatorios", icon: BarChart3, label: "Relatórios" });
+  // Equipe: as telas das SDRs (cadastro, relatório do rodízio, ponto e
+  // pesquisa) só para quem o servidor confirma como gestor (is_gestor_equipe).
+  // Papel não basta — o usuário do Meta App Review é crc. "Usuários" (P25: a
+  // clínica cria as próprias contas) é do(a) gerente (dono) e do(a) gestor(a).
+  // A regra mora em itensDoGrupoEquipe (testada); cada página repete o gate
+  // por dentro e o servidor decide de verdade.
+  const equipe = itensDoGrupoEquipe(role, isGestorEquipe).map((item) => ITENS_DA_EQUIPE[item]);
+  if (equipe.length > 0) {
+    items.push({ label: "Equipe", icon: Users, children: equipe });
   }
   items.push(
     { to: "/crm/ia-config", icon: Sparkles, label: "I.A" },
@@ -266,7 +319,14 @@ const CrmLayout = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  const logo = escolherLogo(theme === "dark", marcaCliente, system, effective.poweredBy);
+  // A barra lateral é escura nos dois temas: a logo é sempre a do fundo escuro
+  // (logo escura → logo clara numa placa → lockup de iniciais).
+  const logo = escolherLogo(true, marcaCliente, system, effective.poweredBy);
+  const logoNaPlaca =
+    !!logo &&
+    logo !== CRCLIN_DEFAULT_LOGO &&
+    logo !== (marcaCliente?.logo_dark_url?.trim() || null) &&
+    logo !== (system.logo_dark_url?.trim() || null);
   const tagline = system.tagline?.trim() || null;
   // "Powered by" só faz sentido dentro de um cliente (sem cliente, a marca já é a do sistema).
   const mostrarPoweredBy = !!marcaCliente && effective.poweredBy;
@@ -276,14 +336,31 @@ const CrmLayout = () => {
   };
   const initials = profile?.nome?.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() || "?";
   const [unreadCount, setUnreadCount] = useState(0);
+  const { totalNaoLidas: internoNaoLidas } = useCanaisInternos();
+  const registraConsulta = ["recepcao", "gerente", "crc", "superadmin"].includes(userRole ?? "");
+  const faltaRegistrar = useFaltaRegistrar(registraConsulta).data?.length ?? 0;
+  const filaRemarcar = useFilaRemarcar(userRole === "sdr").data?.length ?? 0;
   const [todayTaskCount, setTodayTaskCount] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Automações", "Ferramentas", "Equipe"]));
   const unreadFetchSeq = useRef(0);
   const unreadRefreshTimer = useRef<number | null>(null);
   const crmNavItems = useMemo(
-    () => filtrarPorModulo(buildCrmNavItems(userRole, isGestorEquipe, vocab), moduloLigado),
+    () => {
+      const base = filtrarPorModulo(buildCrmNavItems(userRole, isGestorEquipe, vocab), moduloLigado);
+      // CRClin: chat interno, fila "Remarcar", agenda/registro de consultas e
+      // fechamento são recursos do v2 sem rota aqui — fora do menu.
+      return semRecursosDoV2(base);
+    },
     [userRole, isGestorEquipe, vocab, moduloLigado],
   );
+  const itensDoTitulo = crmNavItems.flatMap((e) => (isGroup(e) ? e.children : [e]));
+  usePageTitle(
+    tituloDaAba(location.pathname, location.search, itensDoTitulo, {
+      "/crm/conversa": "Conversa",
+      "/crm/metricas": "Métricas",
+    }),
+  );
+
 
   /** NavLink acende por caminho; itens que só diferem na query (Calendário ×
    *  Tarefas) precisam desempatar pela query atual. */
@@ -326,7 +403,11 @@ const CrmLayout = () => {
     const ch = supabase.channel("unread-badge")
       .on("postgres_changes", { event: "*", schema: "public", table: "crm_leads" }, scheduleFetchUnread)
       .subscribe();
+    // Conversas avisa ao fechar/marcar respondida: reconta na hora.
+    const aoMudarNaoLidas = () => { fetchUnread(); };
+    window.addEventListener("crm:nao-lidas-mudou", aoMudarNaoLidas);
     return () => {
+      window.removeEventListener("crm:nao-lidas-mudou", aoMudarNaoLidas);
       if (unreadRefreshTimer.current) window.clearTimeout(unreadRefreshTimer.current);
       supabase.removeChannel(ch);
     };
@@ -334,14 +415,16 @@ const CrmLayout = () => {
 
   useEffect(() => {
     const fetchTodayTasks = async () => {
-      const today = toLocalDateISO();
       if (!user?.id) { setTodayTaskCount(0); return; }
+      // Fim do dia no fuso da clínica (não em UTC).
+      const [y, m, d] = hojeNoFusoDaClinica().split("-").map(Number);
+      const fim = new Date(instanteNoFusoMs(y, m, d, 23, 59) + 59_999).toISOString();
       const { count } = await supabase
         .from("crm_tasks")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending")
         .eq("assigned_to", user.id)
-        .lte("due_date", `${today}T23:59:59`);
+        .lte("due_date", fim);
       setTodayTaskCount(count || 0);
     };
     // Mesma ideia do badge de não lidas: agrupa rajadas de mudanças em tarefas
@@ -368,10 +451,14 @@ const CrmLayout = () => {
       end={item.end}
       onClick={() => setSidebarOpen(false)}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+        `group flex h-10 items-center gap-3 rounded-control px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50 ${
+          item.to === "/crm/integracoes"
+            ? "relative !mt-7 before:pointer-events-none before:absolute before:-top-[15px] before:left-3 before:right-3 before:border-t before:border-sidebar-border"
+            : ""
+        } ${
           itemAtivo(item, isActive)
-            ? "gradient-brand text-primary-foreground shadow-brand"
-            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            ? "crm-nav-ativo bg-sidebar-active font-semibold text-sidebar-active-foreground"
+            : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         }`
       }
     >
@@ -380,13 +467,23 @@ const CrmLayout = () => {
       {"badgeKey" in item && item.badgeKey === "unread" && unreadCount > 0 && (
         <span
           title="Conversas não lidas (últimos 60 dias)"
-          className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1"
+          className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-sidebar-primary px-1.5 text-[11px] font-semibold leading-none text-sidebar-primary-foreground group-[.crm-nav-ativo]:bg-white/25 group-[.crm-nav-ativo]:text-white"
         >
           {unreadCount > 999 ? "999+" : unreadCount}
         </span>
       )}
+      {"badgeKey" in item && ((item.badgeKey === "falta" && faltaRegistrar > 0) || (item.badgeKey === "remarcar" && filaRemarcar > 0)) && (
+        <span title={item.badgeKey === "falta" ? "Consultas sem registro" : "Pacientes para remarcar"} className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold leading-none text-destructive-foreground">
+          {item.badgeKey === "falta" ? faltaRegistrar : filaRemarcar}
+        </span>
+      )}
+      {"badgeKey" in item && item.badgeKey === "interno" && internoNaoLidas > 0 && (
+        <span title="Mensagens internas não lidas" className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-internal-accent px-1.5 text-[11px] font-semibold leading-none text-background">
+          {internoNaoLidas > 99 ? "99+" : internoNaoLidas}
+        </span>
+      )}
       {"badgeKey" in item && item.badgeKey === "tasks" && todayTaskCount > 0 && (
-        <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-sidebar-primary px-1.5 text-[11px] font-semibold leading-none text-sidebar-primary-foreground group-[.crm-nav-ativo]:bg-white/25 group-[.crm-nav-ativo]:text-white">
           {todayTaskCount > 99 ? "99+" : todayTaskCount}
         </span>
       )}
@@ -399,14 +496,14 @@ const CrmLayout = () => {
       <div key={group.label}>
         <button
           onClick={() => toggleGroup(group.label)}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+          className="flex h-10 w-full items-center gap-3 rounded-control px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
         >
           <group.icon size={18} />
           {group.label}
-          <ChevronDown size={14} className={`ml-auto transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+          <ChevronDown size={14} className={`ml-auto text-sidebar-muted transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
         </button>
         {isExpanded && (
-          <div className="ml-4 space-y-0.5">
+          <div className="mb-1 ml-5 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">
             {group.children.map(child => (
               <NavLink
                 key={child.to}
@@ -414,10 +511,10 @@ const CrmLayout = () => {
                 end={child.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                  `flex h-9 items-center gap-3 rounded-control px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50 ${
                     isActive
-                      ? "gradient-brand text-primary-foreground shadow-brand"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      ? "bg-sidebar-active font-semibold text-sidebar-active-foreground"
+                      : "font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   }`
                 }
               >
@@ -431,7 +528,7 @@ const CrmLayout = () => {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="crm-shell flex min-h-screen bg-background">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
@@ -443,7 +540,7 @@ const CrmLayout = () => {
       {!sidebarCollapsed && (
         <button
           onClick={() => setSidebarCollapsed(true)}
-          className="hidden lg:flex fixed top-4 left-[248px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground hover:text-primary transition-colors"
+          className="hidden lg:flex fixed top-5 left-[248px] [body:has(.crm-faixa-suporte)_&]:top-[60px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-xs transition-colors hover:text-foreground"
           title="Ocultar menu"
         >
           <ChevronLeft size={14} />
@@ -452,7 +549,7 @@ const CrmLayout = () => {
       {sidebarCollapsed && (
         <button
           onClick={() => setSidebarCollapsed(false)}
-          className="hidden lg:flex fixed top-4 left-3 z-[51] h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground hover:text-primary transition-colors"
+          className="hidden lg:flex fixed top-5 left-3 [body:has(.crm-faixa-suporte)_&]:top-[60px] z-[51] h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-xs transition-colors hover:text-foreground"
           title="Mostrar menu"
         >
           <ChevronRight size={14} />
@@ -460,31 +557,31 @@ const CrmLayout = () => {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform ${
-          sidebarCollapsed ? "-translate-x-full" : "lg:translate-x-0"
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-sidebar text-sidebar-foreground transition-transform ${
+          sidebarCollapsed ? "-translate-x-full" : "crm-sidebar-aberta lg:translate-x-0"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-3">
-          <div className="flex flex-1 items-center justify-center">
-            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
+        <div className="flex items-center gap-3 px-5 pb-4 pt-6">
+          <div className="flex min-w-0 flex-1 items-center justify-start">
+            <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} naPlaca={logoNaPlaca} />
           </div>
           <button
-            className="ml-auto text-sidebar-foreground lg:hidden"
+            className="ml-auto -mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-control text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white lg:hidden"
             onClick={() => setSidebarOpen(false)}
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="px-4 py-3 border-b border-sidebar-border flex items-center justify-between gap-2">
+        <div className="mx-3 mb-3 flex items-center justify-between gap-1 border-b border-sidebar-border px-1 pb-4">
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-bold text-primary tracking-wide">{effective.name}</h2>
-            {tagline && <p className="truncate text-xs text-muted-foreground">{tagline}</p>}
+            <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-white">{effective.name}</h2>
+            {tagline && <p className="mt-0.5 line-clamp-2 break-words text-xs text-sidebar-muted">{tagline}</p>}
           </div>
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+              className="-mr-1 flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-[12px] font-medium text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
               title="Voltar ao Sistema"
             >
               <ArrowLeft size={14} />
@@ -493,66 +590,68 @@ const CrmLayout = () => {
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
           {crmNavItems.map((entry) =>
             isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
           )}
         </nav>
 
-        <div className="border-t border-sidebar-border p-4 space-y-1">
+        <div className="space-y-0.5 border-t border-sidebar-border p-3">
           {profile && (
             <button
               onClick={() => setEditProfileOpen(true)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 mb-1 hover:bg-sidebar-accent transition-colors group"
+              className="group mb-1.5 flex w-full items-center gap-3 rounded-card bg-white/[0.04] px-2.5 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
             >
-              <Avatar className="h-9 w-9 border border-border">
+              <Avatar className="h-9 w-9 shrink-0">
                 <AvatarImage src={profile.avatar_url || undefined} />
-                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                <AvatarFallback className="bg-primary text-sm font-bold text-primary-foreground">{initials}</AvatarFallback>
               </Avatar>
               <div className="flex-1 text-left min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">{profile.nome}</p>
-                <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
+                <p className="truncate text-[13px] font-semibold text-white">{profile.nome}</p>
+                <p className="truncate text-xs text-sidebar-muted">{profile.email}</p>
               </div>
-              <Settings size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Settings size={14} className="shrink-0 text-sidebar-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
           )}
           <button
             onClick={toggleTheme}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="flex h-9 w-full items-center gap-3 rounded-control px-3 text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             {theme === "dark" ? "Modo Claro" : "Modo Escuro"}
           </button>
           <button
             onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+            className="flex h-9 w-full items-center gap-3 rounded-control px-3 text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
           >
             <LogOut size={18} />
             Sair
           </button>
           {mostrarPoweredBy && (
-            <p className="px-3 pt-2 text-[10px] text-muted-foreground">Powered by {system.name}</p>
+            <p className="px-3 pt-2 text-[10px] text-sidebar-muted">Powered by {system.name}</p>
           )}
         </div>
       </aside>
 
       <div className={`flex min-w-0 flex-1 flex-col transition-all ${sidebarCollapsed ? "lg:pl-0" : "lg:pl-64"}`}>
-        <header className="flex min-w-0 h-16 items-center gap-4 border-b border-border px-6">
+        <header className="flex min-w-0 h-16 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur lg:px-6">
           <button
-            className="text-foreground lg:hidden"
+            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-control text-foreground transition-colors hover:bg-muted lg:hidden"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu size={22} />
           </button>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+            <SeletorCliente />
+            <AtalhoChegando />
             <NotificationBell />
-            <span className="hidden md:inline text-sm text-muted-foreground">
+            <span className="hidden md:inline border-l border-border/60 pl-3 text-sm font-medium text-foreground">
               {tagline ? `${effective.name} — ${tagline}` : effective.name}
             </span>
           </div>
         </header>
 
-        <main className="flex-1 min-w-0 min-h-0 overflow-hidden p-2 sm:p-4 lg:p-6">
+        <main className="flex-1 min-w-0 min-h-0 overflow-hidden bg-background p-2 sm:p-4 lg:p-6">
           <TaskReminderWatcher />
           {/* Aviso de fim de expediente da SDR: vive AQUI, no layout, e não no
               cartão da home. O cartão só existe em /crm/sdr, e a SDR passa o dia
@@ -560,7 +659,9 @@ const CrmLayout = () => {
               sozinho sem perguntar. Montado uma única vez; ele mesmo se cala
               para os outros papéis. */}
           <AvisoFimExpediente />
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

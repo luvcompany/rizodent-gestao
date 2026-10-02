@@ -2,15 +2,33 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { deduplicateTemplates } from "@/lib/templateUtils";
 import { sortTemplatesByUsage } from "@/lib/templateUsage";
 import { supabase } from "@/integrations/supabase/client";
-import { executeStageAutomations } from "@/lib/automationUtils";
+import { anotarNoHistorico } from "@/lib/notaDeSistema";
 import { gravarMotivoDesqualificacao } from "@/lib/desqualificacao";
 import { avisarQueLeadMudou } from "@/lib/kanbanFresco";
 import { toast } from "sonner";
-import { batchSignMediaUrls } from "@/lib/mediaUtils";
 import { useTenant } from "@/contexts/TenantContext";
+import { envioFalhou, motivoDoEnvio } from "@/lib/erroDoEnvio";
+import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
+import type { ModeloParaEnviar } from "@/components/chat/EnviarModeloDialog";
 
-// Global message cache to avoid re-fetching when switching between leads
-const messageCache = new Map<string, { messages: any[]; timestamp: number }>();
+// Janela de mensagens por conversa (CONV-5). A conversa abre nas N mais
+// RECENTES e "Carregar anteriores" traz as de antes, N por vez. Antes a
+// consulta era sem limite e em ordem crescente: o PostgREST corta em 1.000
+// linhas e devolvia as 1.000 MAIS ANTIGAS — as recentes sumiam e a janela de
+// 24h "expirava" com o paciente acabando de escrever.
+export const JANELA_DE_MENSAGENS = 300;
+// Complemento da PRIMEIRA carga: com a janela cheia, mais uma leitura (até o
+// teto de 1.000 linhas do PostgREST) ANTES de mostrar a conversa. Quem tinha
+// até 1.000 mensagens continua vendo todas — sem isso, enquanto a tela não
+// tiver o botão "Carregar anteriores" (P16), o histórico antigo das conversas
+// longas ficaria inalcançável. Carregar antes de mostrar evita o salto da
+// rolagem de inserir mensagens no topo depois. Só custa a 2ª leitura quem tem
+// mais de 300 mensagens.
+export const COMPLEMENTO_DA_PRIMEIRA_CARGA = 1000;
+
+// Cache global para não buscar de novo ao alternar entre leads. Guarda a
+// JANELA carregada (inclusive as páginas anteriores) e se ainda há mais.
+const messageCache = new Map<string, { messages: ChatMessage[]; timestamp: number; temAnteriores?: boolean }>();
 const CACHE_TTL = 5 * 60_000; // 5 minutes
 
 export type ChatMessage = {
@@ -100,11 +118,262 @@ const sortChatMessages = (list: ChatMessage[]): ChatMessage[] => {
   });
 };
 
+/** Colunas de messages que a tela lê mas o tipo ChatMessage não declara. */
+type LinhaDaMensagem = ChatMessage & {
+  channel?: string | null;
+  deleted_at?: string | null;
+  transcription?: string | null;
+  template_snapshot?: unknown;
+};
+
+/** A linha mudou em algo que a tela mostra? (evita re-render a cada consulta) */
+const mesmaMensagem = (a: LinhaDaMensagem, b: LinhaDaMensagem): boolean =>
+  a.status === b.status &&
+  a.content === b.content &&
+  a.media_url === b.media_url &&
+  a.error_reason === b.error_reason &&
+  a.whatsapp_message_id === b.whatsapp_message_id &&
+  a.deleted_at === b.deleted_at &&
+  a.transcription === b.transcription &&
+  JSON.stringify(a.reactions ?? []) === JSON.stringify(b.reactions ?? []) &&
+  JSON.stringify(a.template_snapshot ?? null) === JSON.stringify(b.template_snapshot ?? null);
+
+/**
+ * Índice da mensagem OTIMISTA que a linha gravada `linha` confirma: saída,
+ * ainda sem wamid, em status transitório e do mesmo tipo — a regra que o
+ * INSERT do Realtime sempre usou, agora também para o polling. Só casa com ids
+ * de `otimistas` (o que a tela criou e o banco ainda não devolveu). -1 = nada.
+ */
+export function indiceDaOtimista(lista: ChatMessage[], linha: ChatMessage, otimistas: ReadonlySet<string>): number {
+  if (linha.direction !== "outbound" || !otimistas.size) return -1;
+  return lista.findIndex((m) =>
+    otimistas.has(m.id) &&
+    m.direction === "outbound" &&
+    !m.whatsapp_message_id &&
+    !CONFIRMED_STATUSES.has(m.status) &&
+    m.type === linha.type,
+  );
+}
+
+/**
+ * Junta mensagens vindas do banco na lista da tela — CONV-5: MESCLAR, nunca
+ * substituir (a lista pode ter páginas anteriores e mensagens otimistas que o
+ * banco ainda não devolveu). Mesmo id = troca pela versão do banco; id novo
+ * que confirma uma otimista (indiceDaOtimista) = TOMA O LUGAR dela (senão o
+ * polling que chega antes do Realtime deixava o balão duplicado); id novo =
+ * entra. Devolve a MESMA lista quando nada mudou. Pura: não mexe em
+ * `otimistas` (o hook limpa os ids que saíram da lista).
+ */
+export function mesclarMensagens(
+  atual: ChatMessage[],
+  doBanco: ChatMessage[],
+  otimistas: ReadonlySet<string> = new Set(),
+): ChatMessage[] {
+  if (!doBanco.length) return atual;
+  const posicao = new Map(atual.map((m, i) => [m.id, i] as const));
+  const lista = [...atual];
+  const pendentes = new Set(otimistas);
+  let mudou = false;
+  for (const m of doBanco) {
+    const i = posicao.get(m.id);
+    if (i === undefined) {
+      const j = indiceDaOtimista(lista, m, pendentes);
+      if (j >= 0) {
+        pendentes.delete(lista[j].id);
+        posicao.delete(lista[j].id);
+        posicao.set(m.id, j);
+        lista[j] = m;
+      } else {
+        posicao.set(m.id, lista.length);
+        lista.push(m);
+      }
+      mudou = true;
+    } else if (!mesmaMensagem(lista[i], m)) {
+      lista[i] = m;
+      mudou = true;
+    }
+  }
+  return mudou ? sortChatMessages(lista) : atual;
+}
+
+/** created_at mais recente entre as mensagens que vieram do banco (não as otimistas). */
+function ultimaDoBanco(lista: ChatMessage[], otimistas: Set<string>): string | null {
+  let ultima: string | null = null;
+  for (const m of lista) {
+    if (otimistas.has(m.id)) continue;
+    if (!ultima || m.created_at > ultima) ultima = m.created_at;
+  }
+  return ultima;
+}
+
+/** A mais antiga já carregada (a lista está em ordem crescente). */
+function maisAntigaDoBanco(lista: ChatMessage[], otimistas: Set<string>): string | null {
+  for (const m of lista) if (!otimistas.has(m.id)) return m.created_at;
+  return null;
+}
+
+/** As N mensagens mais recentes do lead (ou anteriores a `ate`), em ordem crescente. */
+async function buscarJanela(
+  leadId: string,
+  ate?: string,
+  limite: number = JANELA_DE_MENSAGENS,
+): Promise<{ lista: ChatMessage[]; erro: boolean }> {
+  let q = supabase.from("messages").select("*").eq("lead_id", leadId);
+  // lte + deduplicação pelo id: mensagens do histórico importado podem ter o
+  // MESMO created_at, e lt pularia as que empatam com a mais antiga carregada.
+  if (ate) q = q.lte("created_at", ate);
+  const { data, error } = await q
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limite);
+  if (error) return { lista: [], erro: true };
+  const lista = ((data as unknown as ChatMessage[]) || []).map(normalizeOutboundStatus).reverse();
+  return { lista, erro: false };
+}
+
+// ─── Modelos (templates) do lead ───
+
+/** Linha de public.modelos_do_lead (migration 20260929002260). */
+export type ModeloDoLead = {
+  id: string;
+  name: string;
+  language: string | null;
+  category: string | null;
+  status: string;
+  body_text: string | null;
+  header_type: string | null;
+  header_content: string | null;
+  footer_text: string | null;
+  buttons: unknown;
+  waba_id: string | null;
+  whatsapp_number_id: string | null;
+  owner_role: string | null;
+  created_at: string;
+  updated_at: string;
+  numero_de_envio_id: string | null;
+};
+
+/**
+ * Modelos que o servidor aceita para o lead — CONV-8: só os da WABA do número
+ * que vai enviar (RPC modelos_do_lead), deduplicados DENTRO da WABA (fica a
+ * cópia do próprio número de envio) e ordenados pelo uso. Antes a lista
+ * juntava as WABAs de todos os números do cliente e escolher um modelo da
+ * outra WABA dava "Template não existe na WABA deste número".
+ * Ambiente sem a migration (PGRST202): cai na leitura antiga, por cliente.
+ */
+export async function carregarModelosDoLead(
+  leadId: string,
+  tenantId: string | null | undefined,
+): Promise<{ modelos: ModeloDoLead[]; erro: string | null }> {
+  const { data, error } = await (supabase as unknown as {
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+  }).rpc("modelos_do_lead", { p_lead_id: leadId });
+
+  let linhas: ModeloDoLead[];
+  if (error && error.code === "PGRST202" && tenantId) {
+    const antigo = await supabase
+      .from("crm_whatsapp_templates")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("status", "APPROVED")
+      .order("created_at", { ascending: false });
+    linhas = ((antigo.data as unknown as ModeloDoLead[]) ?? []).map((t) => ({ ...t, numero_de_envio_id: null }));
+  } else if (error) {
+    return { modelos: [], erro: error.message || "Não foi possível carregar os modelos deste lead." };
+  } else {
+    linhas = (data as ModeloDoLead[] | null) ?? [];
+  }
+
+  const numeroDeEnvio = linhas.find((l) => l.numero_de_envio_id)?.numero_de_envio_id ?? null;
+  const deduplicados = deduplicateTemplates(linhas);
+  return { modelos: await sortTemplatesByUsage(deduplicados, tenantId), erro: null };
+}
+
+type ModeloParaEnvio = { name: string; language?: string | null };
+
+/**
+ * Envio de um modelo (template) ao lead, com a mensagem otimista e os avisos —
+ * o MESMO caminho para o Sheet de modelos (useChatConversation.sendTemplate) e
+ * para o "/" do compositor (ChatInput). `componentes` = template_components
+ * escolhidos na tela (CONV-15); sem eles o servidor preenche pela posição.
+ * Recusa aparece com o motivo do servidor (CONV-3). Devolve se saiu.
+ */
+export async function enviarModeloAoLead(p: {
+  leadId: string;
+  modelo: ModeloParaEnvio;
+  componentes?: unknown[];
+  aoCriarOtimista: (m: ChatMessage) => void;
+  aoConfirmar: (tempId: string, gravada?: ChatMessage) => void;
+  aoFalhar: (tempId: string) => void;
+}): Promise<{ ok: boolean; pausado: boolean }> {
+  const tempId = crypto.randomUUID();
+  const otimista: ChatMessage = {
+    id: tempId,
+    lead_id: p.leadId,
+    direction: "outbound",
+    // O servidor grava o modelo como type "text" com "📋 Template: nome" no
+    // content; a otimista espelha esse formato para o Realtime substituí-la.
+    type: "text",
+    content: `📋 Template: ${p.modelo.name}`,
+    media_url: null,
+    status: "sending",
+    created_at: new Date().toISOString(),
+    whatsapp_message_id: null,
+    reply_to_message_id: null,
+  };
+  p.aoCriarOtimista(otimista);
+
+  try {
+    const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
+      body: {
+        lead_id: p.leadId,
+        type: "template",
+        template_name: p.modelo.name,
+        template_language: p.modelo.language || "pt_BR",
+        ...(p.componentes && p.componentes.length > 0 ? { template_components: p.componentes } : {}),
+      },
+    });
+    const gravada = (data as { message?: ChatMessage } | null)?.message;
+    if (envioFalhou(data, error)) {
+      const motivo = await motivoDoEnvio(data, error, "Não foi possível enviar o modelo");
+      // A Meta aceitou e só o histórico não gravou: é ENVIADO (reenviar
+      // duplicaria o modelo para o paciente).
+      if (motivo.semRegistro) {
+        p.aoConfirmar(tempId, { ...otimista, status: "sent", whatsapp_message_id: motivo.wamid });
+        toast.warning(motivo.texto);
+        return { ok: true, pausado: false };
+      }
+      // Recusa da Meta: o servidor grava a tentativa (status "failed", com o
+      // texto que ia sair). Mostrar essa linha em vez do balão otimista.
+      if (gravada) p.aoConfirmar(tempId, gravada);
+      else p.aoFalhar(tempId);
+      toast.error(`Modelo não enviado: ${motivo.texto}`);
+      return { ok: false, pausado: motivo.pausado };
+    }
+    // A resposta traz a mensagem gravada — com template_snapshot, o texto exato
+    // que o paciente recebeu.
+    p.aoConfirmar(tempId, gravada ?? undefined);
+    toast.success("Modelo enviado");
+    return { ok: true, pausado: false };
+  } catch {
+    p.aoFalhar(tempId);
+    toast.error("Não foi possível enviar o modelo. Confira a conexão e tente de novo.");
+    return { ok: false, pausado: false };
+  }
+}
+
 export function useChatConversation(leadId: string | null | undefined) {
   const { tenant } = useTenant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stages, setStages] = useState<ChatStage[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Janela de mensagens (CONV-5): há mensagens mais antigas que as carregadas?
+  const [temAnteriores, setTemAnteriores] = useState(false);
+  const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
+
+  // Número de envio do lead: pausa da WABA e cliente sem número (S29P-3c, CRC-11).
+  const envio = useEnvioDoLead(leadId);
 
   // Reply & Forward
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -117,9 +386,15 @@ export function useChatConversation(leadId: string | null | undefined) {
   const [templates, setTemplates] = useState<any[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+  // Modelo escolhido esperando a confirmação com prévia e variáveis (CONV-15).
+  // Quem mostra o EnviarModeloDialog é a tela (P16 adota no Sheet de modelos).
+  const [modeloEmConfirmacao, setModeloEmConfirmacao] = useState<ModeloParaEnviar | null>(null);
 
   // Activity toasts
   const [activityToasts, setActivityToasts] = useState<ActivityToast[]>([]);
+
+  // Última inbound de WhatsApp consultada no banco (CONV-5).
+  const [ultimaEntradaWaConsultada, setUltimaEntradaWaConsultada] = useState<string | null>(null);
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -127,6 +402,38 @@ export function useChatConversation(leadId: string | null | undefined) {
   const initialLoadDone = useRef(false);
   const activeLeadRef = useRef<string | null>(leadId ?? null);
   const fetchRequestRef = useRef(0);
+  // Espelho da lista para callbacks/intervalos (sem recriá-los a cada mensagem).
+  const messagesRef = useRef<ChatMessage[]>([]);
+  // Ids das mensagens otimistas (ainda sem linha no banco): ficam fora do
+  // "a mais recente do banco" — o relógio do navegador pode estar adiantado.
+  const otimistasRef = useRef<Set<string>>(new Set());
+  // Otimistas que já apareceram na lista (para limpar quando saírem dela).
+  const otimistasVistasRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    messagesRef.current = messages;
+    // Otimista que saiu da lista (o banco a confirmou) deixa de ser otimista.
+    // Só apaga ids que JÁ estiveram na lista: um id recém-criado ainda pode
+    // não ter chegado a este render.
+    if (!otimistasRef.current.size) return;
+    const naTela = new Set(messages.map((m) => m.id));
+    for (const id of otimistasRef.current) {
+      if (naTela.has(id)) otimistasVistasRef.current.add(id);
+      else if (otimistasVistasRef.current.has(id)) {
+        otimistasRef.current.delete(id);
+        otimistasVistasRef.current.delete(id);
+      }
+    }
+  }, [messages]);
+
+  const gravarCache = useCallback((alvo: string, lista: ChatMessage[], anteriores?: boolean) => {
+    const atual = messageCache.get(alvo);
+    messageCache.set(alvo, {
+      messages: lista,
+      timestamp: Date.now(),
+      temAnteriores: anteriores ?? atual?.temAnteriores ?? false,
+    });
+  }, []);
 
   // Filtered templates
   const filteredTemplates = useMemo(() => {
@@ -153,9 +460,28 @@ export function useChatConversation(leadId: string | null | undefined) {
   // do Instagram tem inbounds de IG que NÃO abrem sessão de WhatsApp na Meta, então a
   // janela do WhatsApp deve olhar só inbounds channel='whatsapp' (senão liberaria texto
   // livre e a Meta recusaria — força usar template para reabrir).
+  // CONV-5: vem de consulta própria (a última pode estar fora da janela
+  // carregada) e da lista (o Realtime traz a nova na hora); vale a mais recente.
   const lastInboundWaAt = useMemo(() => {
-    return [...messages].reverse().find((m) => m.direction === "inbound" && (m as any).channel === "whatsapp")?.created_at || null;
-  }, [messages]);
+    const daLista = [...messages].reverse().find((m) => m.direction === "inbound" && (m as LinhaDaMensagem).channel === "whatsapp")?.created_at || null;
+    if (!daLista) return ultimaEntradaWaConsultada;
+    if (!ultimaEntradaWaConsultada) return daLista;
+    return daLista > ultimaEntradaWaConsultada ? daLista : ultimaEntradaWaConsultada;
+  }, [messages, ultimaEntradaWaConsultada]);
+
+  const consultarUltimaEntradaWa = useCallback(async (alvo: string) => {
+    const { data, error } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("lead_id", alvo)
+      .eq("direction", "inbound")
+      .eq("channel", "whatsapp")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || activeLeadRef.current !== alvo) return;
+    setUltimaEntradaWaConsultada((data as { created_at?: string } | null)?.created_at ?? null);
+  }, []);
 
   // ─── Cache stages globally ───
   const stagesLoadedRef = useRef(false);
@@ -182,7 +508,11 @@ export function useChatConversation(leadId: string | null | undefined) {
   }, [stages.length, tenant.id]);
 
   // ─── Fetch messages with cache ───
-  const fetchMessages = useCallback(async (skipCache = false) => {
+  // Busca a JANELA mais recente e MESCLA com o que já está na tela (páginas
+  // anteriores e otimistas continuam). CONV-5.
+  // `silencioso` = sem spinner (o polling de uma conversa ainda vazia não pode
+  // trocar "Nenhuma mensagem ainda" pelo carregando a cada minuto).
+  const fetchMessages = useCallback(async (skipCache = false, silencioso = false) => {
     const targetLeadId = leadId;
     if (!targetLeadId) {
       setMessages([]);
@@ -192,43 +522,97 @@ export function useChatConversation(leadId: string | null | undefined) {
 
     const requestId = ++fetchRequestRef.current;
     const isCurrentRequest = () => activeLeadRef.current === targetLeadId && fetchRequestRef.current === requestId;
-    const applyMessages = (nextMessages: ChatMessage[]) => {
-      if (!isCurrentRequest()) return false;
-      setMessages(sortChatMessages(nextMessages));
+
+    void consultarUltimaEntradaWa(targetLeadId);
+
+    const buscarEMesclar = async () => {
+      const janela = await buscarJanela(targetLeadId);
+      if (janela.erro) {
+        if (isCurrentRequest()) setLoading(false);
+        return;
+      }
+      if (!isCurrentRequest()) return;
+      let lista = janela.lista;
+      // Só na primeira carga da conversa a janela diz se há anteriores; depois
+      // quem sabe é o "Carregar anteriores".
+      const primeiraCarga = messagesRef.current.length === 0;
+      let temMais = lista.length === JANELA_DE_MENSAGENS;
+      if (primeiraCarga && temMais) {
+        // Complemento antes de mostrar (COMPLEMENTO_DA_PRIMEIRA_CARGA).
+        const comp = await buscarJanela(targetLeadId, lista[0]?.created_at, COMPLEMENTO_DA_PRIMEIRA_CARGA);
+        if (!isCurrentRequest()) return;
+        if (!comp.erro) {
+          const conhecidas = new Set(lista.map((m) => m.id));
+          const antes = comp.lista.filter((m) => !conhecidas.has(m.id));
+          lista = [...antes, ...lista];
+          temMais = comp.lista.length === COMPLEMENTO_DA_PRIMEIRA_CARGA && antes.length > 0;
+        }
+      }
+      setMessages((prev) => {
+        if (activeLeadRef.current !== targetLeadId) return prev;
+        const mesclada = mesclarMensagens(prev, lista, otimistasRef.current);
+        gravarCache(targetLeadId, mesclada, primeiraCarga ? temMais : undefined);
+        return mesclada;
+      });
+      if (primeiraCarga) setTemAnteriores(temMais);
       setLoading(false);
-      return true;
+      // Media URLs are signed on-demand by ChatMessageContent's useSignedUrl, no upfront batch needed.
     };
 
     // Serve from cache instantly if available and fresh
     if (!skipCache) {
       const cached = messageCache.get(targetLeadId);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        applyMessages(cached.messages as ChatMessage[]);
+        if (isCurrentRequest()) {
+          setMessages((prev) => (prev.length ? mesclarMensagens(prev, cached.messages as ChatMessage[], otimistasRef.current) : sortChatMessages(cached.messages as ChatMessage[])));
+          setTemAnteriores(!!cached.temAnteriores);
+          setLoading(false);
+        }
         // Only refresh in background if cache is stale (>30s) to avoid wasting bandwidth
         if (Date.now() - cached.timestamp < 30_000) return;
-        supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true }).then(({ data }) => {
-          if (data) {
-            const nextMessages = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
-            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
-            applyMessages(nextMessages);
-          }
-        });
+        void buscarEMesclar();
         return;
       }
     }
 
-    setLoading(true);
+    if (!silencioso && messagesRef.current.length === 0) setLoading(true);
     try {
-      const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
-      const msgs = ((data as unknown as ChatMessage[]) || []).map(normalizeOutboundStatus);
-      messageCache.set(targetLeadId, { messages: msgs, timestamp: Date.now() });
-      applyMessages(msgs);
-      // Media URLs are signed on-demand by ChatMessageContent's useSignedUrl, no upfront batch needed.
+      await buscarEMesclar();
     } catch (err) {
       console.error("[useChatConversation] Fetch error:", err);
       if (isCurrentRequest()) setLoading(false);
     }
-  }, [leadId]);
+  }, [leadId, consultarUltimaEntradaWa, gravarCache]);
+
+  // Mensagens anteriores às carregadas (botão "Carregar anteriores" — P16 põe
+  // o botão no topo da lista quando temAnteriores).
+  const carregarAnteriores = useCallback(async () => {
+    const alvo = leadId;
+    if (!alvo || carregandoAnteriores) return;
+    const maisAntiga = maisAntigaDoBanco(messagesRef.current, otimistasRef.current);
+    if (!maisAntiga) return;
+    setCarregandoAnteriores(true);
+    try {
+      const { lista, erro } = await buscarJanela(alvo, maisAntiga);
+      if (activeLeadRef.current !== alvo) return;
+      if (erro) {
+        toast.error("Não foi possível carregar as mensagens anteriores. Tente de novo.");
+        return;
+      }
+      const conhecidas = new Set(messagesRef.current.map((m) => m.id));
+      const novas = lista.filter((m) => !conhecidas.has(m.id)).length;
+      const aindaHa = lista.length === JANELA_DE_MENSAGENS && novas > 0;
+      setMessages((prev) => {
+        if (activeLeadRef.current !== alvo) return prev;
+        const mesclada = mesclarMensagens(prev, lista, otimistasRef.current);
+        gravarCache(alvo, mesclada, aindaHa);
+        return mesclada;
+      });
+      setTemAnteriores(aindaHa);
+    } finally {
+      setCarregandoAnteriores(false);
+    }
+  }, [leadId, carregandoAnteriores, gravarCache]);
 
 
   useEffect(() => { fetchMessages(); fetchStages(); }, [fetchMessages, fetchStages]);
@@ -236,25 +620,45 @@ export function useChatConversation(leadId: string | null | undefined) {
   useEffect(() => {
     activeLeadRef.current = leadId ?? null;
     initialLoadDone.current = false;
+    otimistasRef.current = new Set();
+    otimistasVistasRef.current = new Set();
     setReplyTo(null);
     setForwardMsg(null);
     setMediaPreview(null);
     setActivityToasts([]);
+    setModeloEmConfirmacao(null);
+    setUltimaEntradaWaConsultada(null);
+    setCarregandoAnteriores(false);
 
     if (!leadId) {
+      messagesRef.current = [];
       setMessages([]);
+      setTemAnteriores(false);
       setLoading(false);
       return;
     }
 
     const cached = messageCache.get(leadId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      messagesRef.current = cached.messages as ChatMessage[];
+      // Balão ainda "enviando" guardado no cache (a pessoa trocou de conversa
+      // antes da confirmação) continua otimista: a linha do banco toma o
+      // lugar dele em vez de entrar ao lado.
+      for (const m of cached.messages) {
+        if (m.direction === "outbound" && m.status === "sending" && !m.whatsapp_message_id) {
+          otimistasRef.current.add(m.id);
+          otimistasVistasRef.current.add(m.id);
+        }
+      }
       setMessages(cached.messages as ChatMessage[]);
+      setTemAnteriores(!!cached.temAnteriores);
       setLoading(false);
       return;
     }
 
+    messagesRef.current = [];
     setMessages([]);
+    setTemAnteriores(false);
     setLoading(true);
   }, [leadId]);
 
@@ -316,25 +720,19 @@ export function useChatConversation(leadId: string | null | undefined) {
         setMessages((prev) => {
           if (activeLeadRef.current !== targetLeadId) return prev;
           if (prev.some((m) => m.id === newMsg.id)) return prev;
-          // Find optimistic message to replace: must be outbound, not yet confirmed (no whatsapp_message_id),
-          // and still in a transient status. Match by type loosely (audio/template may differ).
-          const optimisticIdx = newMsg.direction === "outbound"
-            ? prev.findIndex((m) =>
-                m.direction === "outbound" &&
-                !m.whatsapp_message_id &&
-                !CONFIRMED_STATUSES.has(m.status) &&
-                // Loose type match: text↔text, audio↔audio, template↔template, image↔image, etc.
-                (m.type === newMsg.type || (m.type === "text" && newMsg.type === "text"))
-              )
-            : -1;
+          // A linha gravada toma o lugar da otimista que ela confirma (mesma
+          // regra do polling: indiceDaOtimista). O id otimista sai de
+          // otimistasRef no efeito da lista — nunca aqui dentro: o updater
+          // pode rodar duas vezes (StrictMode) e a 2ª não acharia a otimista.
+          const optimisticIdx = indiceDaOtimista(prev, newMsg, otimistasRef.current);
           if (optimisticIdx >= 0) {
             const updated = [...prev];
             updated[optimisticIdx] = newMsg;
-            messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
+            gravarCache(targetLeadId, updated);
             return updated;
           }
           const updated = sortChatMessages([...prev, newMsg]);
-          messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
+          gravarCache(targetLeadId, updated);
           return updated;
         });
       })
@@ -346,15 +744,18 @@ export function useChatConversation(leadId: string | null | undefined) {
           if (activeLeadRef.current !== targetLeadId) return prev;
           const updatedMessage = normalizeOutboundStatus(payload.new as ChatMessage);
           const updated = prev.map((m) => m.id === updatedMessage.id ? updatedMessage : m);
-          messageCache.set(targetLeadId, { messages: updated, timestamp: Date.now() });
+          gravarCache(targetLeadId, updated);
           return updated;
         });
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [leadId]);
+  }, [leadId, gravarCache]);
 
   // ─── Polling fallback (only when tab is visible; realtime handles most updates) ───
+  // CONV-5: pede só o que chegou DEPOIS da última mensagem do banco já na tela
+  // (gte + deduplicação pelo id, para não perder as que empatam no horário) e
+  // mescla. Antes trocava a lista inteira pelas 1.000 mais antigas.
   useEffect(() => {
     const targetLeadId = leadId;
     if (!targetLeadId) return;
@@ -362,21 +763,29 @@ export function useChatConversation(leadId: string | null | undefined) {
     const interval = setInterval(async () => {
       if (activeLeadRef.current !== targetLeadId) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      const { data } = await supabase.from("messages").select("*").eq("lead_id", targetLeadId).order("created_at", { ascending: true });
-      if (data && activeLeadRef.current === targetLeadId) {
-        const nextMessages = sortChatMessages((data as unknown as ChatMessage[]).map(normalizeOutboundStatus));
-        setMessages((prev) => {
-          if (activeLeadRef.current !== targetLeadId) return prev;
-          if (nextMessages.length !== prev.length || nextMessages.some((message, index) => message.id !== prev[index]?.id || message.status !== prev[index]?.status)) {
-            messageCache.set(targetLeadId, { messages: nextMessages, timestamp: Date.now() });
-            return nextMessages;
-          }
-          return prev;
-        });
+      const ultima = ultimaDoBanco(messagesRef.current, otimistasRef.current);
+      if (!ultima) {
+        void fetchMessages(true, true);
+        return;
       }
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("lead_id", targetLeadId)
+        .gte("created_at", ultima)
+        .order("created_at", { ascending: true })
+        .limit(JANELA_DE_MENSAGENS);
+      if (error || !data || activeLeadRef.current !== targetLeadId) return;
+      const novas = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
+      setMessages((prev) => {
+        if (activeLeadRef.current !== targetLeadId) return prev;
+        const mesclada = mesclarMensagens(prev, novas, otimistasRef.current);
+        if (mesclada !== prev) gravarCache(targetLeadId, mesclada);
+        return mesclada;
+      });
     }, 60000); // 60s — realtime carries the load; this is just a safety net
     return () => clearInterval(interval);
-  }, [leadId]);
+  }, [leadId, fetchMessages, gravarCache]);
 
 
   // ─── Activity Toasts ───
@@ -464,88 +873,96 @@ export function useChatConversation(leadId: string | null | undefined) {
     const fromName = stages.find(s => s.id === currentStageId)?.name || "?";
     const toName = stages.find(s => s.id === stageGravado)?.name || "?";
     const systemContent = `📋 Etapa alterada: ${fromName} → ${toName}${motivo ? ` · Motivo: ${motivo}` : ""}`;
-    await supabase.from("messages").insert({
-      lead_id: leadId,
-      direction: "outbound",
-      type: "system",
-      content: systemContent,
-      status: "system",
-    });
+    await anotarNoHistorico(leadId, systemContent);
 
     showActivityToast(`📋 Lead movido para ${toName}`);
 
-    // Execute automations for the new stage (on_enter + on_create_or_enter)
-    executeStageAutomations({
-      leadId,
-      stageId: stageGravado,
-      triggerTypes: ["on_enter", "on_create_or_enter"],
-    });
+    // Automações da etapa (on_enter / on_create_or_enter): quem enfileira é o
+    // gatilho enqueue_stage_entry_automations do banco, no UPDATE acima, e
+    // quem envia é o automation-queue-worker (P05, fila única). Chamar daqui
+    // de novo não enviava nada desde o P05 — a chamada saiu.
 
     onSuccess?.(stageGravado, pipelineGravado || undefined);
     toast.success("Etapa atualizada");
   }, [leadId, stages, showActivityToast]);
 
+
   // ─── Reactions ───
+  // CONV-3: reação que o servidor recusa VOLTA ao estado anterior (antes o
+  // emoji otimista ficava na tela) e o motivo vem do servidor.
   const handleReact = useCallback(async (msg: ChatMessage, emoji: string, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp") => {
     if (channel === "instagram") {
       toast.info("Reações ainda não são suportadas no Instagram Direct");
       return;
     }
     if (!leadPhone) { toast.error("Lead sem telefone"); return; }
+    if (envio.bloqueio) { toast.error(envio.bloqueio.texto); return; }
 
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msg.id) return m;
-        const existing = Array.isArray(m.reactions) ? m.reactions : [];
-        const filtered = existing.filter((r) => r.from !== "me");
-        return { ...m, reactions: [...filtered, { emoji, from: "me" }] };
-      })
-    );
+    const alvo = activeLeadRef.current;
+    const anteriores = Array.isArray(msg.reactions) ? msg.reactions : [];
+    const trocarReacoes = (reactions: ChatMessage["reactions"]) => {
+      setMessages((prev) => {
+        const updated = prev.map((m) => (m.id === msg.id ? { ...m, reactions } : m));
+        if (alvo) gravarCache(alvo, updated);
+        return updated;
+      });
+    };
+    trocarReacoes([...anteriores.filter((r) => r.from !== "me"), { emoji, from: "me" }]);
 
     try {
       const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
         body: {
           lead_id: leadId,
-          to: leadPhone,
           type: "reaction",
           reaction_emoji: emoji,
           reaction_to_message_id: msg.id,
         },
       });
-      if (error || data?.error) toast.error("Erro ao enviar reação");
+      if (envioFalhou(data, error)) {
+        if (activeLeadRef.current === alvo) trocarReacoes(anteriores);
+        const motivo = await motivoDoEnvio(data, error, "Não foi possível enviar a reação");
+        if (motivo.pausado) envio.reconsultar();
+        toast.error(`Reação não enviada: ${motivo.texto}`);
+      }
     } catch {
-      toast.error("Erro ao enviar reação");
+      if (activeLeadRef.current === alvo) trocarReacoes(anteriores);
+      toast.error("Não foi possível enviar a reação. Confira a conexão e tente de novo.");
     }
-  }, [leadId]);
+  }, [leadId, envio, gravarCache]);
 
   // ─── Optimistic message handling ───
   const handleOptimisticMessage = useCallback((optimisticMsg: any) => {
+    if (optimisticMsg?.id) otimistasRef.current.add(optimisticMsg.id);
     setMessages((prev) => {
       if (prev.some((m) => m.id === optimisticMsg.id)) return prev;
       const updated = [...prev, optimisticMsg];
       const currentLeadId = activeLeadRef.current;
-      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      if (currentLeadId) gravarCache(currentLeadId, updated);
       return updated;
     });
-  }, []);
+  }, [gravarCache]);
 
   const handleMessageError = useCallback((tempId: string) => {
     setMessages((prev) => {
       const updated = prev.map((m) => m.id === tempId ? { ...m, status: "error" } : m);
       const currentLeadId = activeLeadRef.current;
-      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      if (currentLeadId) gravarCache(currentLeadId, updated);
       return updated;
     });
-  }, []);
+  }, [gravarCache]);
 
+  // `confirmedMessage` com o MESMO id da temporária = a Meta aceitou mas o
+  // histórico não gravou ('enviado_sem_registro'): o balão vira "enviado" e
+  // continua fora do "a mais recente do banco" (não há linha no banco).
   const handleMessageSuccess = useCallback((tempId: string, confirmedMessage?: ChatMessage) => {
+    if (confirmedMessage && confirmedMessage.id !== tempId) otimistasRef.current.delete(tempId);
     setMessages((prev) => {
       const normalizedConfirmed = confirmedMessage ? normalizeOutboundStatus(confirmedMessage) : null;
       // Se o Realtime já trouxe a mensagem gravada, some com a temporária em vez de duplicar.
       if (normalizedConfirmed && prev.some((m) => m.id === normalizedConfirmed.id && m.id !== tempId)) {
         const semTemp = prev.filter((m) => m.id !== tempId);
         const leadAtual = activeLeadRef.current;
-        if (leadAtual) messageCache.set(leadAtual, { messages: semTemp, timestamp: Date.now() });
+        if (leadAtual) gravarCache(leadAtual, semTemp);
         return semTemp;
       }
       const updated = prev.map((m) => {
@@ -555,76 +972,61 @@ export function useChatConversation(leadId: string | null | undefined) {
       });
 
       const currentLeadId = activeLeadRef.current;
-      if (currentLeadId) messageCache.set(currentLeadId, { messages: updated, timestamp: Date.now() });
+      if (currentLeadId) gravarCache(currentLeadId, updated);
       return updated;
     });
-  }, []);
+  }, [gravarCache]);
 
   // ─── Templates ───
+  // CONV-8: só os modelos da WABA do número que vai enviar (modelos_do_lead).
   const loadTemplates = useCallback(async () => {
-    if (!tenant.id) return;
-    const { data } = await supabase.from("crm_whatsapp_templates").select("*").eq("tenant_id", tenant.id).eq("status", "APPROVED").order("created_at", { ascending: false });
-    const deduped = deduplicateTemplates(data || []);
-    const sorted = await sortTemplatesByUsage(deduped, tenant.id);
-    setTemplates(sorted);
+    if (!tenant.id || !leadId) return;
+    // Cliente sem número para este lead (ou número fora do acesso de quem
+    // está no chat): não há modelo que o servidor aceite.
+    if (envio.consultado && envio.bloqueio && (!envio.numero || envio.bloqueio.tipo === "sem_acesso")) {
+      toast.error(envio.bloqueio.texto);
+      return;
+    }
+    const alvo = leadId;
+    const { modelos, erro } = await carregarModelosDoLead(alvo, tenant.id);
+    if (activeLeadRef.current !== alvo) return;
+    if (erro) {
+      toast.error(`Não foi possível carregar os modelos: ${erro}`);
+      return;
+    }
+    setTemplates(modelos);
     setTemplatesOpen(true);
-  }, [tenant.id]);
+  }, [tenant.id, leadId, envio.consultado, envio.numero, envio.bloqueio]);
 
-  const sendTemplate = useCallback(async (template: any, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp") => {
+  // Abre a confirmação (prévia preenchida + um campo por variável) do modelo
+  // escolhido no Sheet — CONV-15. Quem renderiza o EnviarModeloDialog é a tela.
+  const pedirConfirmacaoDoModelo = useCallback((template: ModeloParaEnviar) => {
+    setTemplatesOpen(false);
+    setModeloEmConfirmacao(template);
+  }, []);
+
+  // `componentes` = template_components escolhidos na tela (CONV-15); sem eles
+  // o servidor preenche as variáveis pela posição.
+  const sendTemplate = useCallback(async (template: ModeloParaEnvio, leadPhone: string | null, channel: "whatsapp" | "instagram" = "whatsapp", componentes?: unknown[]) => {
     if (channel === "instagram") {
-      toast.error("Templates só estão disponíveis no WhatsApp");
+      toast.error("Modelos só estão disponíveis no WhatsApp");
       return;
     }
     if (!leadPhone) { toast.error("Lead sem telefone configurado"); return; }
+    if (!leadId) return;
+    if (envio.bloqueio) { toast.error(envio.bloqueio.texto); return; }
     setTemplatesOpen(false);
 
-    // Optimistic: show template message instantly
-    const tempId = crypto.randomUUID();
-    const optimisticMsg: ChatMessage = {
-      id: tempId,
-      lead_id: leadId!,
-      direction: "outbound",
-      // Backend salva template como type "text" com prefixo "📋 Template:" no content,
-      // então a mensagem otimista precisa espelhar exatamente esse formato para que a
-      // reconciliação via realtime substitua (em vez de mostrar duas bubbles).
-      type: "text",
-      content: `📋 Template: ${template.name}`,
-      media_url: null,
-      status: "sending",
-      created_at: new Date().toISOString(),
-      whatsapp_message_id: null,
-      reply_to_message_id: null,
-    };
-    handleOptimisticMessage(optimisticMsg);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
-        body: {
-          lead_id: leadId,
-          to: leadPhone,
-          type: "template",
-          template_name: template.name,
-          template_language: template.language,
-        },
-      });
-      if (error || data?.error) {
-        // Recusa da Meta: o servidor grava a tentativa (status "failed", com o
-        // texto que ia sair). Mostrar essa linha em vez do balão otimista.
-        if (data?.message) handleMessageSuccess(tempId, data.message);
-        else handleMessageError(tempId);
-        toast.error(data?.error ? `Erro ao enviar template: ${data.error}` : "Erro ao enviar template");
-        return;
-      }
-      // A resposta traz a mensagem gravada — com template_snapshot, o texto exato
-      // que o paciente recebeu. Trocar já evita o balão "Enviando…" esperar o
-      // Realtime (que ignora a duplicata pelo id).
-      handleMessageSuccess(tempId, data?.message ?? undefined);
-      toast.success("Template enviado");
-    } catch {
-      handleMessageError(tempId);
-      toast.error("Erro inesperado ao enviar template");
-    }
-  }, [leadId, handleOptimisticMessage, handleMessageError, handleMessageSuccess]);
+    const r = await enviarModeloAoLead({
+      leadId,
+      modelo: template,
+      componentes,
+      aoCriarOtimista: handleOptimisticMessage,
+      aoConfirmar: handleMessageSuccess,
+      aoFalhar: handleMessageError,
+    });
+    if (r.pausado) envio.reconsultar();
+  }, [leadId, envio, handleOptimisticMessage, handleMessageError, handleMessageSuccess]);
 
   // ─── Notes ───
   const saveNotes = useCallback(async (updatedNotes: string) => {
@@ -699,6 +1101,13 @@ export function useChatConversation(leadId: string | null | undefined) {
     lastInboundAt,
     lastInboundWaAt,
     lastInboundDmAt,
+    /** Há mensagens mais antigas que as carregadas (mostrar "Carregar anteriores"). */
+    temAnteriores,
+    carregandoAnteriores,
+    /** Modelo esperando a confirmação (EnviarModeloDialog). */
+    modeloEmConfirmacao,
+    /** Número de envio do lead e o bloqueio (pausado/desconectado), para selo na tela. */
+    envio: { numero: envio.numero, bloqueio: envio.bloqueio },
 
     // Refs
     messagesEndRef,
@@ -710,14 +1119,17 @@ export function useChatConversation(leadId: string | null | undefined) {
     setMediaPreview,
     setTemplatesOpen,
     setTemplateSearch,
+    setModeloEmConfirmacao,
 
     // Actions
     fetchMessages,
+    carregarAnteriores,
     scrollToBottom,
     scrollToMessage,
     handleStageChange,
     handleReact,
     loadTemplates,
+    pedirConfirmacaoDoModelo,
     sendTemplate,
     saveNotes,
     addNote,

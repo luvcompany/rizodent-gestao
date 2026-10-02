@@ -2,10 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MODULO_KEYS, type ModuloKey } from "@/lib/modulos";
+import { validarHorario, type Horario } from "@/lib/horarioComercial";
 
 // Configuração do cliente (tenant) do usuário logado: segmento, vocabulário,
-// fuso e módulos ligados. Vem da RPC get_my_tenant_config() (SECURITY DEFINER,
-// resolve o tenant por current_tenant_id() no servidor).
+// fuso, horário comercial e módulos ligados. Vem da RPC get_my_tenant_config()
+// (SECURITY DEFINER, resolve o tenant por current_tenant_id() no servidor).
 //
 // Regra de ouro (lição da corrida do papel no boot): quem consome isto só pode
 // NEGAR algo depois que `resolvido` for true. Enquanto a config não chegou, os
@@ -29,6 +30,14 @@ export interface TenantConfig {
   segment: string | null;
   vocabulary: TenantVocabulary;
   timezone: string | null;
+  /**
+   * Horário comercial do PRÓPRIO cliente (tenants.business_hours), fonte única
+   * de rodízio, ponto, envios automáticos, IA e relatórios. null = o servidor
+   * não mandou (versão antiga da RPC) ou veio fora do formato.
+   */
+  businessHours: Horario | null;
+  /** false = horário padrão ainda não confirmado pela clínica; null = desconhecido. */
+  businessHoursConfirmado: boolean | null;
   /** Só as chaves que o servidor mandou; chave ausente = desconhecida. */
   modules: Partial<Record<ModuloKey, boolean>>;
 }
@@ -90,10 +99,14 @@ export function normalizarTenantConfig(bruto: unknown): TenantConfig | null {
     if (typeof v === "boolean") modules[key] = v;
   }
 
+  const horario = validarHorario(obj.business_hours);
+
   return {
     tenant_id: textoOuNulo(obj.tenant_id),
     segment: textoOuNulo(obj.segment),
     timezone: textoOuNulo(obj.timezone),
+    businessHours: horario.ok ? horario.valor : null,
+    businessHoursConfirmado: typeof obj.business_hours_confirmado === "boolean" ? obj.business_hours_confirmado : null,
     vocabulary: {
       pessoa: texto(voc.pessoa, VOCABULARIO_NEUTRO.pessoa),
       pessoa_plural: texto(voc.pessoa_plural, VOCABULARIO_NEUTRO.pessoa_plural),
@@ -111,7 +124,6 @@ export function normalizarTenantConfig(bruto: unknown): TenantConfig | null {
 }
 
 async function carregarTenantConfig(): Promise<TenantConfig | null> {
-  // Cast: a RPC é do v2 e pode não estar no types.ts gerado.
   const { data, error } = await (supabase.rpc as any)("get_my_tenant_config");
   if (error) throw error;
   return normalizarTenantConfig(data);

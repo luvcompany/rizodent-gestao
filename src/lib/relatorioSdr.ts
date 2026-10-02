@@ -11,6 +11,9 @@
 // Réguas (definidas no SQL, repetidas aqui só para a tela explicar):
 //   • leads recebidos = leads que chegaram a ela no período (distribuição,
 //     transferência ou criação), pela mesma régua do "Leads hoje" da Equipe;
+//     incluem os que ela mesma cadastrou, contados à parte em leads_cadastrados;
+//   • taxa de resposta = sobre os leads que ESCREVERAM (leads_com_entrada):
+//     lead cadastrado que nunca mandou mensagem não entra na conta;
 //   • 1ª resposta = primeira mensagem HUMANA pela régua única do banco
 //     (rodizio_msg_humana: conteúdo ou ligação, sem a saudação do bot, template,
 //     espera automática ou log de sistema) enquanto o lead era dela; relógio
@@ -61,6 +64,8 @@ export type LinhaRelatorioSdr = Partial<ReagendamentosSdr> & {
   minutos_expediente: number;
   minutos_pausa: number;
   is_total: boolean;
+  leads_cadastrados: number | null;
+  leads_com_entrada: number | null;
 };
 
 export type RpcRelatorioSdr = "relatorio_sdr" | "relatorio_sdr_minha";
@@ -137,6 +142,8 @@ function normalizarLinha(r: Record<string, unknown>): LinhaRelatorioSdr {
     minutos_expediente: num(r.minutos_expediente),
     minutos_pausa: num(r.minutos_pausa),
     is_total: r.is_total === true,
+    leads_cadastrados: numOuNulo(r.leads_cadastrados),
+    leads_com_entrada: numOuNulo(r.leads_com_entrada),
   };
 }
 
@@ -264,4 +271,10 @@ export async function buscarLigacoesSdr(de: string, ate: string, userId?: string
     telefonia_feitas: num(r.telefonia_feitas),
     whatsapp_feitas: num(r.whatsapp_feitas),
   }));
+}
+
+/** "Respondidos %": sobre os leads que escreveram; banco antigo (sem a coluna) usa a régua antiga. */
+export function taxaResposta(l: LinhaRelatorioSdr): string {
+  if (l.leads_com_entrada == null) return fmtPct(l.leads_respondidos, l.leads_recebidos);
+  return fmtPct(l.resp_amostra, l.leads_com_entrada);
 }

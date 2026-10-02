@@ -107,6 +107,12 @@
     --success-soft-foreground: 152 58% 30%;
     --warning-soft: 36 93% 94%;
     --warning-soft-foreground: 32 95% 33%;
+    /* Comunicação interna (notas, chat entre setores): âmbar suave, nunca
+       confundível com o verde/balões do WhatsApp. */
+    --internal: 43 100% 96%;
+    --internal-foreground: 30 80% 22%;
+    --internal-border: 40 85% 78%;
+    --internal-accent: 36 90% 42%;
     --info-soft: 218 92% 95%;
     --info-soft-foreground: 212 90% 40%;
     --destructive-soft: 0 82% 96%;
@@ -254,6 +260,10 @@
     --success-soft-foreground: 152 55% 72%;
     --warning-soft: 38 40% 16%;
     --warning-soft-foreground: 38 85% 72%;
+    --internal: 38 35% 13%;
+    --internal-foreground: 40 85% 82%;
+    --internal-border: 38 45% 30%;
+    --internal-accent: 40 90% 60%;
     --info-soft: 212 40% 16%;
     --info-soft-foreground: 212 85% 72%;
     --destructive-soft: 0 40% 16%;

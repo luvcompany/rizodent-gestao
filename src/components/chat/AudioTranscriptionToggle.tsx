@@ -58,7 +58,7 @@ export default function AudioTranscriptionToggle({ messageId, callId, api4comCal
       <button
         onClick={handleClick}
         disabled={loading}
-        className="flex items-center gap-1.5 text-[11px] text-primary hover:text-primary/80 font-medium transition-colors disabled:opacity-60"
+        className="flex items-center gap-1.5 text-xs font-semibold text-info hover:underline transition-colors disabled:opacity-60"
       >
         {loading ? (
           <Loader2 size={12} className="animate-spin" />
@@ -76,7 +76,7 @@ export default function AudioTranscriptionToggle({ messageId, callId, api4comCal
             : "Transcrever áudio"}
       </button>
       {open && text && (
-        <div className="mt-1 rounded-md bg-secondary/60 border border-border p-2 text-[12px] leading-relaxed text-foreground whitespace-pre-wrap">
+        <div className="mt-1.5 rounded-lg bg-surface-sunken border border-border/60 px-3 py-2 text-[13px] leading-relaxed text-foreground whitespace-pre-wrap">
           {text}
         </div>
       )}

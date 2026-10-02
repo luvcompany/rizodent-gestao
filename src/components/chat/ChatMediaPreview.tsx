@@ -8,11 +8,11 @@ type Props = {
 export default function ChatMediaPreview({ mediaPreview, onClose }: Props) {
   return (
     <Dialog open={!!mediaPreview} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-2 bg-background/95 border-border">
+      <DialogContent className="max-h-[90vh] max-w-4xl rounded-2xl border-border/60 bg-card/95 p-2 shadow-float">
         {mediaPreview?.type === "image" ? (
-          <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded" />
+          <img src={mediaPreview.url} alt="" className="w-full h-auto max-h-[85vh] object-contain rounded-xl" />
         ) : mediaPreview?.type === "video" ? (
-          <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded" />
+          <video src={mediaPreview.url} controls autoPlay className="w-full max-h-[85vh] rounded-xl" />
         ) : null}
       </DialogContent>
     </Dialog>

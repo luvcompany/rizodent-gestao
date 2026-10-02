@@ -6,9 +6,9 @@ interface LeadScoreBadgeProps {
 }
 
 function getBand(score: number) {
-  if (score >= 80) return { label: "VIP", className: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30" };
-  if (score >= 60) return { label: "Quente", className: "bg-warning/15 text-warning border-warning/30" };
-  if (score >= 30) return { label: "Morno", className: "bg-warning/5 text-foreground border-warning/20" };
+  if (score >= 80) return { label: "VIP", className: "border-success/30 bg-success-soft text-success-soft-foreground" };
+  if (score >= 60) return { label: "Quente", className: "border-destructive/30 bg-destructive-soft text-destructive-soft-foreground" };
+  if (score >= 30) return { label: "Morno", className: "border-warning/30 bg-warning-soft text-warning-soft-foreground" };
   return { label: "Frio", className: "bg-muted text-muted-foreground border-border" };
 }
 

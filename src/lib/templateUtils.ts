@@ -38,3 +38,14 @@ export function deduplicateTemplates<T extends { name: string; updated_at?: stri
   }
   return Array.from(map.values());
 }
+
+// ─── Utilitário puro usado pelas telas do redesign (01/10/2026) ───
+export function indicesDasVariaveis(texto: string | null | undefined): number[] {
+  if (!texto) return [];
+  const vistos = new Set<number>();
+  for (const m of texto.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && n > 0) vistos.add(n);
+  }
+  return [...vistos].sort((a, b) => a - b);
+}

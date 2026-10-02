@@ -4,17 +4,23 @@ import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * "Sou gestor(a) da equipe?" — pergunta ao banco (RPC `is_gestor_equipe`:
- * superadmin OU auth.uid() = crm_rodizio_config.gestor_user_id do tenant atual).
- * NENHUM papel dá gestão sozinho — nem crc, nem gerente: o usuário do Meta App
- * Review também é crc e não pode ganhar poder de gestão, e a mesma função é a
- * porta de admin-manage-user (criar conta, redefinir senha), que nenhum papel
- * existente ganha de brinde. Gestor é NOMEADO pelo superadmin, um a um. Por isso
- * a decisão vem do servidor, e as RPCs da aba Equipe repetem a checagem por
- * dentro.
+ * superadmin OU auth.uid() = crm_rodizio_config.gestor_user_id do tenant atual,
+ * com conta ativa e papel gerente ou crc).
+ * Gestão é de UMA pessoa NOMEADA, não de um papel: a mesma função é a porta de
+ * admin-manage-user (criar conta, redefinir senha) e 19 funções do rodízio
+ * usam o gestor como dono da fila e destino dos leads. Todo cliente tem um
+ * gestor desde a migration 20260929002000: o 1º gerente/crc do onboarding; o
+ * suporte troca pelo painel, o próprio gestor passa em CRM › Equipe ("Passar a
+ * gestão"), e o banco passa ao sucessor se o gestor for bloqueado, excluído ou
+ * mudar de papel. As RPCs da aba Equipe repetem a checagem por dentro.
  *
  * Regras:
- *  - uma chamada por usuário por sessão (cache em memória; a promessa é
- *    compartilhada entre CrmLayout e a página, então não há chamada dupla);
+ *  - uma chamada por usuário a cada 5 minutos (cache em memória com validade;
+ *    a promessa é compartilhada entre CrmLayout e a página, então não há
+ *    chamada dupla). Quem acabou de receber a gestão em outro navegador vê o
+ *    menu Equipe em até 5 min ou ao recarregar;
+ *  - `limparCacheGestor()` apaga o cache e faz todo hook montado perguntar de
+ *    novo (usado depois de "Passar a gestão" e no refreshProfile);
  *  - "false" de verdade só vem do banco (`data === false`) ou da RPC ausente
  *    (PGRST202 — banco ainda sem a Fase 1): aí o item some e a rota fecha;
  *  - ERRO (rede, 5xx) NÃO é "não é gestor": `resolved` fica false, `erro`
@@ -29,9 +35,13 @@ import { useAuth } from "@/contexts/AuthContext";
 // dispensa a chamada.
 const NUNCA_GESTOR = new Set(["sdr", "recepcao", "closer"]);
 
+/** Validade do "sim/não" em memória. */
+const VALIDADE_MS = 5 * 60_000;
+
 type Resultado = { isGestor: boolean; erro: boolean };
 
-const cache = new Map<string, Promise<Resultado>>();
+const cache = new Map<string, { promessa: Promise<Resultado>; em: number }>();
+const ouvintes = new Set<() => void>();
 
 /** RPC não existe no banco (Fase 1 ainda não publicada) = "false" definitivo. */
 const rpcAusente = (e: unknown): boolean => {
@@ -39,30 +49,38 @@ const rpcAusente = (e: unknown): boolean => {
   return err.code === "PGRST202" || /could not find the function/i.test(String(err.message ?? ""));
 };
 
+/**
+ * Esquece o "sou gestor?" de todo mundo e avisa os hooks montados para
+ * perguntarem de novo. Chamado depois de passar a gestão e no refreshProfile.
+ */
+export function limparCacheGestor(): void {
+  cache.clear();
+  ouvintes.forEach((avisar) => avisar());
+}
+
 export function consultarGestorEquipe(userId: string): Promise<Resultado> {
-  let p = cache.get(userId);
-  if (!p) {
-    // RPC ainda não está em types.ts (gerado pelo Lovable) — padrão do projeto.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    p = (supabase as any)
-      .rpc("is_gestor_equipe")
-      .then(({ data, error }: { data: unknown; error: unknown }): Resultado => {
-        if (error) {
-          if (rpcAusente(error)) return { isGestor: false, erro: false };
-          // Sem cache em erro: uma falha de rede não pode virar "não é gestor"
-          // pelo resto da sessão.
-          cache.delete(userId);
-          return { isGestor: false, erro: true };
-        }
-        return { isGestor: data === true, erro: false };
-      })
-      .catch((): Resultado => {
+  const guardado = cache.get(userId);
+  if (guardado && Date.now() - guardado.em < VALIDADE_MS) return guardado.promessa;
+  // RPC ainda não está em types.ts (gerado pelo Lovable) — padrão do projeto.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const promessa: Promise<Resultado> = (supabase as any)
+    .rpc("is_gestor_equipe")
+    .then(({ data, error }: { data: unknown; error: unknown }): Resultado => {
+      if (error) {
+        if (rpcAusente(error)) return { isGestor: false, erro: false };
+        // Sem cache em erro: uma falha de rede não pode virar "não é gestor"
+        // pelo resto da sessão.
         cache.delete(userId);
         return { isGestor: false, erro: true };
-      });
-    cache.set(userId, p);
-  }
-  return p;
+      }
+      return { isGestor: data === true, erro: false };
+    })
+    .catch((): Resultado => {
+      cache.delete(userId);
+      return { isGestor: false, erro: true };
+    });
+  cache.set(userId, { promessa, em: Date.now() });
+  return promessa;
 }
 
 type Estado = { userId: string | null; isGestor: boolean; resolved: boolean; erro: boolean };
@@ -71,6 +89,20 @@ export function useGestorEquipe(): { isGestor: boolean; resolved: boolean; erro:
   const { user, userRole, roleResolved } = useAuth();
   const [state, setState] = useState<Estado>({ userId: null, isGestor: false, resolved: false, erro: false });
   const [tentativa, setTentativa] = useState(0);
+
+  // Reconsulta: quando alguém limpa o cache e, a cada validade, para a gestão
+  // recebida em outro navegador aparecer sem recarregar a página.
+  useEffect(() => {
+    const avisar = () => setTentativa((n) => n + 1);
+    ouvintes.add(avisar);
+    // Um pouco depois da validade: o cache nasceu alguns ms depois da montagem
+    // e ainda estaria "válido" num intervalo exato.
+    const t = window.setInterval(avisar, VALIDADE_MS + 5_000);
+    return () => {
+      ouvintes.delete(avisar);
+      window.clearInterval(t);
+    };
+  }, []);
 
   useEffect(() => {
     const uid = user?.id ?? null;

@@ -377,7 +377,7 @@ export default function AvisoFimExpediente() {
   return (
     <AlertDialog open={aberto}>
       <AlertDialogContent
-        className="max-w-sm"
+        className="max-w-md gap-5 rounded-card"
         onEscapeKeyDown={(e) => e.preventDefault()}
         // Clique fora não fecha, e não é preciso prop nenhuma para isso: o
         // AlertDialog do Radix já barra pointerDownOutside/interactOutside por
@@ -391,10 +391,10 @@ export default function AvisoFimExpediente() {
         onOpenAutoFocus={(e) => { e.preventDefault(); botaoSeguro.current?.focus(); }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <AlarmClock size={18} className="text-warning" /> Seu expediente vai encerrar
+          <AlertDialogTitle className="flex items-center gap-3 text-lg font-bold leading-snug tracking-tight">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-warning-soft"><AlarmClock size={20} className="text-warning" /></span> Seu expediente vai encerrar
           </AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className="text-sm leading-relaxed text-muted-foreground">
             {erro ? (
               <span className="text-destructive">{erro}</span>
             ) : ocupado ? (
@@ -402,17 +402,17 @@ export default function AvisoFimExpediente() {
             ) : (
               <>
                 Chegou o fim do seu horário. Sem resposta, o expediente encerra em{" "}
-                <span className="font-mono text-base font-semibold tabular-nums text-foreground">{contador}s</span>.
+                <span className="inline-flex items-center rounded-md bg-warning-soft px-1.5 text-base font-bold tabular-nums text-warning-soft-foreground">{contador}s</span>.
               </>
             )}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter className="gap-2 sm:gap-2">
-          <Button ref={botaoSeguro} variant="outline" onClick={() => void continuarMais5()} disabled={emCurso}>
+        <AlertDialogFooter className="gap-2 sm:gap-2 sm:space-x-0">
+          <Button ref={botaoSeguro} variant="outline" className="h-10 rounded-xl" onClick={() => void continuarMais5()} disabled={emCurso}>
             {ocupado === "adiar" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Play size={14} className="mr-1" />}
             Continuar por mais {MINUTOS_ADIAMENTO} min
           </Button>
-          <Button onClick={() => void encerrar()} disabled={emCurso}>
+          <Button className="h-10 rounded-xl shadow-brand" onClick={() => void encerrar()} disabled={emCurso}>
             {ocupado === "encerrar"
               ? <Loader2 size={14} className="mr-1 animate-spin" />
               : erro

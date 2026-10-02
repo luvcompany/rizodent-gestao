@@ -15,28 +15,44 @@ import { toast } from "sonner";
  * da Meta (o caso comum é o paciente não ter escrito nas últimas 24 h) não pode
  * virar erro de tela.
  *
- * `nomeSistema` (opcional, padrão "CRClin") entra nos avisos: quem tem acesso ao
- * hook useBrand() passa `system.name`; os chamadores antigos seguem sem mudança.
+ * Os avisos não citam o nome do produto (CONV-28): cliente com marca própria
+ * (white-label) lia "Bloqueado no CRClin". O texto é neutro — "aqui no
+ * sistema" — para qualquer marca. `nomeSistema` continua aceito só para não
+ * quebrar quem ainda passa (é ignorado).
  */
 export function papelBloqueiaNaMeta(userRole: string | null | undefined): boolean {
   return userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
 }
 
-const NOME_SISTEMA_PADRAO = "CRClin";
+/**
+ * O lead tem telefone para a Meta do WhatsApp? Lead só do Instagram (sem
+ * telefone) não passa pela Block Users API: a function responde "Lead sem
+ * telefone" e o aviso "Não consegui falar com a Meta" saía falso (INTEG-20).
+ * Quem chama confere antes, como Configurações › Bloqueados.
+ */
+export function temTelefoneParaMeta(phone: string | null | undefined): boolean {
+  return !!String(phone ?? "").replace(/\D/g, "");
+}
 
-/** Aviso de quando o bloqueio (ou desbloqueio) local valeu, mas a Meta não respondeu. */
-export function avisoSemMeta(nomeSistema?: string | null, acao: "bloquear" | "desbloquear" = "bloquear"): string {
-  const nome = nomeSistema?.trim() || NOME_SISTEMA_PADRAO;
+/**
+ * Aviso de quando o bloqueio (ou desbloqueio) local valeu, mas a Meta não respondeu.
+ * O 1º parâmetro é o antigo `nomeSistema`, mantido na assinatura e ignorado.
+ */
+export function avisoSemMeta(_nomeSistema?: string | null, acao: "bloquear" | "desbloquear" = "bloquear"): string {
   const feito = acao === "desbloquear" ? "Desbloqueado" : "Bloqueado";
-  return `${feito} no ${nome}. Não consegui falar com a Meta agora.`;
+  return `${feito} aqui no sistema. Não consegui falar com a Meta agora.`;
 }
 
 export async function bloquearContatoNaMeta(
   leadId: string,
   acao: "bloquear" | "desbloquear",
-  opcoes: { silencioso?: boolean; nomeSistema?: string | null } = {},
+  opcoes: {
+    silencioso?: boolean;
+    /** @deprecated ignorado: os avisos não citam mais o nome do produto (CONV-28). */
+    nomeSistema?: string | null;
+  } = {},
 ): Promise<{ ok: boolean; motivo?: string }> {
-  const aviso = avisoSemMeta(opcoes.nomeSistema, acao);
+  const aviso = avisoSemMeta(null, acao);
   try {
     const { data, error } = await supabase.functions.invoke("whatsapp-bloquear-contato", {
       body: { lead_id: leadId, acao },

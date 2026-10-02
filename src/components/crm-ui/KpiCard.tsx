@@ -18,6 +18,8 @@ export interface KpiCardProps extends Omit<React.HTMLAttributes<HTMLElement>, "o
   icon?: IconLike;
   tone?: Tone;
   hint?: React.ReactNode;
+  /** Nome antigo de `hint` (telas que ainda não foram redesenhadas). */
+  detail?: React.ReactNode;
   /** Só aparece se vier (nunca inventar variação). */
   delta?: KpiDelta | null;
   /** Série real. Só aparece se vier com 2+ pontos. */
@@ -30,7 +32,8 @@ export interface KpiCardProps extends Omit<React.HTMLAttributes<HTMLElement>, "o
 
 /** Card de KPI: chip de ícone + rótulo, número grande, hint, variação e sparkline opcionais. */
 export const KpiCard = React.forwardRef<HTMLElement, KpiCardProps>(
-  ({ label, value, icon, tone = "primary", hint, delta, spark, onClick, loading, disabled, className, ...rest }, ref) => {
+  ({ label, value, icon, tone = "primary", hint: hintNovo, detail, delta, spark, onClick, loading, disabled, className, ...rest }, ref) => {
+    const hint = hintNovo ?? detail;
     const t = toneClasses(tone);
     const interactive = typeof onClick === "function";
     const showSpark = !!spark && spark.filter((v) => typeof v === "number" && Number.isFinite(v)).length >= 2;
@@ -115,3 +118,6 @@ export const KpiCard = React.forwardRef<HTMLElement, KpiCardProps>(
   },
 );
 KpiCard.displayName = "KpiCard";
+
+/** Nome antigo do tipo de tom, mantido para as telas antigas. */
+export type SemanticTone = Tone;

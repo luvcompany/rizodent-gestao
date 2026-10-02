@@ -47,5 +47,9 @@ export function useConversationNotes(leadId: string | null | undefined) {
     setNotes((prev) => prev.map((n) => n.id === noteId ? { ...n, content } : n));
   }, []);
 
-  return { notes, notesByMessageId, addNote, removeNote, updateNote, profiles };
+  // Redesign: menções são do v2 (nota_mencoes não existe aqui) — conjunto vazio.
+  const mencoesMinhas = MENCOES_VAZIAS;
+  return { notes, notesByMessageId, addNote, removeNote, updateNote, profiles, mencoesMinhas };
 }
+
+const MENCOES_VAZIAS: ReadonlySet<string> = new Set<string>();

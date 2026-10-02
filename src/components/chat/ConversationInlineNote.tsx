@@ -14,6 +14,8 @@ type ConvNote = {
 };
 
 type Props = {
+  /** Redesign: menções são do v2; aceito e ignorado aqui. */
+  mencionaVoce?: boolean;
   note: ConvNote;
   authorName?: string;
   onDeleted: (id: string) => void;
@@ -53,9 +55,9 @@ export default function ConversationInlineNote({ note, authorName, onDeleted, on
   });
 
   return (
-    <div className="mx-4 my-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 group/note">
+    <div className="group/note mx-4 my-2 rounded-control border border-warning/30 bg-warning-soft px-4 py-3 text-warning-soft-foreground shadow-card">
       <div className="flex items-start gap-2">
-        <StickyNote size={14} className="text-warning mt-0.5 flex-shrink-0" />
+        <StickyNote size={14} className="mt-0.5 flex-shrink-0 text-warning-soft-foreground" />
         <div className="flex-1 min-w-0">
           {editing ? (
             <div className="space-y-2">
@@ -89,10 +91,10 @@ export default function ConversationInlineNote({ note, authorName, onDeleted, on
             encontrava editar/excluir. */}
         {!editing && (
           <div className="flex gap-1 flex-shrink-0">
-            <button onClick={() => setEditing(true)} title="Editar nota" className="flex items-center gap-1 rounded border border-warning/30 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+            <button onClick={() => setEditing(true)} title="Editar nota" className="flex items-center gap-1 rounded border border-warning/30 px-2 py-1 text-[11px] font-medium text-warning-soft-foreground transition-colors hover:bg-warning/10">
               <Pencil size={12} /> Editar
             </button>
-            <button onClick={handleDelete} title="Excluir nota" className="flex items-center gap-1 rounded border border-warning/30 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+            <button onClick={handleDelete} title="Excluir nota" className="flex items-center gap-1 rounded border border-warning/30 px-2 py-1 text-[11px] font-medium text-warning-soft-foreground transition-colors hover:bg-destructive-soft hover:text-destructive-soft-foreground">
               <Trash2 size={12} /> Excluir
             </button>
           </div>
@@ -137,7 +139,7 @@ export function AddInlineNoteButton({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="opacity-0 group-hover:opacity-100 transition-opacity mx-auto flex items-center gap-1 text-[10px] text-warning hover:underline py-0.5"
+        className="mx-auto flex items-center gap-1 py-0.5 text-[10px] text-warning-soft-foreground opacity-0 transition-opacity hover:underline group-hover:opacity-100"
       >
         <StickyNote size={10} /> Anotar
       </button>
@@ -145,7 +147,7 @@ export function AddInlineNoteButton({
   }
 
   return (
-    <div className="mx-4 my-1 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2">
+    <div className="mx-4 my-1 rounded-control border border-warning/30 bg-warning-soft px-3 py-2 text-warning-soft-foreground">
       <Textarea
         autoFocus
         placeholder="Escreva sua anotação..."

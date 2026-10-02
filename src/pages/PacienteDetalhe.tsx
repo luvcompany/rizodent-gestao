@@ -11,6 +11,7 @@ import { ArrowLeft, Save, Plus, User, FileText, DollarSign, Trash2, Pencil, X, C
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { InitialsAvatar, KpiCard, StatusPill } from "@/components/crm-ui";
 
 const origens = ["Anúncio", "Instagram", "Google Ads", "Facebook", "Indicação", "Site", "Outros"];
 
@@ -252,16 +253,17 @@ const PacienteDetalhe = () => {
   });
 
   return (
-    <div className="animate-fade-in space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-5xl animate-fade-in space-y-6">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card p-5 shadow-card">
         <Button variant="ghost" size="icon" onClick={() => navigate("/pacientes")}>
           <ArrowLeft size={20} />
         </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">{paciente.nome}</h1>
-          <p className="text-sm text-muted-foreground">{paciente.telefone} {paciente.cidade && `• ${paciente.cidade}`}</p>
+        <InitialsAvatar name={paciente.nome} className="h-14 w-14 shrink-0" />
+        <div className="min-w-[180px] flex-1">
+          <h1 className="break-words text-3xl font-bold">{paciente.nome}</h1>
+          <p className="break-words text-sm text-muted-foreground">{paciente.telefone} {paciente.email && `• ${paciente.email}`} {paciente.cidade && `• ${paciente.cidade}`}</p>
         </div>
-        <Button onClick={() => navigate("/atendimento", { state: { pacienteId: id, pacienteNome: paciente.nome, pacienteTelefone: paciente.telefone, pacienteCidade: paciente.cidade, pacienteOrigem: paciente.origem, pacienteNomeAnuncio: paciente.nome_anuncio } })} className="gradient-brand text-primary-foreground shadow-brand hover:opacity-90">
+        <Button onClick={() => navigate("/atendimento", { state: { pacienteId: id, pacienteNome: paciente.nome, pacienteTelefone: paciente.telefone, pacienteCidade: paciente.cidade, pacienteOrigem: paciente.origem, pacienteNomeAnuncio: paciente.nome_anuncio } })}>
           <Plus size={16} className="mr-2" /> Novo Procedimento
         </Button>
         <AlertDialog>
@@ -283,31 +285,13 @@ const PacienteDetalhe = () => {
 
       {/* Global KPIs */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="gradient-card border-border shadow-card">
-          <CardContent className="pt-4 pb-3 text-center">
-            <DollarSign size={20} className="mx-auto text-primary mb-1" />
-            <p className="text-2xl font-bold text-primary">{formatCurrency(totalContratado)}</p>
-            <p className="text-xs text-muted-foreground">Total Contratado</p>
-          </CardContent>
-        </Card>
-        <Card className="gradient-card border-border shadow-card">
-          <CardContent className="pt-4 pb-3 text-center">
-            <FileText size={20} className="mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{tratamentos.length}</p>
-            <p className="text-xs text-muted-foreground">Tratamentos</p>
-          </CardContent>
-        </Card>
-        <Card className="gradient-card border-border shadow-card">
-          <CardContent className="pt-4 pb-3 text-center">
-            <DollarSign size={20} className="mx-auto text-muted-foreground mb-1" />
-            <p className="text-2xl font-bold">{pagamentos.length}</p>
-            <p className="text-xs text-muted-foreground">Pagamentos</p>
-          </CardContent>
-        </Card>
+        <KpiCard label="Total contratado" value={<span className="whitespace-nowrap">{formatCurrency(totalContratado)}</span>} icon={DollarSign} tone="primary" />
+        <KpiCard label="Tratamentos" value={tratamentos.length} icon={FileText} tone="info" />
+        <KpiCard label="Pagamentos" value={pagamentos.length} icon={DollarSign} tone="success" />
       </div>
 
       {/* Patient info */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <User size={18} className="text-primary" /> Dados do Paciente
@@ -362,7 +346,7 @@ const PacienteDetalhe = () => {
       </Card>
 
       {/* Tratamentos */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <FileText size={18} className="text-primary" /> Tratamentos ({tratamentos.length})
@@ -438,7 +422,7 @@ const PacienteDetalhe = () => {
                         {t.especialidade && <span className="text-xs text-muted-foreground ml-2">· {t.especialidade}</span>}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant={t.status === "ativo" ? "default" : "secondary"} className={t.status === "ativo" ? "bg-green-600/20 text-green-400 border-green-600/30" : ""}>{t.status}</Badge>
+                        <StatusPill tone={t.status === "ativo" ? "success" : t.status === "cancelado" ? "destructive" : "slate"}>{t.status}</StatusPill>
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditTratamento(t)}><Pencil size={13} /></Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -466,7 +450,7 @@ const PacienteDetalhe = () => {
       </Card>
 
       {/* Pagamentos agrupados por tratamento */}
-      <Card className="gradient-card border-border shadow-card">
+      <Card className="border-border/60 bg-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <DollarSign size={18} className="text-primary" /> Pagamentos ({pagamentos.length})
@@ -485,7 +469,7 @@ const PacienteDetalhe = () => {
                       <span className="text-xs text-muted-foreground ml-2">· {group.tratamento.especialidade}</span>
                     )}
                   </span>
-                  <span className="text-sm font-semibold text-primary">{formatCurrency(group.total)}</span>
+                  <span className="whitespace-nowrap text-sm font-semibold text-primary">{formatCurrency(group.total)}</span>
                 </div>
                 <div className="space-y-2">
                   {group.pagamentos.map((p: any) => {
@@ -526,7 +510,7 @@ const PacienteDetalhe = () => {
                           <Badge variant="outline" className="ml-2 text-xs">{p.tipo === "primeiro" ? "1º Pagamento" : "Recorrente"}</Badge>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
+                          <span className="whitespace-nowrap font-semibold text-primary">{formatCurrency(Number(p.valor))}</span>
                           <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPagamento(p)}><Pencil size={13} /></Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>

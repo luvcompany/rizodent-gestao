@@ -89,25 +89,26 @@ export const HolidaysManager = ({ clinicas, onChange }: Props) => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <CalendarOff className="h-4 w-4" />
+        <Button variant="outline" size="sm" className="h-10 gap-2 rounded-xl bg-card px-3.5 text-[13px] font-medium shadow-xs">
+          <CalendarOff className="h-4 w-4 shrink-0 text-primary" />
           Feriados
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Feriados / Dias sem faturamento</DialogTitle>
+      <DialogContent className="max-w-lg gap-5 rounded-2xl p-5 sm:p-6">
+        <DialogHeader className="pr-8">
+          <DialogTitle className="text-lg font-semibold leading-snug tracking-tight">Feriados / Dias sem faturamento</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Data</Label>
-              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <div className="space-y-5">
+          <div className="space-y-3 rounded-xl border border-border/60 bg-surface-sunken/50 p-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="min-w-0 space-y-1.5">
+              <Label className="text-[13px] font-semibold text-foreground">Data</Label>
+              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="h-10 rounded-xl bg-card font-medium tabular-nums" />
             </div>
-            <div>
-              <Label className="text-xs">Clínica (opcional)</Label>
+            <div className="min-w-0 space-y-1.5">
+              <Label className="text-[13px] font-semibold text-foreground">Clínica (opcional)</Label>
               <Select value={clinicaId} onValueChange={setClinicaId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl bg-card font-medium"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas as clínicas</SelectItem>
                   {clinicas.map((c) => (
@@ -117,31 +118,32 @@ export const HolidaysManager = ({ clinicas, onChange }: Props) => {
               </Select>
             </div>
           </div>
-          <div>
-            <Label className="text-xs">Descrição (opcional)</Label>
-            <Input placeholder="Ex: Sexta-feira Santa" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+          <div className="space-y-1.5">
+            <Label className="text-[13px] font-semibold text-foreground">Descrição (opcional)</Label>
+            <Input placeholder="Ex: Sexta-feira Santa" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="h-10 rounded-xl bg-card" />
           </div>
-          <Button onClick={add} className="w-full gap-2"><Plus className="h-4 w-4" />Adicionar feriado</Button>
+          <Button onClick={add} className="h-10 w-full gap-2 rounded-xl font-semibold"><Plus className="h-4 w-4" />Adicionar feriado</Button>
+          </div>
 
-          <div className="border-t pt-3">
-            <p className="mb-2 text-sm font-semibold text-foreground">Feriados cadastrados</p>
-            <div className="max-h-64 overflow-y-auto space-y-1">
+          <div className="border-t border-border/60 pt-4">
+            <p className="mb-2.5 text-[11px] font-semibold tracking-wider text-tertiary">FERIADOS CADASTRADOS</p>
+            <div className="max-h-64 space-y-1.5 overflow-y-auto">
               {holidays.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhum feriado cadastrado</p>
+                <p className="rounded-xl bg-surface-sunken/60 py-6 text-center text-sm text-muted-foreground">Nenhum feriado cadastrado</p>
               )}
               {holidays.map((h) => {
                 const cl = clinicas.find((c) => c.id === h.clinica_id);
                 const [y, m, d] = h.data.split("-");
                 return (
-                  <div key={h.id} className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-card p-3 hover:bg-muted/50">
-                    <div className="text-sm">
-                      <span className="font-medium">{`${d}/${m}/${y}`}</span>
-                      {h.descricao && <span className="text-muted-foreground"> — {h.descricao}</span>}
-                      <span className="text-xs text-muted-foreground block">
+                  <div key={h.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-sunken px-3.5 py-2.5 transition-colors hover:bg-muted">
+                    <div className="min-w-0 text-sm leading-relaxed">
+                      <span className="inline-flex h-6 items-center rounded-full bg-slate-soft px-2.5 text-xs font-semibold tabular-nums text-slate-soft-foreground">{`${d}/${m}/${y}`}</span>
+                      {h.descricao && <span className="font-medium text-foreground"> — {h.descricao}</span>}
+                      <span className="mt-0.5 block text-xs text-tertiary">
                         {cl ? cl.nome : "Todas as clínicas"}
                       </span>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => remove(h.id)}>
+                    <Button size="sm" variant="ghost" onClick={() => remove(h.id)} className="h-8 w-8 shrink-0 rounded-lg p-0 hover:bg-destructive-soft">
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>

@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertTriangle, Loader2, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
 
 /**
  * Perguntas prontas e menu fixo do Direct de UMA conta do Instagram.
@@ -12,6 +14,11 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
  * As perguntas só aparecem para quem nunca falou com a clínica, no celular
  * (no Direct do computador a Meta não mostra). O menu fica a conversa inteira.
  * A escolha chega no CRClin como nota na conversa do lead.
+ *
+ * A Meta substitui a configuração inteira a cada gravação (lista vazia =
+ * apagar). Por isso, se a LEITURA do que está lá falhar (INTEG-13), a tela não
+ * finge que está vazio: avisa, oferece "Tentar de novo" e só deixa salvar com
+ * a confirmação explícita de que isto substitui o que está na Meta.
  */
 
 const MAX_PERGUNTAS = 4;
@@ -35,32 +42,56 @@ export default function InstagramPerguntasDialog({
   const [salvando, setSalvando] = useState(false);
   const [perguntas, setPerguntas] = useState<Pergunta[]>([]);
   const [menu, setMenu] = useState<ItemMenu[]>([]);
+  /** Motivo de a leitura da Meta ter falhado; null = leu (ou ainda lendo). */
+  const [erroLeitura, setErroLeitura] = useState<string | null>(null);
+  /** Com a leitura falha, salvar exige marcar "isto substitui o que está na Meta". */
+  const [confirmaSubstituir, setConfirmaSubstituir] = useState(false);
+  const leituraAtual = useRef(0);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelado = false;
+  const ler = useCallback(async () => {
+    const minha = ++leituraAtual.current;
     setCarregando(true);
-    supabase.functions
-      .invoke("instagram-perguntas-menu", { body: { ig_account_id: contaId, acao: "ler" } })
-      .then(({ data, error }) => {
-        if (cancelado) return;
-        if (error) {
-          toast.error("Não consegui ler a configuração atual na Meta.");
-          return;
-        }
-        const r = (data ?? {}) as any;
-        if (r.ok === false) {
-          toast.warning(r.motivo || "A Meta não devolveu a configuração.");
-          return;
-        }
-        setPerguntas((r.perguntas ?? []).map((p: any) => ({ pergunta: p.pergunta ?? "" })));
-        setMenu((r.menu ?? []).map((m: any) => ({ titulo: m.titulo ?? "", url: m.url ?? "" })));
-      })
-      .finally(() => { if (!cancelado) setCarregando(false); });
-    return () => { cancelado = true; };
-  }, [open, contaId]);
+    setErroLeitura(null);
+    setConfirmaSubstituir(false);
+    setPerguntas([]);
+    setMenu([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("instagram-perguntas-menu", {
+        body: { ig_account_id: contaId, acao: "ler" },
+      });
+      if (minha !== leituraAtual.current) return;
+      if (error) {
+        setErroLeitura(await motivoDoServidor(data, error, "A Meta não respondeu."));
+        return;
+      }
+      const r = (data ?? {}) as any;
+      if (r.ok === false) {
+        setErroLeitura(r.motivo || "A Meta não devolveu a configuração.");
+        return;
+      }
+      setPerguntas((r.perguntas ?? []).map((p: any) => ({ pergunta: p.pergunta ?? "" })));
+      setMenu((r.menu ?? []).map((m: any) => ({ titulo: m.titulo ?? "", url: m.url ?? "" })));
+    } catch (e) {
+      if (minha !== leituraAtual.current) return;
+      setErroLeitura(e instanceof Error && e.message ? e.message : "A Meta não respondeu.");
+    } finally {
+      if (minha === leituraAtual.current) setCarregando(false);
+    }
+  }, [contaId]);
+
+  // Cada abertura começa do zero: relê a Meta e esquece erro/confirmação antigos.
+  useEffect(() => {
+    if (!open) {
+      leituraAtual.current += 1; // resposta atrasada de uma abertura anterior é ignorada
+      return;
+    }
+    void ler();
+  }, [open, ler]);
+
+  const bloqueadoPelaLeitura = !!erroLeitura && !confirmaSubstituir;
 
   const salvar = async () => {
+    if (bloqueadoPelaLeitura) return;
     setSalvando(true);
     try {
       const { data, error } = await supabase.functions.invoke("instagram-perguntas-menu", {
@@ -71,7 +102,7 @@ export default function InstagramPerguntasDialog({
           menu: menu.filter((m) => m.titulo.trim()),
         },
       });
-      if (error) { toast.error("Erro ao salvar: " + error.message); return; }
+      if (error) { toast.error("Erro ao salvar: " + (await motivoDoServidor(data, error, "a Meta não respondeu."))); return; }
       const r = (data ?? {}) as any;
       if (r.ok) {
         toast.success("Direct atualizado na Meta.");
@@ -89,7 +120,7 @@ export default function InstagramPerguntasDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle>Direct de @{usuario}</DialogTitle>
           <DialogDescription>
@@ -104,6 +135,31 @@ export default function InstagramPerguntasDialog({
           </div>
         ) : (
           <div className="space-y-6">
+            {erroLeitura && (
+               <div role="alert" className="space-y-2 rounded-xl border border-destructive/30 bg-destructive-soft p-3">
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <AlertTriangle size={16} className="text-destructive shrink-0" />
+                  Não foi possível ler a configuração atual
+                </p>
+                <p className="text-xs text-muted-foreground break-words">Motivo: {erroLeitura}</p>
+                <p className="text-xs text-muted-foreground">
+                  As perguntas e o menu que já estão na Meta não aparecem aqui, e salvar substitui tudo o que está lá.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button size="sm" variant="outline" onClick={() => void ler()}>
+                    <RotateCcw size={14} className="mr-1" /> Tentar de novo
+                  </Button>
+                  <label className="flex items-center gap-2 text-xs text-foreground">
+                    <Checkbox
+                      checked={confirmaSubstituir}
+                      onCheckedChange={(v) => setConfirmaSubstituir(v === true)}
+                      aria-label="Entendo que salvar substitui o que está na Meta"
+                    />
+                    Entendo que salvar substitui o que está na Meta
+                  </label>
+                </div>
+              </div>
+            )}
             <section className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Perguntas prontas <span className="text-muted-foreground font-normal">(até {MAX_PERGUNTAS})</span></h3>
@@ -116,13 +172,14 @@ export default function InstagramPerguntasDialog({
                   <Plus size={14} className="mr-1" /> Adicionar
                 </Button>
               </div>
-              {perguntas.length === 0 && (
+              {perguntas.length === 0 && !erroLeitura && (
                 <p className="text-xs text-muted-foreground">Nenhuma pergunta — o Direct abre em branco, como hoje.</p>
               )}
               {perguntas.map((p, i) => (
-                <div key={i} className="flex gap-2">
+                 <div key={i} className="flex min-w-0 gap-2">
                   <Input
-                    value={p.pergunta}
+                     className="h-10 min-w-0 rounded-xl"
+                     value={p.pergunta}
                     maxLength={80}
                     placeholder="Ex.: Quero marcar uma avaliação"
                     onChange={(e) =>
@@ -158,15 +215,17 @@ export default function InstagramPerguntasDialog({
                 Título de até 30 caracteres. Com link, o item abre o site; sem link, a escolha vira nota na conversa.
               </p>
               {menu.map((m, i) => (
-                <div key={i} className="flex gap-2">
+                 <div key={i} className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
                   <Input
-                    value={m.titulo}
+                     className="h-10 min-w-0 rounded-xl"
+                     value={m.titulo}
                     maxLength={30}
                     placeholder="Título (ex.: Agendar avaliação)"
                     onChange={(e) => setMenu((l) => l.map((x, j) => (j === i ? { ...x, titulo: e.target.value } : x)))}
                   />
                   <Input
-                    value={m.url}
+                     className="h-10 min-w-0 rounded-xl"
+                     value={m.url}
                     placeholder="Link (opcional)"
                     onChange={(e) => setMenu((l) => l.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
                   />
@@ -187,7 +246,7 @@ export default function InstagramPerguntasDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando || carregando}>
+          <Button onClick={salvar} disabled={salvando || carregando || bloqueadoPelaLeitura}>
             {salvando ? <><Loader2 size={14} className="mr-1 animate-spin" /> Salvando…</> : "Salvar na Meta"}
           </Button>
         </DialogFooter>

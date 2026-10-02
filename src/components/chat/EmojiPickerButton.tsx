@@ -197,9 +197,9 @@ export default function EmojiPickerButton({
   const surface =
     "bg-white dark:bg-[#1d1d1d]";
   const divider =
-    "border-black/10 dark:border-white/10";
+    "border-border";
   const mutedText =
-    "text-neutral-500 dark:text-neutral-400";
+    "text-muted-foreground";
 
   const stickersPanel = (
     <div className={`${PANEL_W} flex flex-col h-[380px] ${surface}`}>
@@ -214,12 +214,8 @@ export default function EmojiPickerButton({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar figurinha..."
-            className={`w-full h-8 pl-8 pr-2 rounded-md text-sm outline-none border border-transparent
-              bg-black/5 text-neutral-900 placeholder:text-neutral-500 focus:border-black/20
-              dark:bg-white/5
-              dark:text-neutral-100
-              dark:placeholder:text-neutral-500
-              dark:focus:border-white/20`}
+            className={`w-full h-9 pl-8 pr-2 rounded-xl text-sm outline-none border border-transparent
+              bg-muted text-foreground placeholder:text-tertiary focus:border-primary/40`}
           />
         </div>
       </div>
@@ -248,9 +244,7 @@ export default function EmojiPickerButton({
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 className={`aspect-square rounded-lg border ${divider} flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50
-                  bg-black/5 hover:bg-black/10
-                  dark:bg-white/5
-                  dark:hover:bg-white/10`}
+                  bg-muted hover:bg-surface-sunken`}
                 title="Enviar figurinha própria (WebP)"
               >
                 <ImagePlus size={22} className={mutedText} />
@@ -275,9 +269,7 @@ export default function EmojiPickerButton({
                       setOpen(false);
                     }}
                     className={`w-full h-full rounded-lg overflow-hidden flex items-center justify-center transition-colors disabled:cursor-not-allowed
-                      bg-black/5 hover:bg-black/10
-                      dark:bg-white/5
-                      dark:hover:bg-white/10`}
+                      bg-muted hover:bg-surface-sunken`}
                     title={stickersDisabled ? stickersDisabledReason : (s.label || "Enviar figurinha")}
                   >
                     {src ? (
@@ -291,7 +283,7 @@ export default function EmojiPickerButton({
                         className="w-full h-full object-contain"
                       />
                     ) : (
-                      <span className="block w-full h-full animate-pulse bg-black/10 dark:bg-white/10" />
+                      <span className="block w-full h-full animate-pulse bg-muted" />
                     )}
                   </button>
                   <button
@@ -341,7 +333,7 @@ export default function EmojiPickerButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          className="p-2 text-tertiary hover:text-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled}
           title={stickersEnabled ? "Emojis e figurinhas" : "Emojis"}
         >
@@ -364,18 +356,14 @@ export default function EmojiPickerButton({
               <TabsTrigger
                 value="emojis"
                 className={`rounded-none h-full text-xs ${mutedText} data-[state=active]:shadow-none
-                  data-[state=active]:bg-black/5 data-[state=active]:text-neutral-900
-                  dark:data-[state=active]:bg-white/10
-                  dark:data-[state=active]:text-white`}
+                  data-[state=active]:bg-muted data-[state=active]:text-foreground`}
               >
                 Emojis
               </TabsTrigger>
               <TabsTrigger
                 value="stickers"
                 className={`rounded-none h-full text-xs ${mutedText} data-[state=active]:shadow-none
-                  data-[state=active]:bg-black/5 data-[state=active]:text-neutral-900
-                  dark:data-[state=active]:bg-white/10
-                  dark:data-[state=active]:text-white`}
+                  data-[state=active]:bg-muted data-[state=active]:text-foreground`}
               >
                 Figurinhas
               </TabsTrigger>

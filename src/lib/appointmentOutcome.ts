@@ -249,3 +249,25 @@ export async function applyAppointmentOutcome(args: {
  * Use marcarComparecimentoSdr de src/lib/appointmentActions.ts: ela monta o texto
  * com o que o servidor respondeu e não dispara automação nenhuma.
  */
+
+// ─── Adaptador para as telas do redesign (01/10/2026) ───
+// O v2 chama `registrarDesfechoDaConsulta` e lê etapa/falha no retorno. Aqui a
+// regra continua sendo a do CRClin (applyAppointmentOutcome: mesmo update, só
+// se a consulta ainda estiver confirmada, mesma movimentação e nota). O
+// adaptador só entrega o formato que a tela espera; etapa nula = a tela usa o
+// texto genérico.
+export type ResultadoDoDesfecho = {
+  ok: boolean;
+  etapaId: string | null;
+  etapaNome: string | null;
+  falhaDeEtapa: string | null;
+};
+export async function registrarDesfechoDaConsulta(args: {
+  leadId: string;
+  appointmentId: string;
+  outcome: AppointmentOutcome;
+  requireConfirmed?: boolean;
+}): Promise<ResultadoDoDesfecho> {
+  const ok = await applyAppointmentOutcome(args);
+  return { ok, etapaId: null, etapaNome: null, falhaDeEtapa: null };
+}

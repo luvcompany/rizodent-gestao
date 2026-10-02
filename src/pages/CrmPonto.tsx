@@ -7,10 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
-import { asDateParam } from "@/lib/reportKit";
-import { fusoDoTenant } from "@/lib/fuso";
+import { asDateParam, BAHIA_TZ } from "@/lib/reportKit";
 import { mensagemDeErroRpc, type EstadoRpc } from "@/lib/relatorioSdr";
 import { AlertTriangle, Clock, Coffee, Info, Loader2, Pause, RefreshCw, Timer, Users } from "lucide-react";
+import { InitialsAvatar, StatusPill } from "@/components/crm-ui";
 
 /**
  * Ponto da equipe — a tela que faltava.
@@ -107,7 +107,7 @@ const fmtDuracao = (min: number | null | undefined): string => {
 
 /** timestamptz ISO → "07:47" no fuso da clínica. */
 const hora = (iso: string | null | undefined): string =>
-  iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: fusoDoTenant() }) : "—";
+  iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: BAHIA_TZ }) : "—";
 
 /** DATE "2026-09-11" → "11/09" (sem passar por Date: não há fuso para errar). */
 const diaCurto = (d: string): string => {
@@ -271,7 +271,7 @@ export default function CrmPonto() {
           <div className="ml-auto flex items-center gap-2">
             {atualizadoEm && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
-                atualizado {atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: fusoDoTenant() })}
+                atualizado {atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: BAHIA_TZ })}
               </span>
             )}
             <DateRangeFilter value={periodo} onChange={setPeriodo} excludePresets={["all", "multi"]} />
@@ -320,24 +320,16 @@ export default function CrmPonto() {
                 <ul className="divide-y divide-border">
                   {abertos.map((p) => (
                     <li key={p.user_id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                      <span className="flex items-center gap-2 font-medium text-foreground">
-                        <span className={`h-[7px] w-[7px] rounded-full ${p.estado_agora === "aberto" ? "bg-emerald-500" : "bg-warning"}`} />
-                        {p.nome}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={p.estado_agora === "aberto"
-                          ? "h-5 border-emerald-500/30 px-1.5 text-[10px] text-emerald-600 dark:text-emerald-400"
-                          : "h-5 border-warning/30 px-1.5 text-[10px] text-warning"}
-                      >
+                      <span className="flex items-center gap-2 font-medium text-foreground"><InitialsAvatar name={p.nome} className="h-8 w-8" />{p.nome}</span>
+                      <StatusPill tone={p.estado_agora === "aberto" ? "success" : "warning"}>
                         {p.estado_agora === "aberto" ? "Em expediente" : `Em pausa · ${rotuloMotivo(p.rotulo_pausa_atual, p.motivo_pausa_atual)}`}
-                      </Badge>
+                      </StatusPill>
                       <span className="text-sm text-muted-foreground">
                         abriu às {hora(p.aberto_desde)} · {fmtDuracao(p.minutos_sessao_atual)} trabalhados
                         {p.minutos_pausa_atual > 0 ? ` · ${fmtDuracao(p.minutos_pausa_atual)} de pausa` : ""}
                       </span>
                       {p.estado_agora === "pausado" && p.pausado_desde && (
-                        <span className="text-sm text-warning">
+                        <span className="text-sm text-warning-soft-foreground">
                           em pausa desde {hora(p.pausado_desde)}
                         </span>
                       )}
@@ -363,19 +355,16 @@ export default function CrmPonto() {
                 {[...comExpediente, ...semExpediente].map((p) => (
                   <article key={p.user_id} className="rounded-2xl border border-border bg-card p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">{p.nome}</p>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <InitialsAvatar name={p.nome} className="h-10 w-10 shrink-0" />
+                        <div className="min-w-0"><p className="break-words font-semibold text-foreground">{p.nome}</p>
                         <p className="text-xs text-muted-foreground">{rotuloPapel(p.papel)}</p>
+                        </div>
                       </div>
                       {p.estado_agora !== "fechado" && (
-                        <Badge
-                          variant="outline"
-                          className={p.estado_agora === "aberto"
-                            ? "h-5 border-emerald-500/30 px-1.5 text-[10px] text-emerald-600 dark:text-emerald-400"
-                            : "h-5 border-warning/30 px-1.5 text-[10px] text-warning"}
-                        >
+                        <StatusPill tone={p.estado_agora === "aberto" ? "success" : "warning"}>
                           {p.estado_agora === "aberto" ? "Agora em expediente" : "Agora em pausa"}
-                        </Badge>
+                        </StatusPill>
                       )}
                     </div>
 
@@ -453,7 +442,7 @@ export default function CrmPonto() {
                             <TableCell className="whitespace-nowrap text-muted-foreground">{diaCurto(p.dia)}</TableCell>
                             <TableCell className="whitespace-nowrap font-mono tabular-nums">{hora(p.inicio)}</TableCell>
                             <TableCell className="whitespace-nowrap font-mono tabular-nums">
-                              {p.em_curso ? <span className="text-warning">em curso</span> : hora(p.fim)}
+                              {p.em_curso ? <span className="text-warning-soft-foreground">em curso</span> : hora(p.fim)}
                             </TableCell>
                             <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">{fmtDuracao(p.minutos)}</TableCell>
                             <TableCell>

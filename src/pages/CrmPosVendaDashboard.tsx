@@ -8,7 +8,8 @@ import {
   AlertTriangle, UserX, Crown, Sparkles, RefreshCw, ArrowRight, Phone, Info
 } from "lucide-react";
 import { toast } from "sonner";
-import { hojeNoFuso, fetchAllPaged, rptContratados } from "@/lib/reportKit";
+import { todayBahia, fetchAllPaged, rptContratados } from "@/lib/reportKit";
+import { EmptyState, KpiCard, PageHeader, SectionCard, type SemanticTone } from "@/components/crm-ui";
 
 // ── Regras do painel (base = PACIENTES com pagamento, não leads de marketing) ─
 // Em risco: 1º pagamento há mais de DIAS_RISCO dias E sem nenhum pagamento nos
@@ -115,7 +116,7 @@ type AggPaciente = { paciente_id: string; primeiro: string; ultimo: string; tota
  * tolerada é rpt_contratados indisponível (recem_erro preenchido).
  */
 async function loadPosVendaMetrics(userId: string): Promise<Metrics> {
-  const hoje = hojeNoFuso();
+  const hoje = todayBahia();
   const corteRisco = addDiasDia(hoje, -DIAS_RISCO);
   const corteSumido = addDiasDia(hoje, -DIAS_SUMIDO);
   const inicioRecem = addDiasDia(hoje, -(JANELA_RECEM_DIAS - 1)); // período inclusivo
@@ -328,8 +329,7 @@ export default function CrmPosVendaDashboard() {
       label: "Em risco",
       count: String(metrics.em_risco_count),
       icon: AlertTriangle,
-      color: "text-destructive",
-      bg: "bg-destructive/10",
+      tone: "destructive" as SemanticTone,
       leads: metrics.em_risco_top,
       hint: `1º pagamento há ${DIAS_RISCO}+ dias e sem pagamento há ${DIAS_RISCO}+ dias`,
       vazio: "Nenhum paciente nesta categoria",
@@ -339,8 +339,7 @@ export default function CrmPosVendaDashboard() {
       label: "Sumidos",
       count: metrics.sumidos_disponivel ? String(metrics.sumidos_count) : "—",
       icon: UserX,
-      color: "text-warning",
-      bg: "bg-warning/10",
+      tone: "warning" as SemanticTone,
       leads: metrics.sumidos_top,
       hint: metrics.sumidos_disponivel
         ? `Sem pagamento há ${DIAS_SUMIDO}+ dias`
@@ -356,8 +355,7 @@ export default function CrmPosVendaDashboard() {
       label: "VIPs",
       count: String(metrics.vips_count),
       icon: Crown,
-      color: "text-emerald-600",
-      bg: "bg-emerald-500/10",
+      tone: "success" as SemanticTone,
       leads: metrics.vips_top,
       hint: `${brl.format(VIP_VALOR_MIN)}+ pagos (acumulado)`,
       vazio: "Nenhum paciente nesta categoria",
@@ -367,8 +365,7 @@ export default function CrmPosVendaDashboard() {
       label: "Recém-contratados",
       count: metrics.recem_erro ? "—" : String(metrics.recem_count ?? 0),
       icon: Sparkles,
-      color: "text-primary",
-      bg: "bg-primary/10",
+      tone: "primary" as SemanticTone,
       leads: metrics.recem_top,
       hint: metrics.recem_erro
         ? "Indisponível no momento"
@@ -380,25 +377,14 @@ export default function CrmPosVendaDashboard() {
   ] : [];
 
   return (
-    <div className="h-full overflow-y-auto pr-1">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Pós-Venda</h1>
-          <p className="text-sm text-muted-foreground">
-            Retenção da base de pacientes (quem já pagou algum tratamento)
-            {metrics && ` · ${metrics.pacientes_total} pacientes com pagamento registrado`}
-          </p>
-        </div>
-        <Button
-          onClick={() => fetchMetrics(true)}
-          disabled={loading}
-          variant="outline"
-          size="sm"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Atualizar
+    <div className="space-y-6">
+      <PageHeader title="Pós-Venda" subtitle={
+          `Retenção da base de pacientes (quem já pagou algum tratamento)${metrics ? ` · ${metrics.pacientes_total} pacientes com pagamento registrado` : ""}`
+        } actions={
+        <Button onClick={() => fetchMetrics(true)} disabled={loading} variant="outline">
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
         </Button>
-      </div>
+      } />
 
       {erro && !metrics ? (
         <Card className="p-8 max-w-lg mx-auto text-center">
@@ -419,49 +405,24 @@ export default function CrmPosVendaDashboard() {
       ) : (
         <>
           {/* 4 cards principais */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {cards.map(card => {
-              const Icon = card.icon;
               return (
-                <Card key={card.key} className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`h-10 w-10 rounded-lg ${card.bg} flex items-center justify-center`}>
-                      <Icon className={`h-5 w-5 ${card.color}`} />
-                    </div>
-                    <span className="text-3xl font-bold">{card.count}</span>
-                  </div>
-                  <h3 className="font-semibold text-sm">{card.label}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">{card.hint}</p>
-                </Card>
+                <KpiCard key={card.key} label={card.label} value={card.count} icon={card.icon} tone={card.tone} detail={card.hint} />
               );
             })}
           </div>
 
           {/* Listas top-10 por card */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {cards.map(card => {
               const Icon = card.icon;
               return (
-                <Card key={card.key} className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold flex items-center gap-2 text-sm">
-                      <Icon className={`h-4 w-4 ${card.color}`} />
-                      {card.label}
-                      {card.leads.length > 0 && (
-                        <span className="text-xs text-muted-foreground font-normal">
-                          (top {card.leads.length})
-                        </span>
-                      )}
-                    </h3>
-                  </div>
-
+                <SectionCard key={card.key} title={`${card.label}${card.leads.length > 0 ? ` (top ${card.leads.length})` : ""}`} icon={Icon}>
                   {card.leads.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-6 text-center flex items-center justify-center gap-2">
-                      <Info className="h-3.5 w-3.5 shrink-0" />
-                      <span>{card.vazio}</span>
-                    </p>
+                    <EmptyState icon={Info} title={card.vazio} />
                   ) : (
-                    <div className="space-y-1.5">
+                    <div className="divide-y divide-border/60">
                       {card.leads.map(item => (
                         <button
                           key={item.paciente_id}
@@ -470,10 +431,10 @@ export default function CrmPosVendaDashboard() {
                               ? navigate(`/crm/conversa/${item.lead_id}`)
                               : navigate(`/pacientes/${item.paciente_id}`)
                           }
-                          className="w-full flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent text-left transition-colors group"
+                          className="group flex w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-surface-sunken"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{item.nome}</div>
+                            <div className="break-words text-sm font-semibold">{item.nome}</div>
                             <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
                               {item.telefone && (
                                 <>
@@ -485,12 +446,12 @@ export default function CrmPosVendaDashboard() {
                               <span>{item.detalhe}</span>
                             </div>
                           </div>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
                         </button>
                       ))}
                     </div>
                   )}
-                </Card>
+                </SectionCard>
               );
             })}
           </div>

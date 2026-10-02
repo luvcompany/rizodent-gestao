@@ -11,6 +11,11 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useModule } from "@/hooks/useModule";
+import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
+import { envioFalhou, motivoDoEnvio } from "@/lib/erroDoEnvio";
+import { preencherCorpo, valoresPadraoDoModelo } from "@/lib/modeloDoChat";
+import { diaNoFuso } from "@/lib/fuso";
+import { SeloDoEnvio } from "./AvisoDeEnvio";
 import {
   createConfirmedAppointment,
   detectRescheduleMode,
@@ -48,6 +53,8 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   const assistantName = nomeRecebido?.trim() || "Assistente";
   // Módulo de IA desligado para o cliente: o cartão some (só com false explícito).
   const { ligado: iaLigada } = useModule("ia");
+  // WABA pausada / cliente sem número: "Enviar modelo" fica travado (S29P-3c).
+  const envio = useEnvioDoLead(suggestion.lead_id);
   const [date, setDate] = useState<Date | undefined>(parseDate(suggestion.suggested_date));
   const [time, setTime] = useState<string>((suggestion.suggested_time || "09:00").slice(0, 5));
   const [notes, setNotes] = useState("");
@@ -102,6 +109,14 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
 
   const dateLabel = useMemo(() => (date ? capitalize(format(date, "EEEE, dd/MM/yyyy", { locale: ptBR })) : ""), [date]);
 
+  // Prévia com as variáveis como o servidor vai preencher (nome e a consulta
+  // recém-criada) — mesma regra do envio pelo chat (CONV-15).
+  const previaDoModelo = useMemo(() => {
+    if (!templateBody) return "";
+    const consulta = date ? { scheduled_date: format(date, "yyyy-MM-dd"), scheduled_time: time || null } : null;
+    return preencherCorpo(templateBody, valoresPadraoDoModelo(templateBody, { name: leadName }, consulta, diaNoFuso(Date.now())));
+  }, [templateBody, leadName, date, time]);
+
   const confirmSchedule = async () => {
     if (!date) { toast.error("Selecione a data do agendamento"); return; }
     setSaving(true);
@@ -145,22 +160,36 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   const sendTemplate = async () => {
     if (!templateName) { toast.error("Selecione o modelo de agendamento"); return; }
     if (!leadPhone) { toast.error("Lead sem telefone para enviar o modelo"); return; }
+    if (envio.bloqueio) { toast.error(envio.bloqueio.texto); return; }
     setSending(true);
     try {
       // As variáveis do modelo são preenchidas pelo PRÓPRIO servidor a partir do
-      // agendamento recém-criado, na convenção real destes modelos: {{1}} = nome do
-      // lead e {{2}} = data+hora. É o MESMO preenchimento já usado pelo compositor e
-      // pelas automações (não reinventamos aqui) — por isso enviamos sem componentes
-      // explícitos e deixamos o servidor resolver.
-      const { error } = await supabase.functions.invoke("send-whatsapp-message", {
+      // agendamento recém-criado, pela posição (1ª = nome do lead, 2ª = data e
+      // hora — a convenção do editor de Modelos). É o mesmo preenchimento das
+      // automações, e a prévia acima usa a mesma regra (valoresPadraoDoModelo);
+      // por isso enviamos sem componentes explícitos.
+      const { data, error } = await supabase.functions.invoke("send-whatsapp-message", {
         body: { lead_id: suggestion.lead_id, to: leadPhone, type: "template", template_name: templateName, template_language: "pt_BR" },
       });
-      if (error) throw error;
+      // CONV-7: recusa da Meta volta 200 com ok:false. A sugestão só é
+      // concluída quando o modelo SAIU; senão o cartão fica para tentar de novo.
+      // 'enviado_sem_registro' (a Meta aceitou; só o histórico não gravou)
+      // segue como ENVIADO: o card sai, pelo mesmo motivo de logo abaixo.
+      const motivo = envioFalhou(data, error)
+        ? await motivoDoEnvio(data, error, "Não foi possível enviar o modelo")
+        : null;
+      if (motivo && !motivo.semRegistro) {
+        if (motivo.pausado) envio.reconsultar();
+        toast.error(`Modelo não enviado: ${motivo.texto}`);
+        return;
+      }
       // O envio já aconteceu — a partir daqui o card SEMPRE sai da tela, mesmo
       // que a marcação da sugestão falhe: mantê-lo com o botão ativo convidaria
       // a um segundo clique, e o paciente receberia o modelo DUAS vezes.
       const closed = await closeSuggestion("scheduled");
-      if (closed) {
+      if (motivo?.semRegistro) {
+        toast.warning(motivo.texto);
+      } else if (closed) {
         toast.success("Modelo de confirmação enviado ao paciente 🧡");
       } else {
         toast.warning(
@@ -168,8 +197,8 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
         );
       }
       onDone();
-    } catch (e: any) {
-      toast.error("Falha ao enviar o modelo: " + (e?.message || e));
+    } catch {
+      toast.error("Não foi possível enviar o modelo. Confira a conexão e tente de novo.");
     } finally {
       setSending(false);
     }
@@ -188,11 +217,11 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
   if (iaLigada === false) return null;
 
   return (
-    <div className="px-3 py-2.5 border-t border-border bg-emerald-500/10">
-      <div className="flex items-center justify-between mb-1.5">
+    <div className="mx-3 my-2 rounded-2xl border border-success/25 bg-success-soft px-3 py-3 shadow-xs">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium">
-          <CalendarClock size={14} className="text-emerald-600" />
-          <span className="text-emerald-700 dark:text-emerald-400">
+           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-card text-success shadow-xs"><CalendarClock size={14} /></span>
+           <span className="text-success-soft-foreground">
             {step === "propose" ? `${assistantName} sugere agendar` : "Agendado — enviar confirmação"}
           </span>
         </div>
@@ -228,7 +257,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
                     {date ? format(date, "dd/MM/yyyy") : "Selecionar"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                 <PopoverContent className="w-auto rounded-xl p-0 shadow-float" align="start">
                   <Calendar mode="single" selected={date} onSelect={setDate} locale={ptBR} className="p-3 pointer-events-auto" />
                 </PopoverContent>
               </Popover>
@@ -260,7 +289,7 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
           </div>
 
           <div className="flex gap-2 pt-0.5">
-            <Button size="sm" className="flex-1 h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={confirmSchedule} disabled={saving}>
+             <Button size="sm" className="h-8 flex-1 gap-1.5 rounded-full text-xs" onClick={confirmSchedule} disabled={saving}>
               {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               {saving ? "Agendando..." : "Confirmar agendamento"}
             </Button>
@@ -268,27 +297,39 @@ export default function ScheduleSuggestionCard({ suggestion, leadPhone, assistan
         </div>
       ) : (
         <div className="space-y-2">
-          <div className="rounded-md border border-emerald-500/30 bg-background/60 p-2 text-xs">
-            <p className="font-medium text-emerald-700 dark:text-emerald-400 mb-1">
+           <div className="min-w-0 overflow-hidden rounded-xl border border-success/25 bg-card p-3 text-xs shadow-xs">
+             <p className="mb-1 font-medium text-success-soft-foreground">
               ✅ {isReschedule ? "Reagendado" : "Agendado"}: {dateLabel} às {time}
             </p>
             {templateName ? (
               <>
                 <p className="text-muted-foreground mb-1">Modelo pronto p/ enviar: <span className="font-mono">{templateName}</span></p>
                 {templateBody && (
-                  <p className="text-[11px] whitespace-pre-wrap text-foreground/80 border-l-2 border-emerald-500/30 pl-2">
-                    {templateBody}
+                   <p className="break-words border-l-2 border-success/30 pl-2 text-[11px] text-foreground/80 whitespace-pre-wrap">
+                    {previaDoModelo || templateBody}
                   </p>
                 )}
-                <p className="text-[10px] text-muted-foreground mt-1">Variáveis preenchidas automaticamente: {"{{1}}"} = nome do paciente, {"{{2}}"} = data e hora do agendamento.</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Prévia com o nome do paciente e a data e hora deste agendamento, como o servidor preenche.</p>
               </>
             ) : (
               <p className="text-muted-foreground">Sem modelo configurado para esta cidade — envie a confirmação manualmente pelo compositor.</p>
             )}
           </div>
+          {envio.bloqueio && templateName && leadPhone && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <SeloDoEnvio bloqueio={envio.bloqueio} />
+              <span>{envio.bloqueio.texto}.</span>
+            </div>
+          )}
           <div className="flex gap-2">
             {templateName && leadPhone && (
-              <Button size="sm" className="flex-1 h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={sendTemplate} disabled={sending}>
+              <Button
+                size="sm"
+                 className="h-8 flex-1 gap-1.5 rounded-full text-xs"
+                onClick={sendTemplate}
+                disabled={sending || !!envio.bloqueio}
+                title={envio.bloqueio ? envio.bloqueio.texto : undefined}
+              >
                 {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                 {sending ? "Enviando..." : "Enviar modelo"}
               </Button>

@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cleanTemplateName, deduplicateTemplates } from "@/lib/templateUtils";
-import { sortTemplatesByUsage } from "@/lib/templateUsage";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -20,18 +18,23 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { compressImage } from "./imageCompressor";
-import SlashCommandMenu from "./SlashCommandMenu";
+import SlashCommandMenu, { type RespostaRapida, type SlashCommandMenuHandle } from "./SlashCommandMenu";
+import EnviarModeloDialog, { type ComponentesDoModelo, type ModeloParaEnviar } from "./EnviarModeloDialog";
+import AvisoDeEnvio from "./AvisoDeEnvio";
 import AudioRecorderComposer from "./AudioRecorderComposer";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
 import { createChatMediaPath } from "@/lib/mediaUtils";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
+import { envioFalhou, motivoDoEnvio, traduzirMotivo } from "@/lib/erroDoEnvio";
+import { comAssinatura } from "@/lib/assinaturaMensagem";
+import { textoDaRespostaRapida } from "@/lib/modeloDoChat";
+import { motivoFigurinhaInvalida, pareceWebp, webpParaJpeg } from "@/lib/figurinhaWebp";
+import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
+import { carregarModelosDoLead, enviarModeloAoLead } from "@/hooks/useChatConversation";
 
-
-const getInvokeErrorMessage = (data: any, error: any) => {
-  if (data?.user_message) return data.user_message;
-  if (data?.error) return data.error;
-  return error?.message || "Erro ao enviar mensagem";
-};
+/** Item do menu de anexo que abriu o seletor de arquivo (CONV-20). */
+type OrigemDoArquivo = "imagem" | "video" | "documento" | "figurinha";
 
 type ReplyMessage = {
   id: string;
@@ -84,11 +87,55 @@ type ChatInputProps = {
   /** For Instagram: timestamp of the last inbound DM specifically (comments don't open the 24h window). */
   lastInboundDmAt?: string | null;
   channel?: "whatsapp" | "instagram";
+  /**
+   * Envio de modelo escolhido no "/" (CONV-1), já com os valores das variáveis
+   * (CONV-15). Opcional: sem ele o próprio compositor envia, com as mesmas
+   * mensagens otimistas (onMessageSent/Success/Error).
+   */
+  onSendTemplate?: (template: ModeloParaEnviar, componentes: ComponentesDoModelo) => unknown | Promise<unknown>;
+  /** Nome do lead para {{nome}} das respostas rápidas (opcional; sem ele é lido do banco). */
+  leadName?: string | null;
 };
 
-export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, lastInboundWaAt, lastInboundDmAt, channel = "whatsapp" }: ChatInputProps) {
+export default function ChatInput({ leadId, leadPhone, onLoadTemplates, externalMessage, onExternalMessageConsumed, onMessageSent, onMessageError, onMessageSuccess, replyTo, onReplySent, lastInboundAt, lastInboundWaAt, lastInboundDmAt, channel = "whatsapp", onSendTemplate, leadName }: ChatInputProps) {
   const isInstagram = channel === "instagram";
   const sendFnName = isInstagram ? "instagram-send-message" : "send-whatsapp-message";
+
+  // Número de envio do WhatsApp: WABA pausada pelo suporte (S29P-3c) ou
+  // cliente sem número conectado (CRC-11) — o compositor avisa e trava ANTES.
+  const envio = useEnvioDoLead(leadId, { ativo: !isInstagram });
+  const bloqueioWa = isInstagram ? null : envio.bloqueio;
+
+  /**
+   * Envio que voltou com falha (CONV-3). 'enviado_sem_registro' (a Meta
+   * ACEITOU; só o histórico não gravou) conta como enviado: o balão fica
+   * "enviado", o texto não volta à caixa e o aviso pede para não reenviar —
+   * reenviar duplicaria a mensagem para o paciente. Recusa de verdade: mostra a
+   * linha gravada como falha (quando veio) ou marca o balão com erro, devolve o
+   * texto e mostra o motivo em PT-BR; pausa → reconsulta o aviso.
+   */
+  const tratarFalhaDoEnvio = async (p: {
+    data: unknown;
+    error: unknown;
+    padrao: string;
+    tempId: string;
+    /** Mensagem otimista como deve ficar se a Meta aceitou (media_url já definitiva). */
+    otimista: Record<string, unknown>;
+    devolver?: () => void;
+  }) => {
+    const motivo = await motivoDoEnvio(p.data, p.error, p.padrao);
+    if (motivo.semRegistro) {
+      onMessageSuccess?.(p.tempId, { ...p.otimista, status: "sent", whatsapp_message_id: motivo.wamid });
+      toast.warning(motivo.texto);
+      return;
+    }
+    const gravada = (p.data as { message?: unknown } | null)?.message;
+    if (gravada) onMessageSuccess?.(p.tempId, gravada);
+    else onMessageError?.(p.tempId);
+    p.devolver?.();
+    if (motivo.pausado) envio.reconsultar();
+    toast.error(motivo.texto);
+  };
 
   const buildSendBody = async (params: { type: string; message?: string; media_url?: string; reply?: ReplyMessage | null; replyMode?: "direct" | "comment"; commentTarget?: { comment_id: string; post_id: string | null } | null }): Promise<SendBody> => {
     if (isInstagram) {
@@ -260,32 +307,105 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
     void supabase.functions.invoke("bot-engine", {
       body: { leadId, botId, trigger: "manual_start" },
-    }).then(({ data, error }) => {
-      if (error || data?.error) {
-        throw error || new Error(data?.error || "Erro ao iniciar bot");
+    }).then(async ({ data, error }) => {
+      if (error || data?.error || data?.ok === false) {
+        const motivo = await motivoDoServidor(data, error, "Não foi possível iniciar o bot");
+        toast.error(traduzirMotivo(motivo, "Não foi possível iniciar o bot"));
+        return;
       }
       toast.success("Bot iniciado!");
-    }).catch((err: any) => {
-      toast.error(err.message || "Erro ao iniciar bot");
+    }).catch(() => {
+      toast.error("Não foi possível iniciar o bot. Confira a conexão e tente de novo.");
     }).finally(() => {
       setStartingBotId(null);
     });
   };
 
-  // Slash commands
+  // Slash commands — CONV-1/CONV-2: respostas rápidas (preenchem a caixa) e
+  // modelos da WABA do número de envio (abrem a confirmação e ENVIAM o modelo).
   const [slashActive, setSlashActive] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashTemplates, setSlashTemplates] = useState<any[]>([]);
+  const [slashRespostas, setSlashRespostas] = useState<RespostaRapida[]>([]);
+  const slashMenuRef = useRef<SlashCommandMenuHandle>(null);
+  const [modeloParaEnviar, setModeloParaEnviar] = useState<ModeloParaEnviar | null>(null);
 
+  // Respostas rápidas: a RLS de crm_quick_replies recorta por papel; o
+  // filtro do cliente é explícito porque o superadmin passa na RLS de todos
+  // ("cada cliente é um mundo"). Valem também no Instagram.
   useEffect(() => {
-    const loadSlashData = async () => {
-      const { data: t } = await supabase.from("crm_whatsapp_templates").select("id, name, body_text, category").eq("status", "APPROVED").order("created_at", { ascending: false });
-      const deduped = deduplicateTemplates(t || []);
-      const sorted = await sortTemplatesByUsage(deduped, tenant.id);
-      setSlashTemplates(sorted);
-    };
-    loadSlashData();
+    setSlashRespostas([]);
+    if (!tenant.id) return;
+    let vivo = true;
+    supabase
+      .from("crm_quick_replies")
+      .select("id, title, content")
+      .eq("tenant_id", tenant.id)
+      .order("title")
+      .then(({ data }) => {
+        if (!vivo) return;
+        setSlashRespostas(((data as RespostaRapida[] | null) ?? []).filter((r) => r.title?.trim() && r.content?.trim()));
+      });
+    return () => { vivo = false; };
   }, [tenant.id]);
+
+  // Modelos: só WhatsApp, e só os da WABA do número que vai enviar (CONV-8).
+  useEffect(() => {
+    setSlashTemplates([]);
+    if (isInstagram || !leadId) return;
+    let vivo = true;
+    carregarModelosDoLead(leadId, tenant.id).then(({ modelos }) => {
+      if (vivo) setSlashTemplates(modelos);
+    });
+    return () => { vivo = false; };
+  }, [tenant.id, leadId, isInstagram]);
+
+  // Primeiro nome para {{nome}} das respostas rápidas (lido uma vez por lead).
+  const nomeDoLeadRef = useRef<{ leadId: string; nome: string | null } | null>(null);
+  const nomeDoLeadAtual = async (): Promise<string | null> => {
+    if (leadName !== undefined) return leadName ?? null;
+    if (nomeDoLeadRef.current?.leadId === leadId) return nomeDoLeadRef.current.nome;
+    const { data } = await supabase.from("crm_leads").select("name").eq("id", leadId).maybeSingle();
+    const nome = (data as { name?: string | null } | null)?.name ?? null;
+    nomeDoLeadRef.current = { leadId, nome };
+    return nome;
+  };
+
+  const escolherResposta = async (resposta: RespostaRapida) => {
+    setSlashActive(false);
+    const nome = await nomeDoLeadAtual();
+    setNewMessage(textoDaRespostaRapida(resposta.content, nome));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
+
+  const escolherModelo = (modelo: ModeloParaEnviar) => {
+    setSlashActive(false);
+    setNewMessage("");
+    setModeloParaEnviar(modelo);
+  };
+
+  // Envio do modelo confirmado no diálogo (prévia + variáveis).
+  const enviarModeloEscolhido = async (modelo: ModeloParaEnviar, componentes: ComponentesDoModelo) => {
+    if (bloqueioWa) { toast.error(bloqueioWa.texto); return; }
+    if (onSendTemplate) {
+      await onSendTemplate(modelo, componentes);
+      return;
+    }
+    const r = await enviarModeloAoLead({
+      leadId,
+      modelo,
+      componentes,
+      aoCriarOtimista: (m) => onMessageSent?.(m),
+      aoConfirmar: (tempId, gravada) => onMessageSuccess?.(tempId, gravada),
+      aoFalhar: (tempId) => onMessageError?.(tempId),
+    });
+    if (r.pausado) envio.reconsultar();
+  };
 
   // Auto-resize textarea
   useEffect(() => {
@@ -333,9 +453,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const handleSendMessage = async () => {
     if ((!newMessage.trim() && !attachedFile) || (!leadPhone && !isInstagram)) return;
 
+    // WABA pausada ou cliente sem número: o campo já está travado, mas o
+    // texto pode ter vindo de fora (externalMessage/atalho).
+    if (bloqueioWa) {
+      toast.error(bloqueioWa.texto);
+      return;
+    }
+
     // Block if 24h window expired (WhatsApp only — IG has its own 24h logic but no template fallback)
     if (!isInstagram && windowInfo.expired) {
-      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      toast.error("Janela de 24h expirada. Use um modelo para reabrir a conversa.");
       return;
     }
 
@@ -347,17 +474,29 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     let type = "text";
-    let rawMessage = newMessage.trim();
-    // Prepend signature if enabled
-    const sigEnabled = profile?.signature_enabled && profile?.nome;
-    let message = sigEnabled ? `*${profile.nome}:*\n${rawMessage}` : rawMessage;
+    // Figurinha não leva legenda (a Meta descarta): o texto fica na caixa.
+    const ehFigurinha = attachedFile?.type === "sticker";
+    const rawMessage = ehFigurinha ? "" : newMessage.trim();
+    // Assinatura (profiles.signature_enabled), no formato único de
+    // assinaturaMensagem — só quando há texto: mídia sem legenda não leva uma
+    // legenda que seja só a assinatura.
+    const sigEnabled = profile?.signature_enabled && profile?.nome?.trim();
+    const message = sigEnabled && rawMessage ? comAssinatura(profile.nome, rawMessage) : rawMessage;
     let fileToUpload = attachedFile?.file;
     const originalFileName = attachedFile?.file.name;
 
     // Clear input immediately for optimistic UX
     const currentReplyTo = replyTo;
-    setNewMessage("");
+    if (!ehFigurinha) setNewMessage("");
+    else if (newMessage.trim()) toast.info("A figurinha vai sem legenda — o texto ficou na caixa para você enviar em seguida.");
     onReplySent?.();
+
+    // CRC-11: envio de texto que falhou devolve o texto à caixa (se a pessoa
+    // ainda não começou outra mensagem), para não precisar digitar de novo.
+    const devolverTexto = () => {
+      if (!rawMessage) return;
+      setNewMessage((atual) => (atual.trim() ? atual : rawMessage));
+    };
 
     if (attachedFile && fileToUpload) {
       type = attachedFile.type;
@@ -399,20 +538,19 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
           const { data, error } = await supabase.functions.invoke(sendFnName, { body });
           URL.revokeObjectURL(blobUrl);
-          if (error || data?.error || data?.ok === false) {
-            if (data?.message) {
-              onMessageSuccess?.(tempId, data.message);
-            } else {
-              onMessageError?.(tempId);
-            }
-            toast.error(getInvokeErrorMessage(data, error));
+          if (envioFalhou(data, error)) {
+            await tratarFalhaDoEnvio({
+              data, error, padrao: "Não foi possível enviar o arquivo", tempId,
+              otimista: { ...optimisticMsg, media_url: url }, devolver: devolverTexto,
+            });
           } else {
             onMessageSuccess?.(tempId, data?.message);
           }
-        } catch (err: any) {
+        } catch {
           URL.revokeObjectURL(blobUrl);
           onMessageError?.(tempId);
-          toast.error(`Erro inesperado: ${err.message}`);
+          devolverTexto();
+          toast.error("Não foi possível enviar o arquivo. Confira a conexão e tente de novo.");
         }
       })();
       return;
@@ -441,22 +579,21 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
     try {
       const { data, error } = await supabase.functions.invoke(sendFnName, { body });
-      if (error || data?.error || data?.ok === false) {
-        if (data?.message) {
-          onMessageSuccess?.(tempId, data.message);
-        } else {
-          onMessageError?.(tempId);
-        }
-        toast.error(getInvokeErrorMessage(data, error));
+      if (envioFalhou(data, error)) {
+        await tratarFalhaDoEnvio({
+          data, error, padrao: "Não foi possível enviar a mensagem", tempId,
+          otimista: optimisticMsg, devolver: devolverTexto,
+        });
       } else {
         onMessageSuccess?.(tempId, data?.message);
         if (type === "text" && rawMessage.trim() && !isInstagram) {
           recordManualAiCorrection(rawMessage.trim());
         }
       }
-    } catch (err: any) {
+    } catch {
       onMessageError?.(tempId);
-      toast.error(`Erro inesperado: ${err.message}`);
+      devolverTexto();
+      toast.error("Não foi possível enviar a mensagem. Confira a conexão e tente de novo.");
     }
   };
 
@@ -467,19 +604,50 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
   };
 
-  const handleFileSelect = (accept: string) => {
+  // Qual item do menu de anexo abriu o seletor (CONV-20): só "Figurinha"
+  // gera figurinha; WebP escolhido em "Imagem" vira JPEG e vai como imagem.
+  const origemDoArquivoRef = useRef<OrigemDoArquivo | null>(null);
+
+  const handleFileSelect = (accept: string, origem: OrigemDoArquivo) => {
     if (fileInputRef.current) {
+      origemDoArquivoRef.current = origem;
       fileInputRef.current.accept = accept;
       fileInputRef.current.click();
     }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const original = e.target.files?.[0];
+    if (!original) return;
     e.target.value = "";
+    const origem = origemDoArquivoRef.current;
+    origemDoArquivoRef.current = null;
 
+    if (origem === "figurinha") {
+      const motivo = await motivoFigurinhaInvalida(original);
+      if (motivo) {
+        toast.error(motivo);
+        return;
+      }
+      setAttachedFile({ file: original, type: "sticker" });
+      return;
+    }
+
+    let file = original;
     const type = getMessageType(file);
+
+    // A Cloud API (e o Direct) não aceitam WebP como imagem: converte para JPEG.
+    if (type === "image" && pareceWebp(file)) {
+      setOptimizing(true);
+      try {
+        file = await webpParaJpeg(file);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error && err.message ? `${err.message} Salve a imagem como JPG ou PNG e tente de novo.` : "Não foi possível converter a imagem WebP. Salve como JPG ou PNG e tente de novo.");
+        return;
+      } finally {
+        setOptimizing(false);
+      }
+    }
 
     if (type === "audio" && file.size > 15 * 1024 * 1024) {
       toast.warning("Áudio muito longo. Considere enviar em partes menores.");
@@ -488,11 +656,6 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
     if (type === "document" && file.size > 100 * 1024 * 1024) {
       toast.error("Documento muito grande. Máximo: 100MB");
-      return;
-    }
-
-    if (file.type === "image/webp" && file.size < 512 * 1024) {
-      setAttachedFile({ file, type: "sticker" });
       return;
     }
 
@@ -628,14 +791,23 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   const isWindowExpired = windowInfo.expired;
 
+  // Campo, anexo, emoji, gravador e enviar ficam travados juntos.
+  const envioTravado = optimizing || uploading || igDirectBloqueado || !!bloqueioWa;
+  const tituloTravado = bloqueioWa ? bloqueioWa.texto : igDirectBloqueado ? igAvisoBloqueio : undefined;
+
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
     if (!leadPhone && !isInstagram) {
       toast.error("Lead sem telefone para envio do áudio");
       throw new Error("Lead sem telefone");
     }
 
+    if (bloqueioWa) {
+      toast.error(bloqueioWa.texto);
+      throw new Error(bloqueioWa.texto);
+    }
+
     if (!isInstagram && windowInfo.expired) {
-      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      toast.error("Janela de 24h expirada. Use um modelo para reabrir a conversa.");
       throw new Error("Janela expirada");
     }
 
@@ -686,7 +858,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     const tempId = crypto.randomUUID();
     const optimisticUrl = URL.createObjectURL(oggBlob);
 
-    onMessageSent?.({
+    const otimistaDoAudio = {
       id: tempId,
       lead_id: leadId,
       direction: "outbound",
@@ -697,7 +869,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       created_at: new Date().toISOString(),
       whatsapp_message_id: null,
       reply_to_message_id: null,
-    });
+    };
+    onMessageSent?.(otimistaDoAudio);
 
     try {
       console.log(`[ChatInput] Sending audio: size=${audioFile.size}, type=${audioFile.type}`);
@@ -718,23 +891,21 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       const { data, error } = await supabase.functions.invoke(sendFnName, { body: audioBody });
 
       URL.revokeObjectURL(optimisticUrl);
-      if (error || data?.error || data?.ok === false) {
-        if (data?.message) {
-          onMessageSuccess?.(tempId, data.message);
-        } else {
-          onMessageError?.(tempId);
-        }
-        toast.error(data?.error || error?.message || "Erro ao enviar áudio");
+      if (envioFalhou(data, error)) {
+        await tratarFalhaDoEnvio({
+          data, error, padrao: "Não foi possível enviar o áudio", tempId,
+          otimista: { ...otimistaDoAudio, media_url: url },
+        });
         return;
       }
 
       onMessageSuccess?.(tempId, data?.message);
-    } catch (err: any) {
+    } catch {
       URL.revokeObjectURL(optimisticUrl);
       onMessageError?.(tempId);
-      toast.error(err?.message || "Erro ao enviar áudio");
+      toast.error("Não foi possível enviar o áudio. Confira a conexão e tente de novo.");
     }
-  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId, igDirectBloqueado, igAvisoBloqueio]);
+  }, [leadId, leadPhone, windowInfo.expired, onMessageSent, onMessageError, onMessageSuccess, isInstagram, sendFnName, resolveInstagramAccountId, igDirectBloqueado, igAvisoBloqueio, bloqueioWa]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendSticker = useCallback(async (mediaUrl: string) => {
     const sticker = { media_url: mediaUrl };
@@ -743,8 +914,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       toast.error("Lead sem telefone");
       return;
     }
+    if (bloqueioWa) {
+      toast.error(bloqueioWa.texto);
+      return;
+    }
     if (windowInfo.expired) {
-      toast.error("Janela de 24h expirada. Use um template para reabrir a conversa.");
+      toast.error("Janela de 24h expirada. Use um modelo para reabrir a conversa.");
       return;
     }
     const tempId = crypto.randomUUID();
@@ -764,30 +939,27 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     try {
       const body = await buildSendBody({ type: "sticker", media_url: sticker.media_url });
       const { data, error } = await supabase.functions.invoke(sendFnName, { body });
-      if (error || data?.error || data?.ok === false) {
-        if (data?.message) {
-          onMessageSuccess?.(tempId, data.message);
-        } else {
-          onMessageError?.(tempId);
-        }
-        toast.error(getInvokeErrorMessage(data, error));
+      if (envioFalhou(data, error)) {
+        await tratarFalhaDoEnvio({
+          data, error, padrao: "Não foi possível enviar a figurinha", tempId, otimista: optimisticMsg,
+        });
       } else {
         onMessageSuccess?.(tempId, data?.message);
       }
-    } catch (err: any) {
+    } catch {
       onMessageError?.(tempId);
-      toast.error(`Erro ao enviar figurinha: ${err?.message || ""}`);
+      toast.error("Não foi possível enviar a figurinha. Confira a conexão e tente de novo.");
     }
-  }, [isInstagram, leadPhone, windowInfo.expired, leadId, onMessageSent, onMessageError, onMessageSuccess, sendFnName]);
+  }, [isInstagram, leadPhone, windowInfo.expired, leadId, onMessageSent, onMessageError, onMessageSuccess, sendFnName, bloqueioWa]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   return (
-    <div className="flex-shrink-0 bg-card border-t border-border px-4 py-3">
+    <div className="flex-shrink-0 border-t border-border/60 bg-card px-3 py-3 sm:px-4">
       <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
       {/* Optimizing/uploading indicator */}
       {(optimizing || uploading) && (
-        <div className="flex items-center gap-2 mb-2 bg-primary/10 rounded-lg px-3 py-2 text-sm text-primary">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-soft-fg">
           <Loader2 size={16} className="animate-spin" />
           <span>{optimizing ? "Otimizando arquivo..." : "Enviando arquivo..."}</span>
         </div>
@@ -795,7 +967,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
       {/* Attached file preview */}
       {attachedFile && !optimizing && (
-        <div className="flex items-center gap-2 mb-2 bg-secondary rounded-lg px-3 py-2 text-sm">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-border/60 bg-surface-sunken px-3 py-2 text-sm">
           {attachedFile.type === "image" ? <Image size={16} className="text-primary" /> :
            attachedFile.type === "video" ? <Video size={16} className="text-primary" /> :
            attachedFile.type === "sticker" ? <span className="text-lg">🎨</span> :
@@ -812,28 +984,49 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         </div>
       )}
 
+      {/* WABA pausada pelo suporte / cliente sem número (S29P-3c, CRC-11) */}
+      {bloqueioWa && <AvisoDeEnvio bloqueio={bloqueioWa} className="mb-2" />}
+
       {/* Expired window state */}
       {isWindowExpired && !isInstagram ? (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2.5 text-sm text-destructive">
-            <AlertTriangle size={16} className="flex-shrink-0" />
-            <span className="flex-1">A sessão de 24h expirou. Envie um template para reabrir a conversa.</span>
-          </div>
-          <div className="flex items-center gap-2">
+          {!bloqueioWa && (
+            <div className="flex items-center gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2.5 text-sm text-warning-soft-foreground">
+              <AlertTriangle size={16} className="flex-shrink-0" />
+              {/* GER-17: sem nenhuma mensagem do paciente no WhatsApp, nunca houve sessão para "expirar". */}
+              <span className="flex-1">
+                {lastInboundWaAt
+                  ? "A sessão de 24h expirou. Envie um modelo para reabrir a conversa."
+                  : "Nenhuma conversa aberta — envie um modelo para iniciar."}
+              </span>
+            </div>
+          )}
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
             <div className="flex-1 relative">
               <Textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Sessão expirada — use um template"
-                className="pr-10 bg-secondary border-border opacity-50 min-h-[40px] max-h-[40px] resize-none py-2"
+                placeholder={
+                  bloqueioWa
+                    ? bloqueioWa.placeholder
+                    : lastInboundWaAt ? "Sessão expirada — use um modelo" : "Sem conversa aberta — use um modelo"
+                }
+                className="min-h-10 max-h-10 resize-none rounded-xl border-border/60 bg-surface-sunken py-2 pr-10 opacity-60"
                 disabled
                 rows={1}
               />
             </div>
             {!isInstagram && (
-              <Button size="sm" variant="outline" onClick={onLoadTemplates} className="gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onLoadTemplates}
+                className="h-10 shrink-0 gap-1.5 rounded-xl"
+                disabled={!!bloqueioWa}
+                title={bloqueioWa ? bloqueioWa.texto : undefined}
+              >
                 <FileText size={16} />
-                Enviar Template
+                Enviar modelo
               </Button>
             )}
           </div>
@@ -841,12 +1034,12 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       ) : (
         <>
         {isInstagram && (
-          <div className="flex items-center gap-2 mb-2">
-            <div className="inline-flex rounded-md border border-border bg-secondary p-0.5">
+           <div className="mb-2 flex flex-wrap items-center gap-2">
+             <div className="inline-flex rounded-full border border-border/60 bg-surface-sunken p-1">
               <button
                 type="button"
                 onClick={() => setIgReplyMode("direct")}
-                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "direct" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs transition-colors ${igReplyMode === "direct" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <Send size={12} /> Direct
               </button>
@@ -860,14 +1053,14 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   setIgReplyMode("comment");
                 }}
                 disabled={!igCommentTarget}
-                className={`text-xs px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${igReplyMode === "comment" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs transition-colors ${igReplyMode === "comment" ? "bg-purple-soft text-purple-soft-foreground" : "text-muted-foreground hover:text-foreground"} disabled:cursor-not-allowed disabled:opacity-50`}
               >
                 <MessageCircle size={12} /> Comentário
               </button>
             </div>
             {igAccounts.length > 0 && (
               <Select value={igAccountId ?? ""} onValueChange={(v) => setIgAccountId(v)}>
-                <SelectTrigger className="h-7 text-xs w-auto min-w-[140px] gap-1">
+                 <SelectTrigger className="h-8 w-auto min-w-[140px] gap-1 rounded-full bg-card text-xs">
                   <SelectValue placeholder="Conta IG" />
                 </SelectTrigger>
                 <SelectContent>
@@ -878,7 +1071,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               </Select>
             )}
             {igReplyMode === "comment" && igCommentTarget && (
-              <div className="flex-1 min-w-0 flex items-center gap-1.5 text-[11px] text-muted-foreground bg-purple-500/5 border border-purple-500/20 rounded px-2 py-1">
+               <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-purple/20 bg-purple-soft px-2.5 py-1 text-[11px] text-purple-soft-foreground">
                 <Reply size={11} className="text-purple-500 flex-shrink-0" />
                 <span className="truncate">Respondendo: {igCommentTarget.preview || "(sem texto)"}</span>
                 <button
@@ -894,7 +1087,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         )}
         {/* Instagram: janela de Direct fechada — resposta da RPC, dita ANTES de escrever */}
         {igDirectBloqueado && (
-          <div className="flex items-start gap-2 mb-2 bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 text-xs text-destructive">
+          <div className="mb-2 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning-soft-foreground">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1.5">
               <p>
@@ -923,7 +1116,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
         )}
         {/* Fallback heurístico (só quando a RPC não respondeu): janela de DM pelo histórico carregado */}
         {!igJanela && isInstagram && igReplyMode === "direct" && igDmWindowInfo.expired && (
-          <div className="flex items-start gap-2 mb-2 bg-warning/10 border border-warning/20 rounded-lg px-3 py-2 text-xs text-foreground">
+          <div className="mb-2 flex items-start gap-2 rounded-xl border border-warning/25 bg-warning-soft px-3 py-2 text-xs text-warning-soft-foreground">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5 text-warning" />
             <span>
               <strong>Janela de DM expirada.</strong> O Instagram só permite enviar Direct enquanto o usuário enviou um DM nas últimas 24h.
@@ -931,47 +1124,49 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
             </span>
           </div>
         )}
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-1 rounded-2xl border border-border/60 bg-card p-2 shadow-xs transition-shadow focus-within:border-primary/35 focus-within:ring-2 focus-within:ring-primary/15">
           {/* Hide normal controls when recorder is active, but NEVER unmount the recorder */}
           {!recorderActive && (
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={optimizing || uploading || igDirectBloqueado}
-                    title={igDirectBloqueado ? igAvisoBloqueio : undefined}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={envioTravado}
+                    title={tituloTravado}
                   >
                     <Paperclip size={20} />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => handleFileSelect("image/*")}>
+                  <DropdownMenuItem onClick={() => handleFileSelect("image/*", "imagem")}>
                     <Image size={16} className="mr-2" /> Imagem
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect("video/*")}>
+                  <DropdownMenuItem onClick={() => handleFileSelect("video/*", "video")}>
                     <Video size={16} className="mr-2" /> Vídeo
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv")}>
+                  <DropdownMenuItem onClick={() => handleFileSelect(".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv", "documento")}>
                     <File size={16} className="mr-2" /> Documento
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleFileSelect("image/webp")}>
-                    <span className="mr-2 text-base">🎨</span> Figurinha (WebP)
-                  </DropdownMenuItem>
+                  {/* Figurinha é do WhatsApp (o Direct não recebe). */}
+                  {!isInstagram && (
+                    <DropdownMenuItem onClick={() => handleFileSelect("image/webp,.webp", "figurinha")}>
+                      <span className="mr-2 text-base">🎨</span> Figurinha (WebP 512×512)
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="flex-1 relative">
+               <div className="relative min-w-0 flex-1">
                 <SlashCommandMenu
+                  ref={slashMenuRef}
                   query={slashQuery}
-                  templates={slashTemplates}
+                  respostas={slashRespostas}
+                  templates={isInstagram ? [] : slashTemplates}
                   bots={[]}
                   visible={slashActive}
-                  onSelectTemplate={(t) => {
-                    setNewMessage(`[Template: ${t.name}]`);
-                    setSlashActive(false);
-                    toast.info(`Template "${cleanTemplateName(t.name)}" selecionado. Pressione Enter para enviar.`);
-                  }}
+                  onSelectResposta={(r) => { void escolherResposta(r); }}
+                  onSelectTemplate={(t) => escolherModelo(t as ModeloParaEnviar)}
                   onSelectBot={() => {}}
                   onClose={() => setSlashActive(false)}
                 />
@@ -981,7 +1176,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                   onChange={(e) => {
                     const val = e.target.value;
                     setNewMessage(val);
-                    if (val.startsWith("/")) {
+                    if (val.startsWith("/") && !val.includes("\n")) {
                       setSlashActive(true);
                       setSlashQuery(val.slice(1));
                     } else {
@@ -989,46 +1184,67 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                     }
                   }}
                   onKeyDown={(e) => {
-                    if (slashActive && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                      e.preventDefault();
-                      return;
+                    // Com o menu do "/" aberto, as teclas são dele: Enter/Tab
+                    // escolhem, setas andam, Esc fecha — o campo NUNCA envia
+                    // o "/termo" ao paciente (CONV-1).
+                    if (slashActive) {
+                      if (slashMenuRef.current?.tratarTecla(e)) {
+                        e.preventDefault();
+                        return;
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        toast.info(`Nenhuma resposta rápida ou modelo com “${slashQuery.trim()}”. Apague a “/” para enviar como texto.`);
+                        return;
+                      }
                     }
                     handleKeyDown(e);
                   }}
                   placeholder={
-                    igDirectBloqueado
+                    bloqueioWa
+                      ? bloqueioWa.placeholder
+                      : igDirectBloqueado
                       ? (igJanela?.situacao === "so_comentario" || igJanela?.situacao === "sem_direct"
                           ? "Sem Direct desta pessoa — veja o aviso acima"
                           : "Janela de Direct fechada — veja o aviso acima")
-                      : "Digite / para atalhos ou uma mensagem..."
+                      : "Digite / para respostas rápidas ou uma mensagem..."
                   }
-                  className="bg-secondary border-border min-h-[40px] max-h-[120px] resize-none py-2 disabled:opacity-60"
-                  disabled={optimizing || uploading || igDirectBloqueado}
+                   className="min-h-10 max-h-[120px] w-full resize-none border-0 bg-transparent px-2 py-2 text-sm shadow-none focus-visible:ring-0 disabled:opacity-60"
+                  disabled={envioTravado}
                   rows={1}
                 />
               </div>
 
               <EmojiPickerButton
-                disabled={optimizing || uploading || igDirectBloqueado}
+                disabled={envioTravado}
                 onEmojiSelect={(emoji) => setNewMessage((prev) => prev + emoji)}
                 stickersEnabled={!isInstagram}
-                stickersDisabledReason={isWindowExpired ? "Fora da janela de 24h — só template entrega" : undefined}
+                stickersDisabledReason={isWindowExpired ? "Fora da janela de 24h — só modelo entrega" : undefined}
                 onStickerSelect={(mediaUrl) => sendSticker(mediaUrl)}
               />
 
               {!isInstagram && (
-                <button onClick={onLoadTemplates} className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Templates">
+                <button
+                  onClick={onLoadTemplates}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  title={bloqueioWa ? bloqueioWa.texto : "Modelos"}
+                  disabled={!!bloqueioWa}
+                >
                   <FileText size={20} />
                 </button>
               )}
 
               <Popover open={botPopoverOpen} onOpenChange={setBotPopoverOpen}>
                 <PopoverTrigger asChild>
-                  <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Iniciar Bot">
+                  <button
+                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    title={bloqueioWa ? bloqueioWa.texto : "Iniciar Bot"}
+                    disabled={!!bloqueioWa}
+                  >
                     <Bot size={20} />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="top" align="start" sideOffset={8} className="w-64 p-2">
+                 <PopoverContent side="top" align="start" sideOffset={8} className="w-64 rounded-xl border-border/60 p-2 shadow-float">
                   <p className="text-xs font-medium text-muted-foreground px-2 mb-1">Iniciar Bot</p>
                   {bots.length === 0 ? (
                     <p className="text-xs text-muted-foreground px-2 py-3">Nenhum bot publicado</p>
@@ -1056,10 +1272,11 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
               {(newMessage.trim() || attachedFile) && (
                 <Button
-                  size="icon"
+                   size="icon"
                   onClick={handleSendMessage}
-                  disabled={optimizing || uploading || igDirectBloqueado}
-                  title={igDirectBloqueado ? igAvisoBloqueio : undefined}
+                  disabled={envioTravado}
+                   title={tituloTravado}
+                    className="h-9 w-9 shrink-0 rounded-full shadow-brand"
                 >
                   <Send size={18} />
                 </Button>
@@ -1069,7 +1286,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
           {/* Single stable recorder instance — never unmounts during recording */}
           <AudioRecorderComposer
-            disabled={optimizing || uploading || igDirectBloqueado}
+            disabled={envioTravado}
             onSendAudio={sendRecordedAudio}
             onModeChange={setRecorderActive}
             showMicButton={!newMessage.trim() && !attachedFile}
@@ -1093,6 +1310,17 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           <Clock size={12} />
           <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
         </div>
+      )}
+
+      {/* Modelo escolhido no "/": prévia preenchida + variáveis antes de enviar (CONV-1, CONV-15) */}
+      {!isInstagram && (
+        <EnviarModeloDialog
+          open={!!modeloParaEnviar}
+          onOpenChange={(aberto) => { if (!aberto) setModeloParaEnviar(null); }}
+          leadId={leadId}
+          modelo={modeloParaEnviar}
+          onEnviar={enviarModeloEscolhido}
+        />
       )}
     </div>
   );

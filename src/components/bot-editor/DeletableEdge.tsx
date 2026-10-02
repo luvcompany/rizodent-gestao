@@ -27,7 +27,7 @@ export default function DeletableEdge({
 
   return (
     <>
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
+      <BaseEdge path={edgePath} markerEnd={markerEnd} style={{ strokeWidth: 1.5, strokeDasharray: "5 4", ...style }} />
       {label && (
         <EdgeLabelRenderer>
           <div
@@ -36,7 +36,7 @@ export default function DeletableEdge({
               transform: `translate(-50%, -100%) translate(${labelX}px,${labelY - 8}px)`,
               pointerEvents: "none",
             }}
-            className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-card border border-border shadow-sm text-foreground"
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-card border border-border/60 shadow-xs text-foreground"
           >
             {label}
           </div>
@@ -52,7 +52,7 @@ export default function DeletableEdge({
           className="group"
         >
           <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center w-5 h-5 rounded-full bg-destructive text-destructive-foreground shadow-md hover:scale-110 transition-transform cursor-pointer"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all flex items-center justify-center w-6 h-6 rounded-full bg-card border border-border/60 text-destructive shadow-float hover:bg-destructive-soft hover:scale-110 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               onDelete?.(id);

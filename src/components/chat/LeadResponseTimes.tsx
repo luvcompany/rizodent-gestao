@@ -1,15 +1,9 @@
 import { useMemo } from "react";
 import { Timer, ArrowDown, ArrowUp } from "lucide-react";
-
-type Message = {
-  id: string;
-  direction: string;
-  created_at: string;
-  status: string;
-};
+import { temposDeResposta, type MensagemParaTempo } from "@/lib/temposDeResposta";
 
 type Props = {
-  messages: Message[];
+  messages: MensagemParaTempo[];
 };
 
 function formatDuration(ms: number): string {
@@ -25,65 +19,36 @@ function formatDuration(ms: number): string {
 }
 
 export default function LeadResponseTimes({ messages }: Props) {
-  const { avgLeadResponse, avgUserResponse } = useMemo(() => {
-    const sorted = [...messages]
-      .filter((m) => m.status !== "system")
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-    const leadDeltas: number[] = [];
-    const userDeltas: number[] = [];
-
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1];
-      const curr = sorted[i];
-      const delta = new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-
-      // Lead responded after user message
-      if (prev.direction === "outbound" && curr.direction === "inbound") {
-        leadDeltas.push(delta);
-      }
-      // User responded after lead message
-      if (prev.direction === "inbound" && curr.direction === "outbound") {
-        userDeltas.push(delta);
-      }
-    }
-
-    const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : -1;
-
-    return {
-      avgLeadResponse: avg(leadDeltas),
-      avgUserResponse: avg(userDeltas),
-    };
-  }, [messages]);
+  const { avgLeadResponse, avgUserResponse } = useMemo(() => temposDeResposta(messages), [messages]);
 
   if (messages.length < 2) return null;
 
   return (
-    <section className="border-b border-border/60 px-5 py-5">
-      <div className="mb-3 flex items-center gap-2">
-        <Timer size={14} className="text-muted-foreground" />
-        <h3 className="text-[15px] font-semibold text-foreground">Tempo de resposta médio</h3>
+    <div className="border-b border-border/60 px-5 py-5">
+      <div className="mb-4 flex items-center gap-2">
+        <Timer size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+        <span className="text-[15px] font-semibold text-foreground">Tempo de Resposta Médio</span>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-info-soft p-3 text-center">
-          <div className="flex items-center justify-center gap-1 mb-1">
-            <ArrowDown size={12} className="text-info-soft-foreground" />
-            <span className="text-[10px] text-muted-foreground uppercase">Lead</span>
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="min-w-0 rounded-xl border border-border/60 bg-surface-sunken/70 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <ArrowDown size={14} strokeWidth={1.75} className="shrink-0 text-info" />
+            <span className="text-xs font-medium text-muted-foreground">Lead</span>
           </div>
-          <span className="text-xl font-bold tabular-nums text-foreground">
+          <span className="block text-xl font-bold leading-tight tracking-tight tabular-nums text-foreground">
             {avgLeadResponse >= 0 ? formatDuration(avgLeadResponse) : "—"}
           </span>
         </div>
-        <div className="rounded-xl bg-success-soft p-3 text-center">
-          <div className="flex items-center justify-center gap-1 mb-1">
-            <ArrowUp size={12} className="text-success-soft-foreground" />
-            <span className="text-[10px] text-muted-foreground uppercase">Você</span>
+        <div className="min-w-0 rounded-xl border border-border/60 bg-surface-sunken/70 p-3" title="Respostas enviadas por pessoas da equipe (bot e automações não contam)">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <ArrowUp size={14} strokeWidth={1.75} className="shrink-0 text-success" />
+            <span className="text-xs font-medium text-muted-foreground">Equipe</span>
           </div>
-          <span className="text-xl font-bold tabular-nums text-foreground">
+          <span className="block text-xl font-bold leading-tight tracking-tight tabular-nums text-foreground">
             {avgUserResponse >= 0 ? formatDuration(avgUserResponse) : "—"}
           </span>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

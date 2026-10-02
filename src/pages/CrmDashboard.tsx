@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { FILTRO_LEAD_NOVO } from "@/lib/leadNovo";
+import { filtrarLeadsNovos } from "@/lib/leadNovo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   CalendarDays, Phone, MessageSquare, Clock, CheckCircle2, AlertTriangle,
   Circle, CalendarIcon, ClipboardCheck, ListTodo, Bell, Users, RefreshCw, DollarSign,
@@ -17,11 +17,13 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { applyAppointmentOutcome } from "@/lib/appointmentOutcome";
+import { registrarDesfechoDaConsulta } from "@/lib/appointmentOutcome";
 // toastDbError mostra a mensagem que o gatilho do banco devolveu (em vez de um
 // "erro" genérico) quando o desfecho falha no meio do caminho.
 import { toastDbError } from "@/lib/appointmentActions";
 import { useAuth } from "@/contexts/AuthContext";
+import { versaoDosPaineis, aoInvalidarPaineis } from "@/lib/paineis";
+import { rotuloTipoDeTarefa } from "@/lib/tarefaTipo";
 // Fundação canônica: datas no fuso do tenant (tenants.timezone), não do navegador
 // e paginação com ORDER BY estável que lança erro em vez de truncar silenciosamente.
 import { fetchAllPaged, rangeNoFuso, hojeNoFuso, contaComoFaturamento } from "@/lib/reportKit";
@@ -50,12 +52,6 @@ type Appointment = {
   is_rescheduled?: boolean;
 };
 
-const typeLabels: Record<string, string> = {
-  agendamento: "Agendamento",
-  ligacao: "Ligação",
-  followup: "Follow-up",
-  personalizado: "Personalizado",
-};
 
 // ── Cache stale-while-revalidate ─────────────────────────────────────────────
 type DashboardCacheData = {
@@ -65,14 +61,14 @@ type DashboardCacheData = {
   faturamentoMes: number;
 };
 // v2: chave inclui user.id para isolar caches entre usuários
-const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: number } = {
-  userId: null, data: null, ts: 0,
+const _dashCache: { userId: string | null; data: DashboardCacheData | null; ts: number; versao: number } = {
+  userId: null, data: null, ts: 0, versao: -1,
 };
 const DASH_CACHE_TTL = 5 * 60_000; // 5 min — navegação volta instantânea
 // v3 (14/09/2026): "Faturamento do mês" passou a usar a régua de faturamento de
 // marketing (mesma do Dashboard principal). Versão nova para o cache antigo não
 // continuar mostrando o total bruto.
-const DASH_LS_KEY = "crm:dashboard_cache_v3";
+const DASH_LS_KEY = "crm:dashboard_cache_v5";
 const DASH_LS_TTL = 15 * 60_000;
 // Janela de dados de tarefas/agendamentos: ±60 dias a partir de hoje (explicitada na UI)
 const DASH_WINDOW_DAYS = 60;
@@ -94,14 +90,15 @@ export const invalidateDashboardCache = (userId?: string | null) => {
 
 function readDashCache(userId: string | null | undefined): DashboardCacheData | null {
   if (!userId) return null;
-  if (_dashCache.userId === userId && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) {
+  if (_dashCache.userId === userId && _dashCache.data && _dashCache.versao === versaoDosPaineis() && Date.now() - _dashCache.ts < DASH_CACHE_TTL) {
     return _dashCache.data;
   }
   try {
     const raw = localStorage.getItem(`${DASH_LS_KEY}:${userId}`);
     if (!raw) return null;
-    const { data, ts } = JSON.parse(raw);
+    const { data, ts, versao } = JSON.parse(raw);
     if (Date.now() - ts > DASH_LS_TTL) return null;
+    if (versao !== versaoDosPaineis()) return null;
     return data as DashboardCacheData;
   } catch { return null; }
 }
@@ -111,7 +108,8 @@ function writeDashCache(userId: string | null | undefined, data: DashboardCacheD
   _dashCache.userId = userId;
   _dashCache.data = data;
   _dashCache.ts = Date.now();
-  try { localStorage.setItem(`${DASH_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  _dashCache.versao = versaoDosPaineis();
+  try { localStorage.setItem(`${DASH_LS_KEY}:${userId}`, JSON.stringify({ data, ts: Date.now(), versao: _dashCache.versao })); } catch {}
 }
 
 /** Carrega tarefas, agendamentos, leads de hoje e faturamento do mês.
@@ -137,13 +135,15 @@ async function loadDashboardData(
     fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
     fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
     // Lead criado pela conciliação do Dontus não é lead novo (leadNovo.ts).
-    supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso).or(FILTRO_LEAD_NOVO),
+    filtrarLeadsNovos(supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso)),
     // As duas marcas vêm junto com o valor porque é o que separa faturamento de
     // MARKETING do caixa bruto (ver contaComoFaturamento). Sem elas o card
     // mostrava R$ 92.742 onde o Dashboard principal mostrava R$ 79.212 — o
     // mesmo mês, dois números, e nenhum dos dois dizia qual era qual.
     fetchAllPaged<{ valor: number | string | null; recorrencia_orto: boolean | null; nao_marketing: boolean | null }>(
-      () => supabase.from("pagamentos").select("valor, recorrencia_orto, nao_marketing").gte("data_pagamento", monthStart).lte("data_pagamento", monthEnd),
+      // Até HOJE: parcela lançada para data futura ainda não foi recebida (mesma
+      // régua do Dashboard principal, que mostra "pagamentos recebidos").
+      () => supabase.from("pagamentos").select("valor, recorrencia_orto, nao_marketing").gte("data_pagamento", monthStart).lte("data_pagamento", hoje < monthEnd ? hoje : monthEnd),
       "id",
     ),
   ]);
@@ -199,7 +199,7 @@ export const prefetchCrmDashboardData = async (
 ): Promise<void> => {
   if (!userId) return;
   // Cache fresco: nada a fazer.
-  if (_dashCache.userId === userId && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
+  if (_dashCache.userId === userId && _dashCache.data && _dashCache.versao === versaoDosPaineis() && Date.now() - _dashCache.ts < DASH_CACHE_TTL) return;
   try {
     const data = await loadDashboardData(userId, userRole);
     writeDashCache(userId, data);
@@ -225,10 +225,15 @@ export default function CrmDashboard() {
   const [dataLoaded, setDataLoaded] = useState(() => !!readDashCache(user?.id));
 
   const fetchData = useCallback(async () => {
-    // Cache de módulo quente (navegação SPA) → pula fetch (só se for do mesmo usuário)
-    if (_dashCache.userId === user?.id && _dashCache.data && Date.now() - _dashCache.ts < DASH_CACHE_TTL) {
+    // Cache do mesmo usuário: aplica na hora (sem spinner) e busca SEMPRE em segundo plano.
+    const cached = readDashCache(user?.id);
+    if (cached) {
+      setTasks(cached.tasks);
+      setAppointments(cached.appointments);
+      setLeadsToday(cached.leadsToday);
+      setFaturamentoMes(cached.faturamentoMes);
+      setDataLoaded(true);
       setLoading(false);
-      return;
     }
     try {
       const data = await loadDashboardData(user?.id, userRole);
@@ -250,6 +255,28 @@ export default function CrmDashboard() {
   }, [user?.id, userRole]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => aoInvalidarPaineis(() => { invalidateDashboardCache(user?.id); fetchData(); }), [fetchData, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const agenda = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { invalidateDashboardCache(user?.id); fetchData(); }, 800);
+    };
+    const channel = supabase
+      .channel(`crm-dashboard-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_appointments" }, agenda)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crm_tasks" }, agenda)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pagamentos" }, agenda)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "crm_leads" }, agenda)
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData, user?.id]);
 
   const todayTasks = useMemo(() =>
     tasks.filter(t => t.status !== "done" && isSameDay(new Date(t.due_date), selectedDate)),
@@ -308,7 +335,8 @@ export default function CrmDashboard() {
   const handleOutcome = async (appt: Appointment, outcome: "no_show" | "contracted" | "not_contracted") => {
     setOutcomeSaving(appt.id);
     try {
-      const ok = await applyAppointmentOutcome({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      const r = await registrarDesfechoDaConsulta({ leadId: appt.lead_id, appointmentId: appt.id, outcome });
+      const ok = r.ok;
       // Invalida o cache: sem isso o agendamento "ressuscita" sem desfecho ao voltar à tela
       invalidateDashboardCache(user?.id);
       // false = a consulta JÁ tinha desfecho e NADA foi gravado (o update exige
@@ -321,13 +349,19 @@ export default function CrmDashboard() {
         await fetchData();
         return;
       }
-      toast.success(
-        outcome === "no_show" ? "Marcado como não compareceu"
-        : outcome === "contracted" ? "Marcado como contratado"
-        : "Movido para Não Contratados",
-      );
+      const acao = outcome === "no_show" ? "Não compareceu" : outcome === "contracted" ? "Contratou" : "Não contratou";
+      if (r.falhaDeEtapa) {
+        // O desfecho ficou gravado; só o movimento de etapa foi recusado.
+        toast.warning(`Marcado como ${acao}, mas o lead não foi movido de etapa: ${r.falhaDeEtapa}`);
+      } else {
+        toast.success(
+          outcome === "no_show" ? "Marcado como não compareceu"
+          : outcome === "contracted" ? "Marcado como contratado"
+          : "Movido para Não Contratados",
+        );
+      }
       setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: outcome } : a));
-      setOutcomeStep(prev => { const { [appt.id]: _, ...r } = prev; return r; });
+      setOutcomeStep(prev => { const { [appt.id]: _, ...resto } = prev; return resto; });
     } catch (e) {
       // Defeito que existia: o catch engolia o erro num texto genérico e deixava
       // a tela como estava. Mas applyAppointmentOutcome pode LANÇAR DEPOIS de já
@@ -373,16 +407,18 @@ export default function CrmDashboard() {
   const dataWindowEnd = addDays(startOfDay(new Date()), DASH_WINDOW_DAYS);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando...</div>;
+    return <div className="flex items-center justify-center h-full text-sm font-medium text-muted-foreground">Carregando...</div>;
   }
 
   // Falha de carregamento sem nenhum dado para exibir: estado de erro explícito (nunca zeros falsos)
   if (loadError && !dataLoaded) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-        <AlertTriangle size={32} className="text-destructive" />
-        <p className="text-sm">Não foi possível carregar os dados do dashboard.</p>
-        <Button variant="outline" size="sm" className="gap-1" onClick={() => { setLoading(true); fetchData(); }}>
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive-soft text-destructive">
+          <AlertTriangle size={28} className="text-destructive" />
+        </span>
+        <p className="text-[15px] font-semibold text-foreground">Não foi possível carregar os dados do dashboard.</p>
+        <Button variant="outline" size="sm" className="h-10 gap-2 rounded-xl bg-card px-4 font-semibold shadow-card" onClick={() => { setLoading(true); fetchData(); }}>
           <RefreshCw size={14} /> Tentar novamente
         </Button>
       </div>
@@ -390,18 +426,20 @@ export default function CrmDashboard() {
   }
 
   return (
-    <div className="flex flex-col h-full -m-6 p-4 overflow-y-auto" style={{ height: "calc(100vh - 4rem)" }}>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard CRM</h1>
-          <p className="text-[11px] text-muted-foreground">
+    <div className="flex flex-col h-full -m-2 sm:-m-4 lg:-m-6 px-4 py-5 sm:p-6 lg:p-8 overflow-y-auto" style={{ height: "calc(100vh - 4rem)" }}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6 lg:mb-8">
+        <div className="min-w-0">
+          <h1 className="text-[28px] sm:text-[32px] font-bold leading-tight tracking-tight text-foreground">Dashboard CRM</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Tarefas e agendamentos dos últimos {DASH_WINDOW_DAYS} e próximos {DASH_WINDOW_DAYS} dias
           </p>
         </div>
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <CalendarIcon size={14} />
+            <Button variant="outline" size="sm" className="h-11 w-full sm:w-auto justify-start gap-2.5 rounded-xl border-border/60 bg-card pl-1.5 pr-4 text-sm font-semibold tabular-nums text-foreground shadow-card hover:bg-surface-sunken">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-soft text-primary-soft-fg">
+                <CalendarIcon size={16} />
+              </span>
               {format(selectedDate, "dd/MM/yyyy")}
             </Button>
           </PopoverTrigger>
@@ -414,7 +452,7 @@ export default function CrmDashboard() {
               locale={ptBR}
               className="p-3 pointer-events-auto"
             />
-            <p className="px-3 pb-2 text-center text-[11px] text-muted-foreground">
+            <p className="px-3 pb-3 text-center text-xs text-tertiary">
               Somente datas dentro da janela de ±{DASH_WINDOW_DAYS} dias
             </p>
           </PopoverContent>
@@ -422,138 +460,149 @@ export default function CrmDashboard() {
       </div>
 
       {loadError && dataLoaded && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <AlertTriangle size={14} className="shrink-0" />
-          <span>Falha ao atualizar os dados — exibindo a última versão carregada.</span>
-          <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => fetchData()}>
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive-soft px-4 py-3 text-sm text-destructive-soft-foreground">
+          <AlertTriangle size={18} className="shrink-0 text-destructive" />
+          <span className="min-w-0 flex-1">Falha ao atualizar os dados — exibindo a última versão carregada.</span>
+          <Button variant="outline" size="sm" className="ml-auto h-8 rounded-lg border-destructive/30 bg-card px-3 text-[13px] font-semibold text-destructive-soft-foreground hover:bg-destructive-soft" onClick={() => fetchData()}>
             Tentar novamente
           </Button>
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><DollarSign size={20} className="text-primary" /></div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold leading-tight truncate" title={faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}>{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Faturamento do mês</p>
+      {/* KPI Cards: faturamento em destaque (2 colunas) + 6 cards com chip pastel e número grande */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 lg:gap-5 mb-6 lg:mb-8">
+        <Card className="relative col-span-2 xl:row-span-2 flex min-h-[168px] flex-col overflow-hidden rounded-card border-0 bg-sidebar p-5 sm:p-6 xl:p-7 text-sidebar-active-foreground shadow-card">
+          <span className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/35 blur-3xl" />
+          <span className="pointer-events-none absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-primary/15 blur-3xl" />
+          <DollarSign size={180} strokeWidth={1.25} className="pointer-events-none absolute -bottom-10 -right-8 text-sidebar-active-foreground/[0.06]" />
+          <div className="relative grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] grid-rows-[auto_1fr] items-center gap-x-3.5 gap-y-6">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-brand"><DollarSign size={22} className="text-primary-foreground" /></div>
+            <div className="contents">
+              <p className="col-span-2 row-start-2 self-end truncate text-[38px] sm:text-[48px] xl:text-[56px] font-bold leading-none tracking-tight tabular-nums text-sidebar-active-foreground" title={faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}>{faturamentoMes.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</p>
+              <p className="col-start-2 row-start-1 text-[15px] font-semibold leading-snug text-sidebar-foreground line-clamp-2">Faturamento do mês</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0"><ListTodo size={20} className="text-primary" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{todayTasks.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas {diaSelecionadoLabel}</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft"><ListTodo size={20} className="text-primary-soft-fg" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{todayTasks.length}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Tarefas {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-destructive/10 shrink-0"><AlertTriangle size={20} className="text-destructive" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{overdueTasks.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Tarefas atrasadas</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-destructive-soft"><AlertTriangle size={20} className="text-destructive" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{overdueTasks.length}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Tarefas atrasadas</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-green-500/10 shrink-0"><CalendarDays size={20} className="text-green-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{dayAppointments.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Agendamentos {diaSelecionadoLabel}</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-success-soft"><CalendarDays size={20} className="text-success" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{dayAppointments.length}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Agendamentos {diaSelecionadoLabel}</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-warning/10 shrink-0"><Bell size={20} className="text-warning" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{pendingConfirmations.length}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Confirmações pendentes</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-warning-soft"><Bell size={20} className="text-warning" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{pendingConfirmations.length}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Confirmações pendentes</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-blue-500/10 shrink-0"><Users size={20} className="text-blue-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{leadsToday}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Leads hoje</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-info-soft"><Users size={20} className="text-info" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{leadsToday}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Leads hoje</p>
             </div>
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-purple-500/10 shrink-0"><RefreshCw size={20} className="text-purple-600" /></div>
-            <div className="min-w-0">
-              <p className="text-2xl font-bold leading-tight truncate">{rescheduledCount}</p>
-              <p className="text-xs text-muted-foreground leading-tight line-clamp-2">Reagendados no mês</p>
+        <Card className="flex min-h-[124px] flex-col rounded-card border-border/60 bg-card p-4 sm:p-5 shadow-card transition-shadow hover:shadow-md">
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_1fr] items-start gap-x-3 gap-y-3">
+            <div className="col-start-2 row-start-1 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-rescheduled-soft"><RefreshCw size={20} className="text-rescheduled" /></div>
+            <div className="contents">
+              <p className="col-start-1 row-start-2 self-end truncate text-[30px] sm:text-[36px] font-bold leading-none tracking-tight tabular-nums text-foreground">{rescheduledCount}</p>
+               <p className="col-start-1 row-start-1 pt-0.5 text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground line-clamp-2 max-[1359px]:col-span-2 max-[1359px]:pr-12">Reagendados no mês</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* 5 Columns: Aguardando | Tarefas | Confirmações | Agendamentos do dia | Próximos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-4 flex-1 min-h-0">
+      {/* Cards de lista: Aguardando | Tarefas | Confirmações (1ª fileira) · Agendamentos do dia | Próximos (2ª fileira) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-4 lg:gap-5 pb-2">
         {/* Column 0: Awaiting outcome */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <AlertCircle size={14} className="text-warning" />
+        <Card className="flex flex-col overflow-hidden rounded-card border-border/60 bg-card shadow-card xl:col-span-4 xl:col-start-9 xl:row-start-1">
+          <div className="px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-soft">
+                <AlertCircle size={18} className="text-warning" />
+              </span>
               Aguardando resultado
             </h2>
-            <Badge variant="outline" className="border-warning text-warning">{awaitingOutcome.length}</Badge>
+            <Badge variant="outline" className="h-7 min-w-7 justify-center rounded-full border-0 bg-warning-soft px-2.5 text-xs font-semibold tabular-nums text-warning-soft-foreground">{awaitingOutcome.length}</Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 px-5 pb-5 space-y-3">
             {awaitingOutcome.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento aguardando desfecho</p>
+              <div className="flex h-full min-h-[150px] flex-col items-center justify-center gap-3 rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 px-4 py-8 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-card text-success shadow-xs dark:bg-background">
+                  <CheckCircle2 size={22} />
+                </span>
+                <p className="max-w-[220px] text-[13px] font-medium text-muted-foreground">Nenhum agendamento aguardando desfecho</p>
+              </div>
             )}
             {awaitingOutcome.map(appt => {
               const apptDate = new Date(appt.scheduled_date + "T12:00:00");
               const step = outcomeStep[appt.id] || "init";
               const saving = outcomeSaving === appt.id;
               return (
-                <div key={appt.id} className="rounded-lg border-2 border-warning/40 bg-warning/5 p-3 space-y-2">
+                <div key={appt.id} className="rounded-2xl border border-warning/30 bg-warning-soft/50 p-4 space-y-3">
                   <button
                     onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}
-                    className="text-sm font-medium truncate text-foreground hover:text-primary text-left block w-full"
+                    className="text-[15px] font-semibold truncate text-foreground hover:text-primary-soft-fg text-left block w-full"
                   >
                     {appt.lead_name}
                   </button>
-                  <p className="text-[11px] text-muted-foreground -mt-1">
+                  <p className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground tabular-nums">
+                    <Clock size={13} className="shrink-0 text-warning" />
                     {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
                   </p>
                   {step === "init" ? (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-green-600 hover:bg-green-700 text-white"
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button size="sm" disabled={saving} className="h-10 rounded-xl text-[13px] font-semibold gap-1.5 bg-success hover:bg-success/90 text-success-foreground shadow-xs"
                         onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "compareceu" }))}>
-                        <CheckCircle2 size={11} /> Compareceu
+                        <CheckCircle2 size={14} /> Compareceu
                       </Button>
                       <Button size="sm" variant="outline" disabled={saving}
-                        className="h-7 text-[11px] gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        className="h-10 rounded-xl bg-card text-[13px] font-semibold gap-1.5 border-destructive/30 text-destructive hover:bg-destructive-soft hover:text-destructive"
                         onClick={() => handleOutcome(appt, "no_show")}>
-                        <XCircle size={11} /> Não veio
+                        <XCircle size={14} /> Não veio
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] text-muted-foreground">Resultado da avaliação:</p>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <Button size="sm" disabled={saving} className="h-7 text-[11px] gap-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Resultado da avaliação:</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button size="sm" disabled={saving} className="h-10 rounded-xl text-[13px] font-semibold gap-1.5 bg-primary hover:bg-primary-hover text-primary-foreground shadow-brand"
                           onClick={() => handleOutcome(appt, "contracted")}>
-                          <Handshake size={11} /> Contratou
+                          <Handshake size={14} /> Contratou
                         </Button>
-                        <Button size="sm" variant="outline" disabled={saving} className="h-7 text-[11px]"
+                        <Button size="sm" variant="outline" disabled={saving} className="h-10 rounded-xl bg-card text-[13px] font-semibold"
                           onClick={() => handleOutcome(appt, "not_contracted")}>
                           Não contratou
                         </Button>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-5 w-full text-[10px]"
+                      <Button variant="ghost" size="sm" className="h-7 w-full rounded-lg text-xs text-muted-foreground"
                         onClick={() => setOutcomeStep(p => ({ ...p, [appt.id]: "init" }))}>
                         ← Voltar
                       </Button>
@@ -566,29 +615,33 @@ export default function CrmDashboard() {
         </Card>
 
         {/* Column 1: Tasks */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Tarefas — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</h2>
-            <Badge variant="outline">{todayTasks.length}</Badge>
+        <Card className="flex flex-col overflow-hidden rounded-card border-border/60 bg-card shadow-card xl:col-span-4 xl:col-start-1 xl:row-start-1 xl:row-span-2">
+          <div className="px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-brand">
+                <ListTodo size={18} />
+              </span>Tarefas — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}
+            </h2>
+            <Badge variant="outline" className="h-7 min-w-7 justify-center rounded-full border-0 bg-primary-soft px-2.5 text-xs font-semibold tabular-nums text-primary-soft-fg">{todayTasks.length}</Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {todayTasks.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma tarefa para este dia</p>}
+          <div className="flex-1 px-5 pb-5 space-y-2.5">
+            {todayTasks.length === 0 && <p className="rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 px-4 py-10 text-center text-[13px] font-medium text-muted-foreground">Nenhuma tarefa para este dia</p>}
             {todayTasks.map(t => (
-              <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border group">
-                <button onClick={() => handleMarkDone(t)} className="shrink-0">
-                  <Circle size={18} className="text-muted-foreground hover:text-green-500 transition-colors" />
+              <div key={t.id} className="relative flex items-start gap-3 rounded-xl border border-border/60 bg-card px-3.5 py-3 transition-colors hover:border-border hover:bg-surface-sunken/60 group">
+                <button onClick={() => handleMarkDone(t)} className="mt-px shrink-0 rounded-full">
+                  <Circle size={20} className="text-tertiary hover:text-success transition-colors" />
                 </button>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{t.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <span>{typeLabels[t.type] || t.type}</span>
+                  <p className="text-sm font-semibold leading-snug text-foreground line-clamp-2 break-words">{t.title}</p>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tertiary mt-1.5">
+                    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-slate-soft px-2 text-[11px] font-medium text-slate-soft-foreground">{rotuloTipoDeTarefa(t.type)}</span>
                     <span>·</span>
-                    <span>{format(new Date(t.due_date), "HH:mm")}</span>
+                    <span className="font-medium tabular-nums text-muted-foreground">{format(new Date(t.due_date), "HH:mm")}</span>
                     <span>·</span>
-                    <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
+                    <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="min-w-0 max-w-full truncate text-left font-medium text-primary-soft-fg hover:underline">{t.lead_name}</button>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 text-xs" onClick={() => handleMarkDone(t)}>
+                <Button variant="ghost" size="sm" className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 h-8 rounded-lg bg-card px-2.5 text-xs font-semibold text-success-soft-foreground shadow-card hover:bg-success-soft hover:text-success-soft-foreground" onClick={() => handleMarkDone(t)}>
                   <CheckCircle2 size={14} className="mr-1" /> Concluir
                 </Button>
               </div>
@@ -596,19 +649,21 @@ export default function CrmDashboard() {
 
             {overdueTasks.length > 0 && (
               <>
-                <div className="text-xs font-semibold text-destructive uppercase mt-4 mb-1">Atrasadas ({overdueTasks.length})</div>
+                <div className="flex items-center gap-2 pt-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-destructive after:h-px after:flex-1 after:bg-destructive/20 after:content-['']">Atrasadas ({overdueTasks.length})</div>
                 {overdueTasks.slice(0, 5).map(t => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20 group">
-                    <AlertTriangle size={16} className="text-destructive shrink-0" />
+                  <div key={t.id} className="relative flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive-soft/60 px-3.5 py-3 group">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card">
+                      <AlertTriangle size={15} className="text-destructive shrink-0" />
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span className="text-destructive font-medium">{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
+                      <p className="text-sm font-semibold leading-snug text-foreground line-clamp-2 break-words">{t.title}</p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tertiary mt-1.5">
+                        <span className="text-destructive font-semibold tabular-nums">{format(new Date(t.due_date), "dd/MM HH:mm")}</span>
                         <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline">{t.lead_name}</button>
+                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="min-w-0 max-w-full truncate text-left font-medium text-primary-soft-fg hover:underline">{t.lead_name}</button>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 h-7 text-xs" onClick={() => handleMarkDone(t)}>
+                    <Button variant="ghost" size="sm" className="absolute right-2.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 h-8 rounded-lg bg-card px-2.5 text-xs font-semibold text-success-soft-foreground shadow-card hover:bg-success-soft hover:text-success-soft-foreground" onClick={() => handleMarkDone(t)}>
                       Concluir
                     </Button>
                   </div>
@@ -620,17 +675,24 @@ export default function CrmDashboard() {
         </Card>
 
         {/* Column 2: Pending Appointment Confirmations */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <Bell size={14} className="text-warning" />
+        <Card className="flex flex-col overflow-hidden rounded-card border-border/60 bg-card shadow-card md:col-span-2 xl:col-span-4 xl:col-start-9 xl:row-start-2">
+          <div className="px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-soft">
+                <Bell size={18} className="text-warning" />
+              </span>
               Confirmações de Agendamento
             </h2>
-            <Badge variant="outline" className="border-warning text-warning">{pendingConfirmations.length}</Badge>
+            <Badge variant="outline" className="h-7 min-w-7 justify-center rounded-full border-0 bg-warning-soft px-2.5 text-xs font-semibold tabular-nums text-warning-soft-foreground">{pendingConfirmations.length}</Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="flex-1 px-5 pb-5 space-y-2.5">
             {pendingConfirmations.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhuma confirmação pendente</p>
+              <div className="flex h-full min-h-[150px] flex-col items-center justify-center gap-3 rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 px-4 py-8 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-card text-warning shadow-xs dark:bg-background">
+                  <Bell size={22} />
+                </span>
+                <p className="max-w-[220px] text-[13px] font-medium text-muted-foreground">Nenhuma confirmação pendente</p>
+              </div>
             )}
             {pendingConfirmations
               .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
@@ -638,23 +700,23 @@ export default function CrmDashboard() {
                 const overdue = isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date));
                 return (
                   <div key={t.id} className={cn(
-                    "flex items-center gap-3 p-3 rounded-lg border group",
-                    overdue ? "bg-destructive/5 border-destructive/20" : "bg-warning/5 border-warning/20"
+                    "flex items-start gap-3 rounded-xl border px-3.5 py-3 group",
+                    overdue ? "bg-destructive-soft/60 border-destructive/20" : "bg-warning-soft/50 border-warning/25"
                   )}>
-                    <div className={cn("p-2 rounded-lg shrink-0", overdue ? "bg-destructive/10" : "bg-warning/10")}>
-                      <Bell size={16} className={overdue ? "text-destructive" : "text-warning"} />
+                    <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-card shadow-xs")}>
+                      <Bell size={17} className={overdue ? "text-destructive" : "text-warning"} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{t.title}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                        <span className={cn("font-medium", overdue && "text-destructive")}>
+                      <p className="text-sm font-semibold leading-snug text-foreground line-clamp-2 break-words">{t.title}</p>
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-tertiary mt-1.5 min-w-0">
+                        <span className={cn("font-semibold tabular-nums text-muted-foreground shrink-0", overdue && "text-destructive")}>
                           {format(new Date(t.due_date), "dd/MM HH:mm")}
                         </span>
                         <span>·</span>
-                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="text-primary hover:underline truncate">{t.lead_name}</button>
+                        <button onClick={() => navigate(`/crm/conversa/${t.lead_id}`)} className="min-w-0 max-w-full truncate text-left font-medium text-primary-soft-fg hover:underline">{t.lead_name}</button>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)}>
+                    <Button variant="outline" size="sm" className="h-8 shrink-0 self-center rounded-lg border-border/60 bg-card px-3 text-xs font-semibold" onClick={() => navigate(`/crm/conversa/${t.lead_id}`)}>
                       Ver
                     </Button>
                   </div>
@@ -664,38 +726,55 @@ export default function CrmDashboard() {
         </Card>
 
         {/* Column 3: Today's Appointments */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              <CalendarDays size={14} className="text-green-600" />
+        <Card className="flex flex-col overflow-hidden rounded-card border-border/60 bg-card shadow-card md:col-span-2 xl:col-span-4 xl:col-start-5 xl:row-start-1 xl:row-span-2">
+          <div className="px-5 pt-5 pb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success-soft">
+                <CalendarDays size={18} className="text-success" />
+              </span>
               Agendamentos — {format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}
             </h2>
-            <Badge variant="outline" className="border-green-500 text-green-600">{dayAppointments.length}</Badge>
+            <Badge variant="outline" className="h-7 min-w-7 justify-center rounded-full border-0 bg-success-soft px-2.5 text-xs font-semibold tabular-nums text-success-soft-foreground">{dayAppointments.length}</Badge>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {dayAppointments.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento para este dia</p>}
+          <div className="flex-1 px-5 pb-5 space-y-2.5">
+            {dayAppointments.length === 0 && <p className="rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 px-4 py-10 text-center text-[13px] font-medium text-muted-foreground">Nenhum agendamento para este dia</p>}
             {dayAppointments.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time)).map(appt => {
               const isReschedule = (appt as any).is_rescheduled === true;
               return (
               <div key={appt.id} className={cn(
-                "flex items-center gap-3 p-3 rounded-lg border",
-                isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-green-500/5 border-green-500/20"
+                "relative flex flex-wrap items-center gap-x-3 gap-y-3 overflow-hidden rounded-xl border bg-card py-3.5 pl-4 pr-3.5 before:absolute before:inset-y-0 before:left-0 before:w-1",
+                isReschedule ? "border-rescheduled/25 before:bg-rescheduled"
+                  : appt.status === "confirmed" || appt.status === "contracted" ? "border-border/60 before:bg-success"
+                  : appt.status === "cancelled" || appt.status === "no_show" ? "border-border/60 before:bg-destructive"
+                  : appt.status === "not_contracted" ? "border-border/60 before:bg-slate"
+                  : "border-border/60 before:bg-warning"
               )}>
-                <div className={cn("p-2 rounded-lg", isReschedule ? "bg-purple-500/10" : "bg-green-500/10")}>
-                  <CalendarDays size={16} className={isReschedule ? "text-purple-600" : "text-green-600"} />
+                <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                  isReschedule ? "bg-rescheduled-soft text-rescheduled"
+                    : appt.status === "confirmed" || appt.status === "contracted" ? "bg-success-soft text-success"
+                    : appt.status === "cancelled" || appt.status === "no_show" ? "bg-destructive-soft text-destructive"
+                    : appt.status === "not_contracted" ? "bg-slate-soft text-slate-soft-foreground"
+                    : "bg-warning-soft text-warning")}>
+                  <CalendarDays size={17} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{appt.lead_name}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                    <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
-                    {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
+                <div className="flex-1 min-w-0 basis-[calc(100%-3.25rem)]">
+                  <p className="text-sm font-semibold text-foreground truncate">{appt.lead_name}</p>
+                  <div className="flex items-center gap-1.5 text-xs text-tertiary mt-1 min-w-0">
+                    <span className="font-semibold tabular-nums text-foreground">{appt.scheduled_time?.slice(0, 5)}</span>
+                    {isReschedule && <Badge variant="secondary" className="h-5 shrink-0 rounded-full border-0 bg-rescheduled-soft px-2 py-0 text-[10px] font-medium text-rescheduled-soft-foreground">Reagendado</Badge>}
                     {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
                   </div>
                 </div>
-                <Badge variant="outline" className={cn("text-[10px]", isReschedule ? "border-purple-500 text-purple-600" : "border-green-500 text-green-600")}>
+                <Badge variant="outline" className={cn(
+                  "mr-auto h-6 shrink-0 rounded-full border-0 px-2.5 text-[11px] font-semibold",
+                  appt.status === "confirmed" || appt.status === "contracted" ? "bg-success-soft text-success-soft-foreground"
+                    : appt.status === "cancelled" || appt.status === "no_show" ? "bg-destructive-soft text-destructive-soft-foreground"
+                    : appt.status === "not_contracted" ? "bg-slate-soft text-slate-soft-foreground"
+                    : "bg-warning-soft text-warning-soft-foreground"
+                )}>
                   {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
                 </Badge>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
+                <Button variant="outline" size="sm" className="h-8 shrink-0 rounded-lg border-border/60 bg-card px-3 text-xs font-semibold" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
                   Ver
                 </Button>
               </div>
@@ -705,69 +784,79 @@ export default function CrmDashboard() {
         </Card>
 
         {/* Column 3: Upcoming Appointments */}
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-bold text-foreground">Próximos Agendamentos</h2>
+        <Card className="flex flex-col overflow-hidden rounded-card border-border/60 bg-card shadow-card md:col-span-2 xl:col-span-12 xl:row-start-3">
+          <div className="px-5 pt-5 pb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-info-soft text-info">
+                <CalendarDays size={18} />
+              </span>
+              Próximos Agendamentos
+            </h2>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{upcomingAppointments.length}</Badge>
-              <Select value={upcomingDays} onValueChange={setUpcomingDays}>
-                <SelectTrigger className="h-7 text-xs w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">7 dias</SelectItem>
-                  <SelectItem value="14">14 dias</SelectItem>
-                  <SelectItem value="30">30 dias</SelectItem>
-                </SelectContent>
-              </Select>
+              <Badge variant="outline" className="h-7 min-w-7 justify-center rounded-full border-0 bg-info-soft px-2.5 text-xs font-semibold tabular-nums text-info-soft-foreground">{upcomingAppointments.length}</Badge>
+              <Tabs value={upcomingDays} onValueChange={setUpcomingDays}>
+                <TabsList variant="pill" className="gap-1 rounded-full bg-surface-sunken p-1 dark:bg-muted/60">
+                  <TabsTrigger value="7" className="h-8 px-3.5 font-semibold">7 dias</TabsTrigger>
+                  <TabsTrigger value="14" className="h-8 px-3.5 font-semibold">14 dias</TabsTrigger>
+                  <TabsTrigger value="30" className="h-8 px-3.5 font-semibold">30 dias</TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 grid grid-cols-1 content-start gap-x-4 gap-y-4 px-5 pb-5 md:grid-cols-2 xl:grid-cols-3">
             {upcomingAppointments.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-8">Nenhum agendamento nos próximos {upcomingDays} dias</p>
+              <p className="col-span-full rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 px-4 py-10 text-center text-[13px] font-medium text-muted-foreground">Nenhum agendamento nos próximos {upcomingDays} dias</p>
             )}
             {Array.from(groupedUpcoming.entries()).map(([dateStr, appts]) => {
               const date = new Date(dateStr + "T12:00:00");
               const isDateToday = isToday(date);
               return (
-                <div key={dateStr}>
+                <div key={dateStr} className="rounded-2xl bg-surface-sunken/70 dark:bg-muted/40 p-3">
                   <div className={cn(
-                    "text-xs font-semibold uppercase mb-1.5 px-1",
-                    isDateToday ? "text-primary" : "text-muted-foreground"
+                    "mb-3 px-1 pt-0.5 text-[13px] font-semibold first-letter:uppercase",
+                    isDateToday ? "text-primary-soft-fg" : "text-foreground"
                   )}>
                     {isDateToday ? "Hoje" : format(date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="grid grid-cols-1 gap-2.5">
                     {appts.map(appt => {
                       const isReschedule = (appt as any).is_rescheduled === true;
                       return (
-                      <div key={appt.id} className={cn("flex items-center gap-3 p-3 rounded-lg border", isReschedule ? "bg-purple-500/5 border-purple-500/20" : "bg-secondary/50 border-border")}>
+                      <div key={appt.id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-3 rounded-xl border bg-card p-3.5 shadow-xs transition-shadow hover:shadow-card", isReschedule ? "border-rescheduled/30" : "border-border/60")}>
                         <div className={cn(
-                          "p-2 rounded-lg",
-                          isReschedule ? "bg-purple-500/10" :
-                          appt.status === "confirmed" ? "bg-green-500/10" : appt.status === "cancelled" ? "bg-destructive/10" : "bg-primary/10"
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                          isReschedule ? "bg-rescheduled-soft" :
+                          appt.status === "confirmed" || appt.status === "contracted" ? "bg-success-soft"
+                            : appt.status === "cancelled" || appt.status === "no_show" ? "bg-destructive-soft"
+                            : appt.status === "not_contracted" ? "bg-slate-soft"
+                            : "bg-warning-soft"
                         )}>
-                          <CalendarDays size={16} className={cn(
-                            isReschedule ? "text-purple-600" :
-                            appt.status === "confirmed" ? "text-green-600" : appt.status === "cancelled" ? "text-destructive" : "text-primary"
+                          <CalendarDays size={17} className={cn(
+                            isReschedule ? "text-rescheduled" :
+                            appt.status === "confirmed" || appt.status === "contracted" ? "text-success"
+                              : appt.status === "cancelled" || appt.status === "no_show" ? "text-destructive"
+                              : appt.status === "not_contracted" ? "text-slate-soft-foreground"
+                              : "text-warning"
                           )} />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{appt.lead_name}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                            <span className="font-medium">{appt.scheduled_time?.slice(0, 5)}</span>
-                            {isReschedule && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 bg-purple-500/10 text-purple-600">Reagendado</Badge>}
+                        <div className="flex-1 min-w-0 basis-[calc(100%-3.25rem)]">
+                          <p className="text-sm font-semibold text-foreground truncate">{appt.lead_name}</p>
+                          <div className="flex items-center gap-1.5 text-xs text-tertiary mt-1 min-w-0">
+                            <span className="font-semibold tabular-nums text-foreground">{appt.scheduled_time?.slice(0, 5)}</span>
+                            {isReschedule && <Badge variant="secondary" className="h-5 shrink-0 rounded-full border-0 bg-rescheduled-soft px-2 py-0 text-[10px] font-medium text-rescheduled-soft-foreground">Reagendado</Badge>}
                             {appt.notes && <><span>·</span><span className="truncate">{appt.notes}</span></>}
                           </div>
                         </div>
                         <Badge variant="outline" className={cn(
-                          "text-[10px]",
-                          appt.status === "confirmed" && "border-green-500 text-green-600",
-                          appt.status === "cancelled" && "border-destructive text-destructive"
+                          "mr-auto h-6 rounded-full border-0 px-2.5 text-[11px] font-semibold",
+                          appt.status === "confirmed" || appt.status === "contracted" ? "bg-success-soft text-success-soft-foreground"
+                            : appt.status === "cancelled" || appt.status === "no_show" ? "bg-destructive-soft text-destructive-soft-foreground"
+                            : appt.status === "not_contracted" ? "bg-slate-soft text-slate-soft-foreground"
+                            : "bg-warning-soft text-warning-soft-foreground"
                         )}>
                           {appt.status === "confirmed" ? "Confirmado" : appt.status === "cancelled" ? "Cancelado" : appt.status === "no_show" ? "Faltou" : appt.status === "contracted" ? "Contratou" : appt.status === "not_contracted" ? "Não contratou" : "Pendente"}
                         </Badge>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
+                        <Button variant="outline" size="sm" className="h-8 rounded-lg border-border/60 bg-card px-3 text-xs font-semibold" onClick={() => navigate(`/crm/conversa/${appt.lead_id}`)}>
                           Ver
                         </Button>
                       </div>

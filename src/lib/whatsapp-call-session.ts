@@ -258,12 +258,7 @@ export class WhatsappCallSession {
   }
 
   /** Inicia uma chamada de saída: cria offer, envia à Meta, aguarda answer via applyRemoteAnswer(). */
-  /**
-   * whatsappNumberId = whatsapp_numbers.id (uuid) de origem. Sem ele, o
-   * servidor escolhe pelo carimbo do lead, pelo canal do funil ou pelo número
-   * padrão do cliente.
-   */
-  async initiate(params: { toPhone: string; whatsappNumberId?: string; leadId?: string | null }): Promise<{ callDbId: string; waCallId: string | null }> {
+  async initiate(params: { toPhone: string; phoneNumberId?: string; leadId?: string | null }): Promise<{ callDbId: string; waCallId: string | null }> {
     this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -294,7 +289,7 @@ export class WhatsappCallSession {
         action: "connect",
         sdp: finalSdp,
         to_phone: params.toPhone,
-        whatsapp_number_id: params.whatsappNumberId || undefined,
+        phone_number_id: params.phoneNumberId,
         lead_id: params.leadId ?? null,
       },
     });

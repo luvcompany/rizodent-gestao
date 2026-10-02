@@ -12,7 +12,7 @@ export type { PageHeaderProps, BreadcrumbItem } from "./PageHeader";
 export { SectionCard } from "./SectionCard";
 export type { SectionCardProps } from "./SectionCard";
 export { KpiCard } from "./KpiCard";
-export type { KpiCardProps, KpiDelta } from "./KpiCard";
+export type { KpiCardProps, KpiDelta, SemanticTone } from "./KpiCard";
 export { MiniStat } from "./MiniStat";
 export type { MiniStatProps } from "./MiniStat";
 export { ChartCard } from "./ChartCard";

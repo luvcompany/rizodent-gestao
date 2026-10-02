@@ -1,9 +1,11 @@
 import { createRoot } from "react-dom/client";
 import { PublicApp, TenantApp } from "./App.tsx";
+import { RESERVED_PATHS } from "./lib/rotasReservadas";
+import { recarregarUmaVez } from "./lib/recarregarAposPublicacao";
 import "./index.css";
 
-const RESERVED_PATHS = new Set(["", "admin", "change-password", "crclin", "privacidade", "termos", "exclusao-de-dados", "oauth-close"]);
-const SUBDOMAIN_SKIP = new Set(["www", "admin", "crclin"]);
+// Subdomínios do próprio sistema que não são clínica (app.dominio, api.dominio…).
+const SUBDOMAIN_SKIP = new Set(["www", "admin", "app", "api"]);
 
 function getSubdomainSlug(): string | null {
   const host = window.location.hostname;
@@ -34,7 +36,8 @@ if (subdomainSlug) {
   mode = "tenant";
   resolvedSlug = subdomainSlug;
   basename = "";
-} else if (firstSegment && !RESERVED_PATHS.has(firstSegment)) {
+} else if (firstSegment && !RESERVED_PATHS.has(firstSegment) && firstSegment !== ".lovable") {
+  // ".lovable" é a tela de consentimento OAuth do app público, não um slug.
   mode = "tenant";
   resolvedSlug = firstSegment;
   basename = `/${firstSegment}`;
@@ -42,6 +45,12 @@ if (subdomainSlug) {
   mode = "public";
   basename = "";
 }
+
+// Aba aberta numa versão antiga: o pedaço de código não existe mais no servidor.
+// Recarrega uma vez; se já recarregou agora, deixa o erro seguir para a barreira.
+window.addEventListener("vite:preloadError", (ev) => {
+  if (recarregarUmaVez()) ev.preventDefault();
+});
 
 const root = createRoot(document.getElementById("root")!);
 root.render(

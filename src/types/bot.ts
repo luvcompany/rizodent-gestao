@@ -13,6 +13,11 @@ export type Bot = {
   created_at: string;
   updated_at: string;
   mark_as_read?: boolean;
+  tenant_id?: string | null;
+  owner_role?: string | null;
+  shared_roles?: string[];
+  /** Canais em que o bot roda ('whatsapp', 'instagram'). */
+  channels?: string[];
 };
 
 export type FlowData = {
@@ -71,7 +76,7 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
   { type: 'add_note', label: 'Adicionar Nota', icon: '📝', category: 'action', color: '#10b981', description: 'Insere nota no histórico', defaultData: { note: '' } },
   { type: 'create_task', label: 'Criar Tarefa', icon: '✅', category: 'action', color: '#10b981', description: 'Cria tarefa para o lead', defaultData: { title: '', dueHours: 24 } },
   // Control
-  { type: 'transfer_human', label: 'Transferir para Humano', icon: '👤', category: 'control', color: 'hsl(var(--warning))', description: 'Encerra bot e notifica operador', defaultData: {} },
+  { type: 'transfer_human', label: 'Transferir para Humano', icon: '👤', category: 'control', color: 'hsl(var(--warning))', description: 'Encerra o bot e avisa o responsável pelo lead', defaultData: {} },
   { type: 'trigger_bot', label: 'Acionar Outro Bot', icon: '🤖', category: 'control', color: 'hsl(var(--warning))', description: 'Inicia outro bot para este lead', defaultData: { botId: '', botName: '' } },
 ];
 

@@ -101,18 +101,18 @@ export default function VariableSelector({ inputRef, value, onChange, extraVaria
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] bg-popover border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto w-64"
+      className="fixed z-[9999] bg-popover border border-border/60 rounded-xl shadow-float max-h-56 overflow-y-auto w-64"
       style={{ top: position.top, left: position.left }}
     >
       <div className="p-1">
         {customVars.length > 0 && (
           <>
-            <p className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Variáveis do Bot</p>
+            <p className="px-3 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-tertiary uppercase">Variáveis do Bot</p>
             {customVars.map((v) => (
               <button
                 key={v.key}
                 type="button"
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent rounded-md flex items-center justify-between gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent rounded-lg flex items-center justify-between gap-2"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   selectVariable(v);
@@ -127,12 +127,12 @@ export default function VariableSelector({ inputRef, value, onChange, extraVaria
         {leadVars.length > 0 && (
           <>
             {customVars.length > 0 && <div className="border-t border-border my-1" />}
-            <p className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Variáveis do Lead</p>
+            <p className="px-3 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-tertiary uppercase">Variáveis do Lead</p>
             {leadVars.map((v) => (
               <button
                 key={v.key}
                 type="button"
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent rounded-md flex items-center justify-between gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent rounded-lg flex items-center justify-between gap-2"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   selectVariable(v);

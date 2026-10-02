@@ -6,21 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Instagram, CheckCircle, Power, Trash2, Facebook, Plus, Loader2 } from "lucide-react";
+import { StatusPill } from "@/components/crm-ui";
 
 const IG_PURPLE = "#833AB4";
 const FB_BLUE = "#1877F2";
-
-// O token de Página (page_access_token) não vem para o navegador: o SELECT
-// dessa coluna é revogado de authenticated (migration 20260929001200). Nunca
-// select("*") aqui — ele pediria a coluna e a leitura inteira falharia.
-const COLUNAS_INSTAGRAM_ACCOUNTS =
-  "id, name, instagram_account_id, page_id, long_lived_token_expires_at, is_active, created_at";
 
 interface InstagramAccount {
   id: string;
   name: string;
   instagram_account_id: string;
   page_id: string | null;
+  page_access_token: string | null;
   long_lived_token_expires_at: string | null;
   is_active: boolean;
   created_at?: string;
@@ -51,7 +47,7 @@ export default function InstagramAccountsSection() {
   const load = async () => {
     setLoading(true);
     const [{ data, error }, { data: globalRow }] = await Promise.all([
-      supabase.from("instagram_accounts").select(COLUNAS_INSTAGRAM_ACCOUNTS).order("created_at", { ascending: true }),
+      supabase.from("instagram_accounts").select("*").order("created_at", { ascending: true }),
       supabase.from("integrations").select("status").eq("key", "instagram_global").maybeSingle(),
     ]);
     if (error) {
@@ -329,7 +325,7 @@ export default function InstagramAccountsSection() {
       {hasAccounts && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {accounts.map((acc) => (
-            <Card key={acc.id}>
+            <Card key={acc.id} className="border-border/60 bg-card">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2 rounded-lg" style={{ backgroundColor: `${IG_PURPLE}1A` }}>
@@ -338,13 +334,13 @@ export default function InstagramAccountsSection() {
                   <div className="flex items-center gap-2">
                     <Switch checked={acc.is_active} onCheckedChange={() => handleToggle(acc)} />
                     {acc.is_active ? (
-                      <Badge className="bg-green-900/30 text-green-400 border-0">
+                    <StatusPill tone="success">
                         <CheckCircle size={12} className="mr-1" /> Ativa
-                      </Badge>
+                    </StatusPill>
                     ) : (
-                      <Badge variant="secondary" className="text-muted-foreground">
+                    <StatusPill tone="purple">
                         <Power size={12} className="mr-1" /> Inativa
-                      </Badge>
+                    </StatusPill>
                     )}
                   </div>
                 </div>

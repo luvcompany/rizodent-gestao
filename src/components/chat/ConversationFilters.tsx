@@ -1,16 +1,20 @@
 import { useState, useMemo, useEffect } from "react";
+import { FILTRO_ORIGENS } from "@/lib/origensLead";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Filter, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
+import { comValorAtual, useCidadesDoTenant, useServicosDoTenant } from "@/hooks/useOpcoesDoTenant";
 
 type Stage = { id: string; name: string; color: string; pipeline_id?: string };
 type Profile = { id: string; nome: string };
-type Pipeline = { id: string; name: string };
+type Pipeline = { id: string; name: string; is_instagram?: boolean | null };
+export const SEM_NUMERO = "__sem_numero__";
 
 export type ConversationFilterValues = {
   pipelineId: string;
@@ -27,6 +31,12 @@ export type ConversationFilterValues = {
   adId: string;
   instagramAccountId: string;
   labelIds: string[];
+  /**
+   * Números de WhatsApp escolhidos (vazio = todos). Opcional: filtros salvos
+   * antes dele (localStorage do Kanban) continuam valendo. O filtro só aparece
+   * quando quem usa passa `numeros` com mais de um número visível.
+   */
+  whatsappNumberIds?: string[];
 };
 
 const emptyFilters: ConversationFilterValues = {
@@ -44,6 +54,7 @@ const emptyFilters: ConversationFilterValues = {
   adId: "",
   instagramAccountId: "",
   labelIds: [],
+  whatsappNumberIds: [],
 };
 
 export type AdAccountOption = { id: string; name: string };
@@ -56,21 +67,8 @@ export type AdOption = {
   link?: string | null;
 };
 
-const CIDADES = [
-  "Vitória da Conquista",
-  "Guanambi",
-  "Ipiaú",
-  "Itabuna",
-];
-
-const SERVICOS = [
-  "PRÓTESE",
-  "IMPLANTE",
-  "ZIGOMÁTICO",
-  "FACETA",
-  "PROTOCOLO",
-  "OUTROS",
-];
+// Cidades e serviços dos filtros vêm do cadastro do tenant (clinicas.cidade e
+// tipos_procedimento ativos) — antes eram listas fixas de uma clínica só.
 
 function countActive(f: ConversationFilterValues): number {
   let c = 0;
@@ -88,10 +86,13 @@ function countActive(f: ConversationFilterValues): number {
   if (f.adId) c++;
   if (f.instagramAccountId) c++;
   if (f.labelIds?.length) c++;
+  if (f.whatsappNumberIds?.length) c++;
   return c;
 }
 
 export type InstagramAccountOption = { id: string; username: string };
+/** Número de WhatsApp visível para quem filtra (RPC whatsapp_numeros_visiveis). */
+export type NumeroOption = { id: string; nome: string; pausado?: boolean };
 
 export default function ConversationFilters({
   stages,
@@ -104,7 +105,9 @@ export default function ConversationFilters({
   ads = [],
   channel = "whatsapp",
   instagramAccounts = [],
-  triggerClassName,
+  numeros = [],
+  ocultarStatus = false,
+  ocultarPagamentos = false,
 }: {
   stages: Stage[];
   profiles: Profile[];
@@ -116,13 +119,20 @@ export default function ConversationFilters({
   ads?: AdOption[];
   channel?: "whatsapp" | "instagram";
   instagramAccounts?: InstagramAccountOption[];
-  triggerClassName?: string;
+  numeros?: NumeroOption[];
+  /** Esconde o campo Status (o Kanban não filtra por status). */
+  ocultarStatus?: boolean;
+  /** Esconde "Pagamentos vinculados" (papéis que não veem vendas). */
+  ocultarPagamentos?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ConversationFilterValues>(filters);
   const [tagSearch, setTagSearch] = useState("");
   const [userLabels, setUserLabels] = useState<{ id: string; name: string; color: string; description: string | null }[]>([]);
   const activeCount = countActive(filters);
+  // O filtro já aplicado continua na lista mesmo se saiu do cadastro.
+  const cidades = comValorAtual(useCidadesDoTenant(), draft.cidade);
+  const servicos = comValorAtual(useServicosDoTenant(), draft.servicoInteresse);
 
   useEffect(() => {
     if (!open) return;
@@ -137,9 +147,30 @@ export default function ConversationFilters({
     setOpen(true);
   };
 
+  const funilInsta = new Set(pipelines.filter((p) => p.is_instagram).map((p) => p.id));
   const filteredStages = draft.pipelineId
     ? stages.filter((s) => (s as any).pipeline_id === draft.pipelineId)
-    : stages;
+    : stages.filter((s) => {
+        if (!pipelines.length || !s.pipeline_id) return true;
+        const ehInsta = funilInsta.has(s.pipeline_id);
+        return channel === "instagram" ? ehInsta : !ehInsta;
+      });
+  const gruposDeEtapas = (() => {
+    if (draft.pipelineId) return null;
+    const ids = new Set(filteredStages.map((s) => s.pipeline_id).filter(Boolean));
+    if (ids.size < 2) return null;
+    return pipelines
+      .filter((p) => ids.has(p.id))
+      .map((p) => ({ funil: p, etapas: filteredStages.filter((s) => s.pipeline_id === p.id) }));
+  })();
+  const itemDaEtapa = (s: Stage) => (
+    <SelectItem key={s.id} value={s.id}>
+      <span className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+        {s.name}
+      </span>
+    </SelectItem>
+  );
 
   const filteredAds = useMemo(() => {
     const base = !draft.adAccountId ? ads : ads.filter((a) => a.ad_account_id === draft.adAccountId);
@@ -168,31 +199,37 @@ export default function ConversationFilters({
 
   return (
     <>
-      <Button variant="outline" className={`gap-1.5 ${triggerClassName || "h-8 text-xs"}`} onClick={handleOpen}>
-        <Filter size={14} />
+      <Button variant="outline" size="sm" className={cn("relative h-10 shrink-0 gap-1.5 rounded-xl px-2.5 text-xs font-semibold shadow-xs", activeCount > 0 ? "border-primary/40 bg-primary-soft-2 text-primary hover:bg-primary-soft hover:text-primary" : "border-border/60 bg-card")} onClick={handleOpen}>
+        <Filter size={15} strokeWidth={1.75} />
         Filtrar
         {activeCount > 0 && (
-          <Badge className="ml-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-primary text-primary-foreground">
+          <Badge className="pointer-events-none absolute -right-1.5 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border-transparent bg-primary px-1 text-[11px] font-bold tabular-nums leading-none text-primary-foreground ring-2 ring-card hover:bg-primary">
             {activeCount}
           </Badge>
         )}
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="left" className="w-[320px] sm:max-w-[320px]">
-          <SheetHeader>
-            <SheetTitle>Filtros</SheetTitle>
+        <SheetContent side="left" className="flex w-[340px] max-w-[92vw] flex-col gap-0 p-0 sm:max-w-[340px]">
+          <SheetHeader className="space-y-0 border-b border-border/60 px-5 pb-4 pt-5 text-left">
+            <SheetTitle className="flex items-center gap-3 pr-8 text-lg font-bold tracking-tight">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary-soft-fg">
+                <Filter size={18} strokeWidth={1.75} />
+              </span>
+              Filtros
+            </SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)]">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-surface-sunken/60 px-4 py-4">
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Pipeline (escondido na aba Instagram) */}
             {pipelines.length > 0 && channel !== "instagram" && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Funil</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Funil</label>
                 <Select
                   value={draft.pipelineId}
                   onValueChange={(v) => setDraft({ ...draft, pipelineId: v, stageId: "" })}
                 >
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
                   <SelectContent>
                     {pipelines.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -205,12 +242,12 @@ export default function ConversationFilters({
             {/* Conta de Instagram (apenas na aba Instagram) */}
             {channel === "instagram" && instagramAccounts.length > 0 && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de Instagram</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Conta de Instagram</label>
                 <Select
                   value={draft.instagramAccountId}
                   onValueChange={(v) => setDraft({ ...draft, instagramAccountId: v })}
                 >
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas as contas" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todas as contas" /></SelectTrigger>
                   <SelectContent>
                     {instagramAccounts.map((a) => (
                       <SelectItem key={a.id} value={a.id}>@{a.username}</SelectItem>
@@ -220,38 +257,72 @@ export default function ConversationFilters({
               </div>
             )}
 
+            {/* Número de WhatsApp (só com mais de um número visível) */}
+            {numeros.length > 1 && channel !== "instagram" && (
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Número de WhatsApp</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...numeros, { id: SEM_NUMERO, nome: "Sem número", pausado: false }].map((n) => {
+                    const escolhidos = draft.whatsappNumberIds ?? [];
+                    const on = escolhidos.includes(n.id);
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, whatsappNumberIds: on ? escolhidos.filter((x) => x !== n.id) : [...escolhidos, n.id] })}
+                        className={cn(
+                          "inline-flex h-7 max-w-full items-center truncate rounded-full border px-3 text-[11px] font-semibold transition-colors",
+                          on ? "border-primary/40 bg-primary-soft-2 text-primary" : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
+                        )}
+                        title={n.pausado ? `${n.nome} — envio pausado pelo suporte` : n.nome}
+                      >
+                        {n.nome}{n.pausado ? " · Pausado" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-tertiary">Mostra só as conversas dos números marcados.</p>
+              </div>
+            )}
+
             {/* Stage */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Etapa do Funil</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Etapa do Funil</label>
               <Select value={draft.stageId} onValueChange={(v) => setDraft({ ...draft, stageId: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
                 <SelectContent>
-                  {filteredStages.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                        {s.name}
-                      </span>
-                    </SelectItem>
-                  ))}
+                  {gruposDeEtapas
+                    ? gruposDeEtapas.map((g) => (
+                        <SelectGroup key={g.funil.id}>
+                          <SelectLabel>{g.funil.name}</SelectLabel>
+                          {g.etapas.map(itemDaEtapa)}
+                        </SelectGroup>
+                      ))
+                    : filteredStages.map(itemDaEtapa)}
                 </SelectContent>
               </Select>
             </div>
 
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Date */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Data</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Data</label>
+              <div className="[&_button]:h-10 [&_button]:w-full [&_button]:rounded-xl [&_button]:px-3.5 [&_button]:text-sm [&_button]:font-normal [&_button>span]:flex-1 [&_button>span]:text-left">
               <DateRangeFilter
                 value={draft.dateFilter}
                 onChange={(v) => setDraft({ ...draft, dateFilter: v })}
               />
+              </div>
             </div>
 
             {/* Status */}
+            {!ocultarStatus && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Status</label>
               <Select value={draft.status} onValueChange={(v) => setDraft({ ...draft, status: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="open">Aberto</SelectItem>
                   <SelectItem value="replied">Respondido</SelectItem>
@@ -259,14 +330,18 @@ export default function ConversationFilters({
                 </SelectContent>
               </Select>
             </div>
+            )}
 
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Cidade */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Cidade</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Cidade</label>
               <Select value={draft.cidade} onValueChange={(v) => setDraft({ ...draft, cidade: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
                 <SelectContent>
-                  {CIDADES.map((c) => (
+                  {cidades.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
@@ -275,11 +350,11 @@ export default function ConversationFilters({
 
             {/* Serviço de Interesse */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Serviço de Interesse</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Serviço de Interesse</label>
               <Select value={draft.servicoInteresse} onValueChange={(v) => setDraft({ ...draft, servicoInteresse: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
-                  {SERVICOS.map((s) => (
+                  {servicos.map((s) => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>
@@ -288,22 +363,27 @@ export default function ConversationFilters({
 
 
             {/* Pagamentos vinculados */}
+            {!ocultarPagamentos && (
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Pagamentos vinculados</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Pagamentos vinculados</label>
               <Select value={draft.hasPagamento} onValueChange={(v) => setDraft({ ...draft, hasPagamento: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="yes">Com pagamento</SelectItem>
                   <SelectItem value="no">Sem pagamento</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            )}
 
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Marcadores de cor (pessoais) */}
             {userLabels.length > 0 && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Marcadores</label>
-                <div className="flex flex-wrap gap-1">
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Marcadores</label>
+                <div className="flex flex-wrap gap-1.5">
                   {userLabels.map((l) => {
                     const on = draft.labelIds.includes(l.id);
                     return (
@@ -311,7 +391,7 @@ export default function ConversationFilters({
                         key={l.id}
                         type="button"
                         onClick={() => setDraft({ ...draft, labelIds: on ? draft.labelIds.filter(x => x !== l.id) : [...draft.labelIds, l.id] })}
-                        className={`text-[10px] font-medium px-2 py-1 rounded transition-all text-white ${on ? "ring-2 ring-offset-1 ring-offset-background ring-foreground" : "opacity-70 hover:opacity-100"}`}
+                        className={`inline-flex h-7 max-w-full items-center rounded-full px-3 text-[11px] font-semibold text-white transition-all ${on ? "ring-2 ring-foreground/70 ring-offset-2 ring-offset-card" : "opacity-75 hover:opacity-100"}`}
                         style={{ backgroundColor: l.color }}
                         title={l.description || l.name}
                       >
@@ -320,20 +400,20 @@ export default function ConversationFilters({
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1">Filtra leads que tenham qualquer um dos marcadores selecionados.</p>
+                <p className="mt-2 text-xs leading-relaxed text-tertiary">Filtra leads que tenham qualquer um dos marcadores selecionados.</p>
               </div>
             )}
 
             {/* Tags - autocomplete */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Tags</label>
               {draft.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
+                <div className="mb-2 flex flex-wrap gap-1.5">
                   {draft.tags.map((t) => (
-                    <Badge key={t} variant="default" className="text-[10px] gap-1 pr-1">
+                    <Badge key={t} variant="default" className="h-7 max-w-full gap-1 rounded-full border-transparent px-3 pr-1.5 text-xs font-medium [overflow-wrap:anywhere]">
                       {t}
-                      <button onClick={() => removeTag(t)} className="ml-0.5 hover:text-destructive-foreground">
-                        <X size={10} />
+                      <button onClick={() => removeTag(t)} className="grid h-5 w-5 shrink-0 place-items-center rounded-full hover:bg-primary-foreground/20">
+                        <X size={12} strokeWidth={1.75} />
                       </button>
                     </Badge>
                   ))}
@@ -344,15 +424,15 @@ export default function ConversationFilters({
                   placeholder="Digitar nome da tag..."
                   value={tagSearch}
                   onChange={(e) => setTagSearch(e.target.value)}
-                  className="h-8 text-xs"
+                  className="h-10 rounded-xl text-sm"
                 />
                 {matchingTags.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-md shadow-lg max-h-32 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-40 overflow-y-auto rounded-xl border border-border/60 bg-card p-1 shadow-float">
                     {matchingTags.map((tag) => (
                       <button
                         key={tag}
                         onClick={() => addTag(tag)}
-                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-secondary transition-colors"
+                        className="w-full rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-surface-sunken"
                       >
                         {tag}
                       </button>
@@ -360,24 +440,21 @@ export default function ConversationFilters({
                   </div>
                 )}
               </div>
-              {allTags.length === 0 && <span className="text-xs text-muted-foreground">Sem tags</span>}
+              {allTags.length === 0 && <span className="mt-1.5 block text-xs text-tertiary">Sem tags</span>}
             </div>
 
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Source */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Fonte/Integração</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Fonte/Integração</label>
               <Select value={draft.source} onValueChange={(v) => setDraft({ ...draft, source: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="anuncio">Anúncio</SelectItem>
-                  <SelectItem value="google_ads">Google Ads</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="facebook">Facebook</SelectItem>
-                  <SelectItem value="site">Site</SelectItem>
-                  <SelectItem value="indicacao">Indicação</SelectItem>
-                  <SelectItem value="organico">Orgânico</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
+                  {FILTRO_ORIGENS.map((o) => (
+                    <SelectItem key={o.valor} value={o.valor}>{o.rotulo}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -385,12 +462,12 @@ export default function ConversationFilters({
             {/* Conta de anúncio (escondido na aba Instagram) */}
             {adAccounts.length > 0 && channel !== "instagram" && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Conta de anúncio</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Conta de anúncio</label>
                 <Select
                   value={draft.adAccountId}
                   onValueChange={(v) => setDraft({ ...draft, adAccountId: v, adId: "" })}
                 >
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todas" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
                   <SelectContent>
                     {adAccounts.map((a) => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
@@ -403,9 +480,9 @@ export default function ConversationFilters({
             {/* Anúncio específico (escondido na aba Instagram) */}
             {ads.length > 0 && channel !== "instagram" && (
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Anúncio</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Anúncio</label>
                 <Select value={draft.adId} onValueChange={(v) => setDraft({ ...draft, adId: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
                   <SelectContent className="max-h-[400px] w-[300px]">
                     {filteredAds.map((a) => (
                       <SelectItem key={a.id} value={a.id} className="py-2 pr-2">
@@ -445,7 +522,7 @@ export default function ConversationFilters({
                       href={sel.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[10px] text-primary hover:underline mt-1 inline-block"
+                      className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
                     >
                       Ver anúncio ↗
                     </a>
@@ -454,11 +531,14 @@ export default function ConversationFilters({
               </div>
             )}
 
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
             {/* Assigned */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Responsável</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Responsável</label>
               <Select value={draft.assignedTo} onValueChange={(v) => setDraft({ ...draft, assignedTo: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   {profiles.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
@@ -467,14 +547,15 @@ export default function ConversationFilters({
               </Select>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button size="sm" className="flex-1" onClick={() => { onApply(draft); setOpen(false); }}>
-                Aplicar filtros
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => { onApply(emptyFilters); setOpen(false); }}>
-                Limpar
-              </Button>
             </div>
+          </div>
+          <div className="flex gap-2 border-t border-border/60 bg-card px-5 py-4">
+            <Button size="sm" className="h-10 flex-1 rounded-xl text-sm font-semibold" onClick={() => { onApply(draft); setOpen(false); }}>
+              Aplicar filtros
+            </Button>
+            <Button size="sm" variant="outline" className="h-10 rounded-xl px-4 text-sm font-medium" onClick={() => { onApply(emptyFilters); setOpen(false); }}>
+              Limpar
+            </Button>
           </div>
         </SheetContent>
       </Sheet>

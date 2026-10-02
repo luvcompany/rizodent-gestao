@@ -68,13 +68,12 @@ export const ROTAS_DE_MODULO: ReadonlyArray<RotaDeModulo> = [
   { prefixo: "/crm/relatorios", modulo: "relatorios" },
   { prefixo: "/crm/metricas", modulo: "relatorios" },
   { prefixo: "/relatorios", modulo: "relatorios" },
-  { prefixo: "/marketing", modulo: "relatorios" },
   // Equipe: cada subrota tem dono próprio. "Pesquisa de satisfação" não é do
   // rodízio de SDRs e não depende de módulo nenhum.
   { prefixo: "/crm/equipe/ponto", modulo: "ponto" },
   { prefixo: "/crm/equipe/relatorio-sdr", modulo: "rodizio_sdr" },
   { prefixo: "/crm/equipe/pesquisa", modulo: null },
-  { prefixo: "/crm/equipe", exato: true, modulo: "rodizio_sdr" },
+  { prefixo: "/crm/equipe", exato: true, modulo: null },
   { prefixo: "/pacientes", modulo: "pacientes" },
   { prefixo: "/atendimento", modulo: "pacientes" },
   { prefixo: "/procedimentos", modulo: "pacientes" },

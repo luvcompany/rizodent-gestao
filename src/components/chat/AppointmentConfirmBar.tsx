@@ -19,7 +19,6 @@ import {
   moveLeadToNaoContratadosPipeline,
 } from "@/lib/appointmentOutcome";
 import { useAuth } from "@/contexts/AuthContext";
-import { fusoDoTenant } from "@/lib/fuso";
 import {
   cancelAppointment, rescheduleAppointment, compareceuEAgendou,
   iniciarReagendamento, isBeforeScheduled, formatBahiaLabel, toastDbError,
@@ -94,12 +93,12 @@ function contratoDoPagamento(t: TerminalAppointment): boolean {
 
 const AUTO_SOURCES = ["dontus-sync", "auto_reagendar_expirado", "service"];
 
-/** "às 18:00" no fuso do tenant. */
+/** "às 18:00" no fuso America/Bahia. */
 function bahiaHourLabel(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: fusoDoTenant() });
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
 }
 
 function terminalSourceLabel(t: TerminalAppointment): string {
@@ -894,7 +893,7 @@ export default function AppointmentConfirmBar({
   };
 
   const renderEditForm = (appt: Appointment) => (
-    <div key={appt.id} className="mb-2 p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+    <div key={appt.id} className="mb-2 space-y-2 rounded-xl border border-primary/30 bg-primary-soft p-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-foreground">Corrigir agendamento</span>
         <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setEditingId(null)}>
@@ -905,7 +904,7 @@ export default function AppointmentConfirmBar({
         <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !editDate && "text-muted-foreground")}>
+          <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-xs", !editDate && "text-muted-foreground")}>
               <CalendarIcon size={12} className="mr-1.5" />
               {editDate ? format(editDate, "dd/MM/yyyy") : "Selecionar data"}
             </Button>
@@ -917,11 +916,11 @@ export default function AppointmentConfirmBar({
       </div>
       <div>
         <label className="text-[10px] text-muted-foreground mb-1 block">Horário</label>
-        <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="h-8 text-xs" />
+        <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="h-10 rounded-xl text-xs" />
       </div>
       <div>
         <label className="text-[10px] text-muted-foreground mb-1 block">Observações</label>
-        <Input value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Opcional..." className="h-8 text-xs" />
+        <Input value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Opcional..." className="h-10 rounded-xl text-xs" />
       </div>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => setEditingId(null)}>Cancelar</Button>
@@ -955,7 +954,7 @@ export default function AppointmentConfirmBar({
       )}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !pickerDate && "text-muted-foreground")}>
+          <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-xs", !pickerDate && "text-muted-foreground")}>
             <CalendarIcon size={12} className="mr-1.5" />
             {pickerDate ? format(pickerDate, "dd/MM/yyyy") : "Selecionar data"}
           </Button>
@@ -964,8 +963,8 @@ export default function AppointmentConfirmBar({
           <Calendar mode="single" selected={pickerDate} onSelect={setPickerDate} locale={ptBR} className="p-3 pointer-events-auto" />
         </PopoverContent>
       </Popover>
-      <Input type="time" value={pickerTime} onChange={e => setPickerTime(e.target.value)} className="h-8 text-xs" />
-      <Input value={pickerNotes} onChange={e => setPickerNotes(e.target.value)} placeholder="Observações (opcional)" className="h-8 text-xs" />
+      <Input type="time" value={pickerTime} onChange={e => setPickerTime(e.target.value)} className="h-10 rounded-xl text-xs" />
+      <Input value={pickerNotes} onChange={e => setPickerNotes(e.target.value)} placeholder="Observações (opcional)" className="h-10 rounded-xl text-xs" />
       <div className="flex gap-2">
         <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => setPicker(null)}>Voltar</Button>
         <Button size="sm" className="flex-1 h-7 text-xs bg-primary hover:bg-primary/90 text-primary-foreground" disabled={pickerSaving} onClick={() => handlePickerSubmit(appt)}>
@@ -993,14 +992,14 @@ export default function AppointmentConfirmBar({
   };
 
   return (
-    <div className="p-4 border-b border-border">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-1.5">
+    <section className="border-b border-border/60 px-5 py-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
           <CalendarCheck size={12} />
           Agendamento
         </h3>
         {pendingTasks.length > 0 && (
-          <span className="text-xs text-warning font-medium">{pendingTasks.length} pendente(s)</span>
+          <span className="rounded-full bg-warning-soft px-2 py-1 text-xs font-medium text-warning-soft-foreground">{pendingTasks.length} pendente(s)</span>
         )}
       </div>
 
@@ -1009,7 +1008,7 @@ export default function AppointmentConfirmBar({
         if (editingId === appt.id) return renderEditForm(appt);
         const apptDate = new Date(appt.scheduled_date + "T12:00:00");
         return (
-          <div key={appt.id} className="mb-2 p-3 rounded-lg border border-warning/30 bg-warning/10 space-y-2">
+          <div key={appt.id} className="mb-2 space-y-2 rounded-xl border border-warning/30 bg-warning-soft p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
@@ -1026,7 +1025,7 @@ export default function AppointmentConfirmBar({
                 <Pencil size={12} />
               </Button>
             </div>
-            <Button size="sm" className="h-8 w-full text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => handleConfirmPendingAppointment(appt)}>
+            <Button size="sm" className="h-10 w-full rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={() => handleConfirmPendingAppointment(appt)}>
               <CheckCircle2 size={12} /> Confirmar agendamento
             </Button>
           </div>
@@ -1044,11 +1043,11 @@ export default function AppointmentConfirmBar({
         const pickerOpen = picker?.apptId === appt.id;
 
         return (
-          <div key={appt.id} className="mb-2 p-3 rounded-lg border border-green-500/30 bg-green-500/10 space-y-2">
+          <div key={appt.id} className="mb-2 space-y-2 rounded-xl border border-success/30 bg-success-soft p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={12} className="text-green-600 shrink-0" />
+                  <CheckCircle2 size={12} className="shrink-0 text-success" />
                   <span className="text-sm font-medium text-foreground">
                     {format(apptDate, "dd/MM/yyyy")} às {appt.scheduled_time?.slice(0, 5)}
                   </span>
@@ -1073,14 +1072,14 @@ export default function AppointmentConfirmBar({
             ) : step === "init" ? (
               <div className="space-y-2">
                 {isAwaitingReschedule && (
-                  <p className="text-[11px] text-blue-600">
+                  <p className="text-[11px] text-info-soft-foreground">
                     Aguardando novo horário — marque a nova data quando o paciente responder, ou registre "Não compareceu".
                   </p>
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
-                    className="h-8 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                    className="h-10 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90"
                     disabled={busy}
                     // SDR não decide contrato (decisão do dono, 09/09): "Compareceu" fecha o
                     // ciclo dela e o lead passa para o administrador, que marca o resultado.
@@ -1112,7 +1111,7 @@ export default function AppointmentConfirmBar({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                    className="h-10 rounded-xl border-info/40 text-xs text-info-soft-foreground hover:bg-info-soft"
                     disabled={busy}
                     // Direto no seletor de data e hora, esteja o lead na sala de
                     // espera "Reagendar" ou não — confirmar leva a "Reagendado".
@@ -1132,7 +1131,7 @@ export default function AppointmentConfirmBar({
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 pt-1 border-t border-green-500/20">
+              <div className="space-y-2 border-t border-success/20 pt-1">
                 <p className="text-xs text-muted-foreground">Resultado da avaliação:</p>
                 <div className="grid grid-cols-2 gap-2">
                   <Button
@@ -1156,7 +1155,7 @@ export default function AppointmentConfirmBar({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs w-full gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  className="h-10 w-full rounded-xl border-info/40 text-xs text-info-soft-foreground hover:bg-info-soft"
                   disabled={busy}
                   onClick={() => openPicker(appt, "agendou")}
                 >
@@ -1178,7 +1177,7 @@ export default function AppointmentConfirmBar({
 
       {/* Última consulta com desfecho (sem consulta ativa) */}
       {lastTerminal && (
-        <div className="mb-2 p-3 rounded-lg border border-muted-foreground/25 bg-muted/40 space-y-2">
+        <div className="mb-2 space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
               {lastTerminal.scheduled_date.split("-").reverse().join("/")} às {lastTerminal.scheduled_time?.slice(0, 5)}
@@ -1211,7 +1210,7 @@ export default function AppointmentConfirmBar({
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   size="sm"
-                  className="h-8 text-xs gap-1 border-blue-500/40 text-blue-600 hover:bg-blue-500/10"
+                  className="h-10 rounded-xl border-info/40 text-xs text-info-soft-foreground hover:bg-info-soft"
                   variant="outline"
                   disabled={terminalBusy}
                   onClick={handleTerminalReschedule}
@@ -1319,7 +1318,7 @@ export default function AppointmentConfirmBar({
                         RPC (compareceu → 'not_contracted', faltou → 'no_show'). */}
                     <Button
                       size="sm"
-                      className="h-8 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                      className="h-10 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90"
                       disabled={terminalBusy || desfechoEhComparecimento(lastTerminal.status)}
                       // O rótulo tem de ser o MESMO que esta pessoa está lendo
                       // acima: "Compareceu" para a SDR, "Contratado"/"Não
@@ -1375,16 +1374,16 @@ export default function AppointmentConfirmBar({
 
       {/* Manual scheduling button */}
       {!manualOpen ? (
-        <Button variant="outline" size="sm" className="w-full h-8 text-sm gap-1.5 mb-2" onClick={() => setManualOpen(true)}>
+        <Button variant="outline" size="sm" className="mb-2 h-10 w-full rounded-xl gap-1.5 text-sm" onClick={() => setManualOpen(true)}>
           <Plus size={14} /> {isRescheduleMode ? "Reagendar" : "Agendar manualmente"}
         </Button>
       ) : (
-        <div className="space-y-2 mb-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
+        <div className="mb-3 space-y-2 rounded-xl border border-primary/20 bg-primary-soft p-3">
           <div>
             <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !manualDate && "text-muted-foreground")}>
+                <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-xs", !manualDate && "text-muted-foreground")}>
                   <CalendarIcon size={12} className="mr-1.5" />
                   {manualDate ? format(manualDate, "dd/MM/yyyy") : "Selecionar data"}
                 </Button>
@@ -1396,15 +1395,15 @@ export default function AppointmentConfirmBar({
           </div>
           <div>
             <label className="text-[10px] text-muted-foreground mb-1 block">Horário</label>
-            <Input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="h-8 text-xs" />
+            <Input type="time" value={manualTime} onChange={e => setManualTime(e.target.value)} className="h-10 rounded-xl text-xs" />
           </div>
           <div>
             <label className="text-[10px] text-muted-foreground mb-1 block">Observações</label>
-            <Input value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Opcional..." className="h-8 text-xs" />
+            <Input value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Opcional..." className="h-10 rounded-xl text-xs" />
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => { setManualOpen(false); setManualDate(undefined); }}>Cancelar</Button>
-            <Button size="sm" className="flex-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white gap-1" onClick={handleManualSchedule} disabled={manualSaving}>
+            <Button size="sm" className="h-10 flex-1 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={handleManualSchedule} disabled={manualSaving}>
               {manualSaving ? "Salvando..." : isRescheduleMode ? "Reagendar" : "Agendar"}
             </Button>
           </div>
@@ -1418,7 +1417,7 @@ export default function AppointmentConfirmBar({
             const isConfirming = confirmingId === task.id;
             const taskDate = new Date(task.due_date);
             return (
-              <div key={task.id} className="rounded-lg border border-warning/20 bg-warning/5 p-3">
+              <div key={task.id} className="rounded-xl border border-warning/20 bg-warning-soft p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium text-foreground">{task.title}</span>
                   <span className={cn("text-[10px]", isPast(taskDate) ? "text-destructive" : "text-muted-foreground")}>
@@ -1428,7 +1427,7 @@ export default function AppointmentConfirmBar({
                 {task.notes && <p className="text-xs text-muted-foreground mb-2">{task.notes}</p>}
                 {!isConfirming ? (
                   <div className="flex gap-2">
-                    <Button size="sm" className="flex-1 h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => {
+                    <Button size="sm" className="h-10 flex-1 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={() => {
                       setConfirmingId(task.id); setDate(taskDate); setTime(format(taskDate, "HH:mm"));
                     }}>
                       <CheckCircle2 size={12} /> Confirmar Agendamento
@@ -1438,12 +1437,12 @@ export default function AppointmentConfirmBar({
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-2 mt-2 pt-2 border-t border-warning/20">
+                  <div className="mt-2 space-y-2 border-t border-warning/20 pt-2">
                     <div>
                       <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Button variant="outline" className={cn("h-8 text-xs w-full justify-start", !date && "text-muted-foreground")}>
+                          <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-xs", !date && "text-muted-foreground")}>
                             <CalendarIcon size={12} className="mr-1.5" />
                             {date ? format(date, "dd/MM/yyyy") : "Selecionar data"}
                           </Button>
@@ -1455,11 +1454,11 @@ export default function AppointmentConfirmBar({
                     </div>
                     <div>
                       <label className="text-[10px] text-muted-foreground mb-1 block">Horário</label>
-                      <Input type="time" value={time} onChange={e => setTime(e.target.value)} className="h-8 text-xs" />
+                      <Input type="time" value={time} onChange={e => setTime(e.target.value)} className="h-10 rounded-xl text-xs" />
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => { setConfirmingId(null); setDate(undefined); }}>Cancelar</Button>
-                      <Button size="sm" className="flex-1 h-7 text-xs bg-green-600 hover:bg-green-700 text-white gap-1" onClick={() => handleConfirm(task)} disabled={saving}>
+                      <Button size="sm" className="h-10 flex-1 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={() => handleConfirm(task)} disabled={saving}>
                         {saving ? "Confirmando..." : "Confirmar"}
                       </Button>
                     </div>
@@ -1538,6 +1537,6 @@ export default function AppointmentConfirmBar({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

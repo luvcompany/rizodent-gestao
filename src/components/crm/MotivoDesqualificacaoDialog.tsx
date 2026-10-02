@@ -38,16 +38,16 @@ export default function MotivoDesqualificacaoDialog({ open, nomeDoLead, onCancel
 
   return (
     <Dialog open={open} onOpenChange={(aberto) => { if (!aberto) onCancelar(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="rounded-2xl sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Por que desqualificar?</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-lg font-semibold tracking-tight">Por que desqualificar?</DialogTitle>
+          <DialogDescription className="leading-relaxed">
             {nomeDoLead ? <><strong>{nomeDoLead}</strong> vai para Desqualificado. </> : null}
             Escolha o motivo — ele fica registrado no histórico do lead.
           </DialogDescription>
         </DialogHeader>
 
-        <div role="radiogroup" aria-label="Motivo da desqualificação" className="grid gap-2">
+        <div role="radiogroup" aria-label="Motivo da desqualificação" className="grid gap-2 pt-1">
           {opcoes.map((m) => {
             const marcado = escolha === m;
             return (
@@ -57,12 +57,12 @@ export default function MotivoDesqualificacaoDialog({ open, nomeDoLead, onCancel
                 role="radio"
                 aria-checked={marcado}
                 onClick={() => setEscolha(m)}
-                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                  marcado ? "border-primary bg-primary/10 font-medium text-foreground" : "border-border hover:bg-muted/60"
+                className={`flex min-h-11 items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors ${
+                  marcado ? "border-primary bg-primary-soft-2 font-medium text-foreground shadow-xs" : "border-border/70 bg-card hover:border-border hover:bg-surface-sunken"
                 }`}
               >
                 <span
-                  className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${marcado ? "border-primary" : "border-muted-foreground/50"}`}
+                  className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-2 ${marcado ? "border-primary" : "border-muted-foreground/40"}`}
                   aria-hidden
                 >
                   {marcado && <span className="h-2 w-2 rounded-full bg-primary" />}
@@ -80,13 +80,13 @@ export default function MotivoDesqualificacaoDialog({ open, nomeDoLead, onCancel
             onChange={(e) => setOutro(e.target.value)}
             placeholder="Descreva o motivo"
             maxLength={200}
-            className="min-h-[70px]"
+            className="min-h-24 rounded-xl"
           />
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancelar}>Cancelar</Button>
-          <Button onClick={confirmar} disabled={!podeConfirmar}>Desqualificar</Button>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" className="h-10 rounded-xl px-4" onClick={onCancelar}>Cancelar</Button>
+          <Button className="h-10 rounded-xl px-5" onClick={confirmar} disabled={!podeConfirmar}>Desqualificar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

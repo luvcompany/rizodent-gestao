@@ -24,3 +24,11 @@ export function contaComoLeadNovo(lead: { source?: string | null }): boolean {
  * descarta os leads SEM origem (NULL), que são leads novos de verdade.
  */
 export const FILTRO_LEAD_NOVO = `source.is.null,source.neq.${ORIGEM_CRIADA_PELA_CONCILIACAO}`;
+
+// ─── Adaptador para as telas do redesign (01/10/2026) ───
+// O Dashboard do v2 aplica o filtro de "lead novo" por esta função. A régua é
+// a do CRClin (pedido da Julia, 22/09): lead criado pela conciliação (source
+// 'kommo') não é lead novo.
+export function filtrarLeadsNovos<Q extends { or: (filtro: string) => Q }>(consulta: Q): Q {
+  return consulta.or(FILTRO_LEAD_NOVO);
+}

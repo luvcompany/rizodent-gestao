@@ -48,7 +48,7 @@ export function FilePicker({ config, onChange, keyOf }: FilePickerProps) {
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">Arquivo</Label>
+      <Label className="text-[13px] font-medium text-muted-foreground">Arquivo</Label>
       <input
         ref={inputRef}
         type="file"
@@ -57,15 +57,15 @@ export function FilePicker({ config, onChange, keyOf }: FilePickerProps) {
         onChange={handleSelect}
       />
       {currentUrl ? (
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2 py-1.5">
-          <Paperclip size={14} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-xs truncate flex-1" title={currentName || currentUrl}>
+        <div className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-xs">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary"><Paperclip size={15} strokeWidth={1.75} /></span>
+          <span className="min-w-0 flex-1 break-all text-[13px] font-medium leading-snug" title={currentName || currentUrl}>
             {currentName || "Arquivo enviado"}
           </span>
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="text-xs text-primary hover:underline"
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary-soft"
             disabled={uploading}
           >
             Trocar
@@ -73,10 +73,10 @@ export function FilePicker({ config, onChange, keyOf }: FilePickerProps) {
           <button
             type="button"
             onClick={handleRemove}
-            className="text-destructive hover:opacity-80"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-tertiary transition-colors hover:bg-destructive-soft hover:text-destructive"
             title="Remover"
           >
-            <X size={14} />
+            <X size={15} strokeWidth={1.75} />
           </button>
         </div>
       ) : (
@@ -84,7 +84,7 @@ export function FilePicker({ config, onChange, keyOf }: FilePickerProps) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-full text-xs gap-1.5"
+          className="h-10 w-full rounded-xl border-dashed text-[13px] font-semibold gap-2"
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
         >
@@ -92,7 +92,7 @@ export function FilePicker({ config, onChange, keyOf }: FilePickerProps) {
           {uploading ? "Enviando..." : "Selecionar arquivo"}
         </Button>
       )}
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[11px] text-tertiary">
         Imagem ≤5MB · Vídeo ≤16MB · Documento ≤100MB
       </p>
     </div>
@@ -151,7 +151,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs">Áudio</Label>
+      <Label className="text-[13px] font-medium text-muted-foreground">Áudio</Label>
       <input
         ref={inputRef}
         type="file"
@@ -161,15 +161,15 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
       />
       {currentUrl ? (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2 py-1.5">
-            <audio src={currentUrl} controls className="h-7 flex-1 min-w-0" />
+          <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-2.5 py-2 shadow-xs">
+            <audio src={currentUrl} controls className="h-8 flex-1 min-w-0" />
             <button
               type="button"
               onClick={handleRemove}
-              className="text-destructive hover:opacity-80 flex-shrink-0"
+              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-tertiary transition-colors hover:bg-destructive-soft hover:text-destructive"
               title="Remover"
             >
-              <X size={14} />
+              <X size={15} strokeWidth={1.75} />
             </button>
           </div>
           <div className="flex gap-1.5">
@@ -177,7 +177,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 text-xs flex-1"
+              className="h-9 flex-1 rounded-xl text-xs font-semibold"
               onClick={() => inputRef.current?.click()}
               disabled={uploading}
             >
@@ -187,7 +187,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 text-xs flex-1"
+              className="h-9 flex-1 rounded-xl text-xs font-semibold"
               onClick={() => { handleRemove(); setMode("record"); }}
               disabled={uploading}
             >
@@ -205,7 +205,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
           />
           <button
             type="button"
-            className="text-[10px] text-muted-foreground hover:underline"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
             onClick={() => setMode("choose")}
           >
             Cancelar gravação
@@ -217,7 +217,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 flex-1 text-xs gap-1.5"
+            className="h-10 flex-1 rounded-xl text-[13px] font-semibold gap-2"
             onClick={() => setMode("record")}
             disabled={uploading}
           >
@@ -227,7 +227,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 flex-1 text-xs gap-1.5"
+            className="h-10 flex-1 rounded-xl text-[13px] font-semibold gap-2"
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
           >
@@ -236,7 +236,7 @@ export function AudioPicker({ config, onChange, keyOf }: AudioPickerProps) {
           </Button>
         </div>
       )}
-      <p className="text-[10px] text-muted-foreground">Áudio ≤16MB · OGG/Opus, MP3, M4A, WAV</p>
+      <p className="text-[11px] text-tertiary">Áudio ≤16MB · OGG/Opus, MP3, M4A, WAV</p>
     </div>
   );
 }

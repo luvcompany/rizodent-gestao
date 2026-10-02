@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff,
-  Ban, AlertCircle, Search, MessageSquare, X,
+  Ban, AlertCircle, Search, MessageSquare, X, PhoneCall, Percent, Timer,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,8 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } from "@/components/ui/date-range-filter";
 import CallPermissionsPanel from "@/components/ligacoes/CallPermissionsPanel";
+import { numeroConectado, useWhatsappCall } from "@/contexts/WhatsappCallContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 type CallCategory = "answered" | "missed" | "rejected" | "blocked" | "failed" | "ongoing";
 
@@ -96,18 +98,41 @@ function categoryMeta(cat: CallCategory, direction: string) {
   const inbound = direction === "inbound";
   switch (cat) {
     case "answered":
-      return { icon: inbound ? PhoneIncoming : PhoneOutgoing, color: "text-emerald-600 dark:text-emerald-500", label: inbound ? "Recebida" : "Realizada" };
+      return { icon: inbound ? PhoneIncoming : PhoneOutgoing, color: "bg-success-soft text-success-soft-foreground", label: inbound ? "Recebida" : "Realizada" };
     case "missed":
-      return { icon: PhoneMissed, color: "text-destructive", label: "Perdida" };
+      return { icon: PhoneMissed, color: "bg-destructive-soft text-destructive-soft-foreground", label: "Perdida" };
     case "rejected":
-      return { icon: PhoneOff, color: "text-destructive", label: "Recusada" };
+      return { icon: PhoneOff, color: "bg-destructive-soft text-destructive-soft-foreground", label: "Recusada" };
     case "blocked":
-      return { icon: Ban, color: "text-warning", label: "Bloqueada pelo cliente" };
+      return { icon: Ban, color: "bg-slate-soft text-slate-soft-foreground", label: "Bloqueada pelo cliente" };
     case "failed":
-      return { icon: inbound ? AlertCircle : PhoneOff, color: "text-muted-foreground", label: inbound ? "Não completada" : "Não atendida" };
+      return { icon: inbound ? AlertCircle : PhoneOff, color: "bg-warning-soft text-warning-soft-foreground", label: inbound ? "Não completada" : "Não atendida" };
     case "ongoing":
-      return { icon: Phone, color: "text-primary", label: "Ao vivo" };
+      return { icon: Phone, color: "bg-info-soft text-info-soft-foreground", label: "Ao vivo" };
   }
+}
+
+/**
+ * INTEG-22: status da ligação em PT-BR no detalhe (antes saía cru:
+ * 'completed', 'no_answer', 'ringing', 'answered' da Api4Com…). Ligação
+ * encerrada usa o MESMO rótulo da lista (categoryMeta), para o detalhe nunca
+ * contradizer a linha ("Encerrada" numa ligação que a lista chama de "Não
+ * atendida"); ligação em curso diz em que pé está. A exceção é a atendida: o
+ * rótulo da lista ("Realizada"/"Recebida") é o da direção, que já aparece na
+ * linha "Direção" ao lado — no Status ela é "Atendida".
+ */
+const STATUS_EM_CURSO: Record<string, string> = {
+  ringing: "Chamando",
+  connecting: "Conectando",
+  connected: "Em andamento",
+  in_progress: "Em andamento",
+};
+
+function statusLegivel(c: CallRow): string {
+  const cat = categorize(c);
+  if (cat === "ongoing") return STATUS_EM_CURSO[(c.status || "").toLowerCase()] ?? "Ao vivo";
+  if (cat === "answered") return "Atendida";
+  return categoryMeta(cat, c.direction).label;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -125,6 +150,10 @@ function displayName(c: CallRow): string {
 
 export default function CrmLigacoes() {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
+  const { podeLigarPorWhatsapp, numerosVisiveis } = useWhatsappCall();
+  // INTEG-14: telefonia (Api4Com) pronta para este usuário? null = lendo.
+  const [telefoniaPronta, setTelefoniaPronta] = useState<boolean | null>(null);
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<CallCategory | "all">("all");
@@ -200,6 +229,27 @@ export default function CrmLigacoes() {
     };
   }, []);
 
+  useEffect(() => {
+    let ativo = true;
+    Promise.resolve(supabase.rpc("api4com_dial_enabled"))
+      .then(({ data, error }) => { if (ativo) setTelefoniaPronta(error ? null : !!data); })
+      .catch(() => { if (ativo) setTelefoniaPronta(null); });
+    return () => { ativo = false; };
+  }, []);
+
+  // INTEG-14: sem número que ligue pela API do WhatsApp e sem telefonia, a
+  // página explica por que não há como ligar (antes só dizia "Nenhuma ligação
+  // encontrada"). Coexistência é o caso da Santa Luzia: os números seguem no
+  // app do celular e a Cloud API não faz chamadas neles.
+  const avisoSemLigacao = useMemo(() => {
+    if (!numerosVisiveis || telefoniaPronta !== false || podeLigarPorWhatsapp()) return null;
+    const temCoexistencia = numerosVisiveis.some((n) => numeroConectado(n) && n.is_coexistence);
+    return temCoexistencia
+      ? "Números em coexistência com o app WhatsApp Business não fazem ligações pela API; conecte a telefonia em Integrações."
+      : "Nenhum número de WhatsApp desta clínica faz ligações pela API agora; para ligar pelo CRM, conecte a telefonia em Integrações.";
+  }, [numerosVisiveis, telefoniaPronta, podeLigarPorWhatsapp]);
+  const podeAbrirIntegracoes = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
+
   const dateRange = useMemo(() => getDateRangeFromFilter(period), [period]);
 
   const dateScoped = useMemo(() => {
@@ -244,17 +294,19 @@ export default function CrmLigacoes() {
   }, [dateScoped, directionFilter]);
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <header className="p-4 md:p-6 border-b bg-background">
-        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Phone className="text-primary" />
-            <h1 className="text-2xl font-semibold">Ligações</h1>
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      <header className="px-4 pt-4 md:px-6 md:pt-6 lg:px-7 lg:pt-7">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+              <Phone className="h-5 w-5" />
+            </span>
+            <h1 className="text-[28px] font-bold leading-tight tracking-tight text-foreground sm:text-[32px]">Ligações</h1>
           </div>
           {view === "ligacoes" && <DateRangeFilter value={period} onChange={setPeriod} />}
         </div>
 
-        <div className="flex gap-4 border-b mb-4">
+        <div className="mb-5 flex w-fit max-w-full flex-wrap items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
           {([
             { key: "ligacoes", label: "Ligações" },
             { key: "permissoes", label: "Permissões" },
@@ -262,36 +314,79 @@ export default function CrmLigacoes() {
             <button
               key={t.key}
               onClick={() => setView(t.key)}
-              className={`relative pb-2 text-sm font-medium transition-colors ${
-                view === t.key ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              className={`relative isolate inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                view === t.key ? "text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {t.label}
-              {view === t.key && <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-primary" />}
+              {view === t.key && <span className="absolute inset-0 -z-10 rounded-full bg-primary shadow-brand" />}
             </button>
           ))}
         </div>
 
+        {avisoSemLigacao && (
+          <div role="status" className="mb-5 flex flex-wrap items-center gap-3 rounded-xl bg-warning-soft px-4 py-3">
+            <AlertCircle size={16} className="shrink-0 text-warning" />
+            <p className="min-w-0 flex-1 basis-60 text-sm text-warning-soft-foreground">{avisoSemLigacao}</p>
+            {podeAbrirIntegracoes && (
+              <Button size="sm" variant="outline" className="rounded-xl bg-card" onClick={() => navigate("/crm/integracoes")}>
+                Abrir Integrações
+              </Button>
+            )}
+          </div>
+        )}
+
         {view === "ligacoes" && (
         <>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3 mb-4">
-          <KpiCard label="Total" value={kpis.total} />
-          <KpiCard label="Atendidas" value={kpis.answered} tone="success" />
-          <KpiCard label="Taxa atend." value={`${kpis.rate}%`} />
-          <KpiCard label="Duração média" value={kpis.avgDur ? formatDuration(kpis.avgDur) : "—"} />
-          <KpiCard label="Perdidas" value={kpis.missed} tone="warn" />
-          <KpiCard label="Bloqueadas" value={kpis.blocked} tone="warn" />
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
+              <Phone className="h-5 w-5" />
+            </span>
+            <KpiCard label="Total" value={kpis.total} />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-success-soft text-success">
+              <PhoneCall className="h-5 w-5" />
+            </span>
+            <KpiCard label="Atendidas" value={kpis.answered} tone="success" />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-info-soft text-info">
+              <Percent className="h-5 w-5" />
+            </span>
+            <KpiCard label="Taxa atend." value={`${kpis.rate}%`} />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-purple-soft text-purple">
+              <Timer className="h-5 w-5" />
+            </span>
+            <KpiCard label="Duração média" value={kpis.avgDur ? formatDuration(kpis.avgDur) : "—"} />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive-soft text-destructive">
+              <PhoneMissed className="h-5 w-5" />
+            </span>
+            <KpiCard label="Perdidas" value={kpis.missed} tone="warn" />
+          </div>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-soft text-slate">
+              <Ban className="h-5 w-5" />
+            </span>
+            <KpiCard label="Bloqueadas" value={kpis.blocked} tone="warn" />
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-3">
+        <div className="rounded-t-card border border-b-0 border-border/60 bg-card p-4">
+        <div className="mb-3 flex flex-wrap gap-1">
           {FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
-              className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+              className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full px-4 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 filter === f.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background hover:bg-muted border-border"
+                  ? "bg-primary text-primary-foreground shadow-brand"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {f.label}
@@ -299,23 +394,23 @@ export default function CrmLigacoes() {
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative min-w-[220px] max-w-md flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-tertiary" size={18} />
             <Input
               placeholder="Buscar por nome ou telefone"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9"
+              className="h-10 rounded-xl border-transparent bg-surface-sunken pl-10 placeholder:text-tertiary focus-visible:bg-card"
             />
           </div>
-          <div className="flex gap-1">
+          <div className="flex max-w-full flex-wrap gap-1 rounded-xl bg-surface-sunken p-1">
             {(["all", "inbound", "outbound"] as const).map((d) => (
               <button
                 key={d}
                 onClick={() => setDirectionFilter(d)}
-                className={`px-3 py-1.5 text-xs rounded-md border ${
-                  directionFilter === d ? "bg-secondary" : "bg-background hover:bg-muted"
+                className={`inline-flex h-8 items-center justify-center whitespace-nowrap rounded-lg px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  directionFilter === d ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {d === "all" ? "Todas direções" : d === "inbound" ? "Recebidas" : "Realizadas"}
@@ -323,21 +418,25 @@ export default function CrmLigacoes() {
             ))}
           </div>
         </div>
+        </div>
         </>
         )}
       </header>
 
       {view === "ligacoes" ? (
-      <div className="flex-1 overflow-y-auto">
+      <div className="px-4 pb-4 md:px-6 md:pb-6 lg:px-7 lg:pb-7">
+        <div className="overflow-hidden rounded-b-card border border-border/60 bg-card shadow-card">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Carregando ligações…</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">Carregando ligações…</div>
         ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <Phone className="mx-auto mb-3 opacity-30" size={32} />
-            <p className="text-sm">Nenhuma ligação encontrada</p>
+          <div className="px-4 py-14 text-center">
+            <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-primary-soft-fg">
+              <Phone size={24} />
+            </span>
+            <p className="text-[15px] font-semibold text-foreground">Nenhuma ligação encontrada</p>
           </div>
         ) : (
-          <ul className="divide-y">
+          <ul className="divide-y divide-border/60">
             {filtered.map((c) => {
               const cat = categorize(c);
               const meta = categoryMeta(cat, c.direction);
@@ -349,37 +448,44 @@ export default function CrmLigacoes() {
                 <li
                   key={c.id}
                   onClick={() => setSelected(c)}
-                  className="flex items-center gap-3 p-3 md:px-6 hover:bg-muted/40 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-sunken/60 md:px-5"
                 >
                   <Avatar className="h-10 w-10 flex-shrink-0">
-                    <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarFallback className="bg-primary-soft text-[13px] font-semibold text-primary-soft-fg">{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
 
                   </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 min-w-0">
-                        <span className={`font-medium truncate ${cat === "missed" || cat === "rejected" ? "text-destructive" : ""}`}>
+                  <div className="min-w-0 flex-1 md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] md:items-center md:gap-4">
+                    <div className="flex min-w-0 items-center justify-between gap-2 md:block">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className={`truncate text-sm font-semibold ${cat === "missed" || cat === "rejected" ? "text-destructive" : "text-foreground"}`}>
                           {name}
                         </span>
                         {c.source === "api4com" && (
-                          <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                          <span className="inline-flex h-5 flex-shrink-0 items-center rounded-full bg-slate-soft px-2 text-[10px] font-medium text-slate-soft-foreground">
                             Telefonia
                           </span>
                         )}
                       </span>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                      <span className="flex-shrink-0 whitespace-nowrap text-xs text-tertiary md:mt-0.5 md:block">
                         {when ? formatDistanceToNow(when, { locale: ptBR, addSuffix: true }) : ""}
                       </span>
                     </div>
-                    <div className={`flex items-center gap-1.5 text-xs mt-0.5 ${meta.color}`}>
-                      <Icon size={14} />
-                      <span>{meta.label}</span>
+                    <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs md:mt-0 md:contents">
+                      <span className="flex min-w-0">
+                      <span className={`inline-flex h-6 max-w-full items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11px] font-medium ${meta.color}`}>
+                      <Icon size={13} className="shrink-0" />
+                      <span className="truncate">{meta.label}</span>
+                      </span>
+                      </span>
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs tabular-nums">
                       {dur && <span className="text-muted-foreground">· {dur}</span>}
                       {c.recording_url && (
                         <span className="text-muted-foreground">· 🎙️ Gravado</span>
                       )}
+                      </span>
                     </div>
                   </div>
+                  <div className="flex flex-shrink-0 justify-end sm:w-[112px]">
                   {c.lead_id && (
                     <Button
                       variant="ghost"
@@ -388,30 +494,35 @@ export default function CrmLigacoes() {
                         e.stopPropagation();
                         navigate(`/crm/conversa/${c.lead_id}`);
                       }}
-                      className="flex-shrink-0"
+                      className="flex-shrink-0 rounded-xl border border-border/60 bg-card font-medium hover:bg-muted"
                     >
                       <MessageSquare size={14} className="mr-1" /> Conversa
                     </Button>
                   )}
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+        </div>
       </div>
       ) : (
-        <div className="flex-1 min-h-0">
+        <div className="px-4 pb-4 md:px-6 md:pb-6 lg:px-7 lg:pb-7">
           <CallPermissionsPanel />
         </div>
       )}
 
       <Sheet open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           {selected && (
             <>
               <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
-                  <Phone size={18} /> Detalhes da ligação
+                <SheetTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                    <Phone size={18} />
+                  </span>
+                  Detalhes da ligação
                 </SheetTitle>
               </SheetHeader>
               <CallDetails call={selected} onGoToConversation={(leadId) => {
@@ -427,13 +538,13 @@ export default function CrmLigacoes() {
 }
 
 function KpiCard({ label, value, tone }: { label: string; value: string | number; tone?: "success" | "warn" }) {
-  const color = tone === "success" ? "text-emerald-600 dark:text-emerald-500"
-    : tone === "warn" ? "text-warning"
+  const color = tone === "success" ? "text-foreground"
+    : tone === "warn" ? "text-foreground"
     : "text-foreground";
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={`text-lg font-semibold ${color}`}>{value}</div>
+    <div className="h-full rounded-card border border-border/60 bg-card p-4 pt-[68px] shadow-card">
+      <div className="text-[13px] font-medium text-muted-foreground">{label}</div>
+      <div className={`mt-1 text-[28px] font-bold leading-tight tracking-tight tabular-nums ${color}`}>{value}</div>
     </div>
   );
 }
@@ -446,30 +557,32 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
   const phone = call.direction === "inbound" ? call.from_phone : call.to_phone;
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-5 space-y-5">
       <div className="flex items-center gap-3">
         <Avatar className="h-14 w-14">
-          <AvatarFallback>{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className="bg-primary-soft text-lg font-semibold text-primary-soft-fg">{(name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
 
         </Avatar>
         <div className="min-w-0">
-          <div className="font-semibold truncate">{name}</div>
-          {phone && <div className="text-sm text-muted-foreground">{phone}</div>}
+          <div className="truncate text-base font-semibold text-foreground">{name}</div>
+          {phone && <div className="text-sm tabular-nums text-muted-foreground">{phone}</div>}
         </div>
       </div>
 
-      <div className={`flex items-center gap-2 text-sm ${meta.color}`}>
-        <Icon size={16} />
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className={`inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11px] font-medium ${meta.color}`}>
+        <Icon size={13} className="shrink-0" />
         <span className="font-medium">{meta.label}</span>
-        {call.duration_seconds ? <span className="text-muted-foreground">· {formatDuration(call.duration_seconds)}</span> : null}
-        <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded border bg-muted text-muted-foreground">
+        </span>
+        {call.duration_seconds ? <span className="text-xs tabular-nums text-muted-foreground">· {formatDuration(call.duration_seconds)}</span> : null}
+        <span className="ml-auto inline-flex h-6 items-center rounded-full bg-slate-soft px-2.5 text-[11px] font-medium text-slate-soft-foreground">
           {call.source === "api4com" ? "Telefonia" : "WhatsApp"}
         </span>
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-surface-sunken p-4 text-[13px]">
         <Info label="Direção" value={call.direction === "inbound" ? "Recebida" : "Realizada"} />
-        <Info label="Status" value={call.status || "—"} />
+        <Info label="Status" value={call.status ? statusLegivel(call) : "—"} />
         <Info label="Início" value={call.started_at ? format(new Date(call.started_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR }) : "—"} />
         <Info label="Atendida" value={call.connected_at ? format(new Date(call.connected_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR }) : "—"} />
         <Info label="Encerrada" value={call.ended_at ? format(new Date(call.ended_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR }) : "—"} />
@@ -477,15 +590,15 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
       </dl>
 
       {call.error_message && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-          <div className="font-medium mb-1">Mensagem de erro</div>
+        <div className="rounded-xl bg-destructive-soft p-4 text-xs text-destructive-soft-foreground">
+          <div className="mb-1 font-semibold">Mensagem de erro</div>
           <div className="whitespace-pre-wrap break-words">{call.error_message}</div>
         </div>
       )}
 
       {call.recording_url && (
-        <div className="rounded-md border p-3 bg-card">
-          <div className="text-xs font-medium mb-2 flex items-center gap-1.5">🎙️ Gravação da ligação</div>
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-xs">
+          <div className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold text-foreground">🎙️ Gravação da ligação</div>
           <AudioPlayer src={call.recording_url} />
           {call.source === "api4com" ? (
             <AudioTranscriptionToggle api4comCallId={call.id} initialTranscription={call.transcription} />
@@ -495,9 +608,9 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
         </div>
       )}
 
-      <div className="flex gap-2 pt-2">
+      <div className="flex gap-2 pt-1">
         {call.lead_id && (
-          <Button className="flex-1" onClick={() => onGoToConversation(call.lead_id!)}>
+          <Button className="h-10 flex-1 rounded-xl" onClick={() => onGoToConversation(call.lead_id!)}>
             <MessageSquare size={14} className="mr-1.5" /> Ir para a conversa
           </Button>
         )}
@@ -508,9 +621,9 @@ function CallDetails({ call, onGoToConversation }: { call: CallRow; onGoToConver
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium break-words">{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words font-medium tabular-nums text-foreground">{value}</dd>
     </div>
   );
 }

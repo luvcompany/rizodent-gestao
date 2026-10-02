@@ -1,3 +1,4 @@
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
 // reportKit — fundação canônica dos relatórios (datas em America/Bahia,
 // paginação segura, classificação de origem, normalização de cidade e
 // wrappers tipados das RPCs rpt_*).
@@ -250,20 +251,10 @@ const CIDADES_CANONICAS: Record<string, string> = {
   "guanambi": "Guanambi",
 };
 
-/** Normaliza grafias de cidade; null/vazio vira "Sem cidade".
- *  Com `grafiasCanonicas` (cidades do tenant, ex. clinicas.cidade), casa a
- *  grafia sem acento/caixa e devolve a grafia canônica do tenant. */
-export function normalizeCidade(
-  cidade: string | null,
-  grafiasCanonicas?: string[] | null,
-): string {
+/** Normaliza grafias de cidade; null/vazio vira "Sem cidade". */
+export function normalizeCidade(cidade: string | null): string {
   const raw = (cidade ?? "").trim();
   if (!raw) return SEM_CIDADE;
-  if (grafiasCanonicas?.length) {
-    const alvo = norm(raw);
-    const canonica = grafiasCanonicas.find((g) => g && norm(g) === alvo);
-    if (canonica) return canonica;
-  }
   return CIDADES_CANONICAS[norm(raw)] ?? raw;
 }
 
@@ -596,15 +587,16 @@ export async function rptTicketMedio(from: Date | string, to: Date | string): Pr
 export const contaComoFaturamento = (p: { recorrencia_orto?: boolean | null; nao_marketing?: boolean | null }) =>
   p.recorrencia_orto !== true && p.nao_marketing !== true;
 
-/**
- * Apelidos trazidos junto com o redesign do v2 (01/10/2026).
- *
- * No v2 estas funções foram renomeadas para tirar "Bahia" do nome, porque lá o
- * fuso vem do cadastro de cada clínica. Aqui o CRClin é da Rizodent e o fuso
- * continua sendo America/Bahia: trocar a régua de fuso mexeria em data de
- * relatório e de faturamento, o que NÃO é redesign. Então as telas novas
- * encontram o nome que esperam, apontando para a mesma régua de sempre.
- */
+// ─── Adaptadores para as telas do redesign (01/10/2026) ───
+// Só formatação e nomes. A régua de data e de faturamento continua a do CRClin
+// (America/Bahia): no v2 o fuso vem do cadastro de cada clínica.
+export function motivoDaFalhaDeLeitura(
+  e: unknown,
+  padrao = "Não foi possível carregar os dados. Tente de novo.",
+): string {
+  const causa = (e as { cause?: unknown } | null | undefined)?.cause;
+  return mensagemDeErro(causa ?? e, padrao);
+}
 export const dayKeyNoFuso = dayKeyBahia;
 export const hojeNoFuso = todayBahia;
 export const rangeNoFuso = rangeBahia;

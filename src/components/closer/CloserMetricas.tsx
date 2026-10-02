@@ -56,55 +56,67 @@ export default function CloserMetricas() {
     };
   }, []);
 
+  // Erro não vira R$ 0 em lugar nenhum (AGENDA-22/CLO-14): com a RPC
+  // falhando, os quatro cartões mostram "—" e dizem que não carregaram —
+  // inclusive as linhas de apoio (previsão e total de fechamentos), que antes
+  // continuavam dizendo "previsão R$ 0" e "0 no total". Enquanto a primeira
+  // resposta não chega, também não há número.
+  const carregando = !m && !falhou;
+  const semDado = falhou || carregando;
+  const apoioDe = (texto: string) =>
+    falhou ? "não foi possível carregar" : carregando ? "carregando…" : texto;
+
   const cartoes = [
     {
       rotulo: "Hoje",
-      valor: falhou ? "—" : brl(m?.faturamento_dia ?? 0),
-      apoio: falhou ? "não foi possível carregar" : "faturamento do dia",
+      valor: semDado ? "—" : brl(m?.faturamento_dia ?? 0),
+      apoio: apoioDe("faturamento do dia"),
       Icone: Coins,
-      cor: "text-emerald-600",
-      fundo: "bg-emerald-500/10",
+      cor: "text-success",
+      fundo: "bg-success-soft",
     },
     {
       rotulo: "No mês",
-      valor: falhou ? "—" : brl(m?.faturamento_mes ?? 0),
-      apoio: `previsão ${brl(m?.previsao_mes ?? 0)}`,
+      valor: semDado ? "—" : brl(m?.faturamento_mes ?? 0),
+      apoio: apoioDe(`previsão ${brl(m?.previsao_mes ?? 0)}`),
       Icone: TrendingUp,
-      cor: "text-sky-600",
-      fundo: "bg-sky-500/10",
+      cor: "text-info",
+      fundo: "bg-info-soft",
     },
     {
       rotulo: "Total",
-      valor: falhou ? "—" : brl(m?.faturamento_total ?? 0),
-      apoio: "desde o início",
+      valor: semDado ? "—" : brl(m?.faturamento_total ?? 0),
+      apoio: apoioDe("desde o início"),
       Icone: CalendarDays,
-      cor: "text-violet-600",
-      fundo: "bg-violet-500/10",
+      cor: "text-purple",
+      fundo: "bg-purple-soft",
     },
     {
       rotulo: "Fechamentos",
-      valor: falhou ? "—" : String(m?.fechamentos_mes ?? 0),
-      apoio: `${m?.fechamentos_total ?? 0} no total`,
+      valor: semDado ? "—" : String(m?.fechamentos_mes ?? 0),
+      apoio: apoioDe(`${m?.fechamentos_total ?? 0} no total`),
       Icone: Trophy,
       cor: "text-warning",
-      fundo: "bg-warning/10",
+      fundo: "bg-warning-soft",
     },
   ];
 
   return (
-    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section className="grid grid-cols-1 gap-5 min-[480px]:grid-cols-2 xl:grid-cols-4">
       {cartoes.map(({ rotulo, valor, apoio, Icone, cor, fundo }) => (
-        <div key={rotulo} className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center gap-2">
-            <span className={`grid h-8 w-8 place-items-center rounded-lg ${fundo} ${cor}`}>
-              <Icone size={16} />
+        // Mesmo desenho dos indicadores do Início (RecepcaoHome): rótulo à
+        // esquerda, chip de ícone em quadrado pastel à direita, número grande.
+        <div key={rotulo} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 rounded-card border border-border/60 bg-card p-5 shadow-card">
+          <div className="contents">
+            <span className={`col-start-2 row-start-1 grid h-11 w-11 shrink-0 place-items-center justify-self-end rounded-xl ${fundo} ${cor}`}>
+              <Icone size={21} />
             </span>
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="col-start-1 row-start-1 block pt-0.5 text-[13.5px] font-medium leading-snug text-muted-foreground">
               {rotulo}
             </span>
           </div>
-          <div className="mt-2.5 text-2xl font-semibold tabular-nums text-foreground">{valor}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">{apoio}</div>
+          <div className="col-span-2 mt-3 text-[30px] font-bold leading-none tracking-tight tabular-nums text-foreground [overflow-wrap:anywhere]">{valor}</div>
+          <div className="col-span-2 mt-2 text-xs text-tertiary">{apoio}</div>
         </div>
       ))}
     </section>

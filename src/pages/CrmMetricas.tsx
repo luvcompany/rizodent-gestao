@@ -306,22 +306,22 @@ const CrmMetricas = () => {
     return Array.from(new Set(data.automacoes.map((r) => traduzir(r.action_type, ACTION_TYPE_LABELS))));
   }, [data]);
 
-  const COLORS = ["hsl(var(--primary))", "#22c55e", "#3b82f6", "#a855f7", "hsl(var(--warning))", "#ef4444", "#06b6d4", "#ec4899"];
+  const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))", "hsl(var(--chart-6))", "hsl(var(--chart-7))", "hsl(var(--chart-8))"];
 
   const periodoLabel = `${from.toLocaleDateString("pt-BR")} — ${to.toLocaleDateString("pt-BR")}`;
   const semDados = loading ? "Carregando…" : errorMsg ? "Dados indisponíveis." : "Sem dados no período.";
 
   return (
-    <div className="animate-fade-in space-y-6 overflow-y-auto h-full pr-2">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Métricas de Uso</h1>
-          <p className="text-sm text-muted-foreground">
-            Bots, IA e Automações · <span className="font-medium">{periodoLabel}</span>
+    <div className="h-full overflow-x-hidden overflow-y-auto animate-fade-in space-y-5 pr-0 lg:space-y-6 lg:pr-2 [&_.recharts-cartesian-grid-horizontal_line]:stroke-border [&_.recharts-cartesian-grid-vertical_line]:stroke-transparent [&_.recharts-cartesian-axis-line]:stroke-transparent [&_.recharts-cartesian-axis-tick-line]:stroke-transparent [&_.recharts-cartesian-axis-tick_text]:fill-tertiary [&_.recharts-cartesian-axis-tick_text]:text-[11px] [&_.recharts-tooltip-cursor]:fill-muted/60 [&_.recharts-default-tooltip]:!rounded-lg [&_.recharts-default-tooltip]:!border-0 [&_.recharts-default-tooltip]:!bg-sidebar [&_.recharts-default-tooltip]:!px-3 [&_.recharts-default-tooltip]:!py-2 [&_.recharts-default-tooltip]:!shadow-float [&_.recharts-tooltip-label]:!text-sidebar-active-foreground/60 [&_.recharts-tooltip-label]:!text-[11px] [&_.recharts-tooltip-item]:!text-sidebar-active-foreground [&_.recharts-tooltip-item]:!text-xs [&_.recharts-tooltip-item]:!font-semibold [&_.recharts-legend-wrapper]:!pt-3 [&_.recharts-legend-item]:!mr-4 [&_.recharts-legend-item_svg]:!h-2.5 [&_.recharts-legend-item_svg]:!w-2.5 [&_.recharts-legend-item_svg]:rounded-full [&_.recharts-legend-item_svg]:!mr-1.5 [&_.recharts-legend-item-text]:!text-muted-foreground [&_.recharts-legend-item-text]:text-[13px] [&_.recharts-legend-item-text]:font-medium [&_.recharts-bar:nth-child(1_of_.recharts-bar)_.recharts-rectangle]:fill-chart-1 [&_.legend-item-0_.recharts-legend-icon]:fill-chart-1 [&_.recharts-bar:nth-child(2_of_.recharts-bar)_.recharts-rectangle]:fill-chart-2 [&_.legend-item-1_.recharts-legend-icon]:fill-chart-2 [&_.recharts-bar:nth-child(3_of_.recharts-bar)_.recharts-rectangle]:fill-chart-3 [&_.legend-item-2_.recharts-legend-icon]:fill-chart-3 [&_.recharts-bar:nth-child(4_of_.recharts-bar)_.recharts-rectangle]:fill-chart-4 [&_.legend-item-3_.recharts-legend-icon]:fill-chart-4 [&_.recharts-bar:nth-child(5_of_.recharts-bar)_.recharts-rectangle]:fill-chart-5 [&_.legend-item-4_.recharts-legend-icon]:fill-chart-5 [&_.recharts-bar:nth-child(6_of_.recharts-bar)_.recharts-rectangle]:fill-chart-6 [&_.legend-item-5_.recharts-legend-icon]:fill-chart-6 [&_.recharts-bar:nth-child(7_of_.recharts-bar)_.recharts-rectangle]:fill-chart-7 [&_.legend-item-6_.recharts-legend-icon]:fill-chart-7 [&_.recharts-bar:nth-child(8_of_.recharts-bar)_.recharts-rectangle]:fill-chart-8 [&_.legend-item-7_.recharts-legend-icon]:fill-chart-8">
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div className="min-w-0">
+          <h1 className="text-[28px] font-bold leading-tight tracking-tight text-foreground sm:text-[32px]">Métricas de Uso</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Bots, IA e Automações · <span className="font-semibold text-foreground tabular-nums">{periodoLabel}</span>
           </p>
         </div>
         <Select value={preset} onValueChange={(v) => setPreset(v as Preset)}>
-          <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-[200px] h-10 rounded-xl bg-card shadow-xs font-medium"><SelectValue /></SelectTrigger>
           <SelectContent>
             {PRESETS.map((p) => (
               <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
@@ -329,18 +329,17 @@ const CrmMetricas = () => {
           </SelectContent>
         </Select>
       </div>
-
       {errorMsg && (
-        <Card className="border-destructive/50">
-          <CardContent className="p-4 flex items-center gap-3">
-            <AlertCircle className="text-destructive shrink-0" size={18} />
-            <p className="text-sm text-destructive">{errorMsg}</p>
+        <Card className="rounded-card border-destructive/20 bg-destructive-soft shadow-none">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertCircle className="text-destructive shrink-0 mt-0.5" size={18} />
+            <p className="text-sm text-destructive-soft-foreground break-words">{errorMsg}</p>
           </CardContent>
         </Card>
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5 [&>*:has(svg.lucide-bot)_.crm-chip]:bg-primary-soft [&>*:has(svg.lucide-bot)_.crm-chip]:text-primary [&>*:has(svg.lucide-sparkles)_.crm-chip]:bg-purple-soft [&>*:has(svg.lucide-sparkles)_.crm-chip]:text-purple [&>*:has(svg.lucide-mic)_.crm-chip]:bg-teal-soft [&>*:has(svg.lucide-mic)_.crm-chip]:text-teal [&>*:has(svg.lucide-zap)_.crm-chip]:bg-warning-soft [&>*:has(svg.lucide-zap)_.crm-chip]:text-warning">
         {[
           {
             label: "Execuções de Bot",
@@ -352,26 +351,27 @@ const CrmMetricas = () => {
           { label: "Transcrições de áudio", value: kpis.transcricoes, sub: "geradas automaticamente", icon: Mic },
           { label: "Automações executadas", value: kpis.automacoes, icon: Zap },
         ].map((k) => (
-          <Card key={k.label} className="gradient-card shadow-card">
-            <CardContent className="p-5 flex items-center gap-4">
-              <div className="rounded-lg bg-primary/10 p-3"><k.icon className="text-primary" size={20} /></div>
-              <div>
-                <p className="text-xs text-muted-foreground">{k.label}</p>
-                <p className="text-2xl font-bold">{loading ? "…" : k.value.toLocaleString("pt-BR")}</p>
-                {k.sub && !loading && <p className="text-[11px] text-muted-foreground">{k.sub}</p>}
+          <Card key={k.label} className="h-full rounded-card border-border/60 bg-card shadow-card">
+            <CardContent className="relative p-4 sm:p-5 flex h-full min-h-[132px] flex-col">
+              <div className="crm-chip absolute right-4 top-4 sm:right-5 sm:top-5 flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary"><k.icon className="text-current" size={20} /></div>
+              <div className="flex h-full min-w-0 flex-col">
+                <p className="flex min-h-10 items-center pr-12 sm:pr-14 text-xs sm:min-h-11 sm:text-[13px] font-semibold leading-snug text-muted-foreground">{k.label}</p>
+                <p className="mt-2 sm:mt-3 text-[30px] sm:text-[34px] font-bold leading-none tracking-tight tabular-nums text-foreground">{loading ? "…" : k.value.toLocaleString("pt-BR")}</p>
+                {k.sub && !loading && <p className="mt-auto pt-2.5 text-xs leading-snug text-tertiary">{k.sub}</p>}
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 lg:gap-6">
       {/* Bots */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Bot size={16} /> Execuções concluídas por Bot</CardTitle>
-          <p className="text-xs text-muted-foreground">Execuções de bot concluídas com sucesso no período (uma execução pode enviar várias mensagens).</p>
+      <Card className="flex min-w-0 flex-col rounded-card border-border/60 shadow-card">
+        <CardHeader className="p-5 sm:p-6 pb-3 sm:pb-4 space-y-1.5">
+          <CardTitle className="text-base font-semibold flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary"><Bot size={18} /></span> Execuções concluídas por Bot</CardTitle>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">Execuções de bot concluídas com sucesso no período (uma execução pode enviar várias mensagens).</p>
         </CardHeader>
-        <CardContent className="h-[320px]">
+        <CardContent className="mt-auto h-[320px] px-3 sm:px-5 pb-5 [&>p]:grid [&>p]:h-full [&>p]:place-items-center [&>p]:rounded-xl [&>p]:bg-surface-sunken/60 [&>p]:text-center [&_.recharts-bar_.recharts-rectangle]:[clip-path:inset(0_max(0px,calc(50%-22px)))_fill-box]">
           {botPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -392,12 +392,12 @@ const CrmMetricas = () => {
       </Card>
 
       {/* IA */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} /> Uso da IA ({nomeAssistente})</CardTitle>
-          <p className="text-xs text-muted-foreground">Volumes por tipo: sugestões, análises, exemplos e transcrições automáticas de áudio.</p>
+      <Card className="flex min-w-0 flex-col rounded-card border-border/60 shadow-card">
+        <CardHeader className="p-5 sm:p-6 pb-3 sm:pb-4 space-y-1.5">
+          <CardTitle className="text-base font-semibold flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-soft text-purple"><Sparkles size={18} /></span> Uso da IA ({nomeAssistente})</CardTitle>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">Volumes por tipo: sugestões, análises, exemplos e transcrições automáticas de áudio.</p>
         </CardHeader>
-        <CardContent className="h-[320px]">
+        <CardContent className="mt-auto h-[320px] px-3 sm:px-5 pb-5 [&>p]:grid [&>p]:h-full [&>p]:place-items-center [&>p]:rounded-xl [&>p]:bg-surface-sunken/60 [&>p]:text-center">
           {iaPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -409,7 +409,7 @@ const CrmMetricas = () => {
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
                 <Legend />
                 {iaModes.map((m, i) => (
-                  <Bar key={m} dataKey={m} fill={COLORS[i % COLORS.length]} />
+                  <Bar key={m} dataKey={m} fill={COLORS[i % COLORS.length]} maxBarSize={48} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -420,12 +420,12 @@ const CrmMetricas = () => {
 
 
       {/* Automações */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2"><Zap size={16} /> Automações executadas</CardTitle>
-          <p className="text-xs text-muted-foreground">Ações efetivamente executadas por gatilhos, agrupadas por tipo.</p>
+      <Card className="flex min-w-0 flex-col rounded-card border-border/60 shadow-card">
+        <CardHeader className="p-5 sm:p-6 pb-3 sm:pb-4 space-y-1.5">
+          <CardTitle className="text-base font-semibold flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-soft text-warning"><Zap size={18} /></span> Automações executadas</CardTitle>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">Ações efetivamente executadas por gatilhos, agrupadas por tipo.</p>
         </CardHeader>
-        <CardContent className="h-[320px]">
+        <CardContent className="mt-auto h-[320px] px-3 sm:px-5 pb-5 [&>p]:grid [&>p]:h-full [&>p]:place-items-center [&>p]:rounded-xl [&>p]:bg-surface-sunken/60 [&>p]:text-center [&_.recharts-bar_.recharts-rectangle]:[clip-path:inset(0_max(0px,calc(50%-22px)))_fill-box]">
           {autoPorMes.length === 0 ? (
             <p className="text-sm text-muted-foreground">{semDados}</p>
           ) : (
@@ -444,6 +444,7 @@ const CrmMetricas = () => {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

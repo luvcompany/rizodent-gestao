@@ -77,6 +77,12 @@ export default {
         tertiary: "hsl(var(--text-tertiary))",
         // Estados: fixos, não mudam com a marca. -soft = fundo suave;
         // -soft-foreground = texto sobre o suave (AA nos dois temas).
+        internal: {
+          DEFAULT: "hsl(var(--internal))",
+          foreground: "hsl(var(--internal-foreground))",
+          border: "hsl(var(--internal-border))",
+          accent: "hsl(var(--internal-accent))",
+        },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",

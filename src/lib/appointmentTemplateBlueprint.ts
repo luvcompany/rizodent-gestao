@@ -27,7 +27,7 @@ export function appointmentTemplateName(clinica: ClinicaLike): string {
   return `agendamento_${base}_${suffix}`;
 }
 
-// Corpo padrão do modelo de agendamento (GENÉRICO — nenhum dado da Rizodent hardcoded).
+// Corpo padrão do modelo de agendamento (GENÉRICO — nenhum dado de clínica específica hardcoded).
 // Convenção de variáveis IGUAL à dos modelos existentes e ao preenchimento automático
 // do servidor (buildTemplateFallbacks): {{1}} = NOME do lead, {{2}} = DATA+HORA.
 // O endereço/nome da unidade ficam FIXOS no corpo (não são variáveis de runtime) e o

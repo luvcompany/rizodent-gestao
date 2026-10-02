@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
-import { DollarSign, Plus, ExternalLink, Search, UserPlus, MapPin, Star, X } from "lucide-react";
+import { DollarSign, Plus, ExternalLink, Search, UserPlus, Star, X, ChevronDown } from "lucide-react";
+import { comValorAtual, useCidadesDoTenant } from "@/hooks/useOpcoesDoTenant";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
+import { formatPhoneDisplayBR, normalizePhoneParaGravar } from "@/lib/phoneUtils";
 
-const CIDADES = ["Vitória da Conquista", "Guanambi", "Ipiaú", "Itabuna"];
 const EMPTY_CITY_VALUE = "none";
 
 type Lead = {
@@ -38,17 +40,31 @@ type Props = {
   onLeadUpdated: (updates: Partial<Lead>) => void;
 };
 
+/**
+ * "Orçamento & Valor" do painel do lead: pacientes vinculados, valor pago e
+ * atalho para o atendimento.
+ *
+ * Só é montado para crc, gerente e superadmin (X-2): recepção, closer e SDR não
+ * acessam pacientes (RESTRICTIVE *_sem_acesso_pacientes) e a pós-venda lê mas
+ * não cria — o painel oferecia "Vincular"/"Criar" que o banco sempre recusava.
+ *
+ * A Cidade do lead NÃO fica mais aqui (CONV-19): havia dois seletores no mesmo
+ * painel gravando crm_leads.cidade. O campo único é o LeadExtraFields (que
+ * também acompanha a cidade do paciente principal); aqui a cidade só entra no
+ * cadastro da pessoa nova, quando o lead ainda não tem.
+ */
 export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const navigate = useNavigate();
   const autoLinkAttemptedRef = useRef<Set<string>>(new Set());
   const [linkedPacientes, setLinkedPacientes] = useState<LinkedPaciente[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
   const [cidade, setCidade] = useState(lead.cidade || EMPTY_CITY_VALUE);
+  // Opções = cidades das clínicas ativas do tenant (+ a do lead, se for outra).
+  const cidades = comValorAtual(useCidadesDoTenant(), lead.cidade);
   const [linkOpen, setLinkOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Paciente[]>([]);
   const [searching, setSearching] = useState(false);
-  const [savingCity, setSavingCity] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<Paciente[]>([]);
   const [newPersonName, setNewPersonName] = useState("");
@@ -151,7 +167,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       if (error.code === "23505") {
         toast.info("Esse paciente já está vinculado a este lead.");
       } else {
-        toast.error(`Erro ao vincular: ${error.message}`);
+        toast.error(`Erro ao vincular: ${mensagemDeErro(error)}`);
       }
       return;
     }
@@ -168,7 +184,7 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       .update({ is_primary: true })
       .eq("id", linkId)
       .select("id");
-    if (error) { toast.error("Erro ao definir principal: " + error.message); return; }
+    if (error) { toast.error("Erro ao definir principal: " + mensagemDeErro(error)); return; }
     if (!data || data.length === 0) {
       toast.error("Seu perfil não tem permissão para definir o paciente principal.");
       return;
@@ -184,50 +200,13 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
       .delete()
       .eq("id", linkId)
       .select("id");
-    if (error) { toast.error(`Erro ao remover: ${error.message}`); return; }
+    if (error) { toast.error(`Erro ao remover: ${mensagemDeErro(error)}`); return; }
     if (!data || data.length === 0) {
       toast.error("Seu perfil não tem permissão para desvincular este paciente.");
       return;
     }
     await fetchAllLinks();
     toast.success("Vínculo removido");
-  };
-
-  const handleCidadeChange = async (val: string) => {
-    const normalizedCity = val === EMPTY_CITY_VALUE ? null : val;
-    const previousCity = cidade;
-    setCidade(val);
-    onLeadUpdated({ cidade: normalizedCity });
-    setSavingCity(true);
-
-    const primaryId = linkedPacientes.find((p) => p.is_primary)?.id || lead.paciente_id;
-    const [leadRes, pacienteRes] = await Promise.all([
-      supabase.from("crm_leads").update({ cidade: normalizedCity, updated_at: new Date().toISOString() }).eq("id", lead.id).select("id"),
-      primaryId ? supabase.from("pacientes").update({ cidade: normalizedCity }).eq("id", primaryId).select("id") : Promise.resolve({ data: null, error: null }),
-    ]);
-
-    setSavingCity(false);
-    // A tela mudou antes do banco responder: qualquer falha precisa reverter.
-    const rollback = () => {
-      const rollbackCity = previousCity === EMPTY_CITY_VALUE ? null : previousCity;
-      setCidade(previousCity);
-      onLeadUpdated({ cidade: rollbackCity });
-    };
-    if (leadRes.error || pacienteRes.error) {
-      rollback();
-      toast.error("Erro ao salvar cidade: " + (leadRes.error?.message || pacienteRes.error?.message));
-      return;
-    }
-    // RLS que recusa o update devolve sucesso com zero linhas.
-    if (!leadRes.data || leadRes.data.length === 0) {
-      rollback();
-      toast.error("Seu perfil não tem permissão para alterar a cidade deste lead.");
-      return;
-    }
-    if (primaryId && (!pacienteRes.data || pacienteRes.data.length === 0)) {
-      // A cidade do lead gravou; só o cadastro do paciente ficou como estava.
-      toast.error("Cidade salva no lead, mas seu perfil não tem permissão para atualizar o cadastro do paciente.");
-    }
   };
 
   const handleSearch = async () => {
@@ -270,6 +249,9 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const createAndLinkPaciente = async (force = false, customName?: string) => {
     const normalizedCity = cidade === EMPTY_CITY_VALUE ? null : cidade;
     const phoneClean = stripCountryCode(lead.phone || "").replace(/\D/g, "");
+    // CRC-26: o paciente nasce no MESMO formato do lead (55 + DDD + número,
+    // com o 9 do celular) — antes ia sem o 55 e ficava diferente dos demais.
+    const telefonePaciente = normalizePhoneParaGravar(lead.phone) || null;
     const nomeFinal = (customName || newPersonName || lead.name).trim();
     if (!nomeFinal) { toast.error("Informe o nome da pessoa"); return; }
 
@@ -295,37 +277,54 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
     // (propagate_lead_to_paciente). Não gravamos aqui.
     const { data, error } = await supabase.from("pacientes").insert({
       nome: nomeFinal,
-      telefone: stripCountryCode(lead.phone || ""),
+      telefone: telefonePaciente,
       cidade: normalizedCity,
     }).select("id").single();
     if (error || !data) {
-      toast.error("Erro ao criar paciente" + (error ? ": " + error.message : ""));
+      toast.error("Erro ao criar paciente" + (error ? ": " + mensagemDeErro(error) : ""));
       return;
     }
 
+    // CRC-04: o gatilho auto_link_paciente_to_lead pode já ter vinculado o
+    // paciente a ESTE lead pelo telefone. Um insert simples dava 23505 e a tela
+    // dizia "erro ao vincular" com o vínculo feito. Upsert que ignora o
+    // duplicado e, depois, o que vale é o que está no banco.
     const isFirst = linkedPacientes.length === 0;
-    const { error: linkError } = await supabase.from("crm_lead_pacientes").insert({
-      lead_id: lead.id, paciente_id: data.id, is_primary: isFirst,
-    });
+    const { error: linkError } = await supabase
+      .from("crm_lead_pacientes")
+      .upsert(
+        { lead_id: lead.id, paciente_id: data.id, is_primary: isFirst },
+        { onConflict: "lead_id,paciente_id", ignoreDuplicates: true },
+      );
+    const { data: vinculo } = await supabase
+      .from("crm_lead_pacientes")
+      .select("id, is_primary")
+      .eq("lead_id", lead.id)
+      .eq("paciente_id", data.id)
+      .maybeSingle();
+    const vinculado = !!vinculo;
 
-    if (linkError) {
+    if (!vinculado) {
       // O paciente foi criado; só o vínculo falhou — não anunciar "vinculado".
-      toast.error("Paciente criado, mas houve erro ao vincular ao lead: " + linkError.message);
-    } else if (isFirst) {
-      onLeadUpdated({ paciente_id: data.id, cidade: normalizedCity });
+      toast.error(
+        "Paciente criado, mas não foi possível vinculá-lo a este lead" +
+          (linkError ? ": " + mensagemDeErro(linkError) : "."),
+      );
+    } else if (vinculo.is_primary || isFirst) {
+      onLeadUpdated({ paciente_id: data.id });
     }
     await fetchAllLinks();
 
     setLinkOpen(false);
     setDuplicateOpen(false);
     setNewPersonName("");
-    if (!linkError) toast.success("Paciente criado e vinculado!");
+    if (vinculado) toast.success("Paciente criado e vinculado!");
 
     navigate("/atendimento", {
       state: {
         pacienteId: data.id,
         pacienteNome: nomeFinal,
-        pacienteTelefone: stripCountryCode(lead.phone || ""),
+        pacienteTelefone: telefonePaciente,
         pacienteCidade: normalizedCity,
       },
     });
@@ -345,65 +344,48 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
   const formatCurrency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
-    <section className="border-b border-border/60 px-5 py-5">
-      <div className="mb-3 flex items-center gap-2">
-        <DollarSign size={14} className="text-muted-foreground" />
-        <h3 className="text-[15px] font-semibold text-foreground">Orçamento e valor</h3>
-      </div>
-
-      {/* Cidade: pré-preenchida automaticamente, editável direto. */}
-      <div className="mb-3">
-        <div className="flex items-center gap-1 mb-1">
-          <MapPin size={12} className="text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Cidade</span>
-        </div>
-        <select
-          value={cidade}
-          onChange={(e) => void handleCidadeChange(e.target.value)}
-          disabled={savingCity}
-          className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-          {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
-        </select>
+    <div className="border-b border-border/60 px-5 py-5">
+      <div className="mb-4 flex items-center gap-2">
+        <DollarSign size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+        <span className="text-[15px] font-semibold text-foreground">Orçamento & Valor</span>
       </div>
 
       {linkedPacientes.length > 0 ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {/* List all linked patients */}
-          <div className="space-y-1">
+          <div className="space-y-2">
             {linkedPacientes.map((p) => (
-              <div key={p.link_id} className="group rounded-xl border border-border/60 bg-surface-sunken p-3 text-sm">
+              <div key={p.link_id} className="group rounded-xl border border-border/60 bg-card p-3 text-sm transition-shadow hover:shadow-xs">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1">
-                      {p.is_primary && <Star size={12} className="text-primary fill-primary flex-shrink-0" />}
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {p.is_primary && <Star size={14} strokeWidth={1.75} className="shrink-0 fill-warning text-warning" />}
                       <button
                         onClick={() => goToAtendimentoForPaciente(p)}
-                        className="font-medium text-foreground truncate hover:text-primary text-left"
+                        className="min-w-0 truncate text-left font-semibold text-foreground transition-colors hover:text-primary"
                         title="Abrir no atendimento"
                       >
                         {p.nome}
                       </button>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{p.telefone}</p>
+                    <p className="mt-0.5 truncate text-xs tabular-nums text-tertiary">{formatPhoneDisplayBR(p.telefone)}</p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                     {!p.is_primary && (
                       <button
                         onClick={() => setAsPrimary(p.link_id, p.id)}
-                        className="text-xs text-muted-foreground hover:text-primary"
+                        className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-warning-soft hover:text-warning"
                         title="Definir como principal"
                       >
-                        <Star size={12} />
+                        <Star size={14} strokeWidth={1.75} />
                       </button>
                     )}
                     <button
                       onClick={() => removeLink(p.link_id)}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive-soft hover:text-destructive"
                       title="Remover vínculo"
                     >
-                      <X size={12} />
+                      <X size={14} strokeWidth={1.75} />
                     </button>
                   </div>
                 </div>
@@ -414,38 +396,38 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
           {/* Add another person with same phone */}
           <Button
             size="sm" variant="ghost"
-            className="w-full text-xs h-7 text-muted-foreground hover:text-primary"
+            className="h-auto min-h-9 w-full justify-start gap-2 whitespace-normal rounded-xl px-3 py-2 text-left text-[13px] font-medium text-muted-foreground hover:bg-surface-sunken hover:text-foreground"
             onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "")); setSearchResults([]); setNewPersonName(""); }}
           >
-            <UserPlus size={12} className="mr-1" /> Adicionar outra pessoa com este telefone
+            <UserPlus size={15} strokeWidth={1.75} className="shrink-0" /> Adicionar outra pessoa com este telefone
           </Button>
 
           {/* Payment totals (combined across all linked patients) */}
-          <div className="flex items-center justify-between pt-2 border-t border-border">
-            <div>
-              <span className="text-xs text-muted-foreground">Valor Contratado (pago)</span>
-              <p className="text-2xl font-bold tabular-nums text-primary">{formatCurrency(totalPaid)}</p>
+          <div className="flex items-center justify-between rounded-xl bg-primary-soft-2 px-4 py-3.5">
+            <div className="min-w-0">
+              <span className="text-[13px] font-medium text-muted-foreground">Valor Contratado (pago)</span>
+              <p className="mt-0.5 text-2xl font-bold leading-tight tracking-tight tabular-nums text-primary [overflow-wrap:anywhere]">{formatCurrency(totalPaid)}</p>
             </div>
           </div>
 
-          <Button size="sm" variant="outline" className="w-full" onClick={() => goToAtendimentoForPaciente(linkedPacientes[0])}>
-            <Plus size={14} className="mr-1" /> Novo Atendimento
-            <ExternalLink size={12} className="ml-auto" />
+          <Button size="sm" variant="outline" className="h-10 w-full gap-1.5 rounded-xl text-[13px] font-medium" onClick={() => goToAtendimentoForPaciente(linkedPacientes[0])}>
+            <Plus size={15} strokeWidth={1.75} /> Novo Atendimento
+            <ExternalLink size={14} strokeWidth={1.75} className="ml-auto text-tertiary" />
           </Button>
         </div>
       ) : (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "") || lead.name); setSearchResults([]); setNewPersonName(""); }}>
-            <UserPlus size={14} className="mr-1" /> Vincular Paciente
+        <div className="space-y-3 rounded-xl border border-dashed border-border bg-surface-sunken/60 p-4 text-center">
+          <p className="text-[13px] text-muted-foreground">Nenhum paciente vinculado</p>
+          <Button size="sm" variant="outline" className="h-10 w-full gap-1.5 rounded-xl text-[13px] font-medium" onClick={() => { setLinkOpen(true); setSearchTerm(stripCountryCode(lead.phone || "") || lead.name); setSearchResults([]); setNewPersonName(""); }}>
+            <UserPlus size={15} strokeWidth={1.75} /> Vincular Paciente
           </Button>
         </div>
       )}
 
       <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Vincular Paciente</DialogTitle>
+            <DialogTitle className="text-lg font-semibold tracking-tight">Vincular Paciente</DialogTitle>
             <DialogDescription>Busque um existente, ou crie uma nova pessoa (ex: familiar com o mesmo número).</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -454,13 +436,14 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar por nome ou telefone..."
+                className="h-10 rounded-xl"
                 onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
               />
-              <Button size="sm" onClick={handleSearch} disabled={searching}><Search size={14} /></Button>
+              <Button size="sm" className="h-10 w-10 shrink-0 rounded-xl p-0" onClick={handleSearch} disabled={searching}><Search size={16} strokeWidth={1.75} /></Button>
             </div>
 
             {searchResults.length > 0 && (
-              <div className="max-h-48 overflow-y-auto space-y-1">
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border/60 p-1">
                 {searchResults.map((p) => {
                   const already = linkedPacientes.some((lp) => lp.id === p.id);
                   return (
@@ -468,11 +451,11 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
                       key={p.id}
                       onClick={() => !already && addPacienteLink(p.id, false)}
                       disabled={already}
-                      className="w-full text-left p-2 rounded hover:bg-secondary transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span className="font-medium text-foreground">{p.nome}</span>
-                      <span className="text-muted-foreground ml-2">{p.telefone}</span>
-                      {already && <span className="text-xs text-primary ml-2">(já vinculado)</span>}
+                      <span className="ml-2 tabular-nums text-muted-foreground">{formatPhoneDisplayBR(p.telefone)}</span>
+                      {already && <span className="ml-2 text-xs font-medium text-primary">(já vinculado)</span>}
                     </button>
                   );
                 })}
@@ -480,38 +463,42 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
             )}
 
             {searchResults.length === 0 && searchTerm && !searching && (
-              <p className="text-sm text-muted-foreground text-center">Nenhum paciente encontrado.</p>
+              <p className="rounded-xl bg-surface-sunken px-3 py-3 text-center text-[13px] text-muted-foreground">Nenhum paciente encontrado.</p>
             )}
 
-            <div className="border-t border-border pt-3 space-y-2">
-              <label className="text-xs font-medium text-foreground">Ou criar nova pessoa</label>
+            <div className="space-y-2.5 border-t border-border/60 pt-4">
+              <label className="block text-[13px] font-semibold text-foreground">Ou criar nova pessoa</label>
               <Input
                 value={newPersonName}
                 onChange={(e) => setNewPersonName(e.target.value)}
                 placeholder={`Nome (padrão: ${lead.name})`}
+                className="h-10 rounded-xl"
               />
               {cidade === EMPTY_CITY_VALUE && (
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Cidade</label>
+                  <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Cidade</label>
+                  <span className="relative block">
                   <select
                     value={cidade}
                     onChange={(e) => setCidade(e.target.value)}
-                    className="flex h-10 w-full rounded-xl border border-input bg-surface-sunken px-3 py-2 text-sm text-foreground"
+                    className="flex h-10 w-full cursor-pointer appearance-none rounded-xl border border-input bg-card pl-3.5 pr-10 text-sm text-foreground ring-offset-background transition-colors hover:border-border focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <option value={EMPTY_CITY_VALUE}>Sem localização</option>
-                    {CIDADES.map((c) => (<option key={c} value={c}>{c}</option>))}
+                    {cidades.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
+                  <ChevronDown size={16} strokeWidth={1.75} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-tertiary" />
+                  </span>
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground italic">
+              <p className="text-xs italic leading-relaxed text-tertiary">
                 Origem, cidade e anúncio são propagados automaticamente do lead para o paciente ao vincular.
               </p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createAndLinkPaciente(false)}>
-              <UserPlus size={14} className="mr-1" /> Criar e Vincular
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setLinkOpen(false)}>Cancelar</Button>
+            <Button className="h-10 gap-1.5 rounded-xl px-5" onClick={() => createAndLinkPaciente(false)}>
+              <UserPlus size={15} strokeWidth={1.75} /> Criar e Vincular
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -519,37 +506,37 @@ export default function LeadBudgetPanel({ lead, onLeadUpdated }: Props) {
 
       {/* Duplicate phone confirmation */}
       <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Telefone já cadastrado</DialogTitle>
+            <DialogTitle className="text-lg font-semibold tracking-tight">Telefone já cadastrado</DialogTitle>
             <DialogDescription>
               Encontramos {duplicates.length} paciente{duplicates.length > 1 ? "s" : ""} com este telefone. Vincule a um existente ou cadastre como pessoa diferente (mesmo telefone).
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
+          <div className="max-h-60 space-y-2 overflow-y-auto">
             {duplicates.map((p) => {
               const already = linkedPacientes.some((lp) => lp.id === p.id);
               return (
-                <div key={p.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-secondary/50">
+                <div key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-surface-sunken/60 p-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{p.nome}</p>
-                    <p className="text-xs text-muted-foreground truncate">{p.telefone}{p.cidade ? ` · ${p.cidade}` : ""}</p>
+                    <p className="truncate text-sm font-semibold text-foreground">{p.nome}</p>
+                    <p className="mt-0.5 truncate text-xs tabular-nums text-tertiary">{formatPhoneDisplayBR(p.telefone)}{p.cidade ? ` · ${p.cidade}` : ""}</p>
                   </div>
-                  <Button size="sm" variant="outline" disabled={already} onClick={() => addPacienteLink(p.id, false)}>
+                  <Button size="sm" variant="outline" className="h-9 shrink-0 rounded-xl px-3.5 text-[13px] font-medium" disabled={already} onClick={() => addPacienteLink(p.id, false)}>
                     {already ? "Já vinculado" : "Vincular"}
                   </Button>
                 </div>
               );
             })}
           </div>
-          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
-            <Button onClick={() => createAndLinkPaciente(true)}>
-              <UserPlus size={14} className="mr-1" /> Cadastrar como pessoa diferente
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setDuplicateOpen(false)}>Cancelar</Button>
+            <Button className="h-10 gap-1.5 rounded-xl px-5" onClick={() => createAndLinkPaciente(true)}>
+              <UserPlus size={15} strokeWidth={1.75} /> Cadastrar como pessoa diferente
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </div>
   );
 }

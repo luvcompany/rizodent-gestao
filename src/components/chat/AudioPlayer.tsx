@@ -108,25 +108,25 @@ export default function AudioPlayer({ src }: { src: string }) {
   return (
     <div className="min-w-[220px] max-w-[280px]">
       <audio ref={audioRef} src={src} preload="metadata" />
-      <div className="flex items-center gap-2">
-        <button onClick={toggle} className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center hover:bg-primary/30 transition-colors">
-          {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+      <div className="flex items-center gap-2.5">
+        <button onClick={toggle} className="flex-shrink-0 w-9 h-9 rounded-full bg-primary text-primary-foreground shadow-brand flex items-center justify-center hover:bg-primary-hover transition-colors">
+          {playing ? <Pause size={14} className="fill-current" /> : <Play size={14} className="ml-0.5 fill-current" />}
         </button>
         <div className="flex-1 min-w-0">
           <div
             className="h-3 flex items-center cursor-pointer group"
             onClick={seek}
           >
-            <div className="h-1.5 w-full bg-muted rounded-full relative group-hover:h-2 transition-all">
+            <div className="h-1.5 w-full bg-surface-sunken rounded-full relative group-hover:h-2 transition-all">
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: duration ? `${(progress / duration) * 100}%` : "0%" }} />
             </div>
           </div>
           <div className="flex justify-between mt-0.5">
-            <span className="text-[10px] text-muted-foreground">{fmt(progress)}</span>
-            <span className="text-[10px] text-muted-foreground">{fmt(duration)}</span>
+            <span className="text-[11px] text-tertiary tabular-nums">{fmt(progress)}</span>
+            <span className="text-[11px] text-tertiary tabular-nums">{fmt(duration)}</span>
           </div>
         </div>
-        <button onClick={cycleSpeed} className="flex-shrink-0 text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 hover:bg-primary/20 transition-colors">
+        <button onClick={cycleSpeed} className="flex-shrink-0 h-6 min-w-9 text-[11px] font-semibold tabular-nums text-primary-soft-fg bg-primary-soft rounded-full px-2 hover:bg-primary-soft-2 transition-colors">
           {SPEEDS[speedIdx]}x
         </button>
       </div>

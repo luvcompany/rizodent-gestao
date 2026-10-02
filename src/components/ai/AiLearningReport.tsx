@@ -40,9 +40,7 @@ const emptyAdd = (kind: ColKind): AddState => ({
   suggested: "", final: "", saving: false,
 });
 
-/** Nome configurado da assistente (ai_assistant_config.assistant_display_name), passado pela tela de IA. */
-export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: string } = {}) {
-  const nome = nomeAssistente?.trim() || "Assistente";
+export default function AiLearningReport() {
   const [rows, setRows] = useState<Row[]>([]);
   const [stats, setStats] = useState<LearningStats>({ total: 0, embedded: 0, pending: 0, corrections: 0 });
   const [loading, setLoading] = useState(true);
@@ -150,7 +148,7 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
       .maybeSingle();
     if (error) { setAdd({ ...add, saving: false }); return toast.error("Falha ao adicionar: " + error.message); }
 
-    // 2) Alimenta de fato o aprendizado da assistente (ai_good_examples, com embedding) —
+    // 2) Alimenta de fato o aprendizado da Bia (ai_good_examples, com embedding) —
     //    só faz sentido para exemplos com resposta ideal (aprovadas e corrigidas).
     //    Descartadas puras não têm "resposta correta", então só ficam no histórico.
     let learnMsg = "Exemplo adicionado ao histórico.";
@@ -168,11 +166,11 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
         },
       });
       if (recErr) learnMsg = "Salvo no histórico, mas o aprendizado falhou: " + recErr.message;
-      else if ((rec as any)?.ok && (rec as any)?.embedded) { learnedOk = true; learnMsg = `${nome} aprendeu com este exemplo.`; }
+      else if ((rec as any)?.ok && (rec as any)?.embedded) { learnedOk = true; learnMsg = "A Bia aprendeu com este exemplo."; }
       else if ((rec as any)?.ok) { learnedOk = true; learnMsg = "Exemplo salvo — a indexação para busca fica pronta em instantes."; }
-      else if ((rec as any)?.skipped === "no_context") learnMsg = `Salvo no histórico, mas o lead não tem mensagens recentes para dar contexto — ${nome} não indexou este exemplo.`;
+      else if ((rec as any)?.skipped === "no_context") learnMsg = "Salvo no histórico, mas o lead não tem mensagens recentes para dar contexto — a Bia não indexou este exemplo.";
     } else {
-      learnMsg = `Descartada registrada no histórico. Exemplos 'a evitar' só orientam ${nome} quando vêm com a versão correta (use 'Corrigida').`;
+      learnMsg = "Descartada registrada no histórico. Exemplos 'a evitar' só orientam a Bia quando vêm com a versão correta (use 'Corrigida').";
     }
     setAdd({ ...add, saving: false });
     if (learnedOk) toast.success(learnMsg); else toast.message(learnMsg);
@@ -228,12 +226,12 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
     <div className="space-y-4">
       <div className="grid sm:grid-cols-4 gap-3">
         <Card><CardContent className="p-3 flex items-center gap-3"><Brain size={18} className="text-primary" /><div><p className="text-xs text-muted-foreground">Exemplos salvos</p><p className="font-semibold">{stats.total}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Database size={18} className="text-emerald-600" /><div><p className="text-xs text-muted-foreground">Prontos para busca</p><p className="font-semibold">{stats.embedded}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Loader2 size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Sem vetor</p><p className="font-semibold">{stats.pending}</p></div></CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3"><Pencil size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Correções aprendidas</p><p className="font-semibold">{stats.corrections}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Database size={18} className="text-success" /><div><p className="text-xs text-muted-foreground">Prontos para busca</p><p className="font-semibold">{stats.embedded}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Loader2 size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Sem vetor</p><p className="font-semibold">{stats.pending}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-3 p-3"><Pencil size={18} className="text-warning" /><div><p className="text-xs text-muted-foreground">Correções aprendidas</p><p className="font-semibold">{stats.corrections}</p></div></CardContent></Card>
       </div>
       <div className="grid lg:grid-cols-3 gap-4">
-        <Block title="Aprovadas sem edição" items={approved} color="text-emerald-600" icon={<ThumbsUp size={16} />} kind="approved" />
+        <Block title="Aprovadas sem edição" items={approved} color="text-success" icon={<ThumbsUp size={16} />} kind="approved" />
         <Block title="Corrigidas pela equipe" items={edited} color="text-warning" icon={<Pencil size={16} />} kind="edited" />
         <Block title="Descartadas" items={discarded} color="text-destructive" icon={<ThumbsDown size={16} />} kind="discarded" />
       </div>
@@ -243,7 +241,7 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar exemplo</DialogTitle>
-            <DialogDescription>Corrige o texto salvo neste histórico. Para (re)ensinar {nome} com este caso, use "Adicionar" como "Corrigida".</DialogDescription>
+            <DialogDescription>Corrige o texto salvo neste histórico. Para (re)ensinar a Bia com este caso, use "Adicionar" como "Corrigida".</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -278,7 +276,7 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
               <div>
                 <label className="text-xs text-muted-foreground">Lead (busque por nome ou telefone)</label>
                 <Input value={add.leadQuery} onChange={(e) => searchLeads(e.target.value)} placeholder="Ex.: Maria ou 5577..." />
-                {add.leadId && <p className="text-xs mt-1 text-emerald-600">Selecionado: {add.leadLabel}</p>}
+                {add.leadId && <p className="mt-1 text-xs text-success">Selecionado: {add.leadLabel}</p>}
                 {add.leadResults.length > 0 && (
                   <div className="mt-1 border rounded max-h-40 overflow-y-auto">
                     {add.leadResults.map((l) => (
@@ -293,7 +291,7 @@ export default function AiLearningReport({ nomeAssistente }: { nomeAssistente?: 
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">
-                  {add.kind === "edited" ? `Sugestão que ${nome} deu (errada)` : add.kind === "discarded" ? "Resposta a evitar" : "Resposta ideal"}
+                  {add.kind === "edited" ? "Sugestão que a Bia deu (errada)" : add.kind === "discarded" ? "Resposta a evitar" : "Resposta ideal"}
                 </label>
                 <Textarea value={add.suggested} onChange={(e) => setAdd({ ...add, suggested: e.target.value })} rows={4} />
               </div>

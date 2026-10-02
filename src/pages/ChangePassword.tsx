@@ -10,10 +10,6 @@ import { toast } from "sonner";
 const ChangePassword = () => {
   const navigate = useNavigate();
   const { user, refreshProfile } = useAuth();
-  // O Auth do v2 exige a senha atual para trocar a senha ("Current password
-  // required when setting new password."). No primeiro acesso, é a senha
-  // provisória que o administrador entregou.
-  const [atual, setAtual] = useState("");
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,12 +18,10 @@ const ChangePassword = () => {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!atual) return toast.error("Informe a senha atual (a provisória que você recebeu)");
     if (pwd.length < 6) return toast.error("Senha mínimo 6 caracteres");
-    if (pwd === atual) return toast.error("A nova senha precisa ser diferente da atual");
     if (pwd !== pwd2) return toast.error("Senhas não conferem");
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: pwd, current_password: atual });
+    const { error } = await supabase.auth.updateUser({ password: pwd });
     if (error) { setLoading(false); return toast.error(error.message); }
     if (user) {
       // Sem conferir este update, uma falha aqui deixava o usuário preso no
@@ -54,10 +48,9 @@ const ChangePassword = () => {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-8">
-        <h1 className="text-xl font-bold">Defina sua nova senha</h1>
+      <form onSubmit={submit} className="w-full max-w-md space-y-5 rounded-2xl border border-border/60 bg-card p-6 shadow-float sm:p-8">
+        <h1 className="text-3xl font-bold">Defina sua nova senha</h1>
         <p className="text-sm text-muted-foreground">Esta é sua primeira vez. Crie uma senha pessoal para continuar.</p>
-        <div><Label>Senha atual (a provisória que você recebeu)</Label><Input type="password" autoComplete="current-password" value={atual} onChange={(e) => setAtual(e.target.value)} /></div>
         <div><Label>Nova senha</Label><Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} /></div>
         <div><Label>Confirme a senha</Label><Input type="password" value={pwd2} onChange={(e) => setPwd2(e.target.value)} /></div>
         <Button type="submit" disabled={loading} className="w-full">{loading ? "Salvando..." : "Salvar e continuar"}</Button>

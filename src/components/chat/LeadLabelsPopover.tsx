@@ -55,7 +55,7 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
         {trigger || (
           <button
             type="button"
-            className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title="Marcadores"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
@@ -66,7 +66,7 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
         )}
       </DialogTrigger>
       <DialogContent
-        className="w-[340px] max-w-[calc(100vw-2rem)] p-0"
+        className="w-[340px] max-w-[calc(100vw-2rem)] p-0 gap-0 overflow-hidden rounded-2xl shadow-float"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
@@ -77,11 +77,11 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
         <DialogHeader className="sr-only">
           <DialogTitle>Configurar marcadores</DialogTitle>
         </DialogHeader>
-        <div className="p-3 pr-14 border-b border-border">
+        <div className="px-4 pt-4 pb-3 pr-14 border-b border-border/60">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Marcadores</span>
+            <span className="text-[15px] font-semibold tracking-tight">Marcadores</span>
             {!creating && !editing && (
-              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={openCreate}>
+              <Button size="sm" variant="ghost" className="h-7 rounded-lg px-2.5 text-xs font-semibold text-primary hover:bg-primary-soft hover:text-primary" onClick={openCreate}>
                 <Plus size={12} className="mr-1" /> Novo
               </Button>
             )}
@@ -91,72 +91,72 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
               placeholder="Buscar marcador..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-7 text-xs mt-2"
+              className="h-9 rounded-xl border-transparent bg-surface-sunken text-[13px] mt-3 placeholder:text-tertiary focus-visible:bg-card"
             />
           )}
         </div>
 
         {(creating || editing) && (
-          <div className="p-3 space-y-2 border-b border-border">
+          <div className="p-4 space-y-3 border-b border-border/60">
             <Input
               placeholder="Nome (ex: Urgente)"
               value={form.name}
               onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-              className="h-7 text-xs"
+              className="h-9 rounded-xl text-[13px]"
               autoFocus
             />
             <Textarea
               placeholder="Descrição (o que significa esta cor?)"
               value={form.description}
               onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
-              className="text-xs min-h-[60px]"
+              className="rounded-xl text-[13px] min-h-[64px]"
             />
             <div>
-              <div className="text-[10px] text-muted-foreground mb-1">Cor</div>
-              <div className="grid grid-cols-10 gap-1">
+              <div className="text-xs font-medium text-muted-foreground mb-2">Cor</div>
+              <div className="grid grid-cols-10 gap-1.5">
                 {LABEL_COLORS.map(c => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setForm(f => ({ ...f, color: c }))}
-                    className={`h-5 w-5 rounded border-2 transition-all ${form.color === c ? "border-foreground scale-110" : "border-transparent"}`}
+                    className={`h-6 w-6 rounded-full transition-all ${form.color === c ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : "hover:ring-2 hover:ring-border hover:ring-offset-1 hover:ring-offset-background"}`}
                     style={{ backgroundColor: c }}
                   />
                 ))}
               </div>
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={resetForm}>Cancelar</Button>
-              <Button size="sm" className="h-7 text-xs" onClick={submit}>{editing ? "Salvar" : "Criar"}</Button>
+              <Button size="sm" variant="ghost" className="h-8 rounded-lg px-3 text-xs" onClick={resetForm}>Cancelar</Button>
+              <Button size="sm" className="h-8 rounded-lg px-3 text-xs font-semibold shadow-brand" onClick={submit}>{editing ? "Salvar" : "Criar"}</Button>
             </div>
           </div>
         )}
 
         {!creating && !editing && (
-          <div className="max-h-64 overflow-y-auto p-2">
+          <div className="max-h-72 overflow-y-auto p-2">
             {filtered.length === 0 && (
-              <div className="text-center text-xs text-muted-foreground py-6">
+              <div className="text-center text-xs text-muted-foreground px-4 py-8">
                 {labels.length === 0 ? "Nenhum marcador ainda. Clique em \"Novo\" para criar." : "Nada encontrado."}
               </div>
             )}
             {filtered.map(l => {
               const isOn = assigned.has(l.id);
               return (
-                <div key={l.id} className="group flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary/50">
+                <div key={l.id} className="group flex items-center gap-2 px-2.5 py-2 rounded-xl hover:bg-surface-sunken transition-colors">
                   <button
                     type="button"
                     onClick={() => toggleAssignment(leadId, l.id)}
-                    className="flex-1 flex items-center gap-2 text-left"
+                    className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
                     title={l.description || ""}
                   >
-                    <span className="h-4 w-8 rounded shrink-0" style={{ backgroundColor: l.color }} />
-                    <span className="text-xs truncate flex-1">{l.name}</span>
-                    {isOn && <Check size={12} className="text-primary shrink-0" />}
+                    <span className="h-5 w-9 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: l.color }} />
+                    <span className="text-[13px] font-medium truncate flex-1">{l.name}</span>
+                    {isOn && <Check size={14} strokeWidth={2.5} className="text-primary shrink-0" />}
                   </button>
                   <button
                     type="button"
                     onClick={() => openEdit(l)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-secondary rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-muted rounded-lg transition-opacity"
                     title="Editar"
                   >
                     <Pencil size={11} />
@@ -164,7 +164,7 @@ export default function LeadLabelsPopover({ leadId, trigger }: Props) {
                   <button
                     type="button"
                     onClick={() => onDelete(l.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/20 hover:text-destructive rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-destructive-soft hover:text-destructive rounded-lg transition-opacity"
                     title="Excluir"
                   >
                     <Trash2 size={11} />
@@ -190,7 +190,7 @@ export const LeadLabelsTrigger = forwardRef<HTMLButtonElement, LeadLabelsTrigger
     <button
       ref={ref}
       type="button"
-      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors ${className}`}
+      className={`inline-flex min-h-6 max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-tertiary hover:bg-muted hover:text-foreground transition-colors ${className}`}
       title="Configurar marcadores"
       onPointerDown={(e) => { e.stopPropagation(); onPointerDown?.(e); }}
       onMouseDown={(e) => { e.stopPropagation(); onMouseDown?.(e); }}
@@ -207,7 +207,7 @@ export const LeadLabelsTrigger = forwardRef<HTMLButtonElement, LeadLabelsTrigger
           <Tag size={12} className="shrink-0" />
           <span className="flex min-w-0 flex-wrap gap-1">
             {items.slice(0, 3).map(l => (
-              <span key={l.id} className="h-2 w-5 rounded-full" style={{ backgroundColor: l.color }} />
+              <span key={l.id} className="h-2 w-4 rounded-full" style={{ backgroundColor: l.color }} />
             ))}
             {items.length > 3 && <span className="leading-none">+{items.length - 3}</span>}
           </span>
@@ -227,11 +227,11 @@ export function LeadLabelChips({ leadId, max = 4 }: { leadId: string; max?: numb
   const shown = items.slice(0, max);
   const extra = items.length - shown.length;
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="basis-full flex flex-wrap gap-1 mt-1.5">
       {shown.map(l => (
         <span
           key={l.id}
-          className="inline-flex items-center gap-1 text-[10px] font-medium text-white px-1.5 py-0.5 rounded"
+          className="inline-flex h-5 items-center gap-1 text-[11px] font-semibold text-white px-2 rounded-full shadow-xs"
           style={{ backgroundColor: l.color }}
           title={l.description ? `${l.name} — ${l.description}` : l.name}
         >

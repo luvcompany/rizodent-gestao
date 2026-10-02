@@ -547,12 +547,12 @@ export default function AudioRecorderComposer({
         onClick={startRecording}
         onPointerEnter={aquecerCodificador}
         onFocus={aquecerCodificador}
-        className="ml-auto flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-primary text-primary-foreground shadow-brand transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         title="Gravar áudio"
         type="button"
       >
-        <Mic size={20} />
+        <Mic size={18} strokeWidth={1.75} />
       </button>
     );
   }
@@ -560,13 +560,13 @@ export default function AudioRecorderComposer({
   // ─── PREVIEW / SENDING ───
   if (mode === "preview" || mode === "sending") {
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
+      <div className="flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-xl border border-input bg-card px-2 py-1.5 shadow-xs">
         <audio key={draftUrl || "d"} ref={previewAudioRef} src={draftUrl || undefined} preload="metadata" />
 
         <button
           type="button"
           onClick={discardCurrentAudio}
-          className="rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive-soft"
           title="Descartar"
         >
           <X size={16} />
@@ -575,10 +575,10 @@ export default function AudioRecorderComposer({
         <button
           type="button"
           onClick={togglePreviewPlayback}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-brand transition-colors hover:bg-primary-hover"
           title={previewPlaying ? "Pausar prévia" : "Ouvir antes de enviar"}
         >
-          {previewPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+          {previewPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="ml-0.5 fill-current" />}
         </button>
 
         {/* Waveform bars */}
@@ -599,11 +599,11 @@ export default function AudioRecorderComposer({
           ))}
         </div>
 
-        <span className="w-10 flex-shrink-0 text-right text-xs font-medium text-muted-foreground tabular-nums">
+        <span className="w-10 flex-shrink-0 text-right text-xs font-medium text-tertiary tabular-nums">
           {formatTime(Math.round(previewDuration || recordingTime))}
         </span>
 
-        <Button type="button" size="sm" onClick={sendDraft} disabled={mode === "sending"} className="gap-1.5">
+        <Button type="button" size="sm" onClick={sendDraft} disabled={mode === "sending"} className="h-9 gap-1.5 rounded-full px-4 shadow-brand">
           {mode === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send size={14} /> Enviar</>}
         </Button>
       </div>
@@ -612,11 +612,11 @@ export default function AudioRecorderComposer({
 
   // ─── PREPARING / RECORDING ───
   return (
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
+    <div className="flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-xl border border-input bg-card px-2 py-1.5 shadow-xs">
       <button
         type="button"
         onClick={discardCurrentAudio}
-        className="rounded-full p-1.5 text-destructive transition-colors hover:bg-destructive/10"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive-soft"
         title="Cancelar gravação"
       >
         <X size={16} />
@@ -656,7 +656,7 @@ export default function AudioRecorderComposer({
       <button
         type="button"
         onClick={togglePauseRecording}
-        className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         disabled={mode === "preparing"}
         title={recordingPaused ? "Retomar gravação" : "Pausar gravação"}
       >
@@ -666,12 +666,12 @@ export default function AudioRecorderComposer({
       <Button
         type="button"
         size="icon"
-        className="h-8 w-8"
+        className="h-9 w-9 rounded-full shadow-brand"
         onClick={stopRecording}
         disabled={mode === "preparing"}
         title="Finalizar e pré-ouvir"
       >
-        <Square size={12} />
+        <Square size={12} className="fill-current" />
       </Button>
     </div>
   );

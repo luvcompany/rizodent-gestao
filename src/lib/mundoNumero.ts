@@ -23,3 +23,18 @@ export async function getMyWhatsappNumberId(userRole: string | null | undefined)
   }
   return (data as any[])?.[0]?.id ?? null;
 }
+
+// ─── Adaptador para as telas do redesign (01/10/2026) ───
+// O v2 escolhe o número do lead novo pelo canal do funil (colunas que o CRClin
+// não tem). Aqui vale a regra de sempre do CRClin: o número de quem cria
+// (closer/recepção) ou nenhum — e o gatilho do banco carimba pelo funil. Se a
+// tela deixar escolher um número, ele é respeitado.
+export async function numeroDoLeadNovo(
+  userRole: string | null | undefined,
+  _pipelineId: string,
+  escolhido?: string | null,
+): Promise<{ carimbo: string | null; mundo: string | null }> {
+  if (escolhido) return { carimbo: escolhido, mundo: escolhido };
+  const id = await getMyWhatsappNumberId(userRole);
+  return { carimbo: id, mundo: id };
+}

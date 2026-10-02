@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { mensagemDeErroRpc, rpcAusente } from "@/lib/relatorioSdr";
+import { rpcAusente } from "@/lib/relatorioSdr";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,11 +25,12 @@ import {
  * Resincroniza a cada minuto e ao voltar para a aba.
  *
  * Pausa é só relógio de ponto: a SDR continua recebendo lead. Pausa acima de
- * pausa_alerta_min avisa o gestor (cron ponto-vigia, a cada 5 min, só com
- * gestor nomeado) — a tela só diz "foi avisado" quando ponto_meu_estado
- * confirma que a notificação existe (gestor_avisado_pausa); até lá, "será
- * avisado". Expediente esquecido encerra sozinho às 23:59 da clínica (mesmo
- * cron, origem 'auto').
+ * pausa_alerta_min avisa o gestor (cron ponto-vigia, a cada 5 min; sem gestor
+ * nomeado, quem o sucederia) — a tela só diz "foi avisado" quando
+ * ponto_meu_estado confirma que a notificação existe (gestor_avisado_pausa), e
+ * só promete "será avisado" quando há alguém para avisar (tem_gestor).
+ * Expediente esquecido encerra sozinho às 23:59 da clínica (mesmo cron, origem
+ * 'auto').
  *
  * MOTIVOS DE PAUSA (11/09/2026): a lista NÃO é mais escrita aqui. Ela vem de
  * ponto_motivos_ativos() — quem manda é o CRC, na aba Equipe ("o crc deve
@@ -100,9 +103,12 @@ type PontoEstado = {
   pausa_alerta_min: number;
   leads_desde_ultimo_encerramento: number;
   /** "hoje" quando ainda não há encerramento anterior. */
+  leads_cadastrados_desde?: number;
   leads_desde_base?: "hoje" | "encerramento";
   /** A notificação de pausa longa já existe para o gestor. */
   gestor_avisado_pausa?: boolean;
+  /** Há gestor (ou sucessor) para receber o aviso de pausa longa. Sem a chave (banco antigo), a tela não promete nada. */
+  tem_gestor?: boolean;
   /** Só no retorno de ponto_abrir. */
   leads_aplicados_agora?: number;
   lote_erro?: string | null;
@@ -132,7 +138,7 @@ type RespostaRpc = { data: unknown; error: unknown };
 const rpc = (nome: string, args?: Record<string, unknown>): Promise<RespostaRpc> => (supabase as any).rpc(nome, args);
 
 const TEXTO_RPC_AUSENTE = "O ponto de expediente ainda não está instalado no banco (migration da Fase 2 pendente).";
-const mensagemDe = (e: unknown, fallback: string): string => mensagemDeErroRpc(e, fallback, TEXTO_RPC_AUSENTE);
+const mensagemDe = (e: unknown, fallback: string): string => (rpcAusente(e) ? TEXTO_RPC_AUSENTE : mensagemDeErro(e, fallback));
 
 /**
  * Lista de segurança: é EXATAMENTE a que o banco publicado hoje aceita
@@ -194,12 +200,25 @@ const horaLocal = (iso: string | null) =>
 const dataHoraLocal = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
 const desdeQuando = (e: PontoEstado) => (e.leads_desde_base === "hoje" ? "hoje" : "desde o último encerramento");
+const frasesLeadsNovos = (n: number, e: PontoEstado) => {
+  const cad = e.leads_cadastrados_desde ?? 0;
+  return `${n} ${n === 1 ? "lead novo" : "leads novos"} ${desdeQuando(e)}${cad > 0 ? ` (${cad} ${cad === 1 ? "cadastrado" : "cadastrados"} por você)` : ""}`;
+};
+
+/** Fim da frase de pausa longa: só promete aviso quando há quem receba. */
+const fraseAvisoPausa = (e: PontoEstado): string => {
+  if (e.gestor_avisado_pausa) return " — o(a) gestor(a) foi avisado(a).";
+  if (e.tem_gestor === true) return " — o(a) gestor(a) será avisado(a).";
+  if (e.tem_gestor === false) return " — nenhum(a) gestor(a) da equipe configurado(a) para receber o aviso.";
+  return ".";
+};
 
 export default function SdrExpediente() {
   const [estado, setEstado] = useState<PontoEstado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null); // ação em curso
   const [tique, setTique] = useState(0);
+  const [confirmandoEncerrar, setConfirmandoEncerrar] = useState(false);
   // Encerramento automático (decisão do dono, 09/09): na saída do horário dela o
   // servidor encerra sozinho. Aqui isso só aparece como a linha "Encerra sozinho
   // às HH:MM" — quem pergunta antes, em qualquer tela, é AvisoFimExpediente.
@@ -350,7 +369,7 @@ export default function SdrExpediente() {
     toast.success(
       n === 0
         ? `Expediente aberto. Nenhum lead novo ${desdeQuando(r)}.`
-        : `Expediente aberto. Você recebeu ${n} ${n === 1 ? "lead" : "leads"} ${desdeQuando(r)}.`,
+        : `Expediente aberto. ${frasesLeadsNovos(n, r)}.`,
     );
     if (r.lote_erro) toast.warning("O lote de leads reservados não pôde ser aplicado agora; o sistema tenta de novo sozinho.");
   };
@@ -437,13 +456,15 @@ export default function SdrExpediente() {
   // ---- estados de carga/erro (nunca decidir "fechado" a partir de um erro)
   if (erro && !estado) {
     return (
-      <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-[18px] py-4">
-        <Clock size={18} className="text-destructive" />
+      <section className="flex flex-wrap items-center gap-4 rounded-card border border-destructive/30 bg-card p-5 shadow-card">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-destructive-soft text-destructive">
+          <Clock size={22} />
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">Expediente indisponível</p>
-          <p className="text-[12.5px] text-muted-foreground">{erro}</p>
+          <p className="text-[15px] font-semibold text-foreground">Expediente indisponível</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground break-words">{erro}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void carregar()}>
+        <Button variant="outline" size="sm" className="h-10 rounded-xl px-4 text-[13.5px] font-semibold" onClick={() => void carregar()}>
           <RefreshCw size={14} className="mr-1" /> Tentar de novo
         </Button>
       </section>
@@ -451,8 +472,8 @@ export default function SdrExpediente() {
   }
   if (!estado) {
     return (
-      <section className="flex items-center gap-2 rounded-2xl border border-border bg-card px-[18px] py-4 text-sm text-muted-foreground">
-        <Loader2 size={16} className="animate-spin" /> Carregando o expediente...
+      <section className="flex items-center gap-3 rounded-card border border-border/60 bg-card p-5 text-sm text-muted-foreground shadow-card">
+        <Loader2 size={18} className="animate-spin" /> Carregando o expediente...
       </section>
     );
   }
@@ -467,76 +488,78 @@ export default function SdrExpediente() {
 
   const selo =
     estado.estado === "aberto"
-      ? { texto: "Em expediente", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", ponto: "bg-emerald-500", titulo: "" }
+      ? { texto: "Em expediente", cls: "bg-success-soft text-success-soft-foreground", ponto: "bg-success", titulo: "" }
       : estado.estado === "pausado"
         ? {
             texto: `Em pausa · ${motivoEmCurso}${detalheCurto ? `: ${detalheCurto}` : ""}`,
-            cls: "bg-warning/10 text-warning dark:bg-warning/15",
+            cls: "bg-warning-soft text-warning-soft-foreground",
             ponto: "bg-warning",
             titulo: detalhePausa ?? "",
           }
-        : { texto: "Fora do expediente", cls: "bg-muted text-muted-foreground", ponto: "bg-muted-foreground/50", titulo: "" };
+        : { texto: "Fora do expediente", cls: "bg-slate-soft text-slate-soft-foreground", ponto: "bg-slate", titulo: "" };
 
   const leadsDesde = estado.leads_desde_ultimo_encerramento ?? 0;
   const resumoLeads = leadsDesde === 0
     ? `Nenhum lead novo ${desdeQuando(estado)}`
-    : `Você recebeu ${leadsDesde} ${leadsDesde === 1 ? "lead" : "leads"} ${desdeQuando(estado)}`;
+    : frasesLeadsNovos(leadsDesde, estado);
   const pausando = ocupado === "ponto_pausar";
   const podeConfirmar = detalheSuficiente(texto) && !pausando;
 
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-4 px-[18px] py-4">
-        <span className={`grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] ${
+    <section className="overflow-hidden rounded-card border border-border/60 bg-card shadow-card">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-4 p-5">
+        <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl ${
           estado.estado === "fechado"
-            ? "bg-muted text-muted-foreground"
-            : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+            ? "bg-slate-soft text-slate"
+            : estado.estado === "pausado"
+              ? "bg-warning-soft text-warning"
+              : "bg-success-soft text-success"
         }`}>
-          <Clock size={21} />
+          <Clock size={26} />
         </span>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[220px]">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Expediente</span>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ${selo.cls}`} title={selo.titulo}>
-              <span className={`h-[7px] w-[7px] rounded-full ${selo.ponto}`} />
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-tertiary">Expediente</span>
+            <span className={`inline-flex min-h-6 max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold leading-snug ${selo.cls}`} title={selo.titulo}>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${selo.ponto}`} />
               {selo.texto}
             </span>
             {erro && (
-              <span className="text-[11.5px] text-destructive" title={erro}>sem sincronizar</span>
+              <span className="text-[11.5px] font-medium text-destructive" title={erro}>sem sincronizar</span>
             )}
           </div>
 
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
-            <span className="font-mono text-[27px] font-bold leading-tight tracking-tight tabular-nums text-foreground">
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="text-[32px] font-bold leading-none tracking-tight tabular-nums text-foreground">
               {emCurso ? hhmmss(trabalhadoS) : hhmm(estado.segundos_trabalhados)}
             </span>
             {emCurso ? (
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="text-[13px] text-muted-foreground">
                 desde {horaLocal(estado.abriu_em)}
                 {estado.pausas > 0 && ` · ${estado.pausas === 1 ? "1 pausa" : `${estado.pausas} pausas`} (${hhmm(pausaS)})`}
                 {estado.estado === "pausado" && ` · nesta pausa há ${hhmm(pausaAtualS)}`}
               </span>
             ) : estado.encerrou_em ? (
-              <span className="text-[12.5px] text-muted-foreground">
+              <span className="text-[13px] text-muted-foreground">
                 último expediente {dataHoraLocal(estado.abriu_em)} – {horaLocal(estado.encerrou_em)}
                 {estado.encerrado_auto && " (encerrado automaticamente)"}
               </span>
             ) : (
-              <span className="text-[12.5px] text-muted-foreground">nenhum expediente registrado ainda</span>
+              <span className="text-[13px] text-muted-foreground">nenhum expediente registrado ainda</span>
             )}
           </div>
 
-          <p className={`mt-0.5 text-[12.5px] ${pausaLonga ? "font-semibold text-warning" : "text-muted-foreground"}`}>
+          <p className={`mt-2 text-[13px] leading-snug ${pausaLonga ? "inline-block rounded-lg bg-warning-soft px-2.5 py-1 font-semibold text-warning-soft-foreground" : "text-tertiary"}`}>
             {pausaLonga
-              ? `Pausa acima de ${estado.pausa_alerta_min} min — ${estado.gestor_avisado_pausa ? "o gestor foi avisado." : "o gestor será avisado."}`
+              ? `Pausa acima de ${estado.pausa_alerta_min} min${fraseAvisoPausa(estado)}`
               : resumoLeads}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {estado.estado === "fechado" && (
-            <Button size="sm" onClick={abrir} disabled={!!ocupado}>
+            <Button size="sm" className="h-10 rounded-xl px-4 text-[13.5px] font-semibold" onClick={abrir} disabled={!!ocupado}>
               {ocupado === "ponto_abrir" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <LogIn size={14} className="mr-1" />}
               Abrir expediente
             </Button>
@@ -545,21 +568,21 @@ export default function SdrExpediente() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 {/* Nunca desabilitado por causa da lista: ela já nasce preenchida. */}
-                <Button size="sm" variant="outline" disabled={!!ocupado}>
+                <Button size="sm" variant="outline" className="h-10 rounded-xl px-4 text-[13.5px] font-semibold" disabled={!!ocupado}>
                   {pausando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Pause size={14} className="mr-1" />}
                   Pausar
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                align="end" className="w-48"
+                align="end" className="w-52 rounded-xl p-1.5"
                 onCloseAutoFocus={(e) => { if (querTexto.current) { e.preventDefault(); querTexto.current = false; } }}
               >
                 {motivos.map((m) => {
                   const Icone = iconeDe(m.icone);
                   return (
-                    <DropdownMenuItem key={m.chave} onClick={() => escolherMotivo(m)}>
-                      <Icone size={14} className="mr-2" /> {m.rotulo}
-                      {m.exige_texto && <span className="ml-auto pl-2 text-[10.5px] text-muted-foreground">escrever</span>}
+                    <DropdownMenuItem key={m.chave} className="rounded-lg py-2" onClick={() => escolherMotivo(m)}>
+                      <Icone size={14} className="mr-2 text-muted-foreground" /> {m.rotulo}
+                      {m.exige_texto && <span className="ml-auto pl-2 text-[10.5px] text-tertiary">escrever</span>}
                     </DropdownMenuItem>
                   );
                 })}
@@ -567,13 +590,13 @@ export default function SdrExpediente() {
             </DropdownMenu>
           )}
           {estado.estado === "pausado" && (
-            <Button size="sm" onClick={() => void retomar()} disabled={!!ocupado}>
+            <Button size="sm" className="h-10 rounded-xl px-4 text-[13.5px] font-semibold" onClick={() => void retomar()} disabled={!!ocupado}>
               {ocupado === "ponto_retomar" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Play size={14} className="mr-1" />}
               Retomar
             </Button>
           )}
           {emCurso && (
-            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={encerrar} disabled={!!ocupado}>
+            <Button size="sm" variant="ghost" className="h-10 rounded-xl px-3.5 text-[13.5px] font-semibold text-muted-foreground hover:text-destructive" onClick={() => setConfirmandoEncerrar(true)} disabled={!!ocupado}>
               {ocupado === "ponto_encerrar" ? <Loader2 size={14} className="mr-1 animate-spin" /> : <LogOut size={14} className="mr-1" />}
               Encerrar
             </Button>
@@ -586,8 +609,8 @@ export default function SdrExpediente() {
           Enter confirma e Esc cancela. O botão só libera com texto de verdade,
           a mesma régua do banco. */}
       {pedindo && estado.estado === "aberto" && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border px-[18px] py-2.5">
-          <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-foreground">
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-border/60 bg-surface-sunken/60 px-5 py-3.5">
+          <span className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-warning-soft px-3 text-[13px] font-semibold text-warning-soft-foreground">
             {(() => { const Icone = iconeDe(pedindo.icone); return <Icone size={14} />; })()}
             {pedindo.rotulo}:
           </span>
@@ -603,19 +626,19 @@ export default function SdrExpediente() {
             }}
             placeholder="Motivo da pausa (ex.: buscar documento no cartório)"
             aria-label={`Motivo da pausa: ${pedindo.rotulo}`}
-            className="h-8 w-full max-w-[360px] flex-1 text-sm"
+            className="h-10 w-full min-w-[200px] max-w-[460px] flex-1 basis-[380px] rounded-xl text-sm"
           />
-          <Button size="sm" onClick={() => void pausar(pedindo, texto)} disabled={!podeConfirmar}>
+          <Button size="sm" className="h-10 rounded-xl px-4 text-[13.5px] font-semibold" onClick={() => void pausar(pedindo, texto)} disabled={!podeConfirmar}>
             {pausando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Check size={14} className="mr-1" />}
             Pausar
           </Button>
           <Button
-            size="sm" variant="ghost" className="text-muted-foreground"
+            size="sm" variant="ghost" className="h-10 rounded-xl px-3.5 text-[13.5px] font-semibold text-muted-foreground"
             onClick={() => { setPedindo(null); setTexto(""); }} disabled={pausando}
           >
             <X size={14} className="mr-1" /> Cancelar
           </Button>
-          <span className="w-full text-[11px] text-muted-foreground">
+          <span className="w-full text-xs text-tertiary">
             Pelo menos 3 letras. Enter confirma, Esc cancela.
             {!motivosDoBanco && " Esta lista de motivos é a padrão: a configurada pelo administrador não pôde ser lida agora."}
           </span>
@@ -623,10 +646,22 @@ export default function SdrExpediente() {
       )}
 
       {emCurso && fim?.encerra_em && (
-        <p className="border-t border-border px-[18px] py-2 text-[11.5px] text-muted-foreground">
+        <p className="border-t border-border/60 bg-surface-sunken/60 px-5 py-2.5 text-xs text-tertiary">
           Encerra sozinho às {horaLocal(fim.encerra_em)}{fim.adiado_ate && fim.encerra_em === fim.adiado_ate ? " (adiado)" : ""}.
         </p>
       )}
+      <AlertDialog open={confirmandoEncerrar} onOpenChange={setConfirmandoEncerrar}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Encerrar o expediente agora?</AlertDialogTitle>
+            <AlertDialogDescription>Você deixa de receber leads do rodízio até abrir o expediente de novo.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <Button variant="destructive" disabled={ocupado === "ponto_encerrar"} onClick={() => { setConfirmandoEncerrar(false); void encerrar(); }}>Encerrar</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }

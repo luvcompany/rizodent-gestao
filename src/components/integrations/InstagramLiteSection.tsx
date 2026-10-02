@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Instagram,
   Trash2,
@@ -27,26 +26,61 @@ import {
   Settings,
   Loader2,
   ShieldCheck,
-  ChevronDown,
-  RefreshCw,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { BASE_GRAPH_INSTAGRAM, META_GRAPH_VERSION } from "@/lib/metaVersao";
+
+/**
+ * Valida um token IG/FB chamando a Graph API. Retorna { ok, username?, error? }.
+ * Aceita tanto tokens de Página/Usuário Facebook (EAA…) quanto tokens de
+ * Instagram Login (IGAA…).
+ */
+async function validateIgToken(igUserId: string, accessToken: string): Promise<{
+  ok: boolean;
+  username?: string | null;
+  error?: string;
+}> {
+  const isIgLite = accessToken.startsWith("IGAA");
+  const base = isIgLite
+    ? BASE_GRAPH_INSTAGRAM
+    : `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+  try {
+    const url = `${base}/${igUserId}?fields=username,name&access_token=${encodeURIComponent(
+      accessToken
+    )}`;
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({} as any));
+    if (!r.ok || j?.error) {
+      const code = j?.error?.code;
+      const msg = j?.error?.message || `HTTP ${r.status}`;
+      if (code === 190) {
+        return { ok: false, error: "Token inválido ou expirado. Gere um novo no Meta Developers." };
+      }
+      if (code === 100) {
+        return { ok: false, error: "Instagram User ID não confere com o token." };
+      }
+      return { ok: false, error: `Meta: ${msg}` };
+    }
+    return { ok: true, username: j?.username ?? null };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Falha de rede ao validar token" };
+  }
+}
 
 const IG_PURPLE = "#833AB4";
-
-// O token (access_token) NÃO vem para o navegador: o SELECT dessa coluna é
-// revogado de authenticated (migration 20260929001200). Testar o token é pelo
-// servidor (instagram-conta, acao "testar"). Por isso a lista pede só estas
-// colunas — nunca select("*").
-const COLUNAS_IG_ACCOUNTS = "id, ig_user_id, username, token_expires_at, active, created_at";
 
 interface IgAccount {
   id: string;
   ig_user_id: string;
   username: string | null;
+  access_token: string;
   token_expires_at: string | null;
   active: boolean;
   created_at: string;
+}
+
+function cleanUsername(raw: string) {
+  return raw.replace(/^@/, "").trim().toLowerCase();
 }
 
 function defaultExpiry() {
@@ -61,92 +95,23 @@ function daysUntil(iso: string | null): number | null {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
-// Toda conta do v2 tem token do Login do Instagram (IGAA…): o popup e o
-// cadastro manual (instagram-conta) só aceitam esse token, e o
-// instagram-token-refresh renova todos. O antigo "token manual de Página
-// (EAA…), sem renovação" era do CRClin — lá o navegador lia o token para
-// decidir o rótulo; aqui não lê mais.
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("pt-BR");
-  } catch {
-    return iso;
-  }
-}
-
-function descreverValidade(iso: string | null): string {
-  if (!iso) return "Token sem data de expiração";
-  const d = daysUntil(iso) ?? 0;
-  if (d < 0) return `Token vencido em ${formatDate(iso)}`;
-  return `Token válido até ${formatDate(iso)} (${d} ${d === 1 ? "dia" : "dias"})`;
-}
-
-// Dados públicos do Login do Instagram (get-instagram-app-id → ig_login).
-interface IgLoginConfig {
-  app_id: string;
-  redirect_uri: string;
-  scopes: string[];
-  habilitado: boolean;
-}
-
-// Motivo que o instagram-login-callback manda para o /oauth-close.
-const MENSAGEM_MOTIVO: Record<string, string> = {
-  config: "O Login do Instagram não está configurado no servidor.",
-  negado: "A autorização foi cancelada no Instagram.",
-  state: "O link de conexão expirou ou já foi usado. Tente de novo.",
-  permissao: "Seu usuário não tem permissão para conectar contas do Instagram.",
-  troca: "O Instagram recusou a autorização. Tente de novo.",
-  perfil: "Não foi possível ler a conta profissional do Instagram.",
-  outro_tenant: "Esta conta do Instagram já está conectada em outra clínica.",
-  banco: "Não foi possível salvar a conta. Tente de novo.",
-  sessao: "Conclua a conexão neste navegador, logado com o mesmo usuário que clicou em Conectar Instagram.",
-  erro: "Não foi possível concluir a conexão. Tente de novo.",
-};
-
-// Mensagem de erro de uma edge function (corpo JSON { error }) chamada pelo invoke.
-async function erroDaFuncao(error: any, padrao: string): Promise<string> {
-  try {
-    const b = await error?.context?.json?.();
-    if (b?.error) return String(b.error);
-  } catch { /* corpo não-JSON */ }
-  return padrao;
-}
-
-async function carregarIgLogin(): Promise<IgLoginConfig | null> {
-  const { data, error } = await supabase.functions.invoke("get-instagram-app-id");
-  if (error) throw error;
-  const c = (data as any)?.ig_login;
-  if (!c || typeof c !== "object") return null;
-  return {
-    app_id: String(c.app_id ?? ""),
-    redirect_uri: String(c.redirect_uri ?? ""),
-    scopes: Array.isArray(c.scopes) ? c.scopes.map(String) : [],
-    habilitado: !!c.habilitado,
-  };
-}
-
 export default function InstagramLiteSection() {
   const [open, setOpen] = useState(false);
   const [accounts, setAccounts] = useState<IgAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [username, setUsername] = useState("");
   const [igUserId, setIgUserId] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [expiresAt, setExpiresAt] = useState(defaultExpiry());
   const [showToken, setShowToken] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false);
-
-  // Login do Instagram: null = ainda não sabemos (servidor não respondeu).
-  const [igLogin, setIgLogin] = useState<IgLoginConfig | null>(null);
-  const [connecting, setConnecting] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("ig_accounts")
-      .select(COLUNAS_IG_ACCOUNTS)
+      .select("*")
       .order("created_at", { ascending: true });
     if (error) {
       toast.error("Erro ao carregar contas Instagram");
@@ -158,127 +123,7 @@ export default function InstagramLiteSection() {
 
   useEffect(() => {
     load();
-    carregarIgLogin().then(setIgLogin).catch(() => setIgLogin(null));
-
-    // Resposta do popup (/oauth-close → postMessage), igual ao fluxo do WhatsApp.
-    const onMessage = (ev: MessageEvent) => {
-      const d = ev.data;
-      if (!d || typeof d !== "object" || d.type !== "oauth_result") return;
-      if (d.channel !== "instagram") return;
-      if (d.status === "connected") {
-        if (d.reason === "webhooks") {
-          toast.warning(
-            "Instagram conectado, mas o Instagram não confirmou o envio de mensagens para o CRM. Reconecte a conta; se continuar, confira o webhook no app da Meta.",
-          );
-        } else {
-          toast.success("Instagram conectado! DMs e comentários passam a entrar no CRM.");
-        }
-      } else {
-        toast.error(MENSAGEM_MOTIVO[String(d.reason ?? "")] ?? "Falha ao conectar com o Instagram. Tente novamente.");
-      }
-      load();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
   }, []);
-
-  // Botão principal: Login do Instagram (Business Login) em popup. O popup abre
-  // JÁ no clique (em branco) e só depois recebe a URL — abrir depois dos awaits
-  // faz o navegador bloquear como popup não solicitado.
-  const handleConnectInstagram = async () => {
-    const width = 600;
-    const height = 750;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    const popup = window.open(
-      "",
-      "instagram-login",
-      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes`,
-    );
-    if (!popup) {
-      toast.error("Popup bloqueado pelo navegador. Permita popups e tente novamente.");
-      return;
-    }
-    const abortar = (msg: string) => {
-      try { popup.close(); } catch { /* já fechado */ }
-      toast.error(msg);
-      setConnecting(false);
-    };
-
-    setConnecting(true);
-    try {
-      const cfg = await carregarIgLogin();
-      setIgLogin(cfg);
-      if (!cfg?.habilitado || !cfg.app_id || !cfg.redirect_uri) {
-        abortar(
-          "Login do Instagram não configurado no servidor. Cadastre os secrets INSTAGRAM_APP_ID_V2 e INSTAGRAM_APP_SECRET_V2.",
-        );
-        return;
-      }
-
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
-      if (!userId) {
-        abortar("Usuário não autenticado.");
-        return;
-      }
-      const { data: profileData, error: profileErr } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", userId)
-        .maybeSingle();
-      const tenantId = profileData?.tenant_id;
-      if (profileErr || !tenantId) {
-        abortar("Clínica não encontrada para o usuário.");
-        return;
-      }
-
-      // State de uso único. O banco decide o valor e a validade (15 min, trigger
-      // da migration 20260928210000) — por isso o .select("state"). A origem
-      // só vale no callback se estiver em ALLOWED_ORIGINS no servidor (com
-      // FRONTEND_URL definida, ela manda). Se a coluna ainda não existir
-      // (migration pendente), grava sem ela.
-      let { data: stateRow, error: stateErr } = await (supabase as any)
-        .from("instagram_oauth_states")
-        .insert({ user_id: userId, tenant_id: tenantId, origin: window.location.origin })
-        .select("state")
-        .single();
-      if (stateErr && /origin/i.test(String(stateErr.message ?? ""))) {
-        ({ data: stateRow, error: stateErr } = await supabase
-          .from("instagram_oauth_states")
-          .insert({ user_id: userId, tenant_id: tenantId })
-          .select("state")
-          .single());
-      }
-      if (stateErr || !stateRow?.state) {
-        abortar("Falha ao iniciar a conexão. Tente novamente.");
-        return;
-      }
-
-      const authUrl = new URL("https://www.instagram.com/oauth/authorize");
-      authUrl.searchParams.set("client_id", cfg.app_id);
-      authUrl.searchParams.set("redirect_uri", cfg.redirect_uri);
-      authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope", cfg.scopes.join(","));
-      authUrl.searchParams.set("state", String(stateRow.state));
-      // Sem isto o Instagram reaproveita a sessão já logada no navegador e o
-      // "Conectar outra" (uma conta por cidade) reconecta sempre a mesma conta.
-      authUrl.searchParams.set("force_reauth", "true");
-      popup.location.href = authUrl.toString();
-
-      // Fallback do postMessage: ao fechar o popup, recarrega a lista.
-      const checkPopup = window.setInterval(() => {
-        if (popup.closed) {
-          window.clearInterval(checkPopup);
-          setConnecting(false);
-          load();
-        }
-      }, 700);
-    } catch (e: any) {
-      console.error("[InstagramLiteSection] connect error:", e);
-      abortar(e?.message ?? "Erro ao iniciar conexão com o Instagram");
-    }
-  };
 
   const expiringSoon = useMemo(
     () =>
@@ -296,6 +141,7 @@ export default function InstagramLiteSection() {
   }).length;
 
   const resetForm = () => {
+    setUsername("");
     setIgUserId("");
     setAccessToken("");
     setExpiresAt(defaultExpiry());
@@ -306,80 +152,74 @@ export default function InstagramLiteSection() {
   // Conta cujo Direct (perguntas prontas + menu fixo) está sendo configurado.
   const [contaDoDirect, setContaDoDirect] = useState<IgAccount | null>(null);
 
-  // Cadastro manual pelo servidor (instagram-conta): o navegador não grava
-  // ig_user_id/token direto. O servidor confere o token na Meta (/me), pega o ID
-  // e o @ de lá e grava no tenant de quem está logado.
   const handleAdd = async () => {
+    const cleanUser = cleanUsername(username);
     const cleanId = igUserId.trim();
     const cleanToken = accessToken.trim();
 
-    if (!cleanToken) {
-      toast.error("Informe o access token");
+    if (!cleanUser || !cleanId || !cleanToken) {
+      toast.error("Preencha username, ID e access token");
       return;
     }
-    if (!cleanToken.startsWith("IGAA")) {
-      toast.error("Use um token do Login do Instagram (começa com IGAA).");
-      return;
-    }
-    if (cleanId && !/^\d+$/.test(cleanId)) {
+    if (!/^\d+$/.test(cleanId)) {
       toast.error("Instagram User ID deve conter apenas números");
       return;
     }
 
     setSaving(true);
-    const { data, error } = await supabase.functions.invoke("instagram-conta", {
-      body: {
-        acao: "cadastrar",
-        access_token: cleanToken,
-        ig_user_id: cleanId || undefined,
-        token_expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined,
-      },
+
+    // 1. Validar token na Meta antes de salvar — evita gravar credencial inválida
+    const v = await validateIgToken(cleanId, cleanToken);
+    if (!v.ok) {
+      toast.error(v.error || "Token rejeitado pela Meta");
+      setSaving(false);
+      return;
+    }
+
+    // Se a Meta retornou um username diferente, usar o oficial
+    const finalUser = v.username ? v.username.toLowerCase() : cleanUser;
+    if (v.username && v.username.toLowerCase() !== cleanUser) {
+      toast.message(`Username ajustado para @${v.username} (conforme retornado pela Meta)`);
+    }
+
+    const { error } = await (supabase as any).from("ig_accounts").insert({
+      ig_user_id: cleanId,
+      username: finalUser,
+      access_token: cleanToken,
+      token_expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+      active: true,
     });
+
     if (error) {
-      toast.error(await erroDaFuncao(error, "Erro ao salvar conta"));
-    } else {
-      const d = (data ?? {}) as { username?: string | null; webhooks_ok?: boolean };
-      const quem = d.username ? `@${d.username}` : "Conta Instagram";
-      if (d.webhooks_ok === false) {
-        toast.warning(`${quem} conectada, mas o Instagram não confirmou o envio de mensagens para o CRM.`);
+      if (error.code === "23505") {
+        toast.error("Este Instagram User ID já está cadastrado");
       } else {
-        toast.success(`${quem} conectada e token validado`);
+        toast.error("Erro ao salvar conta: " + error.message);
       }
+    } else {
+      toast.success("Conta Instagram conectada e token validado");
       resetForm();
       load();
     }
     setSaving(false);
   };
 
-  // Teste pelo servidor: quem chama a Meta com o token é o instagram-conta.
   const handleTestToken = async (acc: IgAccount) => {
     setTestingId(acc.id);
-    const { data, error } = await supabase.functions.invoke("instagram-conta", {
-      body: { acao: "testar", ig_account_id: acc.id },
-    });
+    const v = await validateIgToken(acc.ig_user_id, acc.access_token);
     setTestingId(null);
-    if (error) {
-      toast.error(await erroDaFuncao(error, "Não foi possível testar o token agora"));
-      return;
-    }
-    const d = (data ?? {}) as { valido?: boolean; motivo?: string };
-    if (d.valido) {
+    if (v.ok) {
       toast.success(`Token de @${acc.username || acc.ig_user_id} está válido`);
-    } else if (d.motivo === "outra_conta") {
-      toast.error("O token abre outra conta do Instagram. Reconecte pelo botão Conectar Instagram.");
     } else {
-      toast.error("A Meta recusou o token (inválido ou vencido). Reconecte pelo botão Conectar Instagram.");
+      toast.error(v.error || "Token rejeitado pela Meta");
     }
   };
 
   const handleDelete = async (acc: IgAccount) => {
     if (!confirm(`Desconectar a conta @${acc.username || acc.ig_user_id}?`)) return;
-    // Pelo servidor: desliga os webhooks da conta na Meta antes de apagar a linha.
-    const { error } = await supabase.functions.invoke("instagram-conta", {
-      body: { acao: "desconectar", ig_account_id: acc.id },
-    });
+    const { error } = await (supabase as any).from("ig_accounts").delete().eq("id", acc.id);
     if (error) {
-      toast.error(await erroDaFuncao(error, "Erro ao remover"));
+      toast.error("Erro ao remover");
       return;
     }
     toast.success("Conta desconectada");
@@ -388,9 +228,7 @@ export default function InstagramLiteSection() {
 
   const handleToggleActive = async (acc: IgAccount) => {
     const newActive = !acc.active;
-    // Sem .select() de volta: o PostgREST responde com return=minimal (não pede
-    // coluna nenhuma, muito menos o token).
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("ig_accounts")
       .update({ active: newActive })
       .eq("id", acc.id);
@@ -407,28 +245,10 @@ export default function InstagramLiteSection() {
     return new Date(a.token_expires_at).getTime() < Date.now();
   };
 
-  const loginIndisponivel = igLogin !== null && !igLogin.habilitado;
-
-  const botaoConectar = (label: string, className = "") => (
-    <Button
-      onClick={(e) => {
-        e.stopPropagation();
-        handleConnectInstagram();
-      }}
-      disabled={connecting || loginIndisponivel}
-      className={`text-white hover:opacity-90 ${className}`}
-      style={{ background: `linear-gradient(135deg, ${IG_PURPLE}, #E1306C)` }}
-      title={loginIndisponivel ? "Login do Instagram não configurado no servidor" : undefined}
-    >
-      {connecting ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Instagram size={14} className="mr-1" />}
-      {connecting ? "Aguardando o Instagram..." : label}
-    </Button>
-  );
-
   return (
     <div className="mt-6">
       <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
-        <Instagram size={20} style={{ color: IG_PURPLE }} /> Instagram
+        <Instagram size={20} style={{ color: IG_PURPLE }} /> Instagram Lite
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl">
         <Card
@@ -445,33 +265,25 @@ export default function InstagramLiteSection() {
                   <XCircle size={12} className="mr-1" /> Não conectado
                 </Badge>
               ) : (
-                <Badge className="bg-green-900/30 text-green-400 border-0">
+                <Badge className="border-0 bg-success-soft text-success-soft-foreground">
                   <CheckCircle size={12} className="mr-1" /> {activeCount} ativa{activeCount === 1 ? "" : "s"}
                 </Badge>
               )}
             </div>
-            <h3 className="font-semibold text-foreground mb-1">Instagram (DMs e comentários)</h3>
+            <h3 className="font-semibold text-foreground mb-1">Instagram Lite</h3>
             <p className="text-sm text-muted-foreground">
               {accounts.length === 0
-                ? "Entre com a conta profissional do Instagram para receber e responder DMs e comentários pelo CRM."
-                : `${accounts.length} conta${accounts.length === 1 ? "" : "s"} conectada${accounts.length === 1 ? "" : "s"}.`}
+                ? "Integração manual via Meta Developers."
+                : `${accounts.length} conta${accounts.length === 1 ? "" : "s"} cadastrada${accounts.length === 1 ? "" : "s"}.`}
             </p>
             {expiringSoon.length > 0 && (
-              <p className="text-xs text-yellow-400 mt-2 flex items-center gap-1">
+              <p className="mt-2 flex items-center gap-1 text-xs text-warning-soft-foreground">
                 <AlertTriangle size={12} /> {expiringSoon.length} token{expiringSoon.length === 1 ? "" : "s"} expirando
               </p>
             )}
-            {loginIndisponivel && (
-              <p className="text-xs text-yellow-400 mt-2 flex items-center gap-1">
-                <AlertTriangle size={12} /> Login do Instagram não configurado no servidor.
-              </p>
-            )}
-            <div className="flex gap-2 mt-3">
-              {botaoConectar(accounts.length === 0 ? "Conectar Instagram" : "Conectar outra", "flex-1")}
-              <Button variant="outline" size="sm" className="h-10" onClick={() => setOpen(true)}>
-                <Settings size={14} className="mr-1" /> Contas
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" className="mt-3 w-full">
+              <Settings size={14} className="mr-1" /> Configurar
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -481,42 +293,29 @@ export default function InstagramLiteSection() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Instagram size={20} style={{ color: IG_PURPLE }} />
-              Instagram
+              Instagram Lite
               <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded ml-auto mr-6">
-                Login do Instagram
+                Integração manual via Meta Developers
               </span>
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-            {loginIndisponivel && (
-              <Alert className="border-yellow-500/50 bg-yellow-500/10">
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                <AlertDescription className="text-yellow-200">
-                  O botão Conectar Instagram depende dos secrets INSTAGRAM_APP_ID_V2 e
-                  INSTAGRAM_APP_SECRET_V2 no servidor. Enquanto isso, use o cadastro manual abaixo.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Tokens perto de vencer */}
+            {/* Expiring tokens warning */}
             {expiringSoon.map((a) => {
               const d = daysUntil(a.token_expires_at) ?? 0;
               return (
-                <Alert key={a.id} className="border-yellow-500/50 bg-yellow-500/10">
-                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                  <AlertDescription className="text-yellow-200">
+                <Alert key={a.id} className="border-warning/40 bg-warning-soft">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <AlertDescription className="text-warning-soft-foreground">
                     Token de <strong>@{a.username || a.ig_user_id}</strong> expira em{" "}
-                    {d} {d === 1 ? "dia" : "dias"}.{" "}
-                    A renovação é automática; se não renovar, clique em Conectar Instagram de novo.
+                    {d} {d === 1 ? "dia" : "dias"}. Atualize no Meta Developers.
                   </AlertDescription>
                 </Alert>
               );
             })}
 
-            <div className="flex justify-end">{botaoConectar(accounts.length === 0 ? "Conectar Instagram" : "Conectar outra conta")}</div>
-
-            {/* Contas conectadas */}
+            {/* Section 1 — Connected accounts */}
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-2">
                 Contas conectadas
@@ -537,7 +336,7 @@ export default function InstagramLiteSection() {
                     const initial = (acc.username || acc.ig_user_id).charAt(0).toUpperCase();
                     return (
                       <Card key={acc.id}>
-                        <CardContent className="p-4 flex flex-wrap items-center gap-3">
+                        <CardContent className="p-4 flex items-center gap-3">
                           <div
                             className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0"
                             style={{
@@ -553,19 +352,13 @@ export default function InstagramLiteSection() {
                             <p className="text-xs text-muted-foreground font-mono truncate">
                               ID: {acc.ig_user_id}
                             </p>
-                            <p className={`text-xs mt-0.5 ${expired ? "text-red-400" : "text-muted-foreground"}`}>
-                              {descreverValidade(acc.token_expires_at)}
-                            </p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <RefreshCw size={10} /> Login do Instagram · renovação automática
-                            </p>
                           </div>
                           {expired ? (
-                            <Badge className="bg-red-900/30 text-red-400 border-0">
+                            <Badge className="border-0 bg-destructive-soft text-destructive-soft-foreground">
                               <XCircle size={12} className="mr-1" /> Token expirado
                             </Badge>
                           ) : acc.active ? (
-                            <Badge className="bg-green-900/30 text-green-400 border-0">
+                            <Badge className="border-0 bg-success-soft text-success-soft-foreground">
                               <CheckCircle size={12} className="mr-1" /> Ativo
                             </Badge>
                           ) : (
@@ -617,31 +410,35 @@ export default function InstagramLiteSection() {
               )}
             </div>
 
-            {/* Avançado — cadastro manual de token (Meta Developers). Fica como
-                alternativa: o caminho normal é o botão Conectar Instagram. */}
-            <Collapsible open={manualOpen} onOpenChange={setManualOpen}>
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-1 hover:text-foreground"
-                >
-                  <ChevronDown size={14} className={`transition-transform ${manualOpen ? "rotate-180" : ""}`} />
-                  Avançado: cadastrar token manualmente
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
+            {/* Section 2 — Add account */}
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                Adicionar nova conta
+              </h3>
               <Card>
                 <CardContent className="p-4 space-y-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      Instagram User ID (opcional — o @ e o ID vêm da Meta pelo token)
-                    </label>
-                    <Input
-                      placeholder="17841478577704003"
-                      value={igUserId}
-                      onChange={(e) => setIgUserId(e.target.value)}
-                      inputMode="numeric"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Username *
+                      </label>
+                      <Input
+                        placeholder="@rizodentipiau"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Instagram User ID *
+                      </label>
+                      <Input
+                        placeholder="17841478577704003"
+                        value={igUserId}
+                        onChange={(e) => setIgUserId(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -650,7 +447,7 @@ export default function InstagramLiteSection() {
                     </label>
                     <div className="relative">
                       <Textarea
-                        placeholder="IGAA... (token do Login do Instagram, gerado no Meta Developers)"
+                        placeholder="EAAB... (token longo gerado no Meta Developers)"
                         value={accessToken}
                         onChange={(e) => setAccessToken(e.target.value)}
                         className={`font-mono text-xs pr-10 ${
@@ -697,13 +494,11 @@ export default function InstagramLiteSection() {
                     >
                       developers.facebook.com
                     </a>{" "}
-                    → seu app → API do Instagram → Gerar token. Só token do Login do
-                    Instagram (IGAA…) recebe mensagens neste app.
+                    → seu app → Instagram → Gerar token.
                   </p>
                 </CardContent>
               </Card>
-              </CollapsibleContent>
-            </Collapsible>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

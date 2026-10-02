@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { FILTRO_LEAD_NOVO } from "@/lib/leadNovo";
+import { filtrarLeadsNovos } from "@/lib/leadNovo";
+import { fetchAllPaged, motivoDaFalhaDeLeitura, rangeNoFuso } from "@/lib/reportKit";
+import { RpcErrorCard } from "@/components/RpcErrorCard";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,7 +14,7 @@ import { Loader2, Trophy, XCircle, CircleDot, Wallet, Info } from "lucide-react"
 // crm_leads (etapa atual + valor) e crm_lead_stage_history (passagens + duração).
 
 type Pipeline = { id: string; name: string };
-type Stage = { id: string; name: string; position: number; color: string | null; is_won: boolean; is_lost: boolean };
+type Stage = { id: string; name: string; position: number; color: string | null; is_won: boolean; is_lost: boolean; funcao: string | null };
 type Lead = { id: string; stage_id: string | null; value: number | string | null; created_at: string };
 type Hist = { lead_id: string; stage_id: string; entered_at: string; exited_at: string | null };
 
@@ -41,6 +43,9 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
   const [stages, setStages] = useState<Stage[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [hist, setHist] = useState<Hist[]>([]);
+  const [erroDeCarga, setErroDeCarga] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
+  const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
 
   useEffect(() => { if (!pid && pipelines[0]) setPid(pipelines[0].id); }, [pipelines, pid]);
 
@@ -50,36 +55,55 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const { data: st } = await supabase.from("crm_stages")
-        .select("id,name,position,color,is_won,is_lost").eq("pipeline_id", pid).order("position");
-      // Coorte de leads novos: fora os criados pela conciliação do Dontus, que
-      // já nascem em Contratado (leadNovo.ts).
-      let lq = supabase.from("crm_leads").select("id,stage_id,value,created_at").eq("pipeline_id", pid).or(FILTRO_LEAD_NOVO);
-      if (range) lq = lq.gte("created_at", range.start.toISOString()).lte("created_at", range.end.toISOString());
-      const { data: ld } = await lq;
-      const leadIds = (ld || []).map((l: any) => l.id);
-      const hrows: Hist[] = [];
-      for (let i = 0; i < leadIds.length; i += 200) {
-        const batch = leadIds.slice(i, i + 200);
-        const { data: h } = await supabase.from("crm_lead_stage_history")
-          .select("lead_id,stage_id,entered_at,exited_at").in("lead_id", batch);
-        if (h) hrows.push(...(h as any));
+      try {
+        const { data: st, error: stErr } = await supabase.from("crm_stages")
+          .select("id,name,position,color,is_won,is_lost").eq("pipeline_id", pid).order("position");
+        if (stErr) { const e = new Error(stErr.message); (e as { cause?: unknown }).cause = stErr; throw e; }
+        // Coorte de leads novos: fora os criados pela conciliação do Dontus e os
+        // sintéticos de pagamento (leadNovo.ts). Período no fuso da clínica.
+        const janela = range ? rangeNoFuso(range.start, range.end) : null;
+        const ld = await fetchAllPaged<Lead>(() => {
+          let q = filtrarLeadsNovos(
+            supabase.from("crm_leads").select("id,stage_id,value,created_at").eq("pipeline_id", pid)
+          );
+          if (janela) q = q.gte("created_at", janela.gteIso).lte("created_at", janela.lteIso);
+          return q as never;
+        }, "id");
+        const leadIds = ld.map((l) => l.id);
+        const hrows: Hist[] = [];
+        for (let i = 0; i < leadIds.length; i += 200) {
+          const batch = leadIds.slice(i, i + 200);
+          const h = await fetchAllPaged<Hist>(() => supabase.from("crm_lead_stage_history")
+            .select("lead_id,stage_id,entered_at,exited_at").in("lead_id", batch) as never, "id");
+          hrows.push(...h);
+        }
+        if (cancelled) return;
+        setStages((st || []) as Stage[]);
+        setLeads(ld);
+        setHist(hrows);
+        setErroDeCarga(null);
+        setLoading(false);
+      } catch (e) {
+        if (cancelled) return;
+        setErroDeCarga(motivoDaFalhaDeLeitura(e));
+        setLoading(false);
       }
-      if (cancelled) return;
-      setStages((st || []) as any);
-      setLeads((ld || []) as any);
-      setHist(hrows);
-      setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [pid, period]);
+  }, [pid, period, tentativa]);
 
   const model = useMemo(() => {
     const posById = new Map(stages.map((s) => [s.id, s.position]));
-    const openStages = stages.filter((s) => !s.is_won && !s.is_lost).sort((a, b) => a.position - b.position);
+    // "Não compareceu" é volta para reagendar, não passo do caminho: fica fora
+    // da conversão por etapa (continua em "Tempo médio por etapa").
+    const openStages = stages
+      .filter((s) => !s.is_won && !s.is_lost && s.funcao !== "nao_compareceu")
+      .sort((a, b) => a.position - b.position);
     const wonIds = new Set(stages.filter((s) => s.is_won).map((s) => s.id));
     const lostIds = new Set(stages.filter((s) => s.is_lost).map((s) => s.id));
-    const hasOutcomeStages = wonIds.size > 0 || lostIds.size > 0;
+    const temGanho = wonIds.size > 0;
+    const temPerda = lostIds.size > 0;
+    const hasOutcomeStages = temGanho || temPerda;
 
     const histByLead = new Map<string, Hist[]>();
     hist.forEach((h) => { const a = histByLead.get(h.lead_id) || []; a.push(h); histByLead.set(h.lead_id, a); });
@@ -123,110 +147,124 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
         return { stage: s, avg, passages };
       });
 
-    return { total, won, lost, open, openValue, wonValue, funnel, firstCount, timePerStage, hasOutcomeStages, openStages };
+    return { total, won, lost, open, openValue, wonValue, funnel, firstCount, timePerStage, hasOutcomeStages, temGanho, temPerda, openStages };
   }, [stages, leads, hist]);
 
   const tiles = [
     { label: "Coorte (leads no período)", value: String(model.total), icon: CircleDot, tone: "text-foreground" },
-    { label: "Em aberto", value: String(model.open), icon: CircleDot, tone: "text-blue-600 dark:text-blue-400" },
-    { label: "Ganho", value: String(model.won), icon: Trophy, tone: "text-emerald-600 dark:text-emerald-500" },
-    { label: "Perda", value: String(model.lost), icon: XCircle, tone: "text-destructive" },
-    { label: "Taxa de ganho", value: pct(model.won, model.won + model.lost), sub: "ganhos ÷ decididos", tone: "text-emerald-600 dark:text-emerald-500" },
+    { label: "Em aberto", value: String(model.open), icon: CircleDot, tone: "text-info-soft-foreground" },
+    { label: "Ganho", value: String(model.won), icon: Trophy, tone: "text-success-soft-foreground" },
+    { label: "Perda", value: String(model.lost), icon: XCircle, tone: "text-destructive-soft-foreground" },
+    { label: "Taxa de ganho", value: pct(model.won, model.won + model.lost), sub: "ganhos ÷ decididos", tone: "text-success-soft-foreground" },
     { label: "Conversão geral", value: pct(model.won, model.total), sub: "ganhos ÷ coorte", tone: "text-foreground" },
     { label: "Valor em aberto", value: brl.format(model.openValue), icon: Wallet, tone: "text-foreground" },
   ];
 
   return (
-    <div className="space-y-6">
-      <Card className="p-4 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase">Funil</span>
+    <div className="space-y-5 lg:space-y-6">
+      <Card className="px-4 py-3 rounded-card border-border/60 bg-card shadow-card flex flex-wrap items-center gap-x-5 gap-y-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-xs font-semibold text-tertiary uppercase tracking-wide">Funil</span>
           <Select value={pid} onValueChange={setPid}>
-            <SelectTrigger className="w-[220px] h-9"><SelectValue placeholder="Escolha um funil" /></SelectTrigger>
+            <SelectTrigger className="w-[220px] max-w-full h-9 rounded-xl"><SelectValue placeholder="Escolha um funil" /></SelectTrigger>
             <SelectContent>
               {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase">Período</span>
+          <span className="text-xs font-semibold text-tertiary uppercase tracking-wide">Período</span>
           <DateRangeFilter value={period} onChange={setPeriod} excludePresets={["all", "multi"]} />
         </div>
-        {loading && <Loader2 className="animate-spin text-muted-foreground" size={18} />}
+        {loading && <Loader2 className="animate-spin text-primary" size={18} />}
       </Card>
 
-      {!model.hasOutcomeStages && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
-          <Info size={16} className="mt-0.5 shrink-0 text-warning" />
+      {!model.hasOutcomeStages ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning-soft px-4 py-3 text-sm leading-relaxed text-warning-soft-foreground [&_strong]:font-semibold">
+          <Info size={18} className="mt-0.5 shrink-0 text-warning" />
           <span>Nenhuma etapa marcada como <strong>Ganho</strong> ou <strong>Perda</strong> neste funil. Marque em <strong>Automações → etapas</strong> para ver conversão e ganho × perda.</span>
+        </div>
+      ) : !model.temPerda ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning-soft px-4 py-3 text-sm leading-relaxed text-warning-soft-foreground [&_strong]:font-semibold">
+          <Info size={18} className="mt-0.5 shrink-0 text-warning" />
+          <span>Nenhuma etapa marcada como <strong>Perda</strong> neste funil: a taxa de ganho fica inflada. Marque em <strong>Automações → etapas</strong>.</span>
+        </div>
+      ) : !model.temGanho ? (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning-soft px-4 py-3 text-sm leading-relaxed text-warning-soft-foreground [&_strong]:font-semibold">
+          <Info size={18} className="mt-0.5 shrink-0 text-warning" />
+          <span>Nenhuma etapa marcada como <strong>Ganho</strong> neste funil: a taxa de ganho fica inflada. Marque em <strong>Automações → etapas</strong>.</span>
+        </div>
+      ) : null}
+
+      {/* Tiles de resultado */}
+      {erroDeCarga ? (
+        <RpcErrorCard title="Não foi possível carregar o funil" message={erroDeCarga} onRetry={recarregar} />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4">
+          {tiles.map((t) => (
+            <Card key={t.label} className="flex min-w-0 flex-col rounded-card border-border/60 p-4 sm:p-5 shadow-card [container-type:inline-size]">
+              <div className="min-h-[2lh] text-xs sm:text-[13px] font-semibold leading-snug text-muted-foreground">{t.label}</div>
+              <div className={`mt-2 sm:mt-3 whitespace-nowrap [font-size:clamp(20px,13cqi,28px)] font-bold leading-tight tracking-tight tabular-nums ${t.tone}`}>{t.value}</div>
+              {t.sub && <div className="text-xs text-tertiary leading-snug mt-1">{t.sub}</div>}
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* Tiles de resultado */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-        {tiles.map((t) => (
-          <Card key={t.label} className="p-4 min-w-0">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground leading-tight line-clamp-2">{t.label}</div>
-            <div className={`text-xl font-bold leading-tight truncate mt-1 ${t.tone}`}>{t.value}</div>
-            {t.sub && <div className="text-[11px] text-muted-foreground leading-tight mt-0.5">{t.sub}</div>}
-          </Card>
-        ))}
-      </div>
-
       {/* Funil de conversão por etapa */}
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Conversão por etapa</h3>
-          <span className="text-xs text-muted-foreground">Leads que passaram por cada etapa (abertas) · coorte do período</span>
+      <Card className="p-5 sm:p-6 rounded-card border-border/60 shadow-card">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4 mb-5">
+          <h3 className="text-base font-semibold text-foreground">Conversão por etapa</h3>
+          <span className="text-xs text-tertiary">Leads que alcançaram cada etapa do caminho · coorte do período</span>
         </div>
         {model.funnel.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Sem etapas abertas neste funil.</p>
+          <p className="text-sm text-muted-foreground text-center py-8 rounded-xl bg-surface-sunken">Sem etapas abertas neste funil.</p>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {model.funnel.map((row, i) => {
               const prev = i > 0 ? model.funnel[i - 1].count : row.count;
               const widthPct = model.firstCount ? Math.max(2, (row.count / model.firstCount) * 100) : 2;
               const conv = i > 0 ? pct(row.count, prev) : "100%";
               return (
-                <div key={row.stage.id} className="flex items-center gap-3">
-                  <div className="w-40 shrink-0 text-sm truncate text-right text-muted-foreground">{row.stage.name}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
-                      <div className="h-full rounded-md flex items-center px-2 transition-all"
-                        style={{ width: `${widthPct}%`, backgroundColor: (row.stage.color || "#0E7490") + "33", borderRight: `3px solid ${row.stage.color || "#0E7490"}` }}>
-                        <span className="text-xs font-semibold tabular-nums">{row.count}</span>
+                <div key={row.stage.id} className="grid grid-cols-[minmax(0,1fr)_56px] sm:grid-cols-[180px_minmax(0,1fr)_64px] items-center gap-x-3 sm:gap-x-4 gap-y-1.5">
+                  <div className="min-w-0 text-sm font-medium leading-snug break-words text-foreground sm:text-right">{row.stage.name}</div>
+                  <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-1 sm:col-start-2 min-w-0">
+                    <div className="h-7 rounded-full overflow-hidden bg-surface-sunken relative">
+                      <div className="h-full rounded-full flex items-center justify-end px-2.5 transition-all"
+                        style={{ width: `${widthPct}%`, minWidth: "2.25rem", backgroundColor: (row.stage.color || "#0E7490") + "40", boxShadow: `inset -4px 0 0 ${row.stage.color || "#0E7490"}` }}>
+                        <span className="text-xs font-bold tabular-nums text-foreground">{row.count}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{conv}</div>
+                  <div className="shrink-0 text-right text-xs font-semibold tabular-nums text-muted-foreground sm:col-start-3">{conv}</div>
                 </div>
               );
             })}
             {/* Passo final: Ganho */}
-            <div className="flex items-center gap-3 pt-1 border-t border-dashed border-border mt-1">
-              <div className="w-40 shrink-0 text-sm truncate text-right font-medium text-emerald-600 dark:text-emerald-500">Ganho</div>
-              <div className="flex-1 min-w-0">
-                <div className="h-8 rounded-md overflow-hidden bg-muted/50 relative">
-                  <div className="h-full rounded-md flex items-center px-2"
-                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, backgroundColor: "rgba(16,185,129,.20)", borderRight: "3px solid #10B981" }}>
-                    <span className="text-xs font-semibold tabular-nums">{model.won}</span>
+            <div className="grid grid-cols-[minmax(0,1fr)_56px] sm:grid-cols-[180px_minmax(0,1fr)_64px] items-center gap-x-3 sm:gap-x-4 gap-y-1.5 pt-3 border-t border-dashed border-border mt-1">
+              <div className="min-w-0 text-sm font-semibold break-words text-success-soft-foreground sm:text-right">Ganho</div>
+              <div className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-1 sm:col-start-2 min-w-0">
+                <div className="h-7 rounded-full overflow-hidden bg-surface-sunken relative">
+                  <div className="h-full rounded-full flex items-center justify-end px-2.5 bg-success"
+                    style={{ width: `${model.firstCount ? Math.max(2, (model.won / model.firstCount) * 100) : 2}%`, minWidth: "2.25rem" }}>
+                    <span className="text-xs font-bold tabular-nums text-success-foreground">{model.won}</span>
                   </div>
                 </div>
               </div>
-              <div className="w-16 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{pct(model.won, model.total)}</div>
+              <div className="shrink-0 text-right text-xs font-semibold tabular-nums text-muted-foreground sm:col-start-3">{pct(model.won, model.total)}</div>
             </div>
           </div>
         )}
       </Card>
 
       {/* Tempo médio por etapa */}
-      <Card className="p-5">
-        <h3 className="font-semibold mb-1">Tempo médio por etapa</h3>
-        <p className="text-xs text-muted-foreground mb-3">Média do tempo que os leads ficaram em cada etapa antes de sair (passagens concluídas).</p>
-        <div className="overflow-x-auto">
+      <Card className="p-5 sm:p-6 rounded-card border-border/60 shadow-card min-w-0">
+        <h3 className="text-base font-semibold text-foreground mb-1">Tempo médio por etapa</h3>
+        <p className="text-[13px] text-muted-foreground mb-4">Média do tempo que os leads ficaram em cada etapa antes de sair (passagens concluídas).</p>
+        <div className="overflow-x-auto rounded-xl border border-border/60 [&_th]:h-11 [&_th]:bg-surface-sunken [&_th]:text-xs [&_th]:font-semibold [&_th]:whitespace-nowrap [&_tr]:border-border/60 max-sm:[&_td]:px-3 max-sm:[&_th]:px-3 max-sm:[&_td]:text-[13px] max-sm:[&_th]:whitespace-normal max-sm:[&_th]:leading-tight">
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="hover:bg-transparent">
                 <TableHead>Etapa</TableHead>
                 <TableHead className="text-right">Passagens</TableHead>
                 <TableHead className="text-right">Tempo médio</TableHead>
@@ -234,17 +272,17 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
             </TableHeader>
             <TableBody>
               {model.timePerStage.map((r) => (
-                <TableRow key={r.stage.id}>
+                <TableRow key={r.stage.id} className="hover:bg-surface-sunken/60">
                   <TableCell>
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: r.stage.color || "#888" }} />
+                    <span className="relative block pl-[18px] font-medium leading-6 text-foreground">
+                      <span className="absolute left-0 top-[7px] w-2.5 h-2.5 rounded-full" style={{ backgroundColor: r.stage.color || "#888" }} />
                       {r.stage.name}
-                      {r.stage.is_won && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-500">Ganho</span>}
-                      {r.stage.is_lost && <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/15 text-destructive">Perda</span>}
+                      {r.stage.is_won && <span className="ml-2 inline-flex h-6 items-center rounded-full bg-success-soft px-2.5 align-top text-[11px] font-semibold text-success-soft-foreground">Ganho</span>}
+                      {r.stage.is_lost && <span className="ml-2 inline-flex h-6 items-center rounded-full bg-destructive-soft px-2.5 align-top text-[11px] font-semibold text-destructive-soft-foreground">Perda</span>}
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{r.passages}</TableCell>
-                  <TableCell className="text-right tabular-nums">{fmtDur(r.avg)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-semibold text-foreground whitespace-nowrap">{fmtDur(r.avg)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -252,7 +290,7 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
         </div>
       </Card>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="rounded-xl bg-muted px-4 py-3 text-[13px] leading-relaxed text-muted-foreground [&_strong]:font-semibold [&_strong]:text-foreground">
         Coorte = leads <strong>criados no período</strong> dentro do funil selecionado, acompanhados por todas as etapas.
         “Conversão por etapa” conta leads que já alcançaram cada etapa (ou uma posterior).
       </p>

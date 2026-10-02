@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ORIGENS_LEAD, ORIGENS_LEAD_INSTAGRAM, origemLeadCanonica } from "@/lib/origensLead";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -7,17 +8,8 @@ import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { X, Plus, Link2, Unlink, Video } from "lucide-react";
-
-type AdOption = {
-  ad_id: string;
-  imagem_origem: string | null;
-  nome_anuncio: string | null;
-  descricao_anuncio: string | null;
-  link_anuncio: string | null;
-  ad_account_id: string | null;
-  ad_account_name: string | null;
-};
+import { X, Plus, Link2, Unlink, Video, Megaphone, Tag } from "lucide-react";
+import { mergeAdCandidates, type AdOption } from "@/lib/adCreativeOptions";
 
 type Props = {
   leadId: string;
@@ -36,28 +28,20 @@ type Props = {
 };
 
 const SOURCE_OPTIONS_DEFAULT = [
-  { value: "anúncio", label: "Anúncio" },
-  { value: "google_ads", label: "Google Ads" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "indicação", label: "Indicação" },
-  { value: "orgânico", label: "Orgânico" },
-  { value: "site", label: "Site" },
-  { value: "ligação", label: "Ligação" },
-  { value: "outro", label: "Outro" },
+  { value: "anuncio", label: "Anúncio" },
+  ...ORIGENS_LEAD.filter((o) => !["facebook_ad", "instagram_ad"].includes(o.valor)).map((o) => ({ value: o.valor, label: o.rotulo })),
 ];
 
-const SOURCE_OPTIONS_INSTAGRAM = [
-  { value: "comentário", label: "Comentário" },
-  { value: "direct", label: "Direct" },
-  { value: "anúncio", label: "Anúncio" },
-];
+const SOURCE_OPTIONS_INSTAGRAM = ORIGENS_LEAD_INSTAGRAM.map((o) => ({ value: o.valor, label: o.rotulo }));
 
-const AD_SOURCE_VALUES = ["facebook_ad", "instagram_ad", "anúncio"];
+const AD_SOURCE_VALUES = ["facebook_ad", "instagram_ad", "anuncio"];
+const ehOrigemAnuncio = (s: string | null | undefined) => AD_SOURCE_VALUES.includes(origemLeadCanonica(s) || "");
 
 function sourceToDropdown(source: string | null, options: { value: string; label: string }[]): string {
   if (!source) return "";
-  if (AD_SOURCE_VALUES.includes(source.toLowerCase())) return "anúncio";
-  const match = options.find((o) => o.value === source.toLowerCase());
+  if (ehOrigemAnuncio(source)) return "anuncio";
+  const c = origemLeadCanonica(source);
+  const match = options.find((o) => o.value === c);
   if (match) return match.value;
   // If "outro" is in options, fall back to it; otherwise empty
   return options.some((o) => o.value === "outro") ? "outro" : "";
@@ -71,7 +55,7 @@ export default function InlineTagsEditor({
   const [newTag, setNewTag] = useState("");
   const [customSource, setCustomSource] = useState("");
   const dropdownValue = sourceToDropdown(source, SOURCE_OPTIONS);
-  const showCustom = dropdownValue === "outro" && !SOURCE_OPTIONS.slice(0, -1).some((o) => o.value === source?.toLowerCase());
+  const showCustom = dropdownValue === "outro" && !SOURCE_OPTIONS.slice(0, -1).some((o) => o.value === origemLeadCanonica(source));
 
   // Ad selector state
   const [ads, setAds] = useState<AdOption[]>([]);
@@ -80,7 +64,7 @@ export default function InlineTagsEditor({
 
   useEffect(() => {
     if (showCustom && source) {
-      setCustomSource(AD_SOURCE_VALUES.includes(source.toLowerCase()) ? "" : source);
+      setCustomSource(ehOrigemAnuncio(source) ? "" : source);
     }
   }, [source]);
 
@@ -113,15 +97,15 @@ export default function InlineTagsEditor({
   };
 
   const handleSourceChange = (val: string) => {
-    if (val === "anúncio") {
+    if (val === "anuncio") {
       // Keep existing ad source or default to facebook_ad
-      const dbSource = AD_SOURCE_VALUES.includes(source?.toLowerCase() || "") ? source : "facebook_ad";
+      const dbSource = ehOrigemAnuncio(source) ? source : "facebook_ad";
       save({ source: dbSource });
     } else if (val === "outro") {
       save({ source: "outro" });
     } else {
       // Clear ad data when switching away from anúncio
-      if (AD_SOURCE_VALUES.includes(source?.toLowerCase() || "")) {
+      if (ehOrigemAnuncio(source)) {
         save({
           source: val,
           ad_id: null,
@@ -143,27 +127,32 @@ export default function InlineTagsEditor({
     }
   };
 
-  const normalizeImgUrl = (url: string | null) => {
-    if (!url) return "no-img";
-    try { return new URL(url).origin + new URL(url).pathname; } catch { return url; }
-  };
-
   const loadAds = async () => {
     setLoadingAds(true);
-    const seen = new Map<string, AdOption>();
+    const candidates: Omit<AdOption, "group_key">[] = [];
 
-    // 1) From crm_leads
-    const { data: leadsData } = await supabase
-      .from("crm_leads")
-      .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
-      .not("ad_id", "is", null)
-      .limit(1000);
+    const [{ data: leadsData }, { data: msgData }, { data: mappingData }] = await Promise.all([
+      supabase
+        .from("crm_leads")
+        .select("ad_id, imagem_origem, nome_anuncio, descricao_anuncio, link_anuncio, ad_account_id, ad_account_name")
+        .not("ad_id", "is", null)
+        .limit(1000),
+      supabase
+        .from("messages")
+        .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
+        .not("ad_source_id", "is", null)
+        .limit(1000),
+      supabase
+        .from("ad_id_mapping")
+        .select("ad_id, thumbnail_url, ad_name, ad_headline, ad_body, ad_account_id, ad_account_name")
+        .order("updated_at", { ascending: false })
+        .limit(1000),
+    ]);
 
     if (leadsData) {
       for (const row of leadsData) {
-        const key = `${normalizeImgUrl(row.imagem_origem)}::${row.descricao_anuncio || row.ad_id}::${row.ad_account_id || ""}`;
-        if (!seen.has(key)) {
-          seen.set(key, {
+        if (row.ad_id) {
+          candidates.push({
             ad_id: row.ad_id!,
             imagem_origem: row.imagem_origem,
             nome_anuncio: row.nome_anuncio,
@@ -176,18 +165,10 @@ export default function InlineTagsEditor({
       }
     }
 
-    // 2) From messages (captures ads not yet linked to leads)
-    const { data: msgData } = await supabase
-      .from("messages")
-      .select("ad_source_id, ad_image_url, ad_headline, ad_body, ad_source_url, ad_account_id, ad_account_name")
-      .not("ad_source_id", "is", null)
-      .limit(1000);
-
     if (msgData) {
       for (const row of msgData) {
-        const key = `${normalizeImgUrl(row.ad_image_url)}::${row.ad_body || row.ad_source_id}::${(row as any).ad_account_id || ""}`;
-        if (!seen.has(key)) {
-          seen.set(key, {
+        if (row.ad_source_id) {
+          candidates.push({
             ad_id: row.ad_source_id!,
             imagem_origem: row.ad_image_url,
             nome_anuncio: row.ad_headline,
@@ -200,7 +181,21 @@ export default function InlineTagsEditor({
       }
     }
 
-    setAds(Array.from(seen.values()));
+    if (mappingData) {
+      for (const row of mappingData) {
+        candidates.push({
+          ad_id: row.ad_id,
+          imagem_origem: row.thumbnail_url,
+          nome_anuncio: row.ad_name || row.ad_headline,
+          descricao_anuncio: row.ad_body,
+          link_anuncio: null,
+          ad_account_id: row.ad_account_id,
+          ad_account_name: row.ad_account_name,
+        });
+      }
+    }
+
+    setAds(mergeAdCandidates(candidates));
     setLoadingAds(false);
   };
 
@@ -236,17 +231,18 @@ export default function InlineTagsEditor({
     });
   };
 
-  const isAdSource = dropdownValue === "anúncio";
+  const isAdSource = dropdownValue === "anuncio";
 
   return (
-    <>
-    <section className="space-y-3 border-b border-border/60 px-5 py-5">
-      <h3 className="text-[15px] font-semibold text-foreground">Origem</h3>
+    <div className="space-y-4 border-b border-border/60 px-5 py-5">
       {/* Source */}
       <div>
-        <span className="text-xs text-muted-foreground block mb-1">Origem</span>
+        <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+          <Megaphone size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+          Origem
+        </span>
         <Select value={dropdownValue || ""} onValueChange={handleSourceChange}>
-          <SelectTrigger className="h-10 rounded-xl bg-surface-sunken text-sm">
+          <SelectTrigger className="h-10 rounded-xl border-input bg-card text-sm">
             <SelectValue placeholder="Selecione a origem" />
           </SelectTrigger>
           <SelectContent>
@@ -257,7 +253,7 @@ export default function InlineTagsEditor({
         </Select>
         {dropdownValue === "outro" && (
           <Input
-            className="mt-2 h-10 rounded-xl bg-surface-sunken text-sm"
+            className="mt-2 h-10 rounded-xl border-input bg-card text-sm"
             value={customSource}
             onChange={(e) => setCustomSource(e.target.value)}
             onBlur={handleCustomSourceSave}
@@ -270,112 +266,134 @@ export default function InlineTagsEditor({
       {/* Ad Linking (only when source is anúncio) */}
       {isAdSource && (
         <div>
-          <span className="text-xs text-muted-foreground block mb-1">Anúncio vinculado</span>
+          <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+            <Link2 size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+            Anúncio vinculado
+          </span>
           {adId ? (
-            <div className="space-y-1 rounded-xl border border-border/60 bg-surface-sunken p-3">
-              <div className="flex items-start gap-2">
-                {imagemOrigem ? (
-                  <img src={imagemOrigem} alt="Anúncio" className="w-14 h-14 rounded object-cover shrink-0" />
-                ) : (
-                  <div className="w-14 h-14 rounded bg-muted flex items-center justify-center shrink-0">
-                    <Video size={18} className="text-muted-foreground" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{nomeAnuncio || "Anúncio vinculado"}</p>
-                  {adAccountName && (
-                    <p className="text-[10px] text-muted-foreground">Conta: {adAccountName}</p>
-                  )}
-                  {descricaoAnuncio && (
-                    <p className="text-[10px] text-muted-foreground line-clamp-2">{descricaoAnuncio}</p>
-                  )}
-                </div>
+            <div className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-3">
+              <div className="flex items-start gap-3">
                 <button
-                  onClick={handleUnlinkAd}
-                  className="shrink-0 text-destructive hover:text-destructive/80 p-1"
-                  title="Desvincular anúncio"
+                  type="button"
+                  onClick={() => (showAdSelector ? setShowAdSelector(false) : handleOpenAdSelector())}
+                  className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left"
+                  title="Ver lista de anúncios"
                 >
-                  <Unlink size={12} />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" onClick={handleOpenAdSelector} className="h-10 w-full rounded-xl text-xs">
-                <Link2 size={12} className="mr-1" /> Selecionar anúncio
-              </Button>
-
-              {showAdSelector && (
-                <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-border/60">
-                  {loadingAds ? (
-                    <p className="text-xs text-muted-foreground p-3 text-center">Carregando...</p>
-                  ) : ads.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3 text-center">Nenhum anúncio encontrado</p>
+                  {imagemOrigem ? (
+                    <img src={imagemOrigem} alt="Anúncio" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
                   ) : (
-                    <div className="divide-y divide-border">
-                      {ads.map((ad) => (
-                        <button
-                          key={ad.ad_id}
-                          type="button"
-                          onClick={() => handleSelectAd(ad)}
-                          className="w-full flex items-center gap-2 p-2 hover:bg-accent text-left transition-colors"
-                        >
-                          {ad.imagem_origem ? (
-                            <img src={ad.imagem_origem} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
-                          ) : (
-                            <div className="w-10 h-10 rounded bg-muted flex items-center justify-center shrink-0">
-                              <Video size={14} className="text-muted-foreground" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{ad.nome_anuncio || "Sem nome"}</p>
-                            {ad.ad_account_name && (
-                              <p className="text-[10px] text-primary/70 truncate">Conta: {ad.ad_account_name}</p>
-                            )}
-                            {ad.descricao_anuncio && (
-                              <p className="text-[10px] text-muted-foreground line-clamp-1">{ad.descricao_anuncio}</p>
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-card">
+                      <Video size={18} strokeWidth={1.75} className="text-tertiary" />
                     </div>
                   )}
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{nomeAnuncio || "Anúncio vinculado"}</p>
+                    {adAccountName && (
+                      <p className="mt-0.5 truncate text-xs font-medium text-info">Conta: {adAccountName}</p>
+                    )}
+                    {descricaoAnuncio && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{descricaoAnuncio}</p>
+                    )}
+                  </div>
+                </button>
+                <button
+                  onClick={handleUnlinkAd}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-destructive transition-colors hover:bg-destructive-soft"
+                  title="Desvincular anúncio"
+                >
+                  <Unlink size={15} strokeWidth={1.75} />
+                </button>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => (showAdSelector ? setShowAdSelector(false) : handleOpenAdSelector())}
+                className="h-9 w-full gap-1.5 rounded-xl bg-card text-[13px] font-medium"
+              >
+                <Link2 size={15} strokeWidth={1.75} /> {showAdSelector ? "Fechar lista" : "Ver lista de anúncios"}
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={handleOpenAdSelector} className="h-10 w-full gap-1.5 rounded-xl text-[13px] font-medium">
+              <Link2 size={15} strokeWidth={1.75} /> Selecionar anúncio
+            </Button>
+          )}
+
+          {showAdSelector && (
+            <div className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-border/60 bg-card">
+              {loadingAds ? (
+                <p className="p-3 text-center text-xs text-tertiary">Carregando...</p>
+              ) : ads.length === 0 ? (
+                <p className="p-3 text-center text-xs text-tertiary">Nenhum anúncio encontrado</p>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {ads.map((ad) => {
+                    const atual = !!adId && ad.ad_id === adId;
+                    return (
+                      <button
+                        key={ad.group_key}
+                        type="button"
+                        onClick={() => (atual ? setShowAdSelector(false) : handleSelectAd(ad))}
+                        className={`flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-surface-sunken ${atual ? "bg-primary-soft" : ""}`}
+                      >
+                        {ad.imagem_origem ? (
+                          <img src={ad.imagem_origem} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                        ) : (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-sunken">
+                            <Video size={14} strokeWidth={1.75} className="text-tertiary" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-[13px] font-medium text-foreground">{ad.nome_anuncio || "Sem nome"}</p>
+                          {ad.ad_account_name && (
+                            <p className="truncate text-xs font-medium text-info">Conta: {ad.ad_account_name}</p>
+                          )}
+                          {ad.descricao_anuncio && (
+                            <p className="line-clamp-1 text-xs text-muted-foreground">{ad.descricao_anuncio}</p>
+                          )}
+                        </div>
+                        {atual && (
+                          <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-primary">Atual</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
 
-    </section>
-
       {/* Tags */}
-      <section className="border-b border-border/60 px-5 py-5">
-        <h3 className="mb-3 text-[15px] font-semibold text-foreground">Tags</h3>
-        <span className="text-xs text-muted-foreground block mb-1">Tags</span>
-        <div className="flex flex-wrap gap-1 mb-1.5">
+      <div>
+        <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+          <Tag size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+          Tags
+        </span>
+        <div className="mb-2 flex flex-wrap gap-1.5">
           {tags.map((t) => (
-            <Badge key={t} variant="secondary" className="cursor-default gap-1 rounded-full bg-primary-soft text-xs text-primary-soft-foreground">
+            <Badge key={t} variant="secondary" className="h-7 max-w-full cursor-default gap-1 rounded-full border-transparent bg-muted px-3 text-xs font-medium text-foreground hover:bg-muted">
               #{t}
-              <button onClick={() => removeTag(t)} className="hover:text-destructive ml-0.5">
-                <X size={10} />
+              <button onClick={() => removeTag(t)} className="-mr-1 grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive-soft hover:text-destructive">
+                <X size={12} strokeWidth={1.75} />
               </button>
             </Badge>
           ))}
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-2">
           <Input
             value={newTag}
             onChange={(e) => setNewTag(e.target.value)}
             placeholder="Nova tag..."
-            className="h-10 flex-1 rounded-xl bg-surface-sunken text-sm"
+            className="h-10 flex-1 rounded-xl border-input bg-card text-sm"
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
           />
-          <Button type="button" variant="outline" size="icon" onClick={addTag} className="h-10 w-10 shrink-0 rounded-xl">
-            <Plus size={12} />
-          </Button>
+          <button onClick={addTag} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground transition-colors hover:bg-surface-sunken hover:text-foreground">
+            <Plus size={16} strokeWidth={1.75} />
+          </button>
         </div>
-      </section>
-    </>
+      </div>
+    </div>
   );
 }

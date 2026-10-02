@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,11 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CheckCircle2, Circle, Clock, Phone, CalendarDays, MessageSquare, Plus, AlertTriangle, Pencil, Trash2 } from "lucide-react";
+import { CalendarIcon, CheckCircle2, Circle, Plus, AlertTriangle, Pencil, Trash2, ListTodo } from "lucide-react";
 import { ptBR } from "date-fns/locale";
-import { format, isPast } from "date-fns";
+import { format, isPast, startOfToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
+import { ROTULO_TIPO_DE_TAREFA, TIPOS_DE_TAREFA, iconeTipoDeTarefa, rotuloTipoDeTarefa, tipoDeTarefa } from "@/lib/tarefaTipo";
 
 type Task = {
   id: string;
@@ -28,22 +32,28 @@ type Task = {
 
 type Profile = { id: string; nome: string };
 
-const typeIcons: Record<string, any> = {
-  agendamento: CalendarDays,
-  ligacao: Phone,
-  followup: MessageSquare,
-  personalizado: Clock,
-};
+// Rótulo e ícone do tipo: src/lib/tarefaTipo.ts (fonte única com o
+// Calendário; traduz também 'call' e 'follow_up', gravados pelas automações —
+// antes apareciam crus aqui e no Calendário).
 
-const typeLabels: Record<string, string> = {
-  agendamento: "Agendamento",
-  ligacao: "Ligação",
-  followup: "Follow-up",
-  personalizado: "Personalizado",
-};
+/** Instante da tarefa: o dia escolhido às HH:MM (hora do navegador, como sempre foi). */
+function instanteDaTarefa(dia: Date, hora: string): Date {
+  const [h, m] = hora.split(":").map(Number);
+  const dt = new Date(dia);
+  dt.setHours(h || 0, m || 0, 0, 0);
+  return dt;
+}
 
 export default function TaskPanel({ leadId }: { leadId: string }) {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
+  // Carregando: sem isto a tela dizia "Nenhuma tarefa" enquanto buscava.
+  const [carregando, setCarregando] = useState(true);
+  const [erroAoCarregar, setErroAoCarregar] = useState(false);
+  // Lead da última busca: resposta atrasada de outro lead não sobrescreve a lista.
+  const leadAtualRef = useRef(leadId);
+  leadAtualRef.current = leadId;
+  const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -57,15 +67,22 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   const [saving, setSaving] = useState(false);
 
   const fetchTasks = async () => {
-    const { data } = await supabase
+    const doLead = leadId;
+    const { data, error } = await supabase
       .from("crm_tasks")
       .select("*")
-      .eq("lead_id", leadId)
+      .eq("lead_id", doLead)
       .order("due_date", { ascending: true });
-    setTasks((data as Task[]) || []);
+    if (leadAtualRef.current !== doLead) return;
+    setErroAoCarregar(!!error);
+    if (error) console.error("[TaskPanel] tarefas:", error.message);
+    else setTasks((data as Task[]) || []);
+    setCarregando(false);
   };
 
   useEffect(() => {
+    setCarregando(true);
+    setTasks([]);
     fetchTasks();
     supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG).then(({ data }) => setProfiles((data as Profile[]) || []));
   }, [leadId]);
@@ -75,15 +92,19 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
     setEditingTask(null);
   };
 
+  // Tarefa nova já nasce com quem está criando como Responsável (X-16): sem
+  // responsável ela não entrava no contador do menu nem no lembrete de ninguém.
   const openCreate = () => {
     resetForm();
+    setAssignedTo(user?.id ?? "");
     setDialogOpen(true);
   };
 
   const openEdit = (task: Task) => {
     setEditingTask(task);
     setTitle(task.title);
-    setType(task.type);
+    // 'call' → 'ligacao' etc.: o seletor mostra o tipo certo (e salvar grava o canônico).
+    setType(tipoDeTarefa(task.type) ?? task.type);
     const d = new Date(task.due_date);
     setDueDate(d);
     setDueTime(format(d, "HH:mm"));
@@ -95,9 +116,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   const handleSave = async () => {
     if (!title.trim() || !dueDate) { toast.error("Preencha título e data"); return; }
     setSaving(true);
-    const [h, m] = dueTime.split(":").map(Number);
-    const dt = new Date(dueDate);
-    dt.setHours(h, m, 0, 0);
+    const dt = instanteDaTarefa(dueDate, dueTime);
 
     const payload = {
       title: title.trim(),
@@ -112,13 +131,13 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
       // RLS que barra o update devolve sucesso com 0 linhas — o .select() torna isso visível.
       const { data, error } = await supabase.from("crm_tasks").update(payload).eq("id", editingTask.id).select("id");
       setSaving(false);
-      if (error) { toast.error("Erro ao atualizar tarefa: " + error.message); return; }
+      if (error) { toast.error("Erro ao atualizar tarefa: " + mensagemDeErro(error)); return; }
       if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para editar esta tarefa."); return; }
       toast.success("Tarefa atualizada");
     } else {
       const { error } = await supabase.from("crm_tasks").insert({ ...payload, lead_id: leadId });
       setSaving(false);
-      if (error) { toast.error("Erro ao salvar tarefa: " + error.message); return; }
+      if (error) { toast.error("Erro ao salvar tarefa: " + mensagemDeErro(error)); return; }
       toast.success("Tarefa criada");
     }
     setDialogOpen(false);
@@ -129,7 +148,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   const handleDelete = async () => {
     if (!deleteId) return;
     const { data, error } = await supabase.from("crm_tasks").delete().eq("id", deleteId).select("id");
-    if (error) { toast.error("Erro ao excluir tarefa: " + error.message); return; }
+    if (error) { toast.error("Erro ao excluir tarefa: " + mensagemDeErro(error)); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para excluir esta tarefa."); return; }
     toast.success("Tarefa excluída");
     setDeleteId(null);
@@ -143,7 +162,7 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq("id", task.id)
       .select("id");
-    if (error) { toast.error("Erro ao atualizar tarefa: " + error.message); return; }
+    if (error) { toast.error("Erro ao atualizar tarefa: " + mensagemDeErro(error)); return; }
     if (!data || data.length === 0) { toast.error("Seu perfil não tem permissão para atualizar esta tarefa."); return; }
     fetchTasks();
   };
@@ -155,45 +174,59 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
   };
 
   return (
-    <section className="border-b border-border/60 px-5 py-5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[15px] font-semibold text-foreground">Tarefas</h3>
-        <Button variant="outline" size="sm" className="h-9 rounded-full text-xs gap-1" onClick={openCreate}>
-          <Plus size={12} /> Adicionar
+    <div className="border-b border-border/60 px-5 py-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-2.5">
+        <h3 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold text-foreground">
+          <ListTodo size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+          Tarefas
+        </h3>
+        <Button variant="ghost" size="sm" className="-my-[5px] ml-auto h-8 shrink-0 gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-primary hover:bg-primary-soft-2 hover:text-primary" onClick={openCreate}>
+          <Plus size={15} strokeWidth={1.75} /> Adicionar
         </Button>
       </div>
 
-      {tasks.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma tarefa</p>}
+      {carregando ? (
+        <div className="space-y-2" aria-busy="true" aria-label="Carregando tarefas">
+          <Skeleton className="h-14 w-full rounded-xl" />
+          <Skeleton className="h-14 w-full rounded-xl" />
+        </div>
+      ) : erroAoCarregar ? (
+        <p className="rounded-xl bg-destructive-soft px-3 py-2 text-xs leading-relaxed text-destructive-soft-foreground">Não foi possível carregar as tarefas deste lead.</p>
+      ) : tasks.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border bg-surface-sunken/60 px-4 py-3 text-center text-[13px] text-muted-foreground">Nenhuma tarefa</p>
+      ) : null}
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {tasks.map((task) => {
           const st = getStatus(task);
-          const Icon = typeIcons[task.type] || Clock;
+          const Icon = iconeTipoDeTarefa(task.type);
           return (
-            <div key={task.id} className="group flex items-start gap-2 rounded-xl border border-border/60 bg-surface-sunken p-3 text-xs">
-              <button onClick={() => toggleDone(task)} className="mt-0.5 flex-shrink-0">
+            <div key={task.id} className={cn("group flex flex-wrap items-start gap-x-3 gap-y-1 rounded-xl border border-border/60 bg-card p-3 pb-2 text-xs transition-shadow hover:shadow-xs", st === "late" && "border-destructive/30 bg-destructive-soft/40", st === "done" && "bg-surface-sunken/60")}>
+              <button onClick={() => toggleDone(task)} className="-m-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full transition-colors hover:bg-surface-sunken">
                 {st === "done" ? (
-                  <CheckCircle2 size={16} className="text-success" />
+                  <CheckCircle2 size={18} strokeWidth={1.75} className="text-success" />
                 ) : st === "late" ? (
-                  <AlertTriangle size={16} className="text-destructive" />
+                  <AlertTriangle size={18} strokeWidth={1.75} className="text-destructive" />
                 ) : (
-                  <Circle size={16} className="text-muted-foreground" />
+                  <Circle size={18} strokeWidth={1.75} className="text-tertiary" />
                 )}
               </button>
-              <div className="flex-1 min-w-0">
-                <div className={cn("font-medium", st === "done" && "line-through text-muted-foreground")}>{task.title}</div>
-                <div className="flex items-center gap-1.5 mt-0.5 text-muted-foreground">
-                  <Icon size={10} />
-                  <span>{typeLabels[task.type]}</span>
-                  <span>·</span>
-                  <span className={cn(st === "late" && "text-destructive font-medium")}>
+              <div className="min-w-0 flex-1">
+                <div className={cn("break-words text-[13px] font-semibold leading-snug text-foreground", st === "done" && "font-medium text-muted-foreground line-through")}>{task.title}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                  <span className="inline-flex h-6 max-w-full items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 text-[11px] font-medium text-muted-foreground">
+                    <Icon size={12} strokeWidth={1.75} className="shrink-0" />
+                    <span className="truncate">{rotuloTipoDeTarefa(task.type)}</span>
+                  </span>
+                  <span className={cn("inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full bg-surface-sunken pl-2 pr-2.5 text-[11px] font-medium tabular-nums text-muted-foreground", st === "late" && "bg-destructive-soft font-semibold text-destructive-soft-foreground", st === "done" && "bg-success-soft text-success-soft-foreground")}>
+                    <span className="text-base font-bold leading-none">·</span>
                     {format(new Date(task.due_date), "dd/MM HH:mm")}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => openEdit(task)} className="p-1 hover:bg-background rounded"><Pencil size={12} className="text-muted-foreground" /></button>
-                <button onClick={() => setDeleteId(task.id)} className="p-1 hover:bg-destructive/20 rounded"><Trash2 size={12} className="text-destructive" /></button>
+              <div className="flex basis-full items-center justify-end gap-0.5">
+                <button onClick={() => openEdit(task)} className="grid h-7 w-7 place-items-center rounded-lg text-tertiary transition-colors hover:bg-surface-sunken hover:text-foreground"><Pencil size={14} strokeWidth={1.75} /></button>
+                <button onClick={() => setDeleteId(task.id)} className="grid h-7 w-7 place-items-center rounded-lg text-destructive/70 transition-colors hover:bg-destructive-soft hover:text-destructive"><Trash2 size={14} strokeWidth={1.75} /></button>
               </div>
             </div>
           );
@@ -201,52 +234,67 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) { resetForm(); setCalendarioAberto(false); } setDialogOpen(open); }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader><DialogTitle className="text-lg font-semibold tracking-tight">{editingTask ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Título</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Título</label>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Ligar para o lead" className="h-10 rounded-xl text-sm" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Tipo</label>
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="agendamento">Agendamento</SelectItem>
-                  <SelectItem value="ligacao">Ligação</SelectItem>
-                  <SelectItem value="followup">Follow-up</SelectItem>
-                  <SelectItem value="personalizado">Personalizado</SelectItem>
+                  {TIPOS_DE_TAREFA.map((t) => <SelectItem key={t} value={t}>{ROTULO_TIPO_DE_TAREFA[t]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="text-xs text-muted-foreground mb-1 block">Data</label>
-                <Popover>
+            <div className="flex gap-3">
+              <div className="min-w-0 flex-1">
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Data</label>
+                {/* Controlado: fecha ao escolher o dia (CRC-25). Dias passados
+                    ficam desabilitados — tarefa nova não nasce vencida. */}
+                <Popover open={calendarioAberto} onOpenChange={setCalendarioAberto}>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn("h-10 w-full justify-start rounded-xl text-sm", !dueDate && "text-muted-foreground")}>
-                      <CalendarIcon size={14} className="mr-1" />
+                    <Button variant="outline" className={cn("h-10 w-full justify-start gap-2 rounded-xl text-sm font-normal tabular-nums", !dueDate && "text-muted-foreground")}>
+                      <CalendarIcon size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
                       {dueDate ? format(dueDate, "dd/MM/yyyy") : "Selecionar"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={dueDate} onSelect={setDueDate} locale={ptBR} className="p-3 pointer-events-auto" />
+                  <PopoverContent className="w-auto rounded-2xl p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dueDate}
+                      onSelect={(d) => { setDueDate(d); if (d) setCalendarioAberto(false); }}
+                      disabled={(d) => d < startOfToday()}
+                      locale={ptBR}
+                      className="p-3 pointer-events-auto"
+                    />
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="w-24">
-                <label className="text-xs text-muted-foreground mb-1 block">Hora</label>
-                <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="h-10 rounded-xl text-sm" />
+              <div className="w-28 shrink-0">
+                <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Hora</label>
+                <Input type="time" value={dueTime} onChange={(e) => setDueTime(e.target.value)} className="h-10 rounded-xl text-sm tabular-nums" />
               </div>
             </div>
+            {/* Horário que já passou: avisa antes de salvar. Na edição a
+                tarefa já existe — ela "fica" atrasada, não "nasce". */}
+            {dueDate && instanteDaTarefa(dueDate, dueTime) < new Date() && (
+              <p className="rounded-xl bg-destructive-soft px-3 py-2 text-xs leading-relaxed text-destructive-soft-foreground">
+                {editingTask
+                  ? "Esse horário já passou — a tarefa fica atrasada."
+                  : "Esse horário já passou — a tarefa vai nascer atrasada."}
+              </p>
+            )}
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Observação</label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações..." className="text-sm min-h-[60px]" />
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Observação</label>
+              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Observações..." className="min-h-20 rounded-xl text-sm" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Responsável</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Responsável</label>
               <Select value={assignedTo} onValueChange={setAssignedTo}>
                 <SelectTrigger className="h-10 rounded-xl text-sm"><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
@@ -255,23 +303,23 @@ export default function TaskPanel({ leadId }: { leadId: string }) {
               </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : editingTask ? "Salvar" : "Criar Tarefa"}</Button>
+          <DialogFooter className="gap-2">
+            <Button className="h-10 rounded-xl px-5" onClick={handleSave} disabled={saving}>{saving ? "Salvando..." : editingTask ? "Salvar" : "Criar Tarefa"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Excluir tarefa?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Esta ação não pode ser desfeita.</p>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDelete}>Excluir</Button>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader><DialogTitle className="text-lg font-semibold tracking-tight">Excluir tarefa?</DialogTitle></DialogHeader>
+          <p className="text-sm leading-relaxed text-muted-foreground">Esta ação não pode ser desfeita.</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setDeleteId(null)}>Cancelar</Button>
+            <Button variant="destructive" className="h-10 rounded-xl px-5" onClick={handleDelete}>Excluir</Button>
           </div>
         </DialogContent>
       </Dialog>
-    </section>
+    </div>
   );
 }

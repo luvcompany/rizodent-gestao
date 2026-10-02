@@ -48,21 +48,21 @@ function getStatusIcon(status: string) {
   switch (status) {
     case "read":
     case "played":
-      return <CheckCheck size={14} className="text-info" />;
-    case "delivered": return <CheckCheck size={14} className="text-muted-foreground" />;
+      return <CheckCheck size={14} strokeWidth={1.75} className="text-info" />;
+    case "delivered": return <CheckCheck size={14} strokeWidth={1.75} className="text-tertiary" />;
     case "sent":
     case "accepted":
-      return <Check size={14} className="text-muted-foreground" />;
+      return <Check size={14} strokeWidth={1.75} className="text-tertiary" />;
     case "failed":
     case "error":
       return null;
     case "sending":
-      return <Clock size={14} className="text-muted-foreground animate-pulse" />;
+      return <Clock size={14} strokeWidth={1.75} className="text-tertiary animate-pulse" />;
     case "system":
       return null;
     default:
       // Any other confirmed status (e.g. future API statuses) → show as sent
-      return <Check size={14} className="text-muted-foreground" />;
+      return <Check size={14} strokeWidth={1.75} className="text-tertiary" />;
   }
 }
 
@@ -95,8 +95,8 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
     const reactions = Array.from(reactionsMap.entries()).map(([from, emoji]) => ({ from, emoji }));
 
     return (
-      <div ref={ref} className="flex w-full min-w-0 rounded-control transition-all duration-300">
-        <div className={`group relative min-w-[7.5rem] max-w-[min(76%,42rem)] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
+      <div ref={ref} className="w-full flex transition-all duration-300 rounded-lg">
+        <div className={`relative group max-w-[65%] min-w-[120px] ${msg.direction === "outbound" ? "ml-auto" : "mr-auto"}`}>
           {!msg.deleted_at && (
             <MessageActions
               message={msg}
@@ -108,29 +108,29 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             />
           )}
           {msg.deleted_at ? (
-            <div className={`rounded-lg px-3 py-2 italic text-muted-foreground text-sm bg-muted/40 border border-dashed border-border ${
-              msg.direction === "outbound" ? "rounded-br-none" : "rounded-bl-none"
+            <div className={`rounded-2xl px-4 py-2.5 italic text-muted-foreground text-sm bg-surface-sunken border border-dashed border-border ${
+              msg.direction === "outbound" ? "rounded-tr-md" : "rounded-tl-md"
             }`}>
               🚫 Mensagem removida
               <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-                <span className="text-[10px] text-muted-foreground not-italic">
+                <span className="text-[11px] text-tertiary not-italic tabular-nums">
                   {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
             </div>
           ) : (
-          <div className={`rounded-control px-3 py-2 shadow-card ${
+          <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
             msg.type === "comment"
               ? (msg.direction === "outbound"
-                  ? "border border-purple/40 bg-purple-soft text-purple-soft-foreground rounded-br-none"
-                  : "border border-purple/30 bg-purple-soft text-foreground rounded-bl-none")
+                  ? "bg-purple-soft border border-purple/40 text-foreground rounded-tr-md"
+                  : "bg-purple-soft border border-purple/30 text-foreground shadow-xs rounded-tl-md")
               : msg.direction === "outbound"
-                ? "border border-primary/15 bg-primary-soft text-primary-soft-foreground rounded-br-none"
-                : "border border-border/60 bg-card text-card-foreground rounded-bl-none"
+                ? "bg-primary-soft text-foreground rounded-tr-md"
+                : "bg-card border border-border/60 text-foreground shadow-xs rounded-tl-md"
           }`}>
             {msg.type === "comment" && (
               <div className="mb-1.5">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-soft-foreground">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-soft-foreground">
                   <MessageCircle size={11} />
                   <span>{msg.direction === "outbound" ? "Resposta ao comentário" : "Comentário no post"}</span>
                 </div>
@@ -142,15 +142,15 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                         <img
                           src={msg.instagram_post_thumbnail}
                           alt="Post"
-                          className="h-10 w-10 rounded object-cover flex-shrink-0"
+                          className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
                           loading="lazy"
                         />
                       ) : (
-                        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
                           <MessageCircle size={16} className="text-muted-foreground" />
                         </div>
                       )}
-                      <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                      <span className="text-[11px] font-medium text-purple-soft-foreground inline-flex items-center gap-1">
                         {hasValidPermalink ? <>Ver post <ExternalLink size={10} /></> : "Post (link indisponível)"}
                       </span>
                     </>
@@ -160,14 +160,14 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                       href={msg.instagram_post_permalink!}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-1.5 flex items-center gap-2 rounded-md bg-background/60 border border-border px-2 py-1.5 hover:bg-background transition-colors"
+                      className="mt-1.5 flex items-center gap-2 rounded-xl bg-card/70 border border-purple/20 px-2 py-1.5 hover:bg-card transition-colors"
                       title="Ver post no Instagram"
                     >
                       {Inner}
                     </a>
                   ) : (
                     <div
-                      className="mt-1.5 flex items-center gap-2 rounded-md bg-background/60 border border-border px-2 py-1.5"
+                      className="mt-1.5 flex items-center gap-2 rounded-xl bg-card/70 border border-purple/20 px-2 py-1.5"
                       title="Permalink do post indisponível"
                     >
                       {Inner}
@@ -179,7 +179,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
             {quotedMsg && (
               <div
                 onClick={() => onScrollToMessage(quotedMsg.id)}
-                className="mb-1.5 rounded-md bg-background/60 border-l-2 border-primary px-2.5 py-1.5 cursor-pointer hover:bg-background/80 transition-colors flex gap-2"
+                className="mb-2 rounded-lg bg-surface-sunken border-l-2 border-primary px-3 py-1.5 cursor-pointer hover:bg-muted transition-colors flex gap-2"
               >
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-semibold text-primary">
@@ -190,7 +190,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                   </div>
                 </div>
                 {["image", "sticker", "video"].includes(quotedMsg.type) && quotedMsg.media_url?.startsWith("http") && (
-                  <img src={quotedMsg.media_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                  <img src={quotedMsg.media_url} alt="" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
                 )}
               </div>
             )}
@@ -201,28 +201,28 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               const igIcon = <svg viewBox="0 0 24 24" className="w-3 h-3 fill-[#E4405F]"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>;
               const icon = isInstagram ? igIcon : fbIcon;
               return (
-                <div className="mb-2 rounded-lg overflow-hidden border border-border bg-muted/40">
+                <div className="mb-2 rounded-xl overflow-hidden border border-border/60 bg-card shadow-xs">
                   {msg.ad_image_url && (
                     <div className="relative">
                       <img src={msg.ad_image_url} alt="Anúncio" className="w-full h-48 object-cover" />
-                      <span className="absolute top-2 left-2 flex items-center gap-1 bg-background/90 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                      <span className="absolute top-2 left-2 flex items-center gap-1 bg-card/95 text-[11px] font-medium text-foreground px-2.5 py-1 rounded-full shadow-xs">
                         {icon}
                         {adLabel}
                       </span>
                     </div>
                   )}
                   {!msg.ad_image_url && (
-                    <div className="flex items-center gap-1 px-3 pt-2">
+                    <div className="flex items-center gap-1.5 px-3 pt-2.5">
                       {icon}
-                      <span className="text-[10px] font-semibold text-muted-foreground">{adLabel}</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">{adLabel}</span>
                     </div>
                   )}
-                  <div className="px-3 py-2 space-y-0.5">
-                    {msg.ad_headline && <p className="text-xs font-bold text-foreground leading-tight">{msg.ad_headline}</p>}
-                    {msg.ad_account_name && <p className="text-[10px] text-primary/70 font-medium">Conta: {msg.ad_account_name}</p>}
-                    {msg.ad_body && <p className="text-[11px] text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
+                  <div className="px-3 py-2.5 space-y-1">
+                    {msg.ad_headline && <p className="text-[13px] font-semibold text-foreground leading-tight">{msg.ad_headline}</p>}
+                    {msg.ad_account_name && <p className="text-[11px] text-tertiary font-medium">Conta: {msg.ad_account_name}</p>}
+                    {msg.ad_body && <p className="text-xs text-muted-foreground line-clamp-2">{msg.ad_body}</p>}
                     {msg.ad_source_url && (
-                      <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="block truncate text-[11px] text-info hover:underline">
+                      <a href={msg.ad_source_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-info hover:underline truncate block">
                         {msg.ad_source_url.replace(/^https?:\/\//, '').slice(0, 50)}
                       </a>
                     )}
@@ -231,8 +231,8 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               );
             })()}
             <ChatMessageContent message={msg} onMediaClick={onMediaClick} leadName={leadName} />
-            <div className={`flex items-center gap-1 mt-1 ${msg.direction === "outbound" ? "justify-end" : ""}`}>
-              <span className="text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-end gap-1 mt-1">
+              <span className="text-[11px] text-tertiary tabular-nums">
                 {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </span>
               {msg.direction === "outbound" && getStatusIcon(msg.status)}
@@ -241,9 +241,9 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 mt-1 cursor-pointer bg-destructive/15 text-destructive rounded-md px-2 py-0.5 w-fit ml-auto">
-                      <AlertCircle size={12} />
-                      <span className="text-[11px] font-semibold">Erro</span>
+                    <div className="flex items-center gap-1 mt-1.5 cursor-pointer bg-destructive-soft text-destructive-soft-foreground rounded-full h-5 px-2 w-fit ml-auto">
+                      <AlertCircle size={12} strokeWidth={1.75} />
+                      <span className="text-[11px] font-medium">Erro</span>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[280px] text-xs">
@@ -253,7 +253,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
               </TooltipProvider>
             )}
             {msg.type === "comment" && msg.direction === "inbound" && msg.instagram_comment_id && (
-              <div className="mt-1.5 flex items-center gap-1 border-t border-purple/20 pt-1.5">
+              <div className="flex items-center gap-1 mt-2 pt-2 border-t border-purple/20">
                 <button
                   type="button"
                   onClick={() => {
@@ -265,7 +265,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
                       },
                     }));
                   }}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-purple-soft-foreground hover:bg-purple-soft"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-purple-soft-foreground hover:bg-card/70 rounded-lg px-2 py-1"
                 >
                   <Reply size={11} /> Responder comentário
                 </button>
@@ -276,7 +276,7 @@ const ChatMessageBubble = forwardRef<HTMLDivElement, Props>(
           {reactions.length > 0 && (
             <div className={`flex gap-0.5 mt-[-8px] ${msg.direction === "outbound" ? "justify-end mr-1" : "justify-start ml-1"}`}>
               {reactions.map((r, i) => (
-                <span key={i} className="text-sm bg-card border border-border rounded-full px-1.5 py-0.5 shadow-sm">
+                <span key={i} className="text-sm bg-card border border-border/60 rounded-full px-1.5 py-0.5 shadow-xs">
                   {r.emoji}
                 </span>
               ))}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Search, UserPlus, Wallet, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Search, UserPlus, UserRound, Wallet, X } from "lucide-react";
 import { centavosParaValor, formatarMoeda, hojeNaClinica, mascaraMoeda } from "@/lib/moeda";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -426,8 +426,8 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
   if (carregando) {
     return (
-      <div className="flex items-center gap-2 border-b border-border/60 px-5 py-5 text-sm text-muted-foreground">
-        <Loader2 size={14} className="animate-spin" /> Carregando paciente…
+      <div className="flex items-center gap-2 border-b border-border/60 px-5 py-5 text-[13px] text-muted-foreground">
+        <Loader2 size={16} strokeWidth={1.75} className="animate-spin text-tertiary" /> Carregando paciente…
       </div>
     );
   }
@@ -435,18 +435,19 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
   const pagamentosDe = (pacienteId: string) => pagamentos.filter((p) => p.paciente_id === pacienteId);
 
   return (
-    <section className="space-y-3 border-b border-border/60 px-5 py-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[15px] font-semibold text-foreground">
+    <div className="space-y-4 border-b border-border/60 px-5 py-5">
+      <div className="flex items-center gap-2">
+        <UserRound size={16} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+        <span className="text-[15px] font-semibold text-foreground">
           {pacientes.length > 1 ? `Pacientes (${pacientes.length})` : "Paciente"}
-        </h3>
+        </span>
       </div>
 
       {pacientes.length === 0 ? (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Nenhum paciente vinculado</p>
-          <Button size="sm" variant="outline" className="w-full" onClick={() => abrirFormulario(null)}>
-            <UserPlus size={14} className="mr-1" /> Vincular Paciente
+        <div className="space-y-3 rounded-xl border border-dashed border-border bg-surface-sunken/60 p-4 text-center">
+          <p className="text-[13px] text-muted-foreground">Nenhum paciente vinculado</p>
+          <Button size="sm" variant="outline" className="h-10 w-full gap-1.5 rounded-xl text-[13px] font-medium" onClick={() => abrirFormulario(null)}>
+            <UserPlus size={15} strokeWidth={1.75} /> Vincular Paciente
           </Button>
         </div>
       ) : (
@@ -455,46 +456,46 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             const lista = pagamentosDe(p.id);
             const somaP = lista.reduce((s, x) => s + Number(x.valor), 0);
             return (
-              <div key={p.id} className="space-y-2 rounded-xl border border-border/60 bg-surface-sunken p-3">
+              <div key={p.id} className="space-y-3 rounded-xl border border-border/60 bg-card p-3.5 shadow-xs">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-foreground">{p.nome}</p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="text-sm font-semibold text-foreground [overflow-wrap:anywhere]">{p.nome}</p>
+                    <p className="mt-0.5 text-xs tabular-nums text-tertiary [overflow-wrap:anywhere]">
                       {[p.telefone, p.cidade].filter(Boolean).join(" · ") || "Sem contato"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-sm font-semibold tabular-nums text-primary">{brl(somaP)}</span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span className="whitespace-nowrap text-sm font-bold tabular-nums text-primary">{brl(somaP)}</span>
                     <button
                       onClick={() => desvincular(p)}
-                      className="text-muted-foreground transition-colors hover:text-destructive"
+                      className="-mr-1 grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive-soft hover:text-destructive"
                       title="Remover vínculo"
                     >
-                      <X size={13} />
+                      <X size={15} strokeWidth={1.75} />
                     </button>
                   </div>
                 </div>
 
                 {lista.length > 0 && (
-                  <ul className="space-y-1">
+                  <ul className="space-y-1.5">
                     {lista.map((pg) => (
-                      <li key={pg.id} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-                          <Wallet size={12} className="shrink-0" />
-                          <span className="tabular-nums">{dataBR(pg.data_pagamento)}</span>
-                          <span className="truncate">
+                      <li key={pg.id} className="flex items-start justify-between gap-2 rounded-lg bg-surface-sunken px-2.5 py-2 text-xs">
+                        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
+                          <Wallet size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+                          <span className="font-medium tabular-nums text-foreground">{dataBR(pg.data_pagamento)}</span>
+                          <span className="min-w-0 [overflow-wrap:anywhere]">
                             {nomeClinica(pg.clinica_id)}{pg.especialidade ? ` · ${pg.especialidade}` : ""}
                           </span>
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <span className="font-medium tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span className="whitespace-nowrap font-semibold tabular-nums text-foreground">{brl(Number(pg.valor))}</span>
                           <button
                             type="button"
                             onClick={() => abrirEdicao(pg)}
-                            className="text-muted-foreground transition-colors hover:text-primary"
+                            className="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-primary"
                             aria-label="Editar pagamento"
                           >
-                            <Pencil size={12} />
+                            <Pencil size={13} strokeWidth={1.75} />
                           </button>
                         </span>
                       </li>
@@ -504,37 +505,37 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="h-7 w-full text-xs text-muted-foreground hover:text-primary"
+                  variant="outline"
+                  className="h-9 w-full gap-1.5 rounded-xl text-[13px] font-medium"
                   onClick={() => abrirFormulario(p)}
                 >
-                  <Plus size={12} className="mr-1" /> Lançar pagamento
+                  <Plus size={15} strokeWidth={1.75} /> Lançar pagamento
                 </Button>
               </div>
             );
           })}
 
-          <div className="flex items-center justify-between border-t border-border pt-2">
-            <span className="text-xs text-muted-foreground">Total desta conversa</span>
-            <span className="text-2xl font-bold tabular-nums text-primary">{brl(total)}</span>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl bg-primary-soft-2 px-4 py-3.5">
+            <span className="text-[13px] font-medium text-muted-foreground">Total desta conversa</span>
+            <span className="text-2xl font-bold leading-tight tracking-tight tabular-nums text-primary">{brl(total)}</span>
           </div>
 
           {/* Mesma ideia do crc: familiar que usa o mesmo telefone. */}
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 w-full text-xs text-muted-foreground hover:text-primary"
+            className="h-auto min-h-9 w-full gap-1.5 whitespace-normal rounded-xl py-2 text-[13px] font-medium text-muted-foreground hover:bg-surface-sunken hover:text-foreground"
             onClick={() => abrirFormulario(null)}
           >
-            <UserPlus size={12} className="mr-1" /> Vincular outra pessoa deste contato
+            <UserPlus size={15} strokeWidth={1.75} /> Vincular outra pessoa deste contato
           </Button>
         </div>
       )}
 
       <Dialog open={formAberto} onOpenChange={(o) => { setFormAberto(o); if (!o) setEditando(null); }}>
-        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl">
           <DialogHeader>
-            <DialogTitle>{editando ? "Editar pagamento" : alvoPagamento ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
+            <DialogTitle className="text-lg font-semibold tracking-tight">{editando ? "Editar pagamento" : alvoPagamento ? "Lançar pagamento" : "Vincular Paciente"}</DialogTitle>
             <DialogDescription>
               {alvoPagamento
                 ? alvoPagamento.nome
@@ -546,20 +547,21 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             {/* Buscar alguém já cadastrado — só faz sentido antes de haver vínculo */}
             {!alvoPagamento && !editando && (
               <div className="space-y-2">
-                <Label className="text-xs">Já cadastrou este paciente antes?</Label>
+                <Label className="text-[13px] font-medium text-muted-foreground">Já cadastrou este paciente antes?</Label>
                 <div className="flex gap-2">
                   <Input
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
                     placeholder="Buscar por nome ou telefone…"
+                    className="h-10 rounded-xl"
                     onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }}
                   />
-                  <Button size="sm" variant="outline" onClick={buscar} disabled={buscando}>
-                    {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  <Button size="sm" variant="outline" className="h-10 w-10 shrink-0 rounded-xl p-0" onClick={buscar} disabled={buscando}>
+                    {buscando ? <Loader2 size={16} strokeWidth={1.75} className="animate-spin" /> : <Search size={16} strokeWidth={1.75} />}
                   </Button>
                 </div>
                 {resultados.length > 0 && (
-                  <div className="max-h-32 space-y-1 overflow-y-auto rounded border border-border p-1">
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-border/60 p-1">
                     {resultados.map((p) => {
                       const ocupado = !!p.lead_id && p.lead_id !== lead.id;
                       return (
@@ -567,11 +569,11 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                           key={p.id}
                           onClick={() => !ocupado && vincularExistente(p.id)}
                           disabled={ocupado || salvando}
-                          className="w-full rounded p-2 text-left text-sm transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                          className="w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <span className="font-medium text-foreground">{p.nome}</span>
-                          <span className="ml-2 text-muted-foreground">{p.telefone}</span>
-                          {ocupado && <span className="ml-2 text-xs text-primary">(já vinculado)</span>}
+                          <span className="ml-2 tabular-nums text-muted-foreground">{p.telefone}</span>
+                          {ocupado && <span className="ml-2 text-xs font-medium text-primary">(já vinculado)</span>}
                         </button>
                       );
                     })}
@@ -581,21 +583,21 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             )}
 
             {!alvoPagamento && !editando && (
-              <div className="space-y-3 border-t border-border pt-3">
-                <Label className="text-xs font-semibold">Dados do paciente</Label>
+              <div className="space-y-3 border-t border-border/60 pt-4">
+                <Label className="text-sm font-semibold text-foreground">Dados do paciente</Label>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nome" className="text-xs">Nome</Label>
-                  <Input id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                  <Label htmlFor="nome" className="text-[13px] font-medium text-muted-foreground">Nome</Label>
+                  <Input className="h-10 rounded-xl" id="nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="tel" className="text-xs">Telefone</Label>
-                    <Input id="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                    <Label htmlFor="tel" className="text-[13px] font-medium text-muted-foreground">Telefone</Label>
+                    <Input className="h-10 rounded-xl" id="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Cidade</Label>
+                    <Label className="text-[13px] font-medium text-muted-foreground">Cidade</Label>
                     <Select value={form.cidade} onValueChange={(v) => setForm({ ...form, cidade: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value={SEM_CIDADE}>Sem localização</SelectItem>
                         {cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
@@ -606,15 +608,16 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
               </div>
             )}
 
-            <div className="space-y-3 border-t border-border pt-3">
-              <Label className="text-xs font-semibold">
+            <div className="space-y-3 border-t border-border/60 pt-4">
+              <Label className="text-sm font-semibold text-foreground">
                 Pagamento {!alvoPagamento && <span className="font-normal text-muted-foreground">(opcional agora)</span>}
               </Label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="valor" className="text-xs">Valor</Label>
+                  <Label htmlFor="valor" className="text-[13px] font-medium text-muted-foreground">Valor</Label>
                   <Input
                     id="valor"
+                    className="h-10 rounded-xl tabular-nums"
                     inputMode="numeric"
                     placeholder="0,00"
                     value={form.valor}
@@ -622,9 +625,10 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="data" className="text-xs">Data do pagamento</Label>
+                  <Label htmlFor="data" className="text-[13px] font-medium text-muted-foreground">Data do pagamento</Label>
                   <Input
                     id="data"
+                    className="h-10 rounded-xl"
                     type="date"
                     value={form.data_pagamento}
                     onChange={(e) => setForm({ ...form, data_pagamento: e.target.value })}
@@ -633,9 +637,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Clínica</Label>
+                <Label className="text-[13px] font-medium text-muted-foreground">Clínica</Label>
                 <Select value={form.clinica_id} onValueChange={(v) => setForm({ ...form, clinica_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione a clínica" /></SelectTrigger>
                   <SelectContent>
                     {clinicas.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -648,9 +652,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Tipo</Label>
+                  <Label className="text-[13px] font-medium text-muted-foreground">Tipo</Label>
                   <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-10 rounded-xl"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="primeiro">Primeiro pagamento</SelectItem>
                       <SelectItem value="recorrente">Recorrente</SelectItem>
@@ -658,9 +662,9 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Especialidade</Label>
+                  <Label className="text-[13px] font-medium text-muted-foreground">Especialidade</Label>
                   <Select value={form.especialidade} onValueChange={(v) => setForm({ ...form, especialidade: v })}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
                       {especialidades.map((e) => (<SelectItem key={e} value={e}>{e}</SelectItem>))}
                     </SelectContent>
@@ -669,12 +673,12 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs">Forma de pagamento</Label>
+                <Label className="text-[13px] font-medium text-muted-foreground">Forma de pagamento</Label>
                 <Select
                   value={form.forma_pagamento}
                   onValueChange={(v) => setForm({ ...form, forma_pagamento: v })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     {FORMAS.map((f) => (<SelectItem key={f} value={f}>{f}</SelectItem>))}
                   </SelectContent>
@@ -683,15 +687,15 @@ export default function CloserLeadPacientePanel({ lead }: { lead: LeadMin }) {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setFormAberto(false)}>Cancelar</Button>
-            <Button onClick={editando ? salvarEdicao : salvar} disabled={salvando}>
-              {salvando ? <Loader2 size={14} className="mr-1 animate-spin" /> : <UserPlus size={14} className="mr-1" />}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setFormAberto(false)}>Cancelar</Button>
+            <Button className="h-10 gap-1.5 rounded-xl px-5" onClick={editando ? salvarEdicao : salvar} disabled={salvando}>
+              {salvando ? <Loader2 size={15} strokeWidth={1.75} className="animate-spin" /> : <UserPlus size={15} strokeWidth={1.75} />}
               {editando ? "Salvar" : alvoPagamento ? "Lançar" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </div>
   );
 }

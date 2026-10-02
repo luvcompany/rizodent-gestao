@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useModule } from "@/hooks/useModule";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +12,7 @@ import { Sparkles, Save, Loader2, Bot, MessageSquare, Wand2, Clock, ShieldCheck,
 import AiRulesManager from "@/components/ai/AiRulesManager";
 import AiLearningReport from "@/components/ai/AiLearningReport";
 import { toast } from "sonner";
+import { PageHeader, StatusPill } from "@/components/crm-ui";
 
 const MODELS = [
   { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (rápido, padrão)" },
@@ -31,9 +30,6 @@ const TRANSCRIPTION_MODELS = [
   { value: "openai/gpt-4o-mini-transcribe", label: "OpenAI gpt-4o-mini-transcribe (sua chave)" },
   { value: "openai/gpt-4o-transcribe", label: "OpenAI gpt-4o-transcribe (sua chave, + preciso)" },
 ];
-
-/** Nome da assistente quando o cliente não configurou nenhum. */
-const NOME_PADRAO_ASSISTENTE = "Assistente";
 
 const TONES = [
   "profissional e acolhedor",
@@ -64,10 +60,6 @@ type Config = {
 };
 
 export default function CrmIaConfig() {
-  const queryClient = useQueryClient();
-  // Módulo de IA desligado: a tela inteira não aparece (o ProtectedRoute também
-  // redireciona). Só decide com false explícito, nunca durante o carregamento.
-  const { ligado: iaLigada } = useModule("ia");
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -105,7 +97,7 @@ export default function CrmIaConfig() {
         custom_instructions: config.custom_instructions,
         enabled_features: config.enabled_features,
         is_active: config.is_active,
-        assistant_display_name: config.assistant_display_name?.trim() || NOME_PADRAO_ASSISTENTE,
+        assistant_display_name: config.assistant_display_name || "Bia",
         knowledge_base: config.knowledge_base || null,
         copilot_enabled: !!config.copilot_enabled,
         auto_send_enabled: !!config.auto_send_enabled,
@@ -125,18 +117,8 @@ export default function CrmIaConfig() {
       toast.error("Seu perfil não tem permissão para salvar as configurações da IA.");
       return;
     }
-    // Outras telas leem o nome da assistente em cache (['ai-nome']).
-    void queryClient.invalidateQueries({ queryKey: ["ai-nome"] });
     toast.success("Configurações da IA salvas!");
   };
-
-  if (iaLigada === false) {
-    return (
-      <div className="text-center text-muted-foreground py-12">
-        Este recurso não está disponível para a sua clínica.
-      </div>
-    );
-  }
 
   if (loading) {
     return (
@@ -155,48 +137,40 @@ export default function CrmIaConfig() {
   }
 
   const features = config.enabled_features || {};
-  const nomeAssistente = config.assistant_display_name?.trim() || NOME_PADRAO_ASSISTENTE;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Sparkles className="text-primary" size={22} />
-            Configurações da I.A
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure como o assistente de IA analisa e sugere respostas para os atendimentos.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        title="Configurações da I.A"
+        subtitle="Configure como o assistente de IA analisa e sugere respostas para os atendimentos."
+        actions={<>
           <div className="flex items-center gap-2">
             <Switch checked={config.is_active} onCheckedChange={(v) => update({ is_active: v })} />
-            <Label className="text-sm">{config.is_active ? "Ativa" : "Inativa"}</Label>
+            <StatusPill tone={config.is_active ? "success" : "slate"}>{config.is_active ? "Ativa" : "Inativa"}</StatusPill>
           </div>
-          <Button onClick={save} disabled={saving} className="gradient-brand text-primary-foreground">
+          <Button onClick={save} disabled={saving}>
             {saving ? <Loader2 size={14} className="animate-spin mr-2" /> : <Save size={14} className="mr-2" />}
             Salvar
           </Button>
-        </div>
-      </div>
+        </>}
+      />
 
-      <Tabs defaultValue="assistente">
-        <TabsList className="grid grid-cols-7 w-full max-w-5xl">
-          <TabsTrigger value="assistente" className="gap-2"><Sparkles size={14} /><span className="truncate">{nomeAssistente}</span></TabsTrigger>
+      <Tabs defaultValue="bia">
+        <div className="overflow-x-auto pb-1"><TabsList variant="pill" className="h-auto min-w-max gap-1">
+          <TabsTrigger value="bia" className="gap-2"><Sparkles size={14} />Bia</TabsTrigger>
           <TabsTrigger value="orientacoes" className="gap-2"><ShieldCheck size={14} />Orientações</TabsTrigger>
           <TabsTrigger value="aprendizado" className="gap-2"><GraduationCap size={14} />Aprendizado</TabsTrigger>
           <TabsTrigger value="comportamento" className="gap-2"><Bot size={14} />Comportamento</TabsTrigger>
           <TabsTrigger value="instrucoes" className="gap-2"><Wand2 size={14} />Instruções</TabsTrigger>
           <TabsTrigger value="funcoes" className="gap-2"><MessageSquare size={14} />Funções</TabsTrigger>
           <TabsTrigger value="agenda" className="gap-2"><Clock size={14} />Atendimento</TabsTrigger>
-        </TabsList>
+        </TabsList></div>
 
-        {/* ASSISTENTE / COPILOTO */}
-        <TabsContent value="assistente" className="space-y-4 mt-4">
+        {/* BIA / COPILOTO */}
+        <TabsContent value="bia" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} className="text-primary" />Atendente IA "{nomeAssistente}"</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2"><Sparkles size={16} className="text-primary" />Atendente IA "Bia"</CardTitle>
               <CardDescription>
                 Configure a atendente virtual que sugere respostas no WhatsApp. Comece com o copiloto LIGADO e o auto-envio DESLIGADO até validar a qualidade.
               </CardDescription>
@@ -208,7 +182,7 @@ export default function CrmIaConfig() {
                   <Input
                     value={config.assistant_display_name || ""}
                     onChange={(e) => update({ assistant_display_name: e.target.value })}
-                    placeholder={NOME_PADRAO_ASSISTENTE}
+                    placeholder="Bia"
                   />
                 </div>
                 <div className="space-y-2">
@@ -244,20 +218,20 @@ export default function CrmIaConfig() {
 
               <ToggleRow
                 title="Copiloto (sugestões com aprovação humana)"
-                desc={`${nomeAssistente} gera sugestões de resposta e o atendente aprova (✓) ou descarta (✗) antes do envio.`}
+                desc="A Bia gera sugestões de resposta e o atendente aprova (✓) ou descarta (✗) antes do envio."
                 checked={!!config.copilot_enabled}
                 onChange={(v) => update({ copilot_enabled: v })}
               />
               <ToggleRow
                 title="Auto-envio (cuidado!)"
-                desc={`${nomeAssistente} envia automaticamente as sugestões pendentes respeitando o turno da SDR, a janela de 24h e as regras de convivência. Deixe DESLIGADO até validar tudo no modo copiloto.`}
+                desc="A Bia envia automaticamente as sugestões pendentes respeitando o turno da SDR, a janela de 24h e as regras de convivência. Deixe DESLIGADO até validar tudo no modo copiloto."
                 checked={!!config.auto_send_enabled}
                 onChange={(v) => update({ auto_send_enabled: v })}
               />
 
               <div className="grid sm:grid-cols-2 gap-4 pt-2">
                 <div className="space-y-2">
-                  <Label>Início do turno da SDR (fuso da clínica)</Label>
+                  <Label>Início do turno da SDR (Bahia, UTC-3)</Label>
                   <Input type="time" value={config.shift_start || "07:29"} onChange={(e) => update({ shift_start: e.target.value })} />
                 </div>
                 <div className="space-y-2">
@@ -283,7 +257,7 @@ export default function CrmIaConfig() {
               </div>
 
               <div className="space-y-2 pt-2">
-                <Label>Base de conhecimento de {nomeAssistente}</Label>
+                <Label>Base de Conhecimento da Bia</Label>
                 <Textarea
                   value={config.knowledge_base || ""}
                   onChange={(e) => update({ knowledge_base: e.target.value })}
@@ -291,7 +265,7 @@ export default function CrmIaConfig() {
                   placeholder="Persona, regras de ouro, respostas-padrão, faixas de preço, endereços das unidades..."
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Este texto é injetado no prompt da IA em toda sugestão. Se ficar vazio, a IA não gera sugestões (não existe base padrão).
+                  Este texto é injetado no prompt da IA em toda sugestão. Se ficar vazio, será usada a base padrão da Rizodent.
                 </p>
               </div>
             </CardContent>
@@ -300,12 +274,12 @@ export default function CrmIaConfig() {
 
         {/* ORIENTAÇÕES (Diretrizes × Restrições) */}
         <TabsContent value="orientacoes" className="space-y-4 mt-4">
-          <AiRulesManager nomeAssistente={nomeAssistente} />
+          <AiRulesManager />
         </TabsContent>
 
         {/* APRENDIZADO (feedback dataset) */}
         <TabsContent value="aprendizado" className="space-y-4 mt-4">
-          <AiLearningReport nomeAssistente={nomeAssistente} />
+          <AiLearningReport />
         </TabsContent>
 
         {/* COMPORTAMENTO */}
@@ -354,7 +328,7 @@ export default function CrmIaConfig() {
             <CardHeader>
               <CardTitle className="text-base">Instruções da IA (System Prompt)</CardTitle>
               <CardDescription>
-                Estas instruções são aplicadas nas análises e também nas sugestões de resposta de {nomeAssistente}. Descreva o
+                Estas instruções são aplicadas nas análises e também nas sugestões de resposta da Bia. Descreva o
                 contexto da clínica, regras de atendimento, produtos/serviços e o que a IA deve evitar. Elas
                 complementam a base — sem substituir as regras de segurança e anti-alucinação, nem as Restrições.
               </CardDescription>
@@ -373,7 +347,7 @@ export default function CrmIaConfig() {
                 <Textarea
                   value={config.custom_instructions || ""}
                   onChange={(e) => update({ custom_instructions: e.target.value })}
-                  placeholder="Ex: Nunca prometa preços. Sempre sugira agendar avaliação. Priorize as cidades onde a clínica atende."
+                  placeholder="Ex: Nunca prometa preços. Sempre sugira agendar avaliação. Priorize cidades de atendimento da Rizodent."
                   className="min-h-[140px]"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -447,7 +421,7 @@ function ToggleRow({
   disabled,
 }: { title: string; desc: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-border bg-secondary/30">
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-surface-sunken p-4">
       <div className="flex-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>

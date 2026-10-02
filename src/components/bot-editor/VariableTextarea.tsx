@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import VariableSelector from "./VariableSelector";
 
@@ -49,11 +50,11 @@ export default function VariableTextarea({ value, onChange, placeholder, rows = 
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || "Digite a mensagem... Use [ para variáveis"}
         rows={rows}
-        className={className}
+        className={cn("rounded-xl leading-relaxed", className)}
       />
       <VariableSelector inputRef={ref} value={value} onChange={onChange} extraVariables={extraVariables} />
-      <p className="text-[10px] text-muted-foreground mt-1">
-        Digite <kbd className="px-1 py-0.5 rounded bg-secondary text-[10px]">[</kbd> para inserir variáveis do lead
+      <p className="text-[11px] text-tertiary mt-1.5">
+        Digite <kbd className="px-1.5 py-0.5 rounded-md border border-border/60 bg-surface-sunken font-mono text-[10px] text-foreground">[</kbd> para inserir variáveis do lead
       </p>
       {warnings.length > 0 && (
         <ul className="mt-1 space-y-0.5">

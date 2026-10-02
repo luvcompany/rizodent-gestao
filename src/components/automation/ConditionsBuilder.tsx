@@ -117,7 +117,7 @@ function ValueSelector({
   if (opts.length > 0) {
     return (
       <Select value={String(value ?? "")} onValueChange={onChange}>
-        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+        <SelectTrigger className="h-9 rounded-lg bg-card text-[13px]"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
         <SelectContent className="max-h-64">
           {opts.map((o) => (
             <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -129,7 +129,7 @@ function ValueSelector({
 
   return (
     <Input
-      className="h-7 text-xs"
+      className="h-9 rounded-lg bg-card text-[13px]"
       placeholder="Valor"
       value={String(value ?? "")}
       onChange={(e) => onChange(e.target.value)}
@@ -176,25 +176,25 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
       <button
         type="button"
         onClick={addRule}
-        className="w-full text-xs text-muted-foreground bg-secondary/50 hover:bg-secondary rounded py-2 flex items-center justify-center gap-1.5 border border-dashed border-border transition-colors"
+        className="w-full h-10 text-[13px] font-semibold text-muted-foreground rounded-xl flex items-center justify-center gap-2 border border-dashed border-border transition-colors hover:border-primary/50 hover:bg-primary-soft/50 hover:text-primary"
       >
-        <Filter size={12} /> Adicionar condição (opcional)
+        <Filter size={15} strokeWidth={1.75} /> Adicionar condição (opcional)
       </button>
     );
   }
 
   return (
-    <div className="space-y-2 p-3 bg-secondary/50 rounded-lg border border-border">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs font-semibold flex items-center gap-1">
-          <Filter size={12} /> Para todos os leads com:
+    <div className="space-y-2.5 rounded-xl border border-border/60 bg-surface-sunken p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label className="text-[13px] font-semibold flex items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary"><Filter size={14} strokeWidth={1.75} /></span> Para todos os leads com:
         </Label>
         {conditions.rules.length > 1 && (
           <Select
             value={conditions.match}
             onValueChange={(v) => onChange({ ...conditions, match: v as "all" | "any" })}
           >
-            <SelectTrigger className="h-6 text-[10px] w-28"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-36 rounded-full bg-card px-3 text-xs font-semibold"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas (E)</SelectItem>
               <SelectItem value="any">Qualquer (OU)</SelectItem>
@@ -204,11 +204,11 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
       </div>
 
       {conditions.rules.map((rule, idx) => (
-        <div key={idx} className="flex items-start gap-1 p-2 bg-card rounded border border-border">
-          <div className="flex-1 flex flex-wrap gap-1.5">
+        <div key={idx} className="flex items-start gap-1.5 rounded-xl border border-border/60 bg-card p-2.5 shadow-xs">
+          <div className="min-w-0 flex-1 flex flex-wrap gap-2">
             {/* Campo */}
             <Select value={rule.field} onValueChange={(v) => updateRule(idx, { field: v as ConditionField })}>
-              <SelectTrigger className="h-7 text-xs min-w-[110px] flex-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 min-w-[130px] flex-1 rounded-lg bg-card text-[13px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {FIELD_OPTIONS.map((f) => (
                   <SelectItem key={f} value={f}>{FIELD_LABELS[f]}</SelectItem>
@@ -217,7 +217,7 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
             </Select>
             {/* Operador */}
             <Select value={rule.operator} onValueChange={(v) => updateRule(idx, { operator: v as ConditionOperator })}>
-              <SelectTrigger className="h-7 text-xs min-w-[110px] flex-1"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 min-w-[130px] flex-1 rounded-lg bg-card text-[13px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {operatorsFor(rule.field).map((op) => (
                   <SelectItem key={op} value={op}>{OPERATOR_LABELS[op]}</SelectItem>
@@ -228,13 +228,13 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
             {!NO_VALUE_OPERATORS.includes(rule.operator) && (
               MULTI_VALUE_OPERATORS.includes(rule.operator) ? (
                 <Input
-                  className="h-7 text-xs min-w-[110px] flex-1"
+                  className="h-9 min-w-[130px] flex-1 rounded-lg bg-card text-[13px]"
                   placeholder="valor1, valor2"
                   value={String(rule.value ?? "")}
                   onChange={(e) => updateRule(idx, { value: e.target.value })}
                 />
               ) : (
-                <div className="min-w-[110px] flex-1">
+                <div className="min-w-[130px] flex-1">
                   <ValueSelector
                     field={rule.field}
                     value={rule.value}
@@ -247,9 +247,9 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
           <button
             type="button"
             onClick={() => removeRule(idx)}
-            className="text-destructive/70 hover:text-destructive p-1"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-tertiary transition-colors hover:bg-destructive-soft hover:text-destructive"
           >
-            <Trash2 size={12} />
+            <Trash2 size={15} strokeWidth={1.75} />
           </button>
         </div>
       ))}
@@ -257,11 +257,11 @@ export default function ConditionsBuilder({ value, onChange }: Props) {
       <button
         type="button"
         onClick={addRule}
-        className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
+        className="w-full h-9 text-[13px] font-semibold text-primary bg-card border border-dashed border-primary/40 rounded-xl flex items-center justify-center gap-1.5 transition-colors hover:bg-primary-soft/60"
       >
-        <Plus size={12} /> Adicionar condição
+        <Plus size={15} strokeWidth={2} /> Adicionar condição
       </button>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs leading-relaxed text-tertiary">
         A automação só dispara para leads que satisfazem {conditions.match === "any" ? "qualquer uma" : "todas"} as condições. Deixe vazio para disparar sempre.
       </p>
     </div>

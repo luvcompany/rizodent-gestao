@@ -1,15 +1,13 @@
 import { Phone, PhoneOff, Minus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { nomeDoNumero, type NumeroWhatsappVisivel, type WhatsappCallRow } from "@/contexts/WhatsappCallContext";
-import { useEffect, useMemo, useState } from "react";
+import type { WhatsappCallRow } from "@/contexts/WhatsappCallContext";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   call: WhatsappCallRow;
-  /** Números visíveis ao usuário (undefined enquanto carrega). */
-  numerosVisiveis?: NumeroWhatsappVisivel[];
   onAccept: () => void;
   onReject: () => void;
   onMinimize?: () => void;
@@ -24,40 +22,15 @@ function formatPhone(p: string | null): string {
   return `+${d}`;
 }
 
-export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisiveis, onAccept, onReject, onMinimize, onInteract }) => {
+export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onReject, onMinimize, onInteract }) => {
   const navigate = useNavigate();
   const [leadName, setLeadName] = useState<string | null>(null);
-  const [resolvedLeadId, setResolvedLeadId] = useState<string | null>(null);
-
-  // Número que recebeu a ligação, pela lista de números visíveis ao usuário:
-  // primeiro pelo whatsapp_number_id gravado pelo servidor, depois pelo
-  // phone_number_id. undefined = lista ainda carregando; null = o número não
-  // está entre os deste usuário (não existe mais "número principal" fora da
-  // lista no v2).
-  const numero = useMemo<NumeroWhatsappVisivel | null | undefined>(() => {
-    if (!numerosVisiveis) return undefined;
-    const porId = call.whatsapp_number_id
-      ? numerosVisiveis.find((n) => n.id === call.whatsapp_number_id)
-      : undefined;
-    if (porId) return porId;
-    const porPnid = call.phone_number_id
-      ? numerosVisiveis.find((n) => n.phone_number_id === String(call.phone_number_id))
-      : undefined;
-    return porPnid ?? null;
-  }, [numerosVisiveis, call.whatsapp_number_id, call.phone_number_id]);
-  const numeroId = numero?.id ?? null;
-  const indisponivel = numero === null;
-  const mostrarNumero = !!numero && (numerosVisiveis?.length ?? 0) > 1;
+  const [resolvedLeadId, setResolvedLeadId] = useState<string | null>(call.lead_id ?? null);
 
   useEffect(() => {
     let cancelled = false;
-    setLeadName(null);
-    setResolvedLeadId(null);
-    // Sem o número resolvido não se procura lead: buscar fora do número
-    // misturaria conversas de outro "mundo".
-    if (!numeroId) return;
     (async () => {
-      // 1) Se o call já vier com lead_id, busca direto (a RLS confere o acesso).
+      // 1) Se o call já vier com lead_id, busca direto
       if (call.lead_id) {
         const { data } = await supabase
           .from("crm_leads")
@@ -69,16 +42,28 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisive
         setResolvedLeadId((data as any)?.id ?? call.lead_id);
         return;
       }
-      // 2) Fallback: casa pelo telefone DENTRO do número da ligação.
+      // 2) Fallback: casa pelo telefone DENTRO do mundo do número da ligação
+      // (tenant + whatsapp_number_id correspondente ao call.phone_number_id).
+      // Número sem linha em whatsapp_numbers = mundo legado (NULL).
       const digits = (call.from_phone || "").replace(/\D/g, "");
       if (!digits || !call.tenant_id) return;
-      const { data } = await supabase
+      let numberId: string | null = null;
+      if (call.phone_number_id) {
+        const { data: num } = await supabase
+          .from("whatsapp_numbers")
+          .select("id")
+          .eq("tenant_id", call.tenant_id)
+          .eq("phone_number_id", call.phone_number_id)
+          .limit(1);
+        numberId = (num as any[])?.[0]?.id ?? null;
+      }
+      let q = supabase
         .from("crm_leads")
         .select("id, name")
         .eq("tenant_id", call.tenant_id)
-        .eq("phone", digits)
-        .eq("whatsapp_number_id", numeroId)
-        .limit(2);
+        .eq("phone", digits);
+      q = numberId ? q.eq("whatsapp_number_id", numberId) : q.is("whatsapp_number_id", null);
+      const { data } = await q.limit(2);
       if (cancelled) return;
       const rows = (data as any[]) || [];
       // Ambíguo (2+): não resolve lead — mostra só o telefone.
@@ -88,7 +73,7 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisive
       }
     })();
     return () => { cancelled = true; };
-  }, [numeroId, call.lead_id, call.from_phone, call.tenant_id]);
+  }, [call.lead_id, call.from_phone, call.tenant_id, call.phone_number_id]);
 
   const displayName = leadName || formatPhone(call.from_phone);
   const initials = (leadName || "?").split(" ").map((s) => s[0]).slice(0, 2).join("").toUpperCase();
@@ -103,11 +88,11 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisive
     // Fundo com leve escurecimento mas SEM bloquear o CRM (pointer-events-none);
     // só o card recebe cliques. Assim a chamada chama atenção sem travar a tela.
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in pointer-events-none"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-foreground/30 backdrop-blur-[2px] animate-in fade-in pointer-events-none"
       onMouseDown={onInteract}
       onKeyDown={onInteract}
     >
-      <div className="pointer-events-auto relative w-full max-w-sm rounded-2xl bg-card border border-border shadow-2xl p-6 flex flex-col items-center gap-5">
+      <div className="pointer-events-auto relative mx-4 flex w-full max-w-sm flex-col items-center gap-5 rounded-2xl border border-border/60 bg-card p-6 shadow-float">
         {onMinimize && (
           <Button
             variant="ghost"
@@ -131,12 +116,6 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisive
           {leadName && (
             <div className="text-sm text-muted-foreground">{formatPhone(call.from_phone)}</div>
           )}
-          {mostrarNumero && numero && (
-            <div className="mt-1 text-xs text-muted-foreground">Recebida em {nomeDoNumero(numero)}</div>
-          )}
-          {indisponivel && (
-            <div className="mt-1 text-xs text-warning">Número não disponível para você</div>
-          )}
         </div>
         <div className="flex items-center gap-6 mt-3">
           <Button
@@ -154,7 +133,7 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, numerosVisive
             onClick={onAccept}
             aria-label="Atender chamada"
             title="Atender"
-            className="h-14 w-14 rounded-full p-0 bg-green-600 hover:bg-green-700"
+            className="h-14 w-14 rounded-full bg-success p-0 text-success-foreground hover:bg-success/90"
           >
             <Phone className="h-6 w-6" />
           </Button>

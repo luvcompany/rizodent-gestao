@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Check, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -79,53 +79,54 @@ export default function AiRulesManager({ nomeAssistente }: { nomeAssistente?: st
   const rests = rules.filter((r) => r.kind === "restricao");
 
   if (loading) {
-    return <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 size={14} className="animate-spin" />Carregando...</div>;
+    return <div className="flex items-center justify-center gap-2 rounded-card border border-border/60 bg-card py-12 text-sm text-muted-foreground shadow-card"><Loader2 size={16} className="animate-spin text-primary" />Carregando...</div>;
   }
 
   const Section = ({
     title, color, items, value, setValue, kind,
   }: { title: string; color: string; items: Rule[]; value: string; setValue: (v: string) => void; kind: "diretriz" | "restricao" }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle className={`text-base ${color}`}>{title}</CardTitle>
-        <CardDescription>
+    <Card className="rounded-card border-border/60 shadow-card">
+      <CardHeader className="space-y-1.5 p-5 pb-4 sm:p-6 sm:pb-5">
+        <CardTitle className="flex items-center gap-3 text-base font-semibold text-foreground"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${color}`}><ShieldCheck size={18} strokeWidth={1.75} /></span>{title}</CardTitle>
+        <CardDescription className="text-[13px] leading-relaxed sm:pl-12">
           {kind === "diretriz"
             ? `O que ${nome} SEMPRE deve fazer. Entra no prompt antes da base de conhecimento.`
             : `O que ${nome} NUNCA pode fazer. Tem prioridade máxima sobre qualquer outra regra.`}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex gap-2">
+      <CardContent className="space-y-4 px-5 pb-5 sm:px-6 sm:pb-6">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={kind === "diretriz" ? "Ex: Sempre comece com o primeiro nome do cliente" : "Ex: Nunca diga que é uma IA"}
             onKeyDown={(e) => { if (e.key === "Enter") add(kind, value, () => setValue("")); }}
+            className="h-10 min-w-0 flex-1 rounded-xl"
           />
-          <Button onClick={() => add(kind, value, () => setValue(""))} size="sm" className="gap-1">
-            <Plus size={14} />Adicionar
+          <Button onClick={() => add(kind, value, () => setValue(""))} size="sm" className="h-10 shrink-0 gap-1.5 rounded-xl px-4">
+            <Plus size={16} />Adicionar
           </Button>
         </div>
         <div className="space-y-2">
-          {items.length === 0 && <p className="text-xs text-muted-foreground">Nenhuma {kind} cadastrada.</p>}
+          {items.length === 0 && <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-[13px] text-muted-foreground">Nenhuma {kind} cadastrada.</p>}
           {items.map((r) => (
-            <div key={r.id} className={`flex items-center gap-2 p-2 rounded-lg border ${r.active ? "bg-secondary/30" : "bg-muted/30 opacity-60"}`}>
+            <div key={r.id} className={`flex min-h-12 items-center gap-3 rounded-xl border px-3.5 py-2 ${r.active ? "border-border/60 bg-card" : "border-transparent bg-surface-sunken opacity-70"}`}>
               <Switch checked={r.active} onCheckedChange={(v) => toggle(r.id, v)} />
               {editingId === r.id ? (
                 <>
-                  <Input value={editingText} onChange={(e) => setEditingText(e.target.value)} className="flex-1 h-8" autoFocus />
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => saveEdit(r.id)}><Check size={14} /></Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setEditingId(null)}><X size={14} /></Button>
+                  <Input value={editingText} onChange={(e) => setEditingText(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg" autoFocus />
+                  <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 rounded-lg p-0 text-success hover:bg-success-soft hover:text-success" onClick={() => saveEdit(r.id)}><Check size={16} /></Button>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 rounded-lg p-0" onClick={() => setEditingId(null)}><X size={16} /></Button>
                 </>
               ) : (
                 <>
-                  <span className="flex-1 text-sm">{r.text}</span>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingId(r.id); setEditingText(r.text); }}>
-                    <Pencil size={14} />
+                  <span className="min-w-0 flex-1 break-words text-sm leading-snug text-foreground">{r.text}</span>
+                  <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 rounded-lg p-0 text-muted-foreground hover:text-foreground" onClick={() => { setEditingId(r.id); setEditingText(r.text); }}>
+                    <Pencil size={15} />
                   </Button>
                   {canDelete && (
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => remove(r.id)}>
-                      <Trash2 size={14} />
+                    <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 rounded-lg p-0 text-destructive hover:bg-destructive-soft hover:text-destructive" onClick={() => remove(r.id)}>
+                      <Trash2 size={15} />
                     </Button>
                   )}
                 </>
@@ -138,10 +139,10 @@ export default function AiRulesManager({ nomeAssistente }: { nomeAssistente?: st
   );
 
   return (
-    <div className="space-y-4">
-      <Section title="Diretrizes (sempre faça)" color="text-primary" items={dirs} value={newDir} setValue={setNewDir} kind="diretriz" />
-      <Section title="Restrições (nunca faça)" color="text-destructive" items={rests} value={newRest} setValue={setNewRest} kind="restricao" />
-      <p className="text-[11px] text-muted-foreground">As alterações valem para a próxima sugestão gerada por {nome}.</p>
+    <div className="space-y-5">
+      <Section title="Diretrizes (sempre faça)" color="bg-success-soft text-success" items={dirs} value={newDir} setValue={setNewDir} kind="diretriz" />
+      <Section title="Restrições (nunca faça)" color="bg-destructive-soft text-destructive" items={rests} value={newRest} setValue={setNewRest} kind="restricao" />
+      <p className="text-xs text-tertiary">As alterações valem para a próxima sugestão gerada por {nome}.</p>
     </div>
   );
 }

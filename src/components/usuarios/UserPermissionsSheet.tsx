@@ -6,10 +6,40 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Loader2, RotateCcw, Save } from "lucide-react";
+import { Loader2, RotateCcw, Save, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { roleLabel } from "@/lib/roles";
+
+/**
+ * Permissões por usuário — só o que o BANCO aplica.
+ *
+ * Abas: Funis (can_access_pipeline) e Instagram (can_access_instagram_account).
+ * Saíram (29/09/2026):
+ *   - "Páginas" e "Ações" (EQUIPE-6): gravavam overrides que nenhuma tela,
+ *     policy ou função lê — o suporte desligava "Excluir leads", salvava,
+ *     recebia "Permissões atualizadas" e nada mudava;
+ *   - "WhatsApp" (pedido da sessão 29): os números por usuário são do diálogo
+ *     "Números de WhatsApp" da lista de usuários, que grava pela RPC auditada
+ *     admin_definir_numeros_usuario. O upsert direto daqui não auditava e
+ *     mostrava o gerente como "vê todos os números" — o gerente agora pode ser
+ *     restrito (sem marcação = todos).
+ *
+ * Padrões espelhados do banco (EQUIPE-7):
+ *   - superadmin: todos os funis; gerente e crc seguem a regra geral de
+ *     can_access_pipeline (allowed_roles NULL ou que inclua o papel);
+ *   - crc, gerente e superadmin: todas as contas de Instagram pelo papel — o
+ *     override de Instagram não vale para eles, por isso o switch fica
+ *     travado com "Acesso pelo papel";
+ *   - SDR: o acesso vem de overrides granted=true que o gatilho
+ *     sdr_prepara_novo_membro grava para os funis gerais (inclusive o
+ *     Instagram) e para todas as contas de Instagram. "Padrão" dela = esses
+ *     overrides existirem; "Voltar tudo ao padrão" os recria, nunca apaga;
+ *   - pós-venda: só funis que a incluem em allowed_roles; Instagram só com
+ *     override;
+ *   - recepção/closer: deny-by-default (NULL não libera).
+ */
 
 type Role = "gerente" | "crc" | "posvenda" | "recepcao" | "closer" | "sdr" | "superadmin";
 
@@ -22,18 +52,9 @@ type Pipeline = {
   is_instagram?: boolean | null;
 };
 
-/** Funil "geral" do tenant: allowed_roles NULL, não pós-venda, não Instagram —
- *  o mesmo critério do gatilho sdr_prepara_novo_membro no banco. */
-const funilGeral = (p: Pipeline) => !p.allowed_roles && !p.is_posvenda && !p.is_instagram;
-
-// Só colunas públicas de whatsapp_numbers: nunca token, app_id, app_secret
-// nem verify_token.
-type WhatsappNumber = {
-  id: string;
-  display_name: string | null;
-  phone_e164: string | null;
-  is_active: boolean;
-};
+/** Funil "geral" do tenant: allowed_roles NULL e não pós-venda (o Instagram
+ *  entra) — o mesmo critério do gatilho sdr_prepara_novo_membro no banco. */
+const funilGeral = (p: Pipeline) => !p.allowed_roles && !p.is_posvenda;
 
 type IgAccount = {
   id: string;
@@ -41,38 +62,10 @@ type IgAccount = {
   ig_user_id: string;
 };
 
-type Override = {
-  scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account";
-  resource_id: string;
-  granted: boolean;
-};
-
-const PAGES: { slug: string; label: string; defaultRoles: Role[] }[] = [
-  { slug: "dashboard", label: "Dashboard", defaultRoles: ["crc", "gerente", "posvenda"] },
-  { slug: "crm", label: "CRM (Conversas)", defaultRoles: ["crc", "gerente", "posvenda"] },
-  { slug: "calendario", label: "Calendário", defaultRoles: ["crc", "gerente", "posvenda"] },
-  { slug: "daily", label: "Daily", defaultRoles: ["crc", "gerente"] },
-  { slug: "relatorios", label: "Relatórios", defaultRoles: ["crc", "gerente"] },
-  { slug: "pacientes", label: "Pacientes", defaultRoles: ["crc", "gerente", "posvenda"] },
-  { slug: "usuarios", label: "Usuários", defaultRoles: ["crc"] },
-  { slug: "configuracoes", label: "Configurações", defaultRoles: ["crc", "gerente"] },
-];
-
-const ACTIONS: { slug: string; label: string; defaultRoles: Role[] }[] = [
-  { slug: "delete_leads", label: "Excluir leads", defaultRoles: ["crc", "gerente"] },
-  { slug: "transfer_leads", label: "Transferir leads", defaultRoles: ["crc", "gerente"] },
-  { slug: "broadcast", label: "Disparar broadcast em massa", defaultRoles: ["crc", "gerente"] },
-  { slug: "edit_bots", label: "Editar bots", defaultRoles: ["crc", "gerente"] },
-  { slug: "view_financial", label: "Ver relatórios financeiros", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_pipelines", label: "Criar/editar funis", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_stages", label: "Criar/editar etapas de funil", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_automations", label: "Criar/editar automações", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_triggers", label: "Criar/editar gatilhos de bot", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_followups", label: "Criar/editar follow-ups", defaultRoles: ["crc", "gerente"] },
-  { slug: "create_templates", label: "Criar/editar modelos (templates)", defaultRoles: ["crc", "gerente"] },
-  { slug: "manage_integrations", label: "Gerenciar integrações", defaultRoles: ["crc"] },
-  { slug: "manage_users", label: "Gerenciar usuários", defaultRoles: ["crc"] },
-];
+/** Escopos que esta tela lê e grava. Os demais (whatsapp_number e os antigos
+ *  page/action) não são tocados. */
+type Escopo = "pipeline" | "instagram_account";
+const ESCOPOS: readonly Escopo[] = ["pipeline", "instagram_account"];
 
 interface Props {
   open: boolean;
@@ -83,17 +76,19 @@ interface Props {
   /** Obrigatório no painel do superadmin: ele opera sobre OUTRO cliente, e sem
    *  escopo explícito as consultas trariam dados de todos os tenants. */
   tenantId?: string | null;
+  /** Abre o diálogo "Números de WhatsApp" deste usuário (lista de usuários).
+   *  Sem ele, a tela só aponta onde fica. */
+  onAbrirNumeros?: () => void;
 }
 
-export default function UserPermissionsSheet({ open, onOpenChange, userId, userName, userRole, tenantId }: Props) {
+export default function UserPermissionsSheet({ open, onOpenChange, userId, userName, userRole, tenantId, onAbrirNumeros }: Props) {
   const { profile } = useAuth();
   // Cliente das consultas: o informado (painel do superadmin) ou o do próprio
-  // usuário logado (tela Usuários do cliente).
+  // usuário logado.
   const tenantAlvo = tenantId ?? profile?.tenant_id ?? null;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [waNumbers, setWaNumbers] = useState<WhatsappNumber[]>([]);
   const [igAccounts, setIgAccounts] = useState<IgAccount[]>([]);
   // overrides keyed by `${scope}:${resource_id}` → granted
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
@@ -106,72 +101,70 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
       setLoading(true);
       // Escopo explícito por cliente: no painel do superadmin a RLS não restringe
       // ao tenant (policy de superadmin), então sem o filtro viriam funis e
-      // números de TODOS os clientes.
+      // contas de TODOS os clientes.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const scoped = <T,>(q: T): T => (tenantAlvo ? (q as any).eq("tenant_id", tenantAlvo) : q);
-      const [{ data: pls }, { data: ovs }, { data: was }, { data: igs }] = await Promise.all([
+      const [{ data: pls }, { data: ovs }, { data: igs }] = await Promise.all([
         scoped(supabase.from("crm_pipelines").select("id,name,color,allowed_roles,is_posvenda,is_instagram")).order("name"),
-        supabase.from("user_permission_overrides").select("scope,resource_id,granted").eq("user_id", userId),
-        scoped(supabase.from("whatsapp_numbers").select("id,display_name,phone_e164,is_active")).order("display_name"),
+        supabase
+          .from("user_permission_overrides")
+          .select("scope,resource_id,granted")
+          .eq("user_id", userId)
+          .in("scope", [...ESCOPOS]),
         scoped(supabase.from("ig_accounts").select("id,username,ig_user_id")).order("username"),
       ]);
       setPipelines((pls || []) as Pipeline[]);
-      setWaNumbers(((was ?? []) as WhatsappNumber[]));
       setIgAccounts((igs || []) as IgAccount[]);
       const map: Record<string, boolean> = {};
-      (ovs || []).forEach((o: any) => { map[`${o.scope}:${o.resource_id}`] = o.granted; });
+      ((ovs || []) as { scope: string; resource_id: string; granted: boolean }[]).forEach((o) => {
+        map[`${o.scope}:${o.resource_id}`] = o.granted;
+      });
       setOverrides(map);
       setDirty({});
       setLoading(false);
     })();
   }, [open, userId, tenantAlvo]);
 
-  const isSuper = userRole === "crc" || userRole === "superadmin";
+  // Só o superadmin vê todos os funis pelo papel. Gerente e crc seguem a regra
+  // geral de can_access_pipeline (allowed_roles NULL ou que inclua o papel):
+  // funil com allowed_roles sem 'gerente' é negado ao gerente sem override.
+  const isSuper = userRole === "superadmin";
   // SDR (rodízio): can_access_pipeline NÃO libera funil com allowed_roles NULL
-  // para ela — o acesso real vem dos overrides granted=true que o gatilho
-  // sdr_prepara_novo_membro grava para os funis gerais. Aqui o "padrão" é
-  // esse conjunto, e um "padrão" dela nunca pode virar "sem override" (isso a
-  // deixaria sem funil nenhum) — ver toggle/resetAll/isOverridden.
+  // para ela — o acesso real vem dos overrides granted=true gravados pelo
+  // gatilho. Um "padrão" dela nunca pode virar "sem override" (isso a deixaria
+  // sem funil e sem conta) — ver toggle/resetAll/isOverridden.
   const isSdr = userRole === "sdr";
+  // Instagram pelo papel: can_access_instagram_account libera crc, gerente e
+  // superadmin ANTES de olhar o override — o switch não teria efeito.
+  const instagramPeloPapel = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
 
   const defaultForPipeline = (p: Pipeline) => {
     if (!userRole) return false;
-    if (isSuper || userRole === "gerente") return true;
+    if (isSuper) return true;
     if (isSdr) return funilGeral(p);
-    // recepcao/closer são deny-by-default (espelha can_access_pipeline: NULL não libera)
-    if (userRole === "recepcao" || userRole === "closer") return p.allowed_roles?.includes(userRole) ?? false;
+    // pós-venda, recepção e closer: só funil que os inclui (NULL não libera).
+    if (userRole === "posvenda" || userRole === "recepcao" || userRole === "closer") {
+      return p.allowed_roles?.includes(userRole) ?? false;
+    }
     return !p.allowed_roles || p.allowed_roles.includes(userRole);
   };
 
-  // Números de WhatsApp — espelho de can_access_whatsapp_number no banco:
-  // gerente e superadmin veem todos; os demais papéis só veem o número com
-  // override granted=true. Quem grava essas concessões é o próprio banco: ao
-  // conectar um número, ele é concedido aos papéis gerais (crc, pós-venda…);
-  // closer e recepção recebem só o número que eles mesmos conectaram; a SDR
-  // recebe o número padrão do cliente. Por isso aqui não existe "padrão do
-  // papel" a restaurar: sem override = sem acesso, e toda mudança é gravada
-  // como valor explícito (um "não" gravado também impede a concessão
-  // automática do número padrão à SDR).
-  const veTodosOsNumeros = userRole === "gerente" || userRole === "superadmin";
-  const acessoAoNumero = (id: string) =>
-    veTodosOsNumeros || currentValue("whatsapp_number", id, false);
-  const toggleNumero = (id: string, next: boolean) => {
-    const key = `whatsapp_number:${id}`;
-    setDirty(d => {
-      const copy = { ...d };
-      if (overrides[key] === next) delete copy[key]; else copy[key] = next;
-      return copy;
-    });
-  };
+  // Contas de Instagram: liberadas pelo papel para crc/gerente/superadmin; a
+  // SDR recebe todas pelo gatilho (override granted=true); os demais só com
+  // override (deny-by-default).
+  const defaultForChannel = () => instagramPeloPapel || isSdr;
 
-  // Contas de Instagram: default "liberado para todos do cliente" — EXCETO
-  // recepcao/closer/sdr, que espelham o deny-by-default de
-  // can_access_instagram_account (só vê com override granted=true).
-  const defaultForChannel = () => userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr";
+  // SDR: o override granted=true É o padrão dela (funil e Instagram).
+  const explicitoParaSdr = (scope: Escopo) => isSdr && (scope === "pipeline" || scope === "instagram_account");
 
-  const defaultForRole = (allowed: Role[]) => userRole ? allowed.includes(userRole) : false;
-
-  const currentValue = (scope: string, id: string, fallback: boolean) => {
+  /** Valor que o banco vai aplicar depois de salvar. Para a SDR, sem override
+   *  não há acesso (o padrão dela só vale enquanto o override existe). */
+  const currentValue = (scope: Escopo, id: string, fallback: boolean) => {
     const key = `${scope}:${id}`;
+    if (explicitoParaSdr(scope)) {
+      if (key in dirty) return dirty[key] ?? false;
+      return overrides[key] ?? false;
+    }
     if (key in dirty) {
       const v = dirty[key];
       return v === null ? fallback : v;
@@ -180,35 +173,38 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
     return fallback;
   };
 
-  const isOverridden = (scope: string, id: string) => {
+  const isOverridden = (scope: Escopo, id: string) => {
     const key = `${scope}:${id}`;
-    // SDR/funil: o override granted=true dos funis gerais É o padrão dela —
-    // "personalizado" só quando o valor efetivo difere do padrão.
-    if (isSdr && scope === "pipeline") {
-      const p = pipelines.find(x => x.id === id);
-      const fallback = p ? defaultForPipeline(p) : false;
+    if (explicitoParaSdr(scope)) {
+      // "Personalizado" só quando o valor efetivo difere do padrão.
+      let fallback = true;
+      if (scope === "pipeline") {
+        const p = pipelines.find((x) => x.id === id);
+        fallback = p ? defaultForPipeline(p) : false;
+      }
       return currentValue(scope, id, fallback) !== fallback;
     }
     if (key in dirty) return dirty[key] !== null;
     return key in overrides;
   };
 
-  const toggle = (scope: "pipeline" | "page" | "action" | "whatsapp_number" | "instagram_account", id: string, fallback: boolean, next: boolean) => {
+  const toggle = (scope: Escopo, id: string, fallback: boolean, next: boolean) => {
     const key = `${scope}:${id}`;
-    setDirty(d => {
+    setDirty((d) => {
       const copy = { ...d };
-      // SDR/funil: nunca "apagar o override" — sem override ela não vê o
-      // funil (NULL não libera). O valor é sempre gravado explicitamente.
-      if (isSdr && scope === "pipeline") {
-        if (overrides[key] === next) delete copy[key]; else copy[key] = next;
+      // SDR: nunca "apagar o override" — sem override ela não vê o funil nem a
+      // conta. O valor é sempre gravado explicitamente.
+      if (explicitoParaSdr(scope)) {
+        if (overrides[key] === next) delete copy[key];
+        else copy[key] = next;
         return copy;
       }
-      // If the desired value matches the natural default AND there's no stored override, clear dirty
+      // Valor igual ao padrão e nada gravado: não há o que salvar.
       const hasStored = key in overrides;
       if (next === fallback && !hasStored) {
         delete copy[key];
       } else if (next === fallback && hasStored) {
-        // user wants to reset back to default → mark for delete
+        // volta ao padrão → apaga o override
         copy[key] = null;
       } else {
         copy[key] = next;
@@ -219,16 +215,23 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
 
   const resetAll = () => {
     const d: Record<string, boolean | null> = {};
-    // Concessões de número de WhatsApp ficam como estão: apagá-las tiraria o
-    // acesso ao número (sem override = sem acesso), e quem as grava é o banco.
-    Object.keys(overrides).forEach(k => { if (!k.startsWith("whatsapp_number:")) d[k] = null; });
+    Object.keys(overrides).forEach((k) => {
+      d[k] = null;
+    });
     if (isSdr) {
-      // "Padrão" da SDR = recriar os overrides do gatilho (funis gerais com
-      // granted=true). Apagar tudo a deixaria sem funil nenhum.
-      pipelines.forEach(p => {
-        const k = `pipeline:${p.id}`;
+      // "Padrão" da SDR = recriar os overrides do gatilho (funis gerais e todas
+      // as contas de Instagram com granted=true). Apagar tudo a deixaria sem
+      // funil e sem conta nenhuma.
+      pipelines.forEach((p) => {
         if (!funilGeral(p)) return;
-        if (overrides[k] === true) delete d[k]; else d[k] = true;
+        const k = `pipeline:${p.id}`;
+        if (overrides[k] === true) delete d[k];
+        else d[k] = true;
+      });
+      igAccounts.forEach((ig) => {
+        const k = `instagram_account:${ig.id}`;
+        if (overrides[k] === true) delete d[k];
+        else d[k] = true;
       });
     }
     setDirty(d);
@@ -239,10 +242,12 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
   const save = async () => {
     setSaving(true);
     try {
-      const toUpsert: any[] = [];
-      const toDelete: { scope: string; resource_id: string }[] = [];
+      const toUpsert: { user_id: string; scope: Escopo; resource_id: string; granted: boolean }[] = [];
+      const toDelete: { scope: Escopo; resource_id: string }[] = [];
       for (const [key, val] of Object.entries(dirty)) {
-        const [scope, ...rest] = key.split(":");
+        const [scopeRaw, ...rest] = key.split(":");
+        const scope = scopeRaw as Escopo;
+        if (!ESCOPOS.includes(scope)) continue;
         const resource_id = rest.join(":");
         if (val === null) {
           toDelete.push({ scope, resource_id });
@@ -267,18 +272,19 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
       }
       toast.success("Permissões atualizadas");
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error("Erro ao salvar: " + err.message);
+    } catch (err: unknown) {
+      const msg = err && typeof err === "object" && "message" in err ? String((err as { message?: unknown }).message ?? "") : "";
+      toast.error(msg ? `Não foi possível salvar as permissões: ${msg}` : "Não foi possível salvar as permissões.");
     } finally {
       setSaving(false);
     }
   };
 
-  const RowBadge = ({ scope, id }: { scope: string; id: string }) =>
+  const RowBadge = ({ scope, id }: { scope: Escopo; id: string }) =>
     isOverridden(scope, id) ? (
       <Badge variant="outline" className="text-xs bg-primary/15 text-primary border-primary/40">Personalizado</Badge>
     ) : (
-      <Badge variant="outline" className="text-xs text-muted-foreground">Herdado da role</Badge>
+      <Badge variant="outline" className="text-xs text-muted-foreground">Padrão do papel</Badge>
     );
 
   return (
@@ -287,7 +293,8 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
         <SheetHeader>
           <SheetTitle>Permissões — {userName}</SheetTitle>
           <SheetDescription>
-            Role base: <strong>{userRole || "—"}</strong>. Marque/desmarque para sobrescrever a regra padrão da role apenas para este usuário.
+            Papel: <strong>{roleLabel(userRole)}</strong>. Marque ou desmarque para mudar o padrão do papel só para
+            este usuário.
           </SheetDescription>
         </SheetHeader>
 
@@ -297,19 +304,32 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
           </div>
         ) : (
           <div className="mt-4">
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+              <Smartphone size={14} className="mt-0.5 shrink-0" />
+              <div className="space-y-1">
+                <p>
+                  Os números de WhatsApp de cada usuário ficam em{" "}
+                  <strong className="font-medium text-foreground">Números de WhatsApp</strong>, no menu da linha dele
+                  na lista de usuários.
+                </p>
+                {onAbrirNumeros && (
+                  <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onAbrirNumeros}>
+                    Abrir Números de WhatsApp
+                  </Button>
+                )}
+              </div>
+            </div>
+
             <Tabs defaultValue="pipelines">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="pipelines">Funis</TabsTrigger>
-                <TabsTrigger value="pages">Páginas</TabsTrigger>
-                <TabsTrigger value="actions">Ações</TabsTrigger>
-                <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
                 <TabsTrigger value="instagram">Instagram</TabsTrigger>
               </TabsList>
 
               <TabsContent value="pipelines" className="space-y-2 pt-4">
                 {isSdr && (
                   <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    SDR: o padrão são os funis gerais da clínica (sem pós-venda e sem Instagram). O acesso
+                    SDR: o padrão são os funis gerais da clínica (inclusive o do Instagram; sem pós-venda). O acesso
                     dela é gravado como permissão explícita por funil — "Voltar tudo ao padrão" recria essas
                     permissões em vez de apagá-las.
                   </p>
@@ -317,7 +337,7 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                 {pipelines.length === 0 && (
                   <p className="text-sm text-muted-foreground">Nenhum funil cadastrado.</p>
                 )}
-                {pipelines.map(p => {
+                {pipelines.map((p) => {
                   const fallback = defaultForPipeline(p);
                   const val = currentValue("pipeline", p.id, fallback);
                   return (
@@ -343,111 +363,42 @@ export default function UserPermissionsSheet({ open, onOpenChange, userId, userN
                 })}
               </TabsContent>
 
-              <TabsContent value="pages" className="space-y-2 pt-4">
-                {PAGES.map(pg => {
-                  const fallback = defaultForRole(pg.defaultRoles);
-                  const val = currentValue("page", pg.slug, fallback);
-                  return (
-                    <div key={pg.slug} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={val}
-                          onCheckedChange={(c) => toggle("page", pg.slug, fallback, !!c)}
-                        />
-                        <Label className="cursor-pointer">{pg.label}</Label>
-                      </div>
-                      <RowBadge scope="page" id={pg.slug} />
-                    </div>
-                  );
-                })}
-              </TabsContent>
-
-              <TabsContent value="actions" className="space-y-2 pt-4">
-                {ACTIONS.map(a => {
-                  const fallback = defaultForRole(a.defaultRoles);
-                  const val = currentValue("action", a.slug, fallback);
-                  return (
-                    <div key={a.slug} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          checked={val}
-                          onCheckedChange={(c) => toggle("action", a.slug, fallback, c)}
-                        />
-                        <Label className="cursor-pointer">{a.label}</Label>
-                      </div>
-                      <RowBadge scope="action" id={a.slug} />
-                    </div>
-                  );
-                })}
-              </TabsContent>
-
-              <TabsContent value="whatsapp" className="space-y-2 pt-4">
-                <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                  {veTodosOsNumeros
-                    ? "Este papel vê todos os números de WhatsApp do cliente."
-                    : "Este usuário só vê as conversas dos números marcados. Ao conectar um número, o sistema já o libera para os papéis gerais; closer e recepção recebem o número que conectaram, e a SDR recebe o número padrão."}
-                </p>
-                {waNumbers.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum número de WhatsApp cadastrado. Os números são conectados pelo painel administrativo.
+              <TabsContent value="instagram" className="space-y-2 pt-4">
+                {instagramPeloPapel && (
+                  <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    Este papel vê todas as contas de Instagram do cliente.
                   </p>
                 )}
-                {waNumbers.map(w => {
-                  const key = `whatsapp_number:${w.id}`;
-                  const val = acessoAoNumero(w.id);
-                  const label = w.display_name || w.phone_e164 || "Número sem nome";
-                  const alterado = key in dirty;
-                  return (
-                    <div key={w.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Switch
-                          checked={val}
-                          disabled={veTodosOsNumeros}
-                          onCheckedChange={(c) => toggleNumero(w.id, c)}
-                          aria-label={`Acesso ao número ${label}`}
-                        />
-                        <div className="min-w-0">
-                          <Label className="cursor-pointer truncate block">{label}</Label>
-                          <span className="text-xs text-muted-foreground">
-                            {w.display_name && w.phone_e164 ? w.phone_e164 : null}
-                            {!w.is_active && (w.display_name && w.phone_e164 ? " · desativado" : "Desativado")}
-                          </span>
-                        </div>
-                      </div>
-                      {veTodosOsNumeros ? (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">Acesso pelo papel</Badge>
-                      ) : alterado ? (
-                        <Badge variant="outline" className="text-xs bg-primary/15 text-primary border-primary/40">Alterado</Badge>
-                      ) : val ? (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">Liberado</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">Sem acesso</Badge>
-                      )}
-                    </div>
-                  );
-                })}
-              </TabsContent>
-
-              <TabsContent value="instagram" className="space-y-2 pt-4">
+                {isSdr && (
+                  <p className="rounded-md border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    SDR: o padrão são todas as contas de Instagram da clínica, gravadas como permissão explícita.
+                  </p>
+                )}
                 {igAccounts.length === 0 && (
                   <p className="text-sm text-muted-foreground">Nenhuma conta de Instagram conectada.</p>
                 )}
-                {igAccounts.map(ig => {
+                {igAccounts.map((ig) => {
                   const fallback = defaultForChannel();
-                  const val = currentValue("instagram_account", ig.id, fallback);
+                  const val = instagramPeloPapel ? true : currentValue("instagram_account", ig.id, fallback);
                   return (
                     <div key={ig.id} className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 p-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <Switch
                           checked={val}
+                          disabled={instagramPeloPapel}
                           onCheckedChange={(c) => toggle("instagram_account", ig.id, fallback, c)}
+                          aria-label={`Acesso à conta @${ig.username || ig.ig_user_id}`}
                         />
                         <div className="min-w-0">
                           <Label className="cursor-pointer truncate block">@{ig.username || ig.ig_user_id}</Label>
                           <span className="text-xs text-muted-foreground">ID: {ig.ig_user_id}</span>
                         </div>
                       </div>
-                      <RowBadge scope="instagram_account" id={ig.id} />
+                      {instagramPeloPapel ? (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Acesso pelo papel</Badge>
+                      ) : (
+                        <RowBadge scope="instagram_account" id={ig.id} />
+                      )}
                     </div>
                   );
                 })}

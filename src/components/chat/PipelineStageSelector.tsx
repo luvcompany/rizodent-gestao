@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Flag, Workflow } from "lucide-react";
 import MotivoDesqualificacaoDialog from "@/components/crm/MotivoDesqualificacaoDialog";
 import { ehEtapaDesqualificado } from "@/lib/desqualificacao";
 
 interface PipelineStageSelectorProps {
-  stages: { id: string; name: string; color: string; pipeline_id: string }[];
+  stages: { id: string; name: string; color: string; pipeline_id: string; funcao?: string | null }[];
   currentStageId: string;
   /** `motivo` só vem quando a etapa de destino é Desqualificado (a pessoa escolheu no diálogo). */
   onStageChange: (stageId: string, pipelineId: string, motivo?: string) => void;
@@ -69,11 +69,14 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
   const etapaAtualVisivel = etapasDoFunilEscolhido.some((s) => s.id === currentStageId);
 
   return (
-    <div className="mt-3 mb-3 space-y-2">
+    <div className="mt-5 space-y-4">
       <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Funil</label>
+        <label className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+          <Workflow size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
+          Funil
+        </label>
         <Select value={selectedPipelineId} onValueChange={(val) => setSelectedPipelineId(val)}>
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl border-input bg-card text-sm">
             <SelectValue placeholder="Selecione o funil" />
           </SelectTrigger>
           <SelectContent>
@@ -91,7 +94,8 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           "destino" enquanto a troca não foi concluída. */}
 
       <div>
-        <label className="text-xs text-muted-foreground mb-1 block">
+        <label className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground">
+          <Flag size={14} strokeWidth={1.75} className="shrink-0 text-tertiary" />
           {trocandoDeFunil ? "Etapa de destino" : "Etapa do Funil"}
           {selectedPipelineId && nomeFunil(selectedPipelineId) ? ` · ${nomeFunil(selectedPipelineId)}` : ""}
         </label>
@@ -99,7 +103,7 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           value={etapaAtualVisivel ? currentStageId : ""}
           onValueChange={(val) => {
             const destino = stages.find((s) => s.id === val);
-            if (destino && ehEtapaDesqualificado(destino.name) && val !== currentStageId) {
+            if (destino && ehEtapaDesqualificado(destino) && val !== currentStageId) {
               setDesqualificarPara({ stageId: val, pipelineId: selectedPipelineId });
               return;
             }
@@ -107,14 +111,14 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
           }}
           disabled={etapasDoFunilEscolhido.length === 0}
         >
-          <SelectTrigger className="bg-secondary border-border h-8 text-sm">
+          <SelectTrigger className="h-10 rounded-xl border-input bg-card text-sm">
             <SelectValue placeholder={trocandoDeFunil ? "Escolha a etapa de destino" : "Selecione a etapa"} />
           </SelectTrigger>
           <SelectContent>
             {etapasDoFunilEscolhido.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
                   {s.name}
                 </span>
               </SelectItem>
@@ -136,14 +140,14 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
       {/* Lista vazia tem motivo e o motivo precisa aparecer: antes o combo só
           ficava mudo e a pessoa achava que o funil tinha sido trocado. */}
       {!selectedPipelineId && (
-        <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" />
           <span>Escolha o funil acima para ver as etapas disponíveis.</span>
         </p>
       )}
       {!!selectedPipelineId && etapasDoFunilEscolhido.length === 0 && (
-        <p className="text-xs text-warning flex items-start gap-1.5">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <p className="flex items-start gap-1.5 rounded-xl bg-warning-soft px-3 py-2 text-xs leading-relaxed text-warning-soft-foreground">
+          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" />
           <span>
             Nenhuma etapa de <strong>{nomeFunil(selectedPipelineId) || "deste funil"}</strong> está liberada para o seu
             perfil, então não dá para mover o lead para lá por aqui. Peça ao gestor para liberar uma etapa desse funil.
@@ -151,8 +155,8 @@ export default function PipelineStageSelector({ stages, currentStageId, onStageC
         </p>
       )}
       {!!selectedPipelineId && etapasDoFunilEscolhido.length > 0 && !etapaAtualVisivel && !trocandoDeFunil && (
-        <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+          <AlertTriangle size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" />
           <span>A etapa atual do lead não está liberada para o seu perfil — por isso o campo aparece vazio.</span>
         </p>
       )}
