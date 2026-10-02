@@ -64,16 +64,20 @@ export function BlocosSdr({ nome, blocos }: { nome: string; blocos: Blocos | und
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {b.itens.map((it) => {
               const ids = blocos?.[it.chave] ?? [];
+              const base = b.base ? (blocos?.[b.base] ?? []).length : 0;
+              const pct = b.base && it.chave !== b.base ? fmtPct(ids.length, base) : null;
               return (
                 <button key={it.chave} type="button" disabled={!ids.length}
                   onClick={() => setLista({ titulo: `${nome} · ${b.titulo} · ${it.rotulo} (${ids.length})`, leadIds: ids })}
                   className={cn("flex flex-col items-start rounded-xl px-3 py-2 text-left transition hover:opacity-85 disabled:cursor-default disabled:hover:opacity-100", TONS[it.tom])}>
                   <span className="text-[11px] font-medium opacity-80">{it.rotulo}</span>
                   <span className="text-xl font-bold tabular-nums">{blocos ? ids.length : "–"}</span>
+                  {pct && pct !== "—" ? <span className="text-[11px] leading-tight opacity-75">{pct} do total</span> : null}
                 </button>
               );
             })}
           </div>
+
         </div>
       ))}
       <DialogoLeads lista={lista} linhas={linhas} onClose={() => setLista(null)} />
