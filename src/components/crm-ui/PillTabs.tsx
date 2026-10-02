@@ -106,7 +106,7 @@ function PillTabsInner<T extends string | number>(
               "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
               size === "sm" ? "h-8 px-3 text-xs" : "h-9 px-4 text-[13px]",
               selected
-                ? "bg-primary text-primary-foreground shadow-brand"
+                ? "border border-primary/20 bg-primary-soft text-primary-soft-fg"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
@@ -116,7 +116,7 @@ function PillTabsInner<T extends string | number>(
               <span
                 className={cn(
                   "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
-                  selected ? "bg-primary-foreground/25 text-primary-foreground" : "bg-muted text-muted-foreground",
+                  selected ? "bg-primary/10 text-primary-soft-fg" : "bg-muted text-muted-foreground",
                 )}
               >
                 {it.count}
