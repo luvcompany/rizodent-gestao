@@ -5673,6 +5673,7 @@ export type Database = {
               stage_name: string
             }[]
           }
+      cidades_do_tenant: { Args: never; Returns: string[] }
       cleanup_expired_lead_backups: { Args: never; Returns: number }
       cleanup_system_logs: { Args: never; Returns: undefined }
       closer_clinicas_do_tenant: {
@@ -6142,6 +6143,8 @@ export type Database = {
           name: string
         }[]
       }
+      get_my_tenant_config: { Args: never; Returns: Json }
+      get_public_branding: { Args: { _slug?: string }; Returns: Json }
       get_tenant_by_slug: {
         Args: { _slug: string }
         Returns: {
@@ -6193,6 +6196,7 @@ export type Database = {
       is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
+      kanban_contadores: { Args: { p_pipeline: string }; Returns: Json }
       lead_da_caixa_do_instagram: {
         Args: { _lead_id: string }
         Returns: boolean
@@ -6957,6 +6961,7 @@ export type Database = {
         Returns: boolean
       }
       sem_acento: { Args: { p_texto: string }; Returns: string }
+      servicos_do_tenant: { Args: never; Returns: string[] }
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
