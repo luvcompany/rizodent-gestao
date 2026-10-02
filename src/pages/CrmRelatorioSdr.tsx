@@ -144,13 +144,14 @@ const COLUNAS: Coluna[] = [
   },
 ];
 
-type Tom = "primary" | "success" | "destructive" | "info" | "warning";
+type Tom = "primary" | "success" | "destructive" | "info" | "warning" | "muted";
 const TOM: Record<Tom, string> = {
   primary: "bg-primary-soft text-primary-soft-fg",
   success: "bg-success-soft text-success-soft-foreground",
   destructive: "bg-destructive-soft text-destructive-soft-foreground",
   info: "bg-info-soft text-info-soft-foreground",
   warning: "bg-warning-soft text-warning-soft-foreground",
+  muted: "bg-muted text-foreground",
 };
 
 function KpiEquipe({ label, value, apoio, icon: Icon, tom }: {
