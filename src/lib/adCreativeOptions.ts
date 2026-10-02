@@ -68,7 +68,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
       ad_account_id: current.ad_account_id || candidate.ad_account_id,
-      ad_account_name: current.ad_account_name || candidate.ad_account_name,
+      ad_account_name: melhorConta(current.ad_account_name, candidate.ad_account_name),
     } : candidate);
   }
 
@@ -89,7 +89,7 @@ export function mergeAdCandidates(candidates: AdCandidate[]): AdOption[] {
       descricao_anuncio: current.descricao_anuncio || candidate.descricao_anuncio,
       link_anuncio: current.link_anuncio || candidate.link_anuncio,
       ad_account_id: current.ad_account_id || candidate.ad_account_id,
-      ad_account_name: current.ad_account_name || candidate.ad_account_name,
+      ad_account_name: melhorConta(current.ad_account_name, candidate.ad_account_name),
       group_key,
     });
   }
