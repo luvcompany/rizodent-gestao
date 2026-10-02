@@ -300,14 +300,6 @@ export default function CrmRelatorioSdr() {
                 {sdrs.map((l) => (
                   <CartaoSdr key={l.user_id ?? l.nome} linha={l} />
                 ))}
-                {total && (
-                  <CartaoSdr
-                    linha={total}
-                    titulo="Equipe (total)"
-                    subtitulo={`${sdrs.length} ${sdrs.length === 1 ? "SDR" : "SDRs"}`}
-                    destaque
-                  />
-                )}
               </div>
             </section>
           </>
