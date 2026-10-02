@@ -37,8 +37,19 @@ function melhorImagem(a: string | null, b: string | null): string | null {
   return a || b;
 }
 
+/** A Meta manda a mesma conta como "123" ou "act_123"; tratamos como uma só. */
+const accountId = (v: string | null) => (v ?? "").trim().replace(/^act_/i, "");
+
+/** Prefere o nome amigável ("Rizodent Ipiaú") ao código ("CA 01 - RIZODENT (IPIAÚ)"). */
+function melhorConta(a: string | null, b: string | null): string | null {
+  const codigo = (v: string | null) => !!v && /^CA\s*\d+\s*-/i.test(v);
+  if (a && !codigo(a)) return a;
+  if (b && !codigo(b)) return b;
+  return a || b;
+}
+
 export function adGroupKey(ad: AdCandidate): string {
-  const account = normalizedText(ad.ad_account_id || ad.ad_account_name) || "sem-conta";
+  const account = normalizedText(accountId(ad.ad_account_id) || ad.ad_account_name) || "sem-conta";
   const identity = normalizedText(ad.nome_anuncio)
     || normalizedText(ad.descricao_anuncio)
     || normalizedImage(ad.imagem_origem)
