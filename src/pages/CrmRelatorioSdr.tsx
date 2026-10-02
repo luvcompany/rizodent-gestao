@@ -297,56 +297,18 @@ export default function CrmRelatorioSdr() {
 
             <section className="space-y-3">
               <h2 className="text-lg font-semibold text-foreground">Por SDR</h2>
-              <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-card">
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[1240px]">
-                    <TableHeader>
-                      <TableRow className="border-border/60 bg-muted/50 hover:bg-muted/50">
-                        <TableHead className="sticky left-0 z-10 bg-muted/50 text-xs font-medium text-muted-foreground">SDR</TableHead>
-                        {COLUNAS.map((c) => (
-                          <TableHead key={c.chave} className="whitespace-nowrap text-right text-xs font-medium text-muted-foreground" title={c.dica}>
-                            {c.titulo}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sdrs.map((l) => (
-                        <TableRow key={l.user_id ?? l.nome} className={cn("border-border/60", l.bloqueada && "opacity-70")}>
-                          <TableCell className="sticky left-0 z-10 bg-card">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-medium text-foreground">{l.nome}</span>
-                              <span className="text-xs text-muted-foreground">{l.email}</span>
-                              <span className="flex flex-wrap gap-1">
-                                {l.bloqueada && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Bloqueada</Badge>}
-                                {!l.bloqueada && l.no_rodizio === false && (
-                                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground">Fora do rodízio</Badge>
-                                )}
-                              </span>
-                            </div>
-                          </TableCell>
-                          {COLUNAS.map((c) => (
-                            <CelulaNumero key={c.chave} valor={c.render(l)} apoio={c.apoio?.(l)} />
-                          ))}
-                        </TableRow>
-                      ))}
-                      {total && (
-                        <TableRow className="border-t-2 border-border bg-muted font-semibold hover:bg-muted">
-                          {/* Fundo sólido na célula fixa: translúcido deixaria as colunas roladas aparecerem por baixo. */}
-                          <TableCell className="sticky left-0 z-10 bg-muted text-foreground">
-                            Equipe (total)
-                            <span className="block text-xs font-normal text-muted-foreground">
-                              {sdrs.length} {sdrs.length === 1 ? "SDR" : "SDRs"}
-                            </span>
-                          </TableCell>
-                          {COLUNAS.map((c) => (
-                            <CelulaNumero key={c.chave} valor={c.render(total)} apoio={c.apoio?.(total)} destaque />
-                          ))}
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {sdrs.map((l) => (
+                  <CartaoSdr key={l.user_id ?? l.nome} linha={l} />
+                ))}
+                {total && (
+                  <CartaoSdr
+                    linha={total}
+                    titulo="Equipe (total)"
+                    subtitulo={`${sdrs.length} ${sdrs.length === 1 ? "SDR" : "SDRs"}`}
+                    destaque
+                  />
+                )}
               </div>
             </section>
           </>
