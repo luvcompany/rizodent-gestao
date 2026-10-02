@@ -13,6 +13,7 @@ import { ptBR } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import {
   CalendarIcon, UserPlus, CalendarCheck, CheckCircle2, XCircle, Repeat, Ban, Loader2,
+  ChevronDown, Check, ArrowLeft,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,8 @@ export default function RelatorioAgendamentos() {
   const [preset, setPreset] = useState<string>("mes");
   const [range, setRange] = useState<[Date, Date]>(PRESETS[4].range());
   const [custom, setCustom] = useState<DateRange | undefined>();
+  const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<"lista" | "calendario">("lista");
   const [dados, setDados] = useState<Dados | null>(null);
   const [loading, setLoading] = useState(false);
   const [lista, setLista] = useState<{ titulo: string; ids: string[] } | null>(null);
