@@ -782,16 +782,17 @@ export default function CrmAutomacoes() {
   if (loading) return <div className="flex items-center justify-center h-screen bg-background"><span className="text-muted-foreground">Carregando...</span></div>;
 
   return (
-    <div className="flex flex-col overflow-hidden bg-background -m-6" style={{ height: "calc(100vh - 4rem)" }}>
+    <div className="-m-2 flex flex-col overflow-hidden bg-background sm:-m-4 lg:-m-6" style={{ height: "calc(100vh - 4rem)" }}>
       {/* Header */}
-      <div className="flex-shrink-0 bg-card border-b border-border/60 px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap overflow-hidden min-w-0 shadow-card">
-        <div className="flex items-center gap-3 min-w-0 flex-wrap">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary-soft-foreground"><Bot size={21} /></div>
-          <h1 className="break-words text-2xl font-bold text-foreground">Configuração do Funil</h1>
+      <div className="flex-shrink-0 px-4 pb-4 pt-5 sm:px-6 lg:pt-6">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary-soft-fg"><Bot size={20} /></div>
+          <h1 className="break-words text-[28px] font-bold leading-tight tracking-tight text-foreground sm:text-[32px]">Configuração do Funil</h1>
           {pipelines.length > 0 && (
             <div className="flex items-center gap-1">
               <select
-                className="bg-secondary border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="h-10 rounded-xl border border-border/60 bg-card px-3 text-sm font-medium text-foreground shadow-xs outline-none transition-colors focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
                 value={selectedPipelineId}
                 onChange={(e) => fetchData(e.target.value)}
               >
@@ -802,9 +803,9 @@ export default function CrmAutomacoes() {
               {(podeReordenarFunis || podeDuplicarFunil || podeExcluirFunil) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl text-muted-foreground" aria-label="Ações do funil">
                       <MoreVertical size={16} />
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     {podeReordenarFunis && (
@@ -853,30 +854,31 @@ export default function CrmAutomacoes() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={() => setNewPipelineOpen(true)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => setNewPipelineOpen(true)} className="rounded-xl bg-card shadow-xs">
             <Plus size={14} className="mr-1" /> Novo Funil
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setNewStageOpen(true)}>
+          <Button onClick={() => setNewStageOpen(true)} className="rounded-xl shadow-crm-brand">
             <Plus size={14} className="mr-1" /> Nova Etapa
           </Button>
         </div>
+        </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 sm:px-6 lg:flex-row lg:overflow-hidden lg:pb-6">
         {/* Left panel - Lead sources */}
-        <div className="m-4 mr-0 w-[280px] flex-shrink-0 overflow-y-auto rounded-card border border-border/60 bg-card p-5 shadow-card">
-          <h2 className="mb-4 text-[15px] font-semibold text-foreground">Fontes de Lead</h2>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
+        <div className="w-full flex-shrink-0 overflow-y-auto rounded-card border border-border/60 bg-card p-5 shadow-card lg:w-[292px]">
+          <h2 className="mb-5 text-base font-semibold text-foreground">Fontes de Lead</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-sunken/60 p-3">
+              <div className="min-w-0">
                 <div className="text-sm text-foreground">Etapa de leads de entrada</div>
                 <div className="text-xs text-muted-foreground">Leads entram na primeira etapa</div>
               </div>
               <Switch defaultChecked />
             </div>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-sunken/60 p-3">
+              <div className="min-w-0">
                 <div className="text-sm text-foreground">Controle duplicado</div>
                 <button onClick={() => setDuplicateRulesOpen(true)} className="text-xs text-primary cursor-pointer hover:underline">Configurar regras</button>
               </div>
@@ -886,8 +888,8 @@ export default function CrmAutomacoes() {
                 SDRs (quem é dono do lead). Não foi pedido e não é da SDR: para
                 ela o bloco não existe — nem o Configurar, nem o Switch. */}
             {podeDistribuirLeads && (
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-surface-sunken/60 p-3">
+                <div className="min-w-0">
                   <div className="text-sm text-foreground">Distribuição automática</div>
                   <p className="text-xs text-muted-foreground max-w-xs">Distribui novos leads automaticamente entre os atendentes selecionados, usando Round Robin (alternado) ou Menor Carga.</p>
                   <button onClick={() => setRoundRobinOpen(true)} className="text-xs text-primary cursor-pointer hover:underline mt-0.5">Configurar</button>
@@ -914,15 +916,15 @@ export default function CrmAutomacoes() {
                 }} />
               </div>
             )}
-            <hr className="border-border" />
-            <div className="mb-2 text-xs font-semibold text-muted-foreground">Fontes conectadas</div>
+            <hr className="border-border/60" />
+            <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Fontes conectadas</div>
             {channels.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhuma fonte conectada a este funil.</p>
             ) : channels.map(ch => {
               const isWhatsapp = ch.channel_type === "whatsapp";
               const icons: Record<string, string> = { instagram: "📸", facebook: "📘", manual: "✋", website: "🌐" };
               return (
-                <div key={ch.id} className="flex items-center justify-between gap-2 rounded-control border border-border/60 px-3 py-2.5">
+                <div key={ch.id} className="flex items-center justify-between gap-2 rounded-xl border border-border/60 bg-card px-3 py-2.5 shadow-xs">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     {isWhatsapp ? (
                       <svg viewBox="0 0 32 32" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -975,13 +977,13 @@ export default function CrmAutomacoes() {
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex min-h-[420px] min-w-0 flex-1 flex-col overflow-hidden rounded-card border border-border/60 bg-surface-sunken/50 shadow-xs">
           {/* Stages horizontal with drag reorder */}
-          <div className="flex-shrink-0 overflow-x-auto p-6 border-b border-border">
+          <div className="min-h-0 flex-1 overflow-x-auto p-4 sm:p-5 lg:p-6">
             <DragDropContext onDragEnd={handleStageDragEnd}>
               <Droppable droppableId="stages-list" direction="horizontal">
                 {(provided) => (
-                  <div ref={provided.innerRef} {...provided.droppableProps} className="flex gap-4 items-start min-w-max">
+                  <div ref={provided.innerRef} {...provided.droppableProps} className="flex min-w-max items-start gap-4">
                     {stages.map((stage, idx) => {
                       const stageAutos = getAutomationsForStage(stage.id);
                       // Automação de etapa que não é dela: o banco recusa UPDATE e DELETE,
@@ -994,11 +996,11 @@ export default function CrmAutomacoes() {
                             <div
                               ref={prov.innerRef}
                               {...prov.draggableProps}
-                            className={`w-[280px] flex-shrink-0 overflow-hidden rounded-card border border-border/60 bg-card shadow-card ${snap.isDragging ? "shadow-float ring-2 ring-primary" : ""}`}
+                            className={`w-[292px] flex-shrink-0 overflow-hidden rounded-card border border-border/60 bg-card shadow-card transition-shadow ${snap.isDragging ? "shadow-float ring-2 ring-primary/40" : ""}`}
                             >
-                              <div className="h-1" style={{ backgroundColor: stage.color }} />
+                              <div className="h-1.5" style={{ backgroundColor: stage.color }} />
                               <div className="p-4">
-                              <div className="flex items-center justify-between mb-1">
+                              <div className="mb-1 flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-1 flex-1 min-w-0">
                                     {/* Arrastar reescreve a position de todas as etapas do funil; sem
                                         direito sobre uma delas o laço para no meio. Alça só quando dá. */}
@@ -1136,13 +1138,13 @@ export default function CrmAutomacoes() {
                                     )}
                                   </div>
                                 </div>
-                                <div className="text-xs text-primary cursor-pointer mb-3">{stageAutos.length} automação(ões)</div>
+                                <div className="mb-3 text-xs font-medium text-primary-soft-fg">{stageAutos.length} automação(ões)</div>
 
                                 <div className="space-y-2">
                                   {stageAutos.map(auto => (
                                     <div
                                       key={auto.id}
-                                      className={`bg-primary/10 border border-primary/20 rounded p-2 text-xs transition-colors ${podeMexerNaAutomacao ? "cursor-pointer hover:bg-primary/20" : ""}`}
+                                      className={`rounded-xl border border-border/60 bg-surface-sunken/70 p-3 text-xs transition-colors ${podeMexerNaAutomacao ? "cursor-pointer hover:border-primary/20 hover:bg-primary-soft/60" : ""}`}
                                       title={podeMexerNaAutomacao ? undefined : "Automação da estrutura da clínica — só a gestão altera"}
                                       onClick={() => {
                                         if (!podeMexerNaAutomacao) return;
@@ -1156,7 +1158,7 @@ export default function CrmAutomacoes() {
                                         setAutoModalOpen(true);
                                       }}
                                     >
-                                      <div className="flex items-center gap-1 text-primary mb-1">
+                                      <div className="mb-1 flex items-center gap-1 text-primary-soft-fg">
                                         <Bot size={12} />
                                         <span className="font-medium">{triggerLabel(auto.trigger_type)}</span>
                                       </div>
@@ -1174,7 +1176,7 @@ export default function CrmAutomacoes() {
                                         {auto.trigger_type === "manual_bulk_move" && podeMexerNaAutomacao && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRunBulkMove(auto); }}
-                                            className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
+                                            className="rounded-lg bg-primary-soft px-2 py-1 text-[10px] font-semibold text-primary-soft-fg hover:bg-primary-soft/70"
                                           >
                                             Executar
                                           </button>
@@ -1182,7 +1184,7 @@ export default function CrmAutomacoes() {
                                         {auto.trigger_type === "manual_bulk_send" && podeMexerNaAutomacao && (
                                           <button
                                             onClick={(e) => { e.stopPropagation(); handleRunBulkSend(auto); }}
-                                            className="text-[10px] px-2 py-0.5 rounded bg-primary text-primary-foreground hover:opacity-90"
+                                            className="rounded-lg bg-primary-soft px-2 py-1 text-[10px] font-semibold text-primary-soft-fg hover:bg-primary-soft/70"
                                           >
                                             Executar
                                           </button>
@@ -1200,7 +1202,7 @@ export default function CrmAutomacoes() {
                                       setAutoForm({ stage_id: stage.id, trigger_type: "on_enter", action_type: "send_template", action_config: {}, editId: "" });
                                       setAutoModalOpen(true);
                                     }}
-                                    className="w-full text-xs text-primary bg-primary/10 hover:bg-primary/20 rounded py-1.5 flex items-center justify-center gap-1 transition-colors"
+                                    className="flex h-9 w-full items-center justify-center gap-1 rounded-xl border border-primary/15 bg-primary-soft text-xs font-medium text-primary-soft-fg transition-colors hover:bg-primary-soft/70"
                                   >
                                     <Plus size={12} /> Adicionar automação
                                   </button>
@@ -1215,7 +1217,7 @@ export default function CrmAutomacoes() {
                     {provided.placeholder}
                     <button
                       onClick={() => setNewStageOpen(true)}
-                      className="mt-8 w-10 h-10 rounded-full border-2 border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary flex items-center justify-center flex-shrink-0 transition-colors"
+                      className="mt-8 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-card text-muted-foreground shadow-xs transition-colors hover:border-primary/40 hover:bg-primary-soft hover:text-primary-soft-fg"
                     >
                       <Plus size={18} />
                     </button>
@@ -1225,8 +1227,6 @@ export default function CrmAutomacoes() {
             </DragDropContext>
           </div>
 
-          {/* Empty spacer */}
-          <div className="flex-1" />
         </div>
       </div>
 
