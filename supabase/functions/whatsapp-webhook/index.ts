@@ -1101,6 +1101,7 @@ Deno.serve(async (req) => {
                   .from("ad_id_mapping")
                   .select("ad_account_id, ad_account_name, ad_name, ad_headline, ad_body, thumbnail_url")
                   .eq("ad_id", adSourceId)
+                  .eq("tenant_id", tenantId)
                   .maybeSingle();
                 if (cached) {
                   if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;

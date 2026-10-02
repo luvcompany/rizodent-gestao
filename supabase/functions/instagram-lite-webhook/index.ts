@@ -528,7 +528,7 @@ async function persistMessage(opts: {
               .eq("tenant_id", opts.account.tenant_id).eq("ativo", true)
               .eq("ad_id_suffix", suffix).limit(1).maybeSingle(),
             supabase.from("ad_id_mapping").select("ad_account_id, ad_account_name")
-              .eq("ad_id", ref.adSourceId).limit(1).maybeSingle(),
+              .eq("tenant_id", opts.account.tenant_id).eq("ad_id", ref.adSourceId).limit(1).maybeSingle(),
           ]);
           const acctId = (adMap as any)?.ad_account_id || (acctMap as any)?.ad_account_id || null;
           const acctName = (adMap as any)?.ad_account_name || null;
