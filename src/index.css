@@ -492,6 +492,11 @@
     background-color: hsl(var(--primary-soft-2));
     color: hsl(var(--primary-soft-fg));
   }
+  /* Ícones/textos filhos com text-primary-foreground próprio dentro de um
+     fundo da marca suavizado precisam acompanhar o tom escuro do soft-fg. */
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where([class~="bg-primary"]) :where([class~="text-primary-foreground"]) {
+    color: hsl(var(--primary-soft-fg));
+  }
   :where(html:root:has(.crm-shell)) .crm-btn-outline {
     --crm-btn-outline-border: hsl(var(--border));
     --crm-btn-outline-bg: hsl(var(--card));
