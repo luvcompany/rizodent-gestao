@@ -31,7 +31,6 @@ const BLOCOS: { titulo: string; ajuda: string; itens: Item[] }[] = [
     { rotulo: "Faltas", chave: "agd_falta", tom: "falta" },
     { rotulo: "Cancelamentos", chave: "agd_cancelou", tom: "cancelou" },
     { rotulo: "Pendentes", chave: "agd_pendente", tom: "pendente" },
-    { rotulo: "Remarcados", chave: "agd_remarcou", tom: "remarcou" },
   ] },
   { titulo: "Remarcados", ajuda: "Consultas seguintes do lead, marcadas para o período", itens: [
     { rotulo: "Total", chave: "rem", tom: "total" },
