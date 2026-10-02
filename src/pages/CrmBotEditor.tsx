@@ -568,7 +568,7 @@ function BotEditorInner() {
             disabled={!podeSalvarBot}
             aria-pressed={on}
             onClick={() => alternarCanal(c.key)}
-            className={`h-7 text-xs font-medium px-3 rounded-full border transition-colors ${on ? "bg-primary text-primary-foreground border-primary shadow-xs" : "bg-card text-muted-foreground border-border/60 hover:bg-muted"}`}
+            className={`h-7 text-xs font-medium px-3 rounded-full border transition-colors ${on ? "border-primary/20 bg-primary-soft text-primary-soft-fg" : "bg-card text-muted-foreground border-border/60 hover:bg-muted"}`}
           >
             {c.label}
           </button>

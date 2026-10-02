@@ -653,7 +653,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                             onClick={() => toggleBhDay(d.value)}
                             className={`px-2 py-1 rounded text-xs border transition-colors ${
                               active
-                                ? "bg-primary text-primary-foreground border-primary"
+                                ? "border-primary/20 bg-primary-soft text-primary-soft-fg"
                                 : "bg-background text-muted-foreground border-border hover:border-primary/50"
                             }`}
                           >

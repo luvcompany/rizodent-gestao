@@ -967,7 +967,7 @@ export default function CrmCalendario() {
           <Button
             variant={mainView === "agendamentos" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "agendamentos" ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "agendamentos" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("agendamentos")}
           >
             <CalendarDays size={16} className="mr-2" />
@@ -976,7 +976,7 @@ export default function CrmCalendario() {
           <Button
             variant={mainView === "tarefas" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "tarefas" ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "tarefas" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("tarefas")}
           >
             <Clock size={16} className="mr-2" />
@@ -1016,7 +1016,7 @@ export default function CrmCalendario() {
                   key={v}
                   variant={taskView === v ? "default" : "ghost"}
                   size="sm"
-                  className={cn("h-8 rounded-full px-3.5 text-[13px] font-medium", taskView === v ? "bg-primary text-primary-foreground shadow-brand hover:bg-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+                  className={cn("h-8 rounded-full px-3.5 text-[13px] font-medium", taskView === v ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
                   onClick={() => setTaskView(v)}
                 >
                   {v === "events" ? "Eventos" : v === "list" ? "Lista" : v === "week" ? "Semana" : "Mês"}
