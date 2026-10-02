@@ -476,6 +476,27 @@
   :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) button:where([class~="bg-primary"]):hover {
     background-color: hsl(var(--primary-soft-2));
   }
+  /* Regra geral do laranja suave: qualquer elemento da marca em fundo cheio
+     (chips de ícone, abas ativas, dia "hoje" do calendário, pílulas de filtro,
+     cabeçalhos de simulador) vira tom suave. Dois seletores de atributo =
+     especificidade 0,2,0, vencendo as classes utilitárias soltas; o hover
+     explícito cobre os que têm hover:bg-primary. */
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where([class~="bg-primary"]):where([class~="text-primary-foreground"]) {
+    border-color: hsl(var(--primary) / 0.2);
+    background-color: hsl(var(--primary-soft));
+    color: hsl(var(--primary-soft-fg));
+    --tw-shadow: 0 0 #0000;
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+  }
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where([class~="bg-primary"]):where([class~="text-primary-foreground"]):hover {
+    background-color: hsl(var(--primary-soft-2));
+    color: hsl(var(--primary-soft-fg));
+  }
+  /* Ícones/textos filhos com text-primary-foreground próprio dentro de um
+     fundo da marca suavizado precisam acompanhar o tom escuro do soft-fg. */
+  :where(html:root:has(.crm-shell), html:root:has(.admin-shell)) :where([class~="bg-primary"]) :where([class~="text-primary-foreground"]) {
+    color: hsl(var(--primary-soft-fg));
+  }
   :where(html:root:has(.crm-shell)) .crm-btn-outline {
     --crm-btn-outline-border: hsl(var(--border));
     --crm-btn-outline-bg: hsl(var(--card));
