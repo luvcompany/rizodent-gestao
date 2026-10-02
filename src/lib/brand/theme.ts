@@ -460,7 +460,9 @@ function baseDoModo(effective: EffectiveBrand, modo: Modo): { hex: string; hsl: 
 function baseDaAcaoDoModo(effective: EffectiveBrand, modo: Modo): { hex: string; hsl: Hsl } {
   const action = normalizarHex(effective.actionColor) ?? normalizarHex(effective.primary) ?? COR_PADRAO_SISTEMA;
   const hex = modo === "claro" ? action : derivarCorEscura(action);
-  return { hex, hsl: hexParaHsl(hex) ?? hexParaHsl(COR_PADRAO_SISTEMA)! };
+  const hsl = hexParaHsl(hex);
+  if (!hsl) return baseDoModo(effective, modo);
+  return { hex, hsl };
 }
 
 /**
