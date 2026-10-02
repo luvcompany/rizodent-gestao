@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     const modoLeads = body?.mode === "leads";
     const limite = Math.min(Math.max(Number(body?.limit) || 40, 1), 100);
 
-    type Grupo = { adId: string; tenantId: string | null; pipelineId: string; link: string | null; leadIds: Set<string> };
+    type Grupo = { atual?: string | null; adId: string; tenantId: string | null; pipelineId: string; link: string | null; leadIds: Set<string> };
     const grupos = new Map<string, Grupo>();
 
     if (modoLeads) {
@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
         let g = grupos.get(key);
         if (!g) {
           if (grupos.size >= limite) continue;
-          g = { adId: String(l.ad_id), tenantId: l.tenant_id, pipelineId: l.pipeline_id, link: l.link_anuncio || null, leadIds: new Set() };
+          g = { adId: String(l.ad_id), tenantId: l.tenant_id, pipelineId: l.pipeline_id, link: l.link_anuncio || null, atual: l.imagem_origem || null, leadIds: new Set() };
           grupos.set(key, g);
         }
         g.leadIds.add(l.id);
@@ -167,6 +167,10 @@ Deno.serve(async (req) => {
 
       if (imageUrl && modoLeads && !imageUrl.includes("/chat-media/")) {
         // ok, será persistida abaixo
+      }
+      if (!imageUrl && modoLeads && g.atual && /fbcdn|facebook/.test(g.atual)) {
+        // Meta não devolveu o anúncio: tenta guardar o link que já temos, se ainda abrir.
+        try { const t = await fetch(g.atual, { method: "HEAD" }); if (t.ok) imageUrl = g.atual; } catch (_) { /* expirou */ }
       }
       if (!imageUrl) { console.log(`[REPAIR] sem imagem ad ${adSourceId} tokens=${tokensDo(g.pipelineId, g.tenantId).length}`); falhas.push(adSourceId); continue; }
 
