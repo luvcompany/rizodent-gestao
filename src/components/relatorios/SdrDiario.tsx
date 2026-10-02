@@ -157,11 +157,19 @@ const TOM_KPI: Record<string, string> = {
   success: "bg-success-soft text-success-soft-foreground",
 };
 
-function KpiEquipeDia({ label, value, apoio, icon: Icon, tom }: {
-  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: keyof typeof TOM_KPI;
+function KpiEquipeDia({ label, value, apoio, icon: Icon, tom, onClick }: {
+  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: keyof typeof TOM_KPI; onClick?: () => void;
 }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
+    <Tag
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "rounded-2xl border border-border/60 bg-card p-5 text-left shadow-card",
+        onClick && "cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <span className="text-sm leading-snug text-muted-foreground">{label}</span>
         <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TOM_KPI[tom])}>
@@ -170,13 +178,13 @@ function KpiEquipeDia({ label, value, apoio, icon: Icon, tom }: {
       </div>
       <div className="mt-3 text-[30px] font-bold leading-none tabular-nums text-foreground">{value}</div>
       {apoio ? <p className="mt-2 text-xs text-muted-foreground">{apoio}</p> : null}
-    </div>
+    </Tag>
   );
 }
 
 // ---------- Aba "Agendamentos feitos": comparativo por SDR ----------
 
-function CartaoSdrFeitos({ nome, rows, diasUteis, destaque, extra }: { nome: string; rows: LinhaDiaria[]; diasUteis: number; destaque?: boolean; extra?: React.ReactNode }) {
+function CartaoSdrFeitos({ nome, rows, diasUteis, destaque, extra, onAbrirLista }: { nome: string; rows: LinhaDiaria[]; diasUteis: number; destaque?: boolean; extra?: React.ReactNode; onAbrirLista?: (titulo: string, rows: LinhaDiaria[]) => void }) {
   const porDia = useMemo(() => {
     const m = new Map<string, LinhaDiaria[]>();
     rows.forEach((r) => { const arr = m.get(r.dia_marcou) ?? []; arr.push(r); m.set(r.dia_marcou, arr); });
@@ -203,10 +211,14 @@ function CartaoSdrFeitos({ nome, rows, diasUteis, destaque, extra }: { nome: str
       <div className="mt-5">
         <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Agendamentos feitos</h3>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <div className={cn(balao, "bg-primary-soft text-primary-soft-fg")}>
+          <button
+            type="button"
+            onClick={() => rows.length > 0 && onAbrirLista?.(`Agendamentos feitos por ${nome}`, rows)}
+            className={cn(balao, "bg-primary-soft text-primary-soft-fg text-left transition-colors", rows.length > 0 && "cursor-pointer hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+          >
             <span className="text-[11px] font-medium opacity-80">Total</span>
             <span className="text-xl font-bold leading-tight tabular-nums">{rows.length}</span>
-          </div>
+          </button>
           <div className={cn(balao, "bg-info-soft text-info-soft-foreground")}>
             <span className="text-[11px] font-medium opacity-80">Média por dia útil</span>
             <span className="text-xl font-bold leading-tight tabular-nums">{(rows.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</span>
@@ -312,7 +324,9 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <KpiEquipeDia label="Agendamentos feitos" value={feitos.length} icon={CalendarCheck} tom="primary" />
+            <KpiEquipeDia
+              label="Agendamentos feitos" value={feitos.length} icon={CalendarCheck} tom="primary"
+              onClick={feitos.length > 0 ? () => setLista({ titulo: "Agendamentos feitos pela equipe", leadIds: feitos.map((x) => x.lead_id) }) : undefined} />
             <KpiEquipeDia
               label="Média por dia útil"
               value={(feitos.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
@@ -327,11 +341,11 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
         <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Produção por SDR</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique num dia para ver os leads.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique no Total ou num dia para ver os leads.</p>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {sdrs.map((s) => (
-              <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} />
+              <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} onAbrirLista={(t, r) => setLista({ titulo: t, leadIds: r.map((x) => x.lead_id) })} />
             ))}
           </div>
         </div>
