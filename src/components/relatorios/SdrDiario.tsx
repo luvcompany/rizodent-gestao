@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, AlertTriangle, MessageCircle, CalendarCheck, CalendarX, TrendingUp, Trophy, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -157,7 +158,7 @@ const TOM_KPI: Record<string, string> = {
 };
 
 function KpiEquipeDia({ label, value, apoio, icon: Icon, tom }: {
-  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: React.ComponentType<{ size?: number }>; tom: keyof typeof TOM_KPI;
+  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: keyof typeof TOM_KPI;
 }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
