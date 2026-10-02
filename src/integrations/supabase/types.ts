@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      _bkp_dontus_paciente_seen_20261002: {
+        Row: {
+          clinica_id: string | null
+          created_at: string | null
+          id: number | null
+          id_paciente_dontus: number | null
+          primeira_data: string | null
+          primeira_data_orto: string | null
+          refreshed_on: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string | null
+          id?: number | null
+          id_paciente_dontus?: number | null
+          primeira_data?: string | null
+          primeira_data_orto?: string | null
+          refreshed_on?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string | null
+          id?: number | null
+          id_paciente_dontus?: number | null
+          primeira_data?: string | null
+          primeira_data_orto?: string | null
+          refreshed_on?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       _bkp_messages_ad_20261002: {
         Row: {
           ad_account_name: string | null
