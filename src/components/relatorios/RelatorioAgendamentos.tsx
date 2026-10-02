@@ -151,7 +151,7 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
               className="rounded-full bg-slate-soft px-2.5 py-1 font-medium text-slate-soft-foreground disabled:opacity-50">
               Outros agendamentos de leads com histórico: {n("outros_agendamentos")}
             </button>
-            <span>Consulta nova criada sem usar a função de remarcar.</span>
+            <span>Consulta nova criada sem usar a função de remarcar. Já incluídos em Remarcados.</span>
           </div>
         )}
       </section>
