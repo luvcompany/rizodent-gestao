@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, MessageCircle, CalendarX, Trophy, Users } from "lucide-react";
+import { Loader2, AlertTriangle, MessageCircle, CalendarCheck, CalendarX, TrendingUp, Trophy, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -148,6 +149,31 @@ function BalaoDia({ titulo, rows, children, className }: { titulo: string; rows:
   );
 }
 
+// ---------- KPI da equipe no topo (mesmo padrão do "Equipe no período" da Visão geral) ----------
+
+const TOM_KPI: Record<string, string> = {
+  primary: "bg-primary-soft text-primary-soft-fg",
+  info: "bg-info-soft text-info-soft-foreground",
+  success: "bg-success-soft text-success-soft-foreground",
+};
+
+function KpiEquipeDia({ label, value, apoio, icon: Icon, tom }: {
+  label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: keyof typeof TOM_KPI;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-sm leading-snug text-muted-foreground">{label}</span>
+        <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TOM_KPI[tom])}>
+          <Icon size={16} />
+        </span>
+      </div>
+      <div className="mt-3 text-[30px] font-bold leading-none tabular-nums text-foreground">{value}</div>
+      {apoio ? <p className="mt-2 text-xs text-muted-foreground">{apoio}</p> : null}
+    </div>
+  );
+}
+
 // ---------- Aba "Agendamentos feitos": comparativo por SDR ----------
 
 function CartaoSdrFeitos({ nome, rows, diasUteis, destaque, extra }: { nome: string; rows: LinhaDiaria[]; diasUteis: number; destaque?: boolean; extra?: React.ReactNode }) {
@@ -273,17 +299,57 @@ export function SdrDiario({ modo, linhas, de, ate, extraPorSdr }: { modo: "feito
   if (modo === "feitos") {
     const feitos = linhas.filter((l) => l.dia_marcou >= de && l.dia_marcou <= ate);
     const diasUteis = dias.filter((d) => new Date(`${d}T12:00:00Z`).getUTCDay() !== 0).length || 1;
+    const porDiaEquipe = new Map<string, LinhaDiaria[]>();
+    feitos.forEach((r) => { const arr = porDiaEquipe.get(r.dia_marcou) ?? []; arr.push(r); porDiaEquipe.set(r.dia_marcou, arr); });
+    const diasComEquipe = Array.from(porDiaEquipe.keys()).sort();
+    const melhorEquipe = diasComEquipe.reduce<{ dia: string; n: number } | null>((b, d) => {
+      const n = porDiaEquipe.get(d)!.length;
+      return !b || n > b.n ? { dia: d, n } : b;
+    }, null);
     corpo = (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Produção por SDR</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique num dia para ver os leads.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {sdrs.map((s) => (
-            <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} />
-          ))}
-          <CartaoSdrFeitos nome="Equipe" rows={feitos} diasUteis={diasUteis} destaque />
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <KpiEquipeDia label="Agendamentos feitos" value={feitos.length} icon={CalendarCheck} tom="primary" />
+            <KpiEquipeDia
+              label="Média por dia útil"
+              value={(feitos.length / diasUteis).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+              icon={TrendingUp} tom="info" />
+            <KpiEquipeDia
+              label="Melhor dia"
+              value={melhorEquipe ? melhorEquipe.n : "—"}
+              icon={Trophy} tom="success"
+              apoio={melhorEquipe ? `em ${dataBR(melhorEquipe.dia).slice(0, 5)}` : undefined} />
+          </div>
+          {diasComEquipe.length > 0 && (
+            <div>
+              <h3 className="border-b border-border/60 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Por dia</h3>
+              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+                {diasComEquipe.map((d) => {
+                  const r = porDiaEquipe.get(d)!;
+                  return (
+                    <BalaoDia key={d} titulo={`A equipe marcou em ${dataBR(d)}`} rows={r}
+                      className="flex w-full flex-col items-start rounded-xl bg-muted px-3 py-2 text-left hover:bg-muted/70">
+                      <span className="text-[11px] text-muted-foreground"><span className="tabular-nums">{dataBR(d).slice(0, 5)}</span> {semana(d)}</span>
+                      <span className="text-lg font-bold leading-tight tabular-nums text-foreground">{r.length}</span>
+                    </BalaoDia>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Produção por SDR</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Quantas consultas cada SDR marcou, pelo dia em que marcou. Clique num dia para ver os leads.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {sdrs.map((s) => (
+              <CartaoSdrFeitos key={s.id} nome={s.nome} rows={feitos.filter((l) => l.user_id === s.id)} diasUteis={diasUteis} extra={extraPorSdr?.[s.id]} />
+            ))}
+          </div>
         </div>
       </div>
     );
