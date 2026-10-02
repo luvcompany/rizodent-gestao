@@ -223,6 +223,11 @@ export default function RelatorioAgendamentos({ range }: { range: [Date, Date] }
               </tbody>
             </table>
             {!linhas && <p className="py-6 text-center text-sm text-muted-foreground">Carregando…</p>}
+            {linhas && lista && linhas.length !== lista.ids.length && (
+              <p className="py-3 text-center text-sm text-destructive">
+                A lista trouxe {linhas.length} de {lista.ids.length} leads. Avise o suporte.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
