@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle, MessageCircle, CalendarCheck, TrendingUp, Trophy, Users } from "lucide-react";
+import { Loader2, AlertTriangle, MessageCircle, CalendarCheck, CalendarX, TrendingUp, Trophy, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
