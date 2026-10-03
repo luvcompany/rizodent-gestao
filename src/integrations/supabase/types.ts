@@ -2847,6 +2847,7 @@ export type Database = {
           instagram_username: string | null
           is_blocked: boolean
           last_inbound_at: string | null
+          last_instagram_interaction_type: string | null
           last_message: string | null
           last_message_at: string | null
           last_outbound_at: string | null
@@ -2905,6 +2906,7 @@ export type Database = {
           instagram_username?: string | null
           is_blocked?: boolean
           last_inbound_at?: string | null
+          last_instagram_interaction_type?: string | null
           last_message?: string | null
           last_message_at?: string | null
           last_outbound_at?: string | null
@@ -2963,6 +2965,7 @@ export type Database = {
           instagram_username?: string | null
           is_blocked?: boolean
           last_inbound_at?: string | null
+          last_instagram_interaction_type?: string | null
           last_message?: string | null
           last_message_at?: string | null
           last_outbound_at?: string | null
@@ -6212,6 +6215,7 @@ export type Database = {
           instagram_username: string | null
           is_blocked: boolean
           last_inbound_at: string | null
+          last_instagram_interaction_type: string | null
           last_message: string | null
           last_message_at: string | null
           last_outbound_at: string | null
@@ -6547,6 +6551,7 @@ export type Database = {
           instagram_username: string | null
           is_blocked: boolean
           last_inbound_at: string | null
+          last_instagram_interaction_type: string | null
           last_message: string | null
           last_message_at: string | null
           last_outbound_at: string | null
