@@ -1250,12 +1250,14 @@ export default function CrmCalendario() {
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2 flex min-h-10 flex-shrink-0 items-center gap-2 xl:pr-[330px]">
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
-            <h2 className="min-w-0 px-1 text-center text-[22px] font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
-              {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
-            </h2>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+          <div className="mb-2 flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+              <h2 className="whitespace-nowrap px-1 text-center text-xl font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
+                {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
+              </h2>
+              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+            </div>
             <Button variant="outline" size="sm" className="ml-1 h-9 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             <span className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
               {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
