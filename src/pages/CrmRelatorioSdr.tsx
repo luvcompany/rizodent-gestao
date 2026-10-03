@@ -159,9 +159,9 @@ function KpiEquipe({ label, value, apoio, icon: Icon, tom }: {
   label: string; value: React.ReactNode; apoio?: React.ReactNode; icon: LucideIcon; tom: Tom;
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-card">
+    <div className="flex min-h-[148px] flex-col rounded-2xl border border-border/60 bg-card p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
-        <span className="text-sm leading-snug text-muted-foreground">{label}</span>
+        <span className="min-w-0 text-sm leading-snug text-muted-foreground">{label}</span>
         <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", TOM[tom])}>
           <Icon className="h-4 w-4" />
         </span>
@@ -298,7 +298,7 @@ export default function CrmRelatorioSdr() {
           </div>
         ) : carregando ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+            <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
             </div>
             <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-6 shadow-card">
@@ -321,7 +321,7 @@ export default function CrmRelatorioSdr() {
             {total && (
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+                <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   <KpiEquipe label="Leads recebidos" value={fmtInt(total.leads_recebidos)} icon={Inbox} tom="info" />
                   <KpiEquipe label="Respondidos" value={fmtInt(total.leads_respondidos)} icon={MessageSquareReply} tom="primary"
                     apoio={fmtPct(total.leads_respondidos, total.leads_recebidos)} />
