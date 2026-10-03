@@ -6,10 +6,11 @@ import { HIDDEN_USER_IDS_PG } from "@/lib/hiddenUsers";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import {
   ChevronLeft, ChevronRight, CalendarDays, Phone, MessageSquare, Clock,
-  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Trash2
+  CheckCircle2, AlertTriangle, Circle, List, LayoutGrid, Trash2, SlidersHorizontal
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek,
