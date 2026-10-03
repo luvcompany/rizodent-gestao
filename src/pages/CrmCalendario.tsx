@@ -1250,41 +1250,41 @@ export default function CrmCalendario() {
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2 grid min-h-10 flex-shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:pr-[330px]">
+          <div className="mb-2 flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
             <div className="flex min-w-0 items-center gap-2">
               <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
-              <h2 className="min-w-0 px-1 text-center text-[22px] font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
+              <h2 className="whitespace-nowrap px-1 text-center text-xl font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
                 {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
               </h2>
               <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
-              <Button variant="outline" size="sm" className="ml-1 h-9 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             </div>
-            {/* Em telas largas, a legenda ocupa o espaço livre da mesma linha.
-                Quando necessário, ela rola dentro da própria faixa sem empilhar. */}
-            <div className="col-span-2 flex min-w-0 flex-shrink-0 items-center gap-1.5 overflow-x-auto text-[11px] xl:col-span-1 xl:[scrollbar-width:none] xl:[&::-webkit-scrollbar]:hidden">
-              <span className="mr-1 shrink-0 font-medium text-tertiary">Legenda:</span>
-              {legendaAgendamentos.map((item) => (
-                <span key={item.texto} className={cn("inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium", item.cor)}>
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
-                </span>
-              ))}
-              {/* Presença (AGENDA-11): coluna própria, independente da cor do
-                  status — só nas consultas em aberto. */}
-              {presencaDisponivel && (
-                <>
-                  <span className="ml-2 mr-1 shrink-0 font-medium text-tertiary">Presença:</span>
-                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-2.5 font-medium text-success-soft-foreground">
-                    <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
-                  </span>
-                  <span className="inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-2.5 font-medium text-muted-foreground">
-                    <Circle size={12} className="shrink-0" /> Sem confirmação
-                  </span>
-                </>
-              )}
-            </div>
+            <Button variant="outline" size="sm" className="ml-1 h-9 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             <span className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
               {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
             </span>
+          </div>
+          {/* Legenda em uma faixa própria para não disputar espaço com o
+              período, a contagem e o seletor de visualização. */}
+          <div className="mb-2 flex flex-shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="mr-1 font-medium text-tertiary">Legenda:</span>
+            {legendaAgendamentos.map((item) => (
+              <span key={item.texto} className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium", item.cor)}>
+                <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
+              </span>
+            ))}
+            {/* Presença (AGENDA-11): coluna própria, independente da cor do
+                status — só nas consultas em aberto. */}
+            {presencaDisponivel && (
+              <>
+                <span className="ml-2 mr-1 font-medium text-tertiary">Presença:</span>
+                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-2.5 font-medium text-success-soft-foreground">
+                  <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
+                </span>
+                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-2.5 font-medium text-muted-foreground">
+                  <Circle size={12} className="shrink-0" /> Sem confirmação
+                </span>
+              </>
+            )}
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
           <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
