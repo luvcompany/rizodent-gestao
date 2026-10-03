@@ -1638,6 +1638,21 @@ async function syncClinica(
       continue;
     }
 
+    // Mensalidade de orto (não conta no faturamento) não é importada.
+    if (recEsperado) {
+      plan.push({
+        action: "skip", reason: "mensalidade de orto (não importada)",
+        clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+        paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+        especialidade, especialidade_raw: espRaw, servico,
+        forma_pagamento: it.formaPagamento || null, recorrencia_orto: true, dontus_key,
+        origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+        matched_paciente_id: null, move_to_contratado: false, notification: null,
+      } as any);
+      continue;
+    }
+
+
 
     // 2) Elegibilidade + match
     // Regras:
