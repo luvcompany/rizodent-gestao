@@ -11,7 +11,7 @@ import {
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import {
-  AlertTriangle, BarChart3, CalendarCheck, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply, Star,
+  AlertTriangle, BarChart3, CalendarCheck, CalendarClock, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply, Star,
   type LucideIcon,
 } from "lucide-react";
 import { EmptyState } from "@/components/crm-ui";
@@ -144,9 +144,10 @@ const COLUNAS: Coluna[] = [
   },
 ];
 
-type Tom = "primary" | "success" | "destructive" | "info" | "warning" | "muted";
+type Tom = "primary" | "success" | "destructive" | "info" | "warning" | "muted" | "purple";
 const TOM: Record<Tom, string> = {
   primary: "bg-primary-soft text-primary-soft-fg",
+  purple: "bg-purple-soft text-purple-soft-foreground",
   success: "bg-success-soft text-success-soft-foreground",
   destructive: "bg-destructive-soft text-destructive-soft-foreground",
   info: "bg-info-soft text-info-soft-foreground",
@@ -250,6 +251,7 @@ export default function CrmRelatorioSdr() {
     return ids.size;
   };
   const eqAgendamentos = uniao("agd");
+  const eqReagendamentos = uniao("rem");
   const eqCompareceram = uniao("ger_compareceu");
   const eqFaltas = uniao("ger_falta");
   const eqContratados = uniao("contratados");
@@ -296,8 +298,8 @@ export default function CrmRelatorioSdr() {
           </div>
         ) : carregando ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
-              {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[118px] rounded-2xl" />)}
             </div>
             <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-6 shadow-card">
               <Skeleton className="h-5 w-1/3" />
@@ -319,12 +321,13 @@ export default function CrmRelatorioSdr() {
             {total && (
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold text-foreground">Equipe no período</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
                   <KpiEquipe label="Leads recebidos" value={fmtInt(total.leads_recebidos)} icon={Inbox} tom="info" />
                   <KpiEquipe label="Respondidos" value={fmtInt(total.leads_respondidos)} icon={MessageSquareReply} tom="primary"
                     apoio={fmtPct(total.leads_respondidos, total.leads_recebidos)} />
                   <KpiEquipe label="Agendamentos" value={eqAgendamentos !== null ? fmtInt(eqAgendamentos) : fmtInt(total.agendamentos)} icon={CalendarCheck} tom="primary"
                     apoio={eqAgendamentos === null && total.agend_cancelados > 0 ? `${fmtInt(total.agend_cancelados)} cancelados (dentro da conta)` : undefined} />
+                  <KpiEquipe label="Reagendamentos" value={eqReagendamentos !== null ? fmtInt(eqReagendamentos) : "—"} icon={CalendarClock} tom="purple" />
                   <KpiEquipe label="Compareceram" value={eqCompareceram !== null ? fmtInt(eqCompareceram) : fmtInt(total.compareceram)} icon={UserCheck} tom="success"
                     apoio={eqCompareceram !== null && eqFaltas !== null
                       ? (eqCompareceram + eqFaltas > 0 ? `${fmtPct(eqCompareceram, eqCompareceram + eqFaltas)} de comparecimento` : undefined)
