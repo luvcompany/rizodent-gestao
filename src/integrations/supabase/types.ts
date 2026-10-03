@@ -62,6 +62,84 @@ export type Database = {
         }
         Relationships: []
       }
+      _bkp_evellin_appointments_20261003: {
+        Row: {
+          cancelled_reason: string | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string | null
+          credito_origem: string | null
+          id: string | null
+          is_rescheduled: boolean | null
+          lead_cidade: string | null
+          lead_id: string | null
+          lead_name: string | null
+          notes: string | null
+          outcome_at: string | null
+          outcome_by: string | null
+          outcome_source: string | null
+          owner_role: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id: string | null
+          responsavel_credito_id: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
+          status: string | null
+          task_id: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cancelled_reason?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string | null
+          credito_origem?: string | null
+          id?: string | null
+          is_rescheduled?: boolean | null
+          lead_cidade?: string | null
+          lead_id?: string | null
+          lead_name?: string | null
+          notes?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_source?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id?: string | null
+          responsavel_credito_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          task_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cancelled_reason?: string | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string | null
+          credito_origem?: string | null
+          id?: string | null
+          is_rescheduled?: boolean | null
+          lead_cidade?: string | null
+          lead_id?: string | null
+          lead_name?: string | null
+          notes?: string | null
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_source?: string | null
+          owner_role?: Database["public"]["Enums"]["app_role"] | null
+          rescheduled_from_id?: string | null
+          responsavel_credito_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          task_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       _bkp_messages_ad_20261002: {
         Row: {
           ad_account_name: string | null
