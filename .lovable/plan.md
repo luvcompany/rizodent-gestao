@@ -11,7 +11,7 @@
 
 ## Etapas
 1. **Achar os 21 leads.** Listar os leads que fazem setembro passar de 1.480 para 1.501, com nome, SDR, data de chegada e quando passaram para ela. Assim fica confirmado se a causa é essa.
-2. **Corrigir a regra.** Um lead conta como recebido no dia em que a SDR passou a ser dona dele de fato: pela distribuição, por uma transferência ou pelo histórico do rodízio. A data em que ele chegou não conta mais. Quem receber um lead hoje conta hoje, em outubro, e setembro para de mudar.
+2. **Corrigir a regra.** O lead conta só no mês em que realmente chegou à SDR: pela distribuição, por uma transferência ou pelo histórico do rodízio. Vale para o total da equipe e para cada SDR. Se ele só chegou no mês seguinte, conta só no mês seguinte. A data em que o lead entrou no CRM não é mais usada para essa conta. Assim, um mês já fechado não muda mais.
 3. **Quando não houver data de entrega:** usar a data em que o lead foi passado para a SDR. Se essa data também não existir, o lead fica de fora dos meses fechados.
 4. **Conferir:** recalcular setembro antes e depois da correção, mostrar a diferença lead a lead e confirmar que o total não muda ao reabrir a tela.
 
