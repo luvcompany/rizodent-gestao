@@ -219,9 +219,6 @@ const NotificationBell = () => {
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-tertiary group-[.crm-notif-nova]:bg-primary-soft group-[.crm-notif-nova]:text-primary-soft-fg">
                     <Bell size={16} />
                   </span>
-                  {!n.is_read && (
-                    <span className="mt-1.5 h-2 w-2 rounded-full bg-primary" />
-                  )}
                   <div className="min-w-0 flex-1">
                     <p className="break-words text-sm font-medium leading-5 text-foreground group-[.crm-notif-nova]:font-semibold">{n.title}</p>
                     {n.body && (
@@ -236,6 +233,9 @@ const NotificationBell = () => {
                       })}
                     </p>
                   </div>
+                  {!n.is_read && (
+                    <span className="mt-1.5 h-2 w-2 rounded-full bg-primary" />
+                  )}
                 </div>
               </button>
             ))
