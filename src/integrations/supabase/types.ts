@@ -167,6 +167,276 @@ export type Database = {
         }
         Relationships: []
       }
+      _bkp_orto_leads_20261003: {
+        Row: {
+          active_channel: string | null
+          ad_account_id: string | null
+          ad_account_name: string | null
+          ad_id: string | null
+          assigned_to: string | null
+          automation_paused: boolean | null
+          blocked_at: string | null
+          blocked_by: string | null
+          cidade: string | null
+          client_request_id: string | null
+          comment_only: boolean | null
+          conversa_fechada_auto: boolean | null
+          conversa_fechada_em: string | null
+          conversa_fechada_por: string | null
+          created_at: string | null
+          ctwa_clid: string | null
+          ctwa_clid_at: string | null
+          descricao_anuncio: string | null
+          distribuido_em: string | null
+          em_atendimento_em: string | null
+          em_atendimento_por: string | null
+          first_inbound_at: string | null
+          follow_up_count: number | null
+          has_task: boolean | null
+          id: string | null
+          ig_account_uuid: string | null
+          imagem_origem: string | null
+          instagram_profile_pic_url: string | null
+          instagram_user_id: string | null
+          instagram_username: string | null
+          is_blocked: boolean | null
+          last_inbound_at: string | null
+          last_message: string | null
+          last_message_at: string | null
+          last_outbound_at: string | null
+          link_anuncio: string | null
+          name: string | null
+          nome_anuncio: string | null
+          notes: string | null
+          paciente_id: string | null
+          phone: string | null
+          pipeline_id: string | null
+          position: number | null
+          rodizio_reservado_em: string | null
+          rodizio_reservado_para: string | null
+          score: number | null
+          servico_interesse: string | null
+          source: string | null
+          stage_id: string | null
+          tags: string[] | null
+          task_overdue: boolean | null
+          tenant_id: string | null
+          titulo_anuncio: string | null
+          updated_at: string | null
+          value: number | null
+          whatsapp_number_id: string | null
+        }
+        Insert: {
+          active_channel?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_id?: string | null
+          assigned_to?: string | null
+          automation_paused?: boolean | null
+          blocked_at?: string | null
+          blocked_by?: string | null
+          cidade?: string | null
+          client_request_id?: string | null
+          comment_only?: boolean | null
+          conversa_fechada_auto?: boolean | null
+          conversa_fechada_em?: string | null
+          conversa_fechada_por?: string | null
+          created_at?: string | null
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
+          descricao_anuncio?: string | null
+          distribuido_em?: string | null
+          em_atendimento_em?: string | null
+          em_atendimento_por?: string | null
+          first_inbound_at?: string | null
+          follow_up_count?: number | null
+          has_task?: boolean | null
+          id?: string | null
+          ig_account_uuid?: string | null
+          imagem_origem?: string | null
+          instagram_profile_pic_url?: string | null
+          instagram_user_id?: string | null
+          instagram_username?: string | null
+          is_blocked?: boolean | null
+          last_inbound_at?: string | null
+          last_message?: string | null
+          last_message_at?: string | null
+          last_outbound_at?: string | null
+          link_anuncio?: string | null
+          name?: string | null
+          nome_anuncio?: string | null
+          notes?: string | null
+          paciente_id?: string | null
+          phone?: string | null
+          pipeline_id?: string | null
+          position?: number | null
+          rodizio_reservado_em?: string | null
+          rodizio_reservado_para?: string | null
+          score?: number | null
+          servico_interesse?: string | null
+          source?: string | null
+          stage_id?: string | null
+          tags?: string[] | null
+          task_overdue?: boolean | null
+          tenant_id?: string | null
+          titulo_anuncio?: string | null
+          updated_at?: string | null
+          value?: number | null
+          whatsapp_number_id?: string | null
+        }
+        Update: {
+          active_channel?: string | null
+          ad_account_id?: string | null
+          ad_account_name?: string | null
+          ad_id?: string | null
+          assigned_to?: string | null
+          automation_paused?: boolean | null
+          blocked_at?: string | null
+          blocked_by?: string | null
+          cidade?: string | null
+          client_request_id?: string | null
+          comment_only?: boolean | null
+          conversa_fechada_auto?: boolean | null
+          conversa_fechada_em?: string | null
+          conversa_fechada_por?: string | null
+          created_at?: string | null
+          ctwa_clid?: string | null
+          ctwa_clid_at?: string | null
+          descricao_anuncio?: string | null
+          distribuido_em?: string | null
+          em_atendimento_em?: string | null
+          em_atendimento_por?: string | null
+          first_inbound_at?: string | null
+          follow_up_count?: number | null
+          has_task?: boolean | null
+          id?: string | null
+          ig_account_uuid?: string | null
+          imagem_origem?: string | null
+          instagram_profile_pic_url?: string | null
+          instagram_user_id?: string | null
+          instagram_username?: string | null
+          is_blocked?: boolean | null
+          last_inbound_at?: string | null
+          last_message?: string | null
+          last_message_at?: string | null
+          last_outbound_at?: string | null
+          link_anuncio?: string | null
+          name?: string | null
+          nome_anuncio?: string | null
+          notes?: string | null
+          paciente_id?: string | null
+          phone?: string | null
+          pipeline_id?: string | null
+          position?: number | null
+          rodizio_reservado_em?: string | null
+          rodizio_reservado_para?: string | null
+          score?: number | null
+          servico_interesse?: string | null
+          source?: string | null
+          stage_id?: string | null
+          tags?: string[] | null
+          task_overdue?: boolean | null
+          tenant_id?: string | null
+          titulo_anuncio?: string | null
+          updated_at?: string | null
+          value?: number | null
+          whatsapp_number_id?: string | null
+        }
+        Relationships: []
+      }
+      _bkp_orto_pacientes_20261003: {
+        Row: {
+          cidade: string | null
+          created_at: string | null
+          creative_key_declarado: string | null
+          email: string | null
+          id: string | null
+          nome: string | null
+          nome_anuncio: string | null
+          origem: string | null
+          telefone: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cidade?: string | null
+          created_at?: string | null
+          creative_key_declarado?: string | null
+          email?: string | null
+          id?: string | null
+          nome?: string | null
+          nome_anuncio?: string | null
+          origem?: string | null
+          telefone?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cidade?: string | null
+          created_at?: string | null
+          creative_key_declarado?: string | null
+          email?: string | null
+          id?: string | null
+          nome?: string | null
+          nome_anuncio?: string | null
+          origem?: string | null
+          telefone?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _bkp_orto_pagamentos_20261003: {
+        Row: {
+          clinica_id: string | null
+          created_at: string | null
+          created_by: string | null
+          data_pagamento: string | null
+          dontus_key: string | null
+          especialidade: string | null
+          forma_pagamento: string | null
+          id: string | null
+          nao_marketing: boolean | null
+          paciente_id: string | null
+          recorrencia_orto: boolean | null
+          tipo: string | null
+          tratamento_id: string | null
+          valor: number | null
+        }
+        Insert: {
+          clinica_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_pagamento?: string | null
+          dontus_key?: string | null
+          especialidade?: string | null
+          forma_pagamento?: string | null
+          id?: string | null
+          nao_marketing?: boolean | null
+          paciente_id?: string | null
+          recorrencia_orto?: boolean | null
+          tipo?: string | null
+          tratamento_id?: string | null
+          valor?: number | null
+        }
+        Update: {
+          clinica_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          data_pagamento?: string | null
+          dontus_key?: string | null
+          especialidade?: string | null
+          forma_pagamento?: string | null
+          id?: string | null
+          nao_marketing?: boolean | null
+          paciente_id?: string | null
+          recorrencia_orto?: boolean | null
+          tipo?: string | null
+          tratamento_id?: string | null
+          valor?: number | null
+        }
+        Relationships: []
+      }
       _bkp_pagamentos_tipo_20261002: {
         Row: {
           data_pagamento: string | null
