@@ -2,7 +2,13 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Eye, Plus } from "lucide-react";
+import { Search, Eye, Plus, Pencil, MessageCircle, Trash2, MoreHorizontal } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { DateRangeFilter, type DateRangeFilterValue, getDateRangeFromFilter } from "@/components/ui/date-range-filter";
@@ -19,7 +25,12 @@ interface PacienteView {
   ultima_visita: string | null;
   clinica_nome: string | null;
   is_recorrente: boolean;
+  valor_orto: number;
+  ultimo_orto: number | null;
+  lead_id: string | null;
 }
+
+const brl = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 
 const Pacientes = () => {
   const [busca, setBusca] = useState("");
@@ -27,16 +38,27 @@ const Pacientes = () => {
   const [pacientes, setPacientes] = useState<PacienteView[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const [tipo, setTipo] = useState<"todos" | "recorrente" | "novo">("todos");
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [excluir, setExcluir] = useState<string[] | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+  const [editar, setEditar] = useState<PacienteView | null>(null);
+  const [form, setForm] = useState({ nome: "", telefone: "", cidade: "" });
+  const [salvando, setSalvando] = useState(false);
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
 
-      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }] = await Promise.all([
+      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }, { data: vinculos }] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
         supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto").order("data_pagamento", { ascending: false }),
         supabase.from("clinicas").select("id, nome"),
+        supabase.from("crm_lead_pacientes").select("paciente_id, lead_id"),
       ]);
+      const leadMap = new Map<string, string>();
+      (vinculos || []).forEach((v: any) => { if (!leadMap.has(v.paciente_id)) leadMap.set(v.paciente_id, v.lead_id); });
 
       if (!pacs) { setLoading(false); return; }
 
@@ -100,6 +122,9 @@ const Pacientes = () => {
         // "Última visita" reflete qualquer pagamento; "Último pagamento" (valor exibido)
         // considera só faturamento (exclui mensalidade de orto).
         const ultimaVisita = pags[0]?.data_pagamento || null;
+        const pagsOrto = pags.filter((pg: any) => !isFat(pg));
+        const valorOrto = pagsOrto.reduce((s: number, pg: any) => s + Number(pg.valor || 0), 0);
+        const ultimoOrto = pagsOrto[0]?.valor != null ? Number(pagsOrto[0].valor) : null;
         const ultimoValorPago = pagsFat[0]?.valor != null ? Number(pagsFat[0].valor) : null;
         const clinicaNome = pags[0]?.clinica_id ? clinicaMap.get(pags[0].clinica_id) || null : null;
         const isRecorrente = (pagMap.get(p.id) || []).some((pg: any) => pg.tipo === "recorrente");
@@ -111,6 +136,9 @@ const Pacientes = () => {
           ultima_visita: ultimaVisita,
           clinica_nome: clinicaNome,
           is_recorrente: isRecorrente,
+          valor_orto: valorOrto,
+          ultimo_orto: ultimoOrto,
+          lead_id: leadMap.get(p.id) ?? null,
         });
       }
 
@@ -125,15 +153,53 @@ const Pacientes = () => {
       setLoading(false);
     };
     fetchAll();
-  }, [dateFilter]);
+  }, [dateFilter, recarga]);
 
   const filtered = useMemo(() => {
     return pacientes.filter(
       (p) =>
-        p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-        p.telefone.includes(busca)
+        (tipo === "todos" || (tipo === "recorrente") === p.is_recorrente) &&
+        (p.nome.toLowerCase().includes(busca.toLowerCase()) ||
+        p.telefone.includes(busca))
     );
-  }, [pacientes, busca]);
+  }, [pacientes, busca, tipo]);
+
+  const todosMarcados = filtered.length > 0 && filtered.every((p) => selecionados.has(p.id));
+  const alternar = (id: string) => setSelecionados((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const alternarTodos = () => setSelecionados(todosMarcados ? new Set() : new Set(filtered.map((p) => p.id)));
+
+  const confirmarExclusao = async () => {
+    if (!excluir) return;
+    setExcluindo(true);
+    let ok = 0;
+    for (const id of excluir) {
+      const { error: e1 } = await supabase.from("pagamentos").delete().eq("paciente_id", id);
+      if (e1) continue;
+      const { error: e2 } = await supabase.from("tratamentos").delete().eq("paciente_id", id);
+      if (e2) continue;
+      const { data, error } = await supabase.from("pacientes").delete().eq("id", id).select("id");
+      if (!error && data && data.length) ok++;
+    }
+    const falhas = excluir.length - ok;
+    if (ok) toast.success(`${ok} ${ok === 1 ? "paciente excluído" : "pacientes excluídos"}`);
+    if (falhas) toast.error(`${falhas} não ${falhas === 1 ? "pôde" : "puderam"} ser excluído(s) (sem permissão ou erro).`);
+    setExcluindo(false);
+    setExcluir(null);
+    setSelecionados(new Set());
+    setRecarga((n) => n + 1);
+  };
+
+  const abrirEditar = (p: PacienteView) => { setEditar(p); setForm({ nome: p.nome, telefone: p.telefone || "", cidade: p.cidade || "" }); };
+  const salvarEdicao = async () => {
+    if (!editar || !form.nome.trim()) return;
+    setSalvando(true);
+    const { error } = await supabase.from("pacientes").update({ nome: form.nome.trim(), telefone: form.telefone.trim(), cidade: form.cidade.trim() || null }).eq("id", editar.id);
+    setSalvando(false);
+    if (error) { toast.error("Não foi possível salvar: " + error.message); return; }
+    toast.success("Paciente atualizado");
+    setEditar(null);
+    setRecarga((n) => n + 1);
+  };
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -161,7 +227,35 @@ const Pacientes = () => {
           <span className="text-xs text-muted-foreground">Período</span>
           <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
         </div>
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">Tipo</span>
+          <Select value={tipo} onValueChange={(v) => setTipo(v as typeof tipo)}>
+            <SelectTrigger className="h-10 w-full rounded-xl sm:w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="recorrente">Recorrente</SelectItem>
+              <SelectItem value="novo">Cliente novo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {!loading && filtered.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card px-4 py-2.5 shadow-xs">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox checked={todosMarcados} onCheckedChange={alternarTodos} />
+            Selecionar todos ({filtered.length})
+          </label>
+          {selecionados.size > 0 && (
+            <>
+              <span className="text-sm text-muted-foreground">{selecionados.size} selecionado(s)</span>
+              <Button variant="destructive" className="ml-auto h-10 rounded-xl" onClick={() => setExcluir([...selecionados])}>
+                <Trash2 size={16} className="mr-2" /> Excluir selecionados
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center text-muted-foreground animate-pulse py-12">Carregando pacientes...</div>
@@ -173,6 +267,7 @@ const Pacientes = () => {
             <Card key={pac.id} className="border-border/60 bg-card transition-colors hover:border-primary/30">
               <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
+                  <Checkbox checked={selecionados.has(pac.id)} onCheckedChange={() => alternar(pac.id)} aria-label={`Selecionar ${pac.nome}`} />
                   <InitialsAvatar name={pac.nome} className="h-11 w-11 shrink-0" />
                   <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -190,9 +285,19 @@ const Pacientes = () => {
                 </div>
                 <div className="flex items-center justify-between gap-4 sm:justify-end">
                   <div className="space-y-0.5 sm:text-right">
-                    <p className="whitespace-nowrap text-sm font-semibold text-primary">
-                      Contratado: R$ {pac.valor_contratado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
+                    {pac.valor_contratado > 0 && (
+                      <p className="whitespace-nowrap text-sm font-semibold text-primary">
+                        Contratado: R$ {brl(pac.valor_contratado)}
+                      </p>
+                    )}
+                    {pac.valor_orto > 0 && (
+                      <p className="whitespace-nowrap text-sm font-semibold text-info">
+                        Mensalidade orto: R$ {brl(pac.valor_orto)}
+                      </p>
+                    )}
+                    {pac.valor_contratado <= 0 && pac.ultimo_orto != null && (
+                      <p className="whitespace-nowrap text-xs text-muted-foreground">Último pagamento orto: R$ {brl(pac.ultimo_orto)}</p>
+                    )}
                     {pac.ultimo_valor_pago != null && (
                       <p className="whitespace-nowrap text-xs text-success">
                         Último pagamento: R$ {pac.ultimo_valor_pago.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -204,15 +309,62 @@ const Pacientes = () => {
                       </p>
                     )}
                   </div>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/pacientes/${pac.id}`)}>
-                    <Eye size={18} />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button variant="ghost" size="icon" title="Ver ficha" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/pacientes/${pac.id}`)}>
+                      <Eye size={18} />
+                    </Button>
+                    <div className="hidden items-center gap-1 sm:flex">
+                      <Button variant="ghost" size="icon" title="Editar" className="text-muted-foreground hover:text-foreground" onClick={() => abrirEditar(pac)}><Pencil size={17} /></Button>
+                      {pac.lead_id && <Button variant="ghost" size="icon" title="Ver conversa" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={17} /></Button>}
+                      <Button variant="ghost" size="icon" title="Excluir" className="text-muted-foreground hover:text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={17} /></Button>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-muted-foreground sm:hidden" aria-label="Ações"><MoreHorizontal size={18} /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => abrirEditar(pac)}><Pencil size={15} className="mr-2" />Editar</DropdownMenuItem>
+                        {pac.lead_id && <DropdownMenuItem onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={15} className="mr-2" />Ver conversa</DropdownMenuItem>}
+                        <DropdownMenuItem className="text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={15} className="mr-2" />Excluir</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!excluir} onOpenChange={(o) => !o && !excluindo && setExcluir(null)}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {excluir?.length === 1 ? "paciente" : `${excluir?.length} pacientes`}?</AlertDialogTitle>
+            <AlertDialogDescription>Os pagamentos e tratamentos {excluir?.length === 1 ? "dele" : "deles"} também serão apagados. Essa ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={excluindo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={excluindo} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={(e) => { e.preventDefault(); void confirmarExclusao(); }}>
+              {excluindo ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!editar} onOpenChange={(o) => !o && setEditar(null)}>
+        <DialogContent className="rounded-2xl">
+          <DialogHeader><DialogTitle>Editar paciente</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><span className="text-xs text-muted-foreground">Nome</span><Input className="h-10 rounded-xl" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
+            <div className="space-y-1"><span className="text-xs text-muted-foreground">Telefone</span><Input className="h-10 rounded-xl" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></div>
+            <div className="space-y-1"><span className="text-xs text-muted-foreground">Cidade</span><Input className="h-10 rounded-xl" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="h-10 rounded-xl" onClick={() => setEditar(null)}>Cancelar</Button>
+            <Button className="h-10 rounded-xl" disabled={salvando || !form.nome.trim()} onClick={salvarEdicao}>{salvando ? "Salvando..." : "Salvar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
