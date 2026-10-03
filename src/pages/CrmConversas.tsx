@@ -1418,6 +1418,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     });
   }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, instagramInteractionFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds, leadsWithPagamento, labelsByLead]);
 
+  // Balão da aba mostra só as conversas EM ABERTO (não lidas) — mesma regra do
+  // balão do WhatsApp (isUnreadLead: inbound, dentro da janela, não fechada).
   const instagramInteractionCounts = useMemo(() => {
     const counts = { comment: 0, dm: 0 };
     if (channelFilter !== "instagram") return counts;
@@ -1426,6 +1428,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       if (pipelineFilter && lead.pipeline_id !== pipelineFilter) return;
       if (excludePipelines?.includes(lead.pipeline_id)) return;
       if (getLeadChannel(lead) !== "instagram") return;
+      if (!isUnreadLead(lead)) return;
       counts[getInstagramInteractionType(lead)] += 1;
     });
     return counts;
@@ -1494,8 +1497,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {channelFilter === "instagram" && (
                 <div className="mb-3 grid grid-cols-2 rounded-xl bg-surface-sunken p-1" role="tablist" aria-label="Tipo de conversa do Instagram">
                   {([
-                    ["comment", "Comentários", instagramInteractionCounts.comment],
                     ["dm", "Direct", instagramInteractionCounts.dm],
+                    ["comment", "Comentários", instagramInteractionCounts.comment],
                   ] as const).map(([value, label, count]) => (
                     <Button
                       key={value}
