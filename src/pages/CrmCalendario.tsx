@@ -1260,7 +1260,8 @@ export default function CrmCalendario() {
               <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
             </div>
             <Button variant="outline" size="sm" className="ml-1 h-9 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
-            <span className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
               {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
             </span>
             {/* Legenda guardada num botão no canto direito: a faixa aberta
