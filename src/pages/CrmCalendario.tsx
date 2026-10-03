@@ -1298,6 +1298,7 @@ export default function CrmCalendario() {
                 )}
               </PopoverContent>
             </Popover>
+            </div>
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
           <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
