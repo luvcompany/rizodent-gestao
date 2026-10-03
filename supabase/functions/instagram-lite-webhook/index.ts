@@ -491,6 +491,7 @@ async function persistMessage(opts: {
         last_message: isComment ? `[Comentário] ${finalContent}` : finalContent,
         last_message_at: new Date().toISOString(),
         last_inbound_at: new Date().toISOString(),
+        last_instagram_interaction_type: isComment ? "comment" : "dm",
       })
       .eq("id", leadId);
 
