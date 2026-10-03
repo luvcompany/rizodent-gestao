@@ -4,7 +4,7 @@ import { instanteNoFusoMs } from "@/lib/fuso";
 import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   LayoutGrid, MessageSquare, Bot, FileText, Link2, BarChart3,
-  ArrowLeft, Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
+  Menu, X, CalendarDays, ChevronLeft, ChevronRight, RefreshCw,
   Home, Settings, ChevronDown, Send, Sun, Moon, Sparkles, Heart, Shield, LogOut,
   Activity, Phone, Users, Clock, UserCog, Lock,
 } from "lucide-react";
