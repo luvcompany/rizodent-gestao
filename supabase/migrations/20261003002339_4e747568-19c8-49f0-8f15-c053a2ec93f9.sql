@@ -1,0 +1,1 @@
+ALTER TABLE public._bkp_evellin_appointments_20261003 ENABLE ROW LEVEL SECURITY;
