@@ -40,6 +40,24 @@ import { fusoDoTenant } from "@/lib/fuso";
 import { useTenantConfig } from "@/hooks/useTenantConfig";
 import { useNumerosLiberados } from "@/hooks/useNumerosLiberados";
 
+// Busca todas as tarefas pendentes (paginando) + as concluídas mais recentes.
+// Antes vinham só as 1000 mais antigas (limite do banco), todas concluídas,
+// e as atrasadas sumiam da tela.
+async function buscarTarefasCalendario(): Promise<{ data: any[]; error: any }> {
+  const cols = "id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role";
+  const pend: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from("crm_tasks").select(cols).neq("status", "done").order("due_date").range(from, from + 999);
+    if (error) return { data: pend, error };
+    pend.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const { data: done, error } = await supabase.from("crm_tasks").select(cols).eq("status", "done").order("due_date", { ascending: false }).limit(1000);
+  const all = [...pend, ...(done || [])].sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
+  return { data: all, error };
+}
+
+
 type Task = {
   id: string;
   lead_id: string;
@@ -235,7 +253,7 @@ export const prefetchCrmCalendarioData = async (userId: string | null | undefine
     const weekStart = format(startOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
     const weekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), "yyyy-MM-dd");
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes, unidadesDaAgenda] = await Promise.all([
-      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
+      buscarTarefasCalendario(),
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       buscarConsultasDaSemana(weekStart, weekEnd),
       supabase.from("crm_stages").select("id, name, color, pipeline_id").order("position"),
@@ -401,7 +419,7 @@ export default function CrmCalendario() {
     }
 
     const [tasksRes, profilesRes, apptsRes, stagesRes, pipelinesRes] = await Promise.all([
-      supabase.from("crm_tasks").select("id, lead_id, title, type, due_date, notes, assigned_to, status, owner_role").order("due_date"),
+      buscarTarefasCalendario(),
       supabase.from("profiles").select("id, nome").not("id","in",HIDDEN_USER_IDS_PG),
       // crm_appointments has denormalized lead_name/lead_cidade columns (populated by triggers)
       // — no join needed, immune to RLS restrictions on crm_leads
