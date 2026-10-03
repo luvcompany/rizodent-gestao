@@ -51,11 +51,22 @@ const Pacientes = () => {
     const fetchAll = async () => {
       setLoading(true);
 
-      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }, { data: vinculos }] = await Promise.all([
+      const buscarPaginas = async (tabela: string, colunas: string, ordem: string) => {
+        const todas: any[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data } = await supabase.from(tabela).select(colunas).order(ordem, { ascending: false }).range(from, from + 999);
+          if (!data || data.length === 0) break;
+          todas.push(...data);
+          if (data.length < 1000) break;
+        }
+        return todas;
+      };
+
+      const [{ data: pacs }, pagamentos, { data: clinicas }, vinculos] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto").order("data_pagamento", { ascending: false }),
+        buscarPaginas("pagamentos", "paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto", "data_pagamento"),
         supabase.from("clinicas").select("id, nome"),
-        supabase.from("crm_lead_pacientes").select("paciente_id, lead_id"),
+        buscarPaginas("crm_lead_pacientes", "paciente_id, lead_id", "paciente_id"),
       ]);
       const leadMap = new Map<string, string>();
       (vinculos || []).forEach((v: any) => { if (!leadMap.has(v.paciente_id)) leadMap.set(v.paciente_id, v.lead_id); });
