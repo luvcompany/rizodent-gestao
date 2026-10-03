@@ -11,7 +11,7 @@ import {
   type EstadoRpc, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import {
-  AlertTriangle, BarChart3, CalendarCheck, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply, Star,
+  AlertTriangle, BarChart3, CalendarCheck, CalendarClock, Info, Loader2, RefreshCw, UserCheck, Users, UserX, Handshake, Inbox, MessageSquareReply, Star,
   type LucideIcon,
 } from "lucide-react";
 import { EmptyState } from "@/components/crm-ui";
@@ -250,6 +250,7 @@ export default function CrmRelatorioSdr() {
     return ids.size;
   };
   const eqAgendamentos = uniao("agd");
+  const eqReagendamentos = uniao("rem");
   const eqCompareceram = uniao("ger_compareceu");
   const eqFaltas = uniao("ger_falta");
   const eqContratados = uniao("contratados");
