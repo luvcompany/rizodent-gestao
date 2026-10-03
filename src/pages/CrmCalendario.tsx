@@ -978,36 +978,37 @@ export default function CrmCalendario() {
     ];
   }, [userRole]);
 
-  return (
-    <div className="relative flex flex-col h-full -m-2 sm:-m-4 lg:-m-6 overflow-y-auto bg-background px-4 py-5 sm:px-6 lg:px-8 lg:py-6" style={{ height: "calc(100vh - 4rem)" }}>
-      {/* MAIN VIEW TOGGLE */}
-      <div className="mb-4 flex flex-shrink-0 items-center gap-3 xl:absolute xl:right-8 xl:top-6 xl:mb-0">
-        <div className="flex w-full gap-1 rounded-full border border-border/60 bg-card p-1 shadow-card sm:w-auto">
+  const viewToggle = (
+<div className="flex h-10 w-full shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-card p-1 shadow-xs sm:w-auto">
           <Button
             variant={mainView === "agendamentos" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "agendamentos" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("h-8 flex-1 rounded-lg px-4 text-[13px] font-semibold sm:flex-none", mainView === "agendamentos" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("agendamentos")}
           >
-            <CalendarDays size={16} className="mr-2" />
+            <CalendarDays size={15} className="mr-1.5" />
             Agendamentos
           </Button>
           <Button
             variant={mainView === "tarefas" ? "default" : "ghost"}
             size="sm"
-            className={cn("h-10 flex-1 rounded-full px-5 text-sm font-semibold sm:flex-none", mainView === "tarefas" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
+            className={cn("h-8 flex-1 rounded-lg px-4 text-[13px] font-semibold sm:flex-none", mainView === "tarefas" ? "border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2" : "text-muted-foreground hover:bg-muted hover:text-foreground")}
             onClick={() => setMainView("tarefas")}
           >
-            <Clock size={16} className="mr-2" />
+            <Clock size={15} className="mr-1.5" />
             Tarefas
           </Button>
         </div>
-      </div>
+  );
+
+  return (
+    <div className="relative flex flex-col h-full -m-2 sm:-m-4 lg:-m-6 overflow-y-auto bg-background px-4 py-5 sm:px-6 lg:px-8 lg:py-6" style={{ height: "calc(100vh - 4rem)" }}>
+      {mainView === "tarefas" && <div className="mb-4 flex flex-shrink-0 justify-end">{viewToggle}</div>}
 
       {/* Avisos de acesso: sem funil (POS-01) e sem número liberado (REC-07).
           A agenda vazia sem motivo era exatamente o defeito relatado. */}
       {(semFunil || semNumeroLiberado) && (
-        <div className="mb-4 flex flex-shrink-0 flex-col gap-2 xl:pr-[330px]">
+        <div className="mb-4 flex flex-shrink-0 flex-col gap-2">
           {semFunil && (
             <p role="status" className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning-soft px-4 py-3 text-[13px] leading-relaxed text-warning-soft-foreground">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -1027,7 +1028,7 @@ export default function CrmCalendario() {
       {mainView === "tarefas" && (
         <>
           {/* Sub-nav */}
-          <div className="mb-4 flex min-h-[50px] flex-shrink-0 flex-wrap items-center justify-between gap-3 xl:pr-[330px]">
+          <div className="mb-4 flex min-h-[50px] flex-shrink-0 flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap items-center gap-1 rounded-full border border-border/60 bg-card p-1 shadow-xs">
               {(["events", "list", "week", "month"] as TaskViewMode[]).map((v) => (
@@ -1251,24 +1252,24 @@ export default function CrmCalendario() {
       {/* ==================== AGENDAMENTOS VIEW ==================== */}
       {mainView === "agendamentos" && (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-2 flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2 xl:pr-[330px]">
+          <div className="mb-2 flex min-h-10 flex-shrink-0 flex-wrap items-center gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, -7))}><ChevronLeft size={16} /></Button>
               <h2 className="whitespace-nowrap px-1 text-center text-xl font-bold capitalize leading-tight tracking-tight text-foreground sm:text-[28px]">
                 {format(startOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM", { locale: ptBR })} — {format(endOfWeek(currentDate, { weekStartsOn: 1 }), "dd MMM yyyy", { locale: ptBR })}
               </h2>
-              <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0 rounded-xl bg-card shadow-xs" onClick={() => setCurrentDate(prev => addDays(prev, 7))}><ChevronRight size={16} /></Button>
             </div>
-            <Button variant="outline" size="sm" className="ml-1 h-9 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
+            <Button variant="outline" size="sm" className="ml-1 h-10 shrink-0 rounded-xl bg-card px-4 text-[13px] font-medium shadow-xs" onClick={() => setCurrentDate(new Date())}>Hoje</Button>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <span className="inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
+            <span className="inline-flex h-10 items-center whitespace-nowrap rounded-xl bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
               {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
             </span>
             {/* Legenda guardada num botão no canto direito: a faixa aberta
                 ocupava uma linha inteira da agenda. */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 shrink-0 rounded-xl bg-card px-3 text-[13px] font-medium shadow-xs">
+                <Button variant="outline" size="sm" className="h-10 shrink-0 rounded-xl bg-card px-3 text-[13px] font-medium shadow-xs">
                   <SlidersHorizontal size={14} className="mr-1.5" /> Legenda
                 </Button>
               </PopoverTrigger>
@@ -1298,6 +1299,7 @@ export default function CrmCalendario() {
                 )}
               </PopoverContent>
             </Popover>
+            {viewToggle}
             </div>
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
