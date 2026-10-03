@@ -553,7 +553,7 @@ const CrmLayout = () => {
           sidebarCollapsed ? "-translate-x-full" : "crm-sidebar-aberta lg:translate-x-0"
         } ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="relative flex items-center gap-3 px-5 pb-4 pt-6">
+        <div className="relative flex items-center gap-3 px-5 pb-2.5 pt-6">
           <div className="flex min-w-0 flex-1 items-center justify-center">
             <MarcaDaBarra logo={logo} nome={effective.name} nomeCurto={effective.shortName} />
           </div>
