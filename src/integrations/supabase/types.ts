@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      _bkp_distribuido_em_20261003: {
+        Row: {
+          distribuido_em: string | null
+          id: string | null
+        }
+        Insert: {
+          distribuido_em?: string | null
+          id?: string | null
+        }
+        Update: {
+          distribuido_em?: string | null
+          id?: string | null
+        }
+        Relationships: []
+      }
       _bkp_dontus_paciente_seen_20261002: {
         Row: {
           clinica_id: string | null
