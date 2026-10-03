@@ -1263,29 +1263,40 @@ export default function CrmCalendario() {
             <span className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-full bg-slate-soft px-3 text-[13px] font-medium tabular-nums text-slate-soft-foreground">
               {contagem(totalAgendamentosDaSemana, "agendamento", "agendamentos")}
             </span>
-          </div>
-          {/* Legenda em uma faixa própria para não disputar espaço com o
-              período, a contagem e o seletor de visualização. */}
-          <div className="mb-2 flex flex-shrink-0 flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="mr-1 font-medium text-tertiary">Legenda:</span>
-            {legendaAgendamentos.map((item) => (
-              <span key={item.texto} className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium", item.cor)}>
-                <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
-              </span>
-            ))}
-            {/* Presença (AGENDA-11): coluna própria, independente da cor do
-                status — só nas consultas em aberto. */}
-            {presencaDisponivel && (
-              <>
-                <span className="ml-2 mr-1 font-medium text-tertiary">Presença:</span>
-                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-2.5 font-medium text-success-soft-foreground">
-                  <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
-                </span>
-                <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-2.5 font-medium text-muted-foreground">
-                  <Circle size={12} className="shrink-0" /> Sem confirmação
-                </span>
-              </>
-            )}
+            {/* Legenda guardada num botão no canto direito: a faixa aberta
+                ocupava uma linha inteira da agenda. */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 shrink-0 rounded-xl bg-card px-3 text-[13px] font-medium shadow-xs">
+                  <SlidersHorizontal size={14} className="mr-1.5" /> Legenda
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-[min(26rem,calc(100vw-2rem))] rounded-2xl border-border/60 p-4 shadow-card">
+                <p className="text-[13px] font-semibold text-foreground">Legenda das consultas</p>
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+                  {legendaAgendamentos.map((item) => (
+                    <span key={item.texto} className={cn("inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium", item.cor)}>
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-current" /> {item.texto}
+                    </span>
+                  ))}
+                </div>
+                {/* Presença (AGENDA-11): coluna própria, independente da cor do
+                    status — só nas consultas em aberto. */}
+                {presencaDisponivel && (
+                  <div className="mt-4 border-t border-border/60 pt-3">
+                    <p className="mb-2 text-[11px] font-medium text-tertiary">Presença:</p>
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-success-soft px-2.5 font-medium text-success-soft-foreground">
+                        <CheckCircle2 size={12} className="shrink-0" /> Presença confirmada
+                      </span>
+                      <span className="inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-sunken px-2.5 font-medium text-muted-foreground">
+                        <Circle size={12} className="shrink-0" /> Sem confirmação
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
           {/* Matrix: Cities (rows) x Weekdays Mon-Sat (columns) */}
           <div className="min-h-0 flex-1 overflow-auto rounded-card border border-border/60 bg-card shadow-card">
