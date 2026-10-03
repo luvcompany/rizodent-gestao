@@ -54,7 +54,7 @@ const Pacientes = () => {
       const buscarPaginas = async (tabela: string, colunas: string, ordem: string) => {
         const todas: any[] = [];
         for (let from = 0; ; from += 1000) {
-          const { data } = await supabase.from(tabela).select(colunas).order(ordem, { ascending: false }).range(from, from + 999);
+          const { data } = await (supabase.from as any)(tabela).select(colunas).order(ordem, { ascending: false }).range(from, from + 999);
           if (!data || data.length === 0) break;
           todas.push(...data);
           if (data.length < 1000) break;
