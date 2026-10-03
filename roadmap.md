@@ -9,4 +9,4 @@
 - [ ] Rodar de novo o resgate de miniaturas dos 47 anúncios da conta ainda bloqueada pela Meta (bloqueio temporário por excesso de pedidos).
 - [ ] Publicar para crclin.com.br — aguardando confirmação do usuário.
 - [ ] Auditoria: 6 decisões de negócio aguardando o usuário (faturamento oficial, agendamentos do período, novo lead, venda, tempo de resposta, duplicados).
-- [ ] Separar a aba Instagram em Comentários e Direct pela interação mais recente do lead.
+- [x] Separar a aba Instagram em Comentários e Direct pela interação mais recente do lead.

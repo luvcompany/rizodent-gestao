@@ -109,6 +109,7 @@ type LeadConversation = {
   procedimento_interesse_id?: string | null;
   instagram_username?: string | null;
   instagram_profile_pic_url?: string | null;
+  last_instagram_interaction_type?: "comment" | "dm" | null;
   /** Fase 2 do rodízio: "Fechar conversa" (NULL = aberta). Vem na RPC da lista
    *  (get_conversation_leads) e tira o lead das não lidas (CONV-10). */
   conversa_fechada_em?: string | null;
@@ -211,7 +212,7 @@ const CONVERSATION_MAX_PAGES = 50; // teto de SEGURANÇA (loop para antes ao rec
 // Colunas leves p/ a LISTA de conversas (sem campos pesados de anúncio/extras).
 // Lista (sem `notes`/`value` que são pesados e só usados no painel direito; os campos de anúncio ficam
 // porque os filtros derivam opções deles).
-const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked, whatsapp_number_id, conversa_fechada_em";
+const LEAD_LIST_COLS = "id, name, phone, instagram_user_id, active_channel, instagram_username, instagram_profile_pic_url, last_message, last_message_at, last_inbound_at, last_outbound_at, last_instagram_interaction_type, tags, source, stage_id, pipeline_id, created_at, updated_at, assigned_to, paciente_id, cidade, servico_interesse, imagem_origem, titulo_anuncio, descricao_anuncio, link_anuncio, ad_id, nome_anuncio, ad_account_id, ad_account_name, is_blocked, whatsapp_number_id, conversa_fechada_em";
 // Colunas completas p/ o lead selecionado (inclui notes/value).
 const LEAD_SELECT_COLS = LEAD_LIST_COLS + ", value, notes";
 
@@ -337,6 +338,13 @@ interface ConversationsViewProps {
   channelFilter?: "whatsapp" | "instagram"; // filter leads by channel (instagram = has instagram_user_id)
 }
 
+type InstagramInteractionFilter = "comment" | "dm";
+
+const getInstagramInteractionType = (lead: LeadConversation): InstagramInteractionFilter =>
+  lead.last_instagram_interaction_type === "comment" || lead.last_message?.startsWith("[Comentário]")
+    ? "comment"
+    : "dm";
+
 function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "whatsapp", channelFilter }: ConversationsViewProps = {}) {
   const { user, userRole } = useAuth();
   const destinosSdr = useDestinosTransferenciaSdr(userRole === "sdr");
@@ -356,6 +364,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   const [_lsData] = useState<ConversasLSData | null>(() => canUseInitialCache || !cacheKey ? null : readConversasLS(cacheKey));
   const [leads, setLeads] = useState<LeadConversation[]>(() => canUseInitialCache ? (leadsListCache.leads || []) : (_lsData?.leads || []));
   const [search, setSearch] = useState("");
+  const [instagramInteractionFilter, setInstagramInteractionFilter] = useState<InstagramInteractionFilter>("dm");
   const [loading, setLoading] = useState(!canUseInitialCache && !_lsData);
   const [fullyLoaded, setFullyLoaded] = useState<boolean>(canUseInitialCache);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -1298,6 +1307,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       // Channel-based filtering (tenant-agnostic): IG leads have instagram_user_id
       if (channelFilter === "instagram" && getLeadChannel(l) !== "instagram") return false;
       if (channelFilter === "whatsapp" && getLeadChannel(l) !== "whatsapp") return false;
+      if (channelFilter === "instagram" && getInstagramInteractionType(l) !== instagramInteractionFilter) return false;
       const normalizedSearch = search.trim().toLowerCase();
       if (normalizedSearch) {
         const searchDigits = normalizedSearch.replace(/\D/g, "");
@@ -1406,7 +1416,20 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
       }
       return true;
     });
-  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds, leadsWithPagamento, labelsByLead]);
+  }, [leads, search, filters, user?.id, urlGhost, ghostLeadIds, urlAppointmentStatus, appointmentLeadIds, urlInactiveDays, pipelineFilter, excludePipelines, channelFilter, instagramInteractionFilter, leadIgAccountMap, inaccessiblePipelineIds, messageMatchLeadIds, leadsWithPagamento, labelsByLead]);
+
+  const instagramInteractionCounts = useMemo(() => {
+    const counts = { comment: 0, dm: 0 };
+    if (channelFilter !== "instagram") return counts;
+    leads.forEach((lead) => {
+      if (lead.pipeline_id && inaccessiblePipelineIds.has(lead.pipeline_id)) return;
+      if (pipelineFilter && lead.pipeline_id !== pipelineFilter) return;
+      if (excludePipelines?.includes(lead.pipeline_id)) return;
+      if (getLeadChannel(lead) !== "instagram") return;
+      counts[getInstagramInteractionType(lead)] += 1;
+    });
+    return counts;
+  }, [channelFilter, excludePipelines, inaccessiblePipelineIds, leads, pipelineFilter]);
 
   // Sorting
   const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
@@ -1468,6 +1491,37 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 </div>
               )}
             <div className="flex-shrink-0 px-4 pt-4 pb-3">
+              {channelFilter === "instagram" && (
+                <div className="mb-3 grid grid-cols-2 rounded-xl bg-surface-sunken p-1" role="tablist" aria-label="Tipo de conversa do Instagram">
+                  {([
+                    ["comment", "Comentários", instagramInteractionCounts.comment],
+                    ["dm", "Direct", instagramInteractionCounts.dm],
+                  ] as const).map(([value, label, count]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="ghost"
+                      role="tab"
+                      aria-selected={instagramInteractionFilter === value}
+                      onClick={() => {
+                        setInstagramInteractionFilter(value);
+                        setSelectedLeadId(null);
+                        setSelectedLead(null);
+                      }}
+                      className={`h-9 min-w-0 rounded-lg px-2 text-[13px] font-semibold ${
+                        instagramInteractionFilter === value
+                          ? "bg-card text-foreground shadow-xs hover:bg-card"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                    >
+                      <span className="truncate">{label}</span>
+                      <span className="ml-1.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-muted-foreground">
+                        {count > 999 ? "999+" : count}
+                      </span>
+                    </Button>
+                  ))}
+                </div>
+              )}
               <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-bold tracking-tight text-foreground">Conversas</h2>
                 <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1.5">
