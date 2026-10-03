@@ -565,29 +565,36 @@ const CrmLayout = () => {
           </button>
         </div>
 
-        <div className={`mx-3 mb-3 flex items-center gap-1 border-b border-sidebar-border px-1 pb-4 ${temLogoCliente ? "justify-end" : "justify-between"}`}>
+        <div className="mx-3 flex min-h-[3rem] items-center px-1 pb-2">
           {!temLogoCliente && (
             <div className="min-w-0">
               <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-white">{effective.name}</h2>
               {tagline && <p className="mt-0.5 line-clamp-2 break-words text-xs text-sidebar-muted">{tagline}</p>}
             </div>
           )}
-          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="-mr-1 flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-[12px] font-medium text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
-              title="Voltar ao Sistema"
-            >
-              <ArrowLeft size={14} />
-              Sistema
-            </button>
-          )}
         </div>
 
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-          {crmNavItems.map((entry) =>
-            isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+          {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
+            <div className="mb-2 border-b border-sidebar-border pb-2.5">
+              <button
+                onClick={() => {
+                  navigate("/dashboard");
+                  setSidebarOpen(false);
+                }}
+                className="flex h-10 w-full items-center gap-3 rounded-control px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-primary/50"
+                title="Página inicial do sistema"
+              >
+                <Home size={18} />
+                Página inicial
+              </button>
+            </div>
           )}
+          <div className="space-y-1">
+            {crmNavItems.map((entry) =>
+              isGroup(entry) ? renderNavGroup(entry) : renderNavItem(entry)
+            )}
+          </div>
         </nav>
 
         <div className="space-y-0.5 border-t border-sidebar-border p-3">
