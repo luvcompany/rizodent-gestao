@@ -1605,7 +1605,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                               <AvatarFallback className="bg-primary-soft text-primary-soft-fg text-[15px] font-semibold">{initials}</AvatarFallback>
                             </Avatar>
                             <div className="absolute -bottom-0.5 -right-0.5 flex rounded-full bg-card ring-2 ring-card">
-                              <ChannelBadgeIcon source={lead.source} size={16} />
+                              <ChannelBadgeIcon source={getLeadChannel(lead)} size={16} />
                             </div>
                           </div>
                           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5">
@@ -1814,7 +1814,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                     </AvatarFallback>
                   </Avatar>
                   <div className="absolute -bottom-0.5 -right-0.5 flex rounded-full bg-card ring-2 ring-card">
-                    <ChannelBadgeIcon source={selectedLead.source} size={16} />
+                    <ChannelBadgeIcon source={getLeadChannel(selectedLead)} size={16} />
                   </div>
                 </div>
                 <div className="contents">
