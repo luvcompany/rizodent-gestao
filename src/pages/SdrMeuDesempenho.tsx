@@ -10,6 +10,9 @@ import {
   buscarLigacoesSdr, buscarReagendamentosSdr, buscarRelatorioSdr, fmtInt, fmtMinutos, fmtNota, fmtPct, fmtSegundos, juntarReagendamentos, taxaComparecimento, taxaResposta,
   type EstadoRpc, type LigacoesSdr, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { BlocosSdr, buscarBlocosSdr, type Blocos } from "@/components/relatorios/BlocosSdr";
+import { SdrDiario, buscarSdrDiario, type LinhaDiaria } from "@/components/relatorios/SdrDiario";
 import { AlertTriangle, CalendarCheck, Info, Loader2, Phone, RefreshCw, TrendingUp, UserCheck, Users } from "lucide-react";
 
 /**
@@ -23,7 +26,7 @@ import { AlertTriangle, CalendarCheck, Info, Loader2, Phone, RefreshCw, Trending
  * negação com o papel nulo (corrida do papel no boot). Erro nunca vira zero.
  */
 
-type Dados = { l: LinhaRelatorioSdr | null; lig: LigacoesSdr | null };
+type Dados = { l: LinhaRelatorioSdr | null; lig: LigacoesSdr | null; blocos: Blocos | undefined; diario: LinhaDiaria[] | null };
 
 export default function SdrMeuDesempenho() {
   const { userRole, roleResolved, user } = useAuth();
@@ -40,16 +43,20 @@ export default function SdrMeuDesempenho() {
     if (!de || !ate) return;
     setEstado({ status: "loading" });
     try {
-      const [linhas, ligacoes, extras] = await Promise.all([
+      const [linhas, ligacoes, extras, blocos, diario] = await Promise.all([
         buscarRelatorioSdr("relatorio_sdr_minha", de, ate),
         buscarLigacoesSdr(de, ate),
         buscarReagendamentosSdr(de, ate),
+        buscarBlocosSdr(de, ate).catch(() => ({} as Record<string, Blocos>)),
+        buscarSdrDiario(de, ate).catch(() => null),
       ]);
       setEstado({
         status: "ok",
         data: {
           l: juntarReagendamentos(linhas, extras).find((x) => !x.is_total) ?? null,
           lig: ligacoes.find((x) => !user?.id || x.user_id === user.id) ?? null,
+          blocos: user?.id ? blocos[user.id] ?? {} : {},
+          diario: diario ? diario.filter((x) => !user?.id || x.user_id === user.id) : null,
         },
       });
     } catch (e) {
@@ -125,7 +132,12 @@ export default function SdrMeuDesempenho() {
             </p>
           </div>
         ) : (
-          <>
+          <Tabs defaultValue="geral">
+            <TabsList>
+              <TabsTrigger value="geral">Visão geral</TabsTrigger>
+              <TabsTrigger value="producao">Produção</TabsTrigger>
+            </TabsList>
+            <TabsContent value="geral" className="mt-6 space-y-6">
             {/* Resumo: os quatro números que importam, cada um no seu card */}
             <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-5 md:grid-cols-4">
               <div className="relative rounded-card border border-border/60 bg-card p-4 sm:p-5 shadow-card">
@@ -157,22 +169,17 @@ export default function SdrMeuDesempenho() {
               </div>
             </section>
 
+            <section className="rounded-card border border-border/60 bg-card p-5 sm:p-6 shadow-card">
+              <h2 className="mb-4 text-base font-semibold text-foreground">Suas consultas no período</h2>
+              <BlocosSdr nome="Você" blocos={estado.status === "ok" ? estado.data.blocos : undefined} />
+            </section>
+
             <div className="grid gap-4 lg:gap-5 md:grid-cols-2">
               <Painel titulo="Atendimento">
                 <Linha rotulo="Respondidos" valor={fmtInt(l.leads_respondidos)} apoio={l.leads_com_entrada == null ? (l.leads_recebidos > 0 ? `${fmtPct(l.leads_respondidos, l.leads_recebidos)} dos recebidos` : undefined) : l.leads_com_entrada > 0 ? `${taxaResposta(l)} de quem escreveu (${l.resp_amostra} de ${l.leads_com_entrada})` : "nenhum lead escreveu no período"} />
                 <Linha rotulo="1ª resposta (mediana)" valor={fmtSegundos(l.resp_mediana_seg)} apoio={l.resp_amostra > 0 ? `${fmtInt(l.resp_amostra)} na amostra` : "sem amostra"} />
                 <Linha rotulo="1ª resposta (média)" valor={fmtSegundos(l.resp_media_seg)} />
                 <Linha rotulo="Conversas fechadas" valor={fmtInt(l.conversas_fechadas)} />
-              </Painel>
-
-              <Painel titulo="Consultas no seu crédito">
-                <Linha rotulo="Agendamentos" valor={fmtInt(l.agendamentos)} apoio="pelo dia em que você marcou" />
-                <Linha rotulo="Compareceram" valor={fmtInt(l.compareceram)} apoio={l.compareceram + l.faltas > 0 ? taxaComparecimento(l) : undefined} />
-                <Linha rotulo="Faltas" valor={fmtInt(l.faltas)} />
-                <Linha rotulo="Reagendamentos" valor={typeof l.reagendamentos === "number" ? fmtInt(l.reagendamentos) : "—"} apoio="pelo dia em que você remarcou" />
-                <Linha rotulo="Reagendou e faltou" valor={typeof l.faltas_apos_reagendar === "number" ? fmtInt(l.faltas_apos_reagendar) : "—"} apoio="faltou de novo depois de remarcar" />
-                <Linha rotulo="Leads com 2+ faltas" valor={typeof l.leads_2_faltas === "number" ? fmtInt(l.leads_2_faltas) : "—"} />
-                <Linha rotulo="Cancelados" valor={fmtInt(l.agend_cancelados)} apoio="avisaram que não viriam — contam como agendamento" />
               </Painel>
 
               <Painel titulo="Ligações">
@@ -187,18 +194,25 @@ export default function SdrMeuDesempenho() {
                 <Linha rotulo="Pesquisa de satisfação" valor={fmtNota(l.pesquisa_nota_media)} apoio={l.pesquisa_respostas > 0 ? `${fmtInt(l.pesquisa_respostas)} ${l.pesquisa_respostas === 1 ? "resposta" : "respostas"}` : "sem respostas"} />
               </Painel>
             </div>
-          </>
+            </TabsContent>
+            <TabsContent value="producao" className="mt-6">
+              {estado.status === "ok" && estado.data.diario ? (
+                <SdrDiario modo="feitos" linhas={estado.data.diario} de={de ?? ""} ate={ate ?? ""} />
+              ) : (
+                <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">Não foi possível carregar sua produção.</p>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
 
         <div className="flex items-start gap-3 rounded-xl bg-muted p-4 text-[13px] leading-relaxed text-muted-foreground">
           <Info size={16} className="mt-0.5 shrink-0 text-info" />
           <p>
             Os números contam o que aconteceu enquanto o lead era seu, e continuam seus mesmo depois
-            de o lead passar para o administrador. <strong>Agendamentos contam pelo dia em que você
-            marcou</strong>, não pelo dia da consulta: no filtro de hoje, "Compareceram" e "Faltas"
-            ficam baixos porque a consulta que você marcou hoje ainda não aconteceu — as duas colunas
-            acompanham as mesmas consultas desta linha. Para ver quantas consultas ACONTECEM no
-            período, use o Calendário. O relógio da 1ª resposta é corrido, sem descontar noite e fim
+            de o lead passar para o administrador. Os blocos Agendados, Remarcados e Geral contam as consultas
+            marcadas para o período: Agendados é a 1ª consulta do lead, Remarcados são as seguintes e o
+            Geral mostra o desfecho final de cada lead, contado uma vez só. A Produção mostra, dia a dia,
+            quantos agendamentos você fez. O relógio da 1ª resposta é corrido, sem descontar noite e fim
             de semana.
           </p>
         </div>
