@@ -51,11 +51,22 @@ const Pacientes = () => {
     const fetchAll = async () => {
       setLoading(true);
 
-      const [{ data: pacs }, { data: pagamentos }, { data: clinicas }, { data: vinculos }] = await Promise.all([
+      const buscarPaginas = async (tabela: string, colunas: string, ordem: string) => {
+        const todas: any[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data } = await (supabase.from as any)(tabela).select(colunas).order(ordem, { ascending: false }).range(from, from + 999);
+          if (!data || data.length === 0) break;
+          todas.push(...data);
+          if (data.length < 1000) break;
+        }
+        return todas;
+      };
+
+      const [{ data: pacs }, pagamentos, { data: clinicas }, vinculos] = await Promise.all([
         supabase.from("pacientes").select("id, nome, telefone, cidade, created_at").order("created_at", { ascending: false }),
-        supabase.from("pagamentos").select("paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto").order("data_pagamento", { ascending: false }),
+        buscarPaginas("pagamentos", "paciente_id, valor, data_pagamento, clinica_id, tipo, recorrencia_orto", "data_pagamento"),
         supabase.from("clinicas").select("id, nome"),
-        supabase.from("crm_lead_pacientes").select("paciente_id, lead_id"),
+        buscarPaginas("crm_lead_pacientes", "paciente_id, lead_id", "paciente_id"),
       ]);
       const leadMap = new Map<string, string>();
       (vinculos || []).forEach((v: any) => { if (!leadMap.has(v.paciente_id)) leadMap.set(v.paciente_id, v.lead_id); });
@@ -284,6 +295,26 @@ const Pacientes = () => {
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-4 sm:justify-end">
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button variant="ghost" size="icon" title="Ver ficha" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/pacientes/${pac.id}`)}>
+                      <Eye size={18} />
+                    </Button>
+                    <div className="hidden items-center gap-1 sm:flex">
+                      <Button variant="ghost" size="icon" title="Editar" className="text-muted-foreground hover:text-foreground" onClick={() => abrirEditar(pac)}><Pencil size={17} /></Button>
+                      {pac.lead_id && <Button variant="ghost" size="icon" title="Ver conversa" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={17} /></Button>}
+                      <Button variant="ghost" size="icon" title="Excluir" className="text-muted-foreground hover:text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={17} /></Button>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-muted-foreground sm:hidden" aria-label="Ações"><MoreHorizontal size={18} /></Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => abrirEditar(pac)}><Pencil size={15} className="mr-2" />Editar</DropdownMenuItem>
+                        {pac.lead_id && <DropdownMenuItem onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={15} className="mr-2" />Ver conversa</DropdownMenuItem>}
+                        <DropdownMenuItem className="text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={15} className="mr-2" />Excluir</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <div className="space-y-0.5 sm:text-right">
                     {pac.valor_contratado > 0 && (
                       <p className="whitespace-nowrap text-sm font-semibold text-primary">
@@ -308,26 +339,6 @@ const Pacientes = () => {
                         Última visita: {new Date(pac.ultima_visita + "T12:00:00").toLocaleDateString("pt-BR")}
                       </p>
                     )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button variant="ghost" size="icon" title="Ver ficha" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/pacientes/${pac.id}`)}>
-                      <Eye size={18} />
-                    </Button>
-                    <div className="hidden items-center gap-1 sm:flex">
-                      <Button variant="ghost" size="icon" title="Editar" className="text-muted-foreground hover:text-foreground" onClick={() => abrirEditar(pac)}><Pencil size={17} /></Button>
-                      {pac.lead_id && <Button variant="ghost" size="icon" title="Ver conversa" className="text-muted-foreground hover:text-foreground" onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={17} /></Button>}
-                      <Button variant="ghost" size="icon" title="Excluir" className="text-muted-foreground hover:text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={17} /></Button>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-muted-foreground sm:hidden" aria-label="Ações"><MoreHorizontal size={18} /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => abrirEditar(pac)}><Pencil size={15} className="mr-2" />Editar</DropdownMenuItem>
-                        {pac.lead_id && <DropdownMenuItem onClick={() => navigate(`/crm/conversas?lead=${pac.lead_id}`)}><MessageCircle size={15} className="mr-2" />Ver conversa</DropdownMenuItem>}
-                        <DropdownMenuItem className="text-destructive" onClick={() => setExcluir([pac.id])}><Trash2 size={15} className="mr-2" />Excluir</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>
