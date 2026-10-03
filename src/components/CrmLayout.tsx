@@ -565,14 +565,14 @@ const CrmLayout = () => {
           </button>
         </div>
 
-        <div className="mx-3 flex min-h-[3rem] items-center px-1 pb-2">
-          {!temLogoCliente && (
+        {!temLogoCliente && (
+          <div className="mx-3 px-1 pb-2">
             <div className="min-w-0">
               <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-white">{effective.name}</h2>
               {tagline && <p className="mt-0.5 line-clamp-2 break-words text-xs text-sidebar-muted">{tagline}</p>}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
           {userRole !== "posvenda" && userRole !== "recepcao" && userRole !== "closer" && userRole !== "sdr" && (
