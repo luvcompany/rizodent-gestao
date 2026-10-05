@@ -7111,6 +7111,17 @@ export type Database = {
           user_id: string
         }[]
       }
+      relatorio_sdr_multi_remarcacoes: {
+        Args: { p_ate: string; p_de: string }
+        Returns: {
+          consultas: Json
+          lead_id: string
+          lead_nome: string
+          qtd_remarcacoes: number
+          sdr_id: string
+          sdr_nome: string
+        }[]
+      }
       relatorio_sdr_reagendamentos: {
         Args: { p_ate: string; p_de: string }
         Returns: {
