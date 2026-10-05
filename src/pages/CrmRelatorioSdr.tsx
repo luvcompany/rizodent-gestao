@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/crm-ui";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SdrDiario, buscarSdrDiario, type LinhaDiaria } from "@/components/relatorios/SdrDiario";
 import { cn } from "@/lib/utils";
+import { RemarcouMaisDeUmaVez } from "@/components/relatorios/RemarcouMaisDeUmaVez";
 import { BlocosSdr, buscarBlocosSdr, type Blocos } from "@/components/relatorios/BlocosSdr";
 
 /**
@@ -285,6 +286,7 @@ export default function CrmRelatorioSdr() {
           <TabsList variant="pill" className="w-full sm:w-auto rounded-xl lg:rounded-full border border-border/60 bg-card p-1.5 shadow-card">
             <TabsTrigger value="geral">Visão geral</TabsTrigger>
             <TabsTrigger value="feitos">Produção</TabsTrigger>
+            <TabsTrigger value="multi">Remarcou mais de uma vez</TabsTrigger>
           </TabsList>
           <TabsContent value="geral" className="mt-6 space-y-6">
         {estado.status === "error" ? (
@@ -370,6 +372,9 @@ export default function CrmRelatorioSdr() {
               <SdrDiario modo="feitos" linhas={diario.data} de={de ?? ""} ate={ate ?? ""}
                 extraPorSdr={Object.fromEntries(sdrs.filter((l) => l.user_id).map((l) => [l.user_id as string, <GrupoMetricas key="j" titulo="Jornada" chaves={["expediente", "pausa"]} linha={l} />]))} />
             )}
+          </TabsContent>
+          <TabsContent value="multi" className="mt-6">
+            <RemarcouMaisDeUmaVez de={de} ate={ate} />
           </TabsContent>
         </Tabs>
 

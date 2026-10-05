@@ -11,6 +11,7 @@ import {
   type EstadoRpc, type LigacoesSdr, type LinhaRelatorioSdr,
 } from "@/lib/relatorioSdr";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RemarcouMaisDeUmaVez } from "@/components/relatorios/RemarcouMaisDeUmaVez";
 import { BlocosSdr, buscarBlocosSdr, type Blocos } from "@/components/relatorios/BlocosSdr";
 import { SdrDiario, buscarSdrDiario, type LinhaDiaria } from "@/components/relatorios/SdrDiario";
 import { AlertTriangle, CalendarCheck, Info, Loader2, Phone, RefreshCw, TrendingUp, UserCheck, Users } from "lucide-react";
@@ -136,6 +137,7 @@ export default function SdrMeuDesempenho() {
             <TabsList>
               <TabsTrigger value="geral">Visão geral</TabsTrigger>
               <TabsTrigger value="producao">Produção</TabsTrigger>
+              <TabsTrigger value="multi">Remarcou mais de uma vez</TabsTrigger>
             </TabsList>
             <TabsContent value="geral" className="mt-6 space-y-6">
             {/* Resumo: os quatro números que importam, cada um no seu card */}
@@ -201,6 +203,9 @@ export default function SdrMeuDesempenho() {
               ) : (
                 <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">Não foi possível carregar sua produção.</p>
               )}
+            </TabsContent>
+            <TabsContent value="multi" className="mt-6">
+              <RemarcouMaisDeUmaVez de={de} ate={ate} />
             </TabsContent>
           </Tabs>
         )}
