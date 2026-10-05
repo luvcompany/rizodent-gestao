@@ -32,6 +32,7 @@ const BLOCOS: { titulo: string; ajuda: string; itens: Item[]; base?: string }[] 
     { rotulo: "Faltas", chave: "agd_falta", tom: "falta" },
     { rotulo: "Cancelamentos", chave: "agd_cancelou", tom: "cancelou" },
     { rotulo: "Pendentes", chave: "agd_pendente", tom: "pendente" },
+    { rotulo: "Remarcou", chave: "agd_remarcou", tom: "remarcou" },
   ] },
   { titulo: "Remarcados", ajuda: "Consultas seguintes do lead, marcadas para o período", itens: [
     { rotulo: "Total", chave: "rem", tom: "total" },
@@ -39,6 +40,7 @@ const BLOCOS: { titulo: string; ajuda: string; itens: Item[]; base?: string }[] 
     { rotulo: "Faltas", chave: "rem_falta", tom: "falta" },
     { rotulo: "Cancelamentos", chave: "rem_cancelou", tom: "cancelou" },
     { rotulo: "Pendentes", chave: "rem_pendente", tom: "pendente" },
+    { rotulo: "Remarcou", chave: "rem_remarcou", tom: "remarcou" },
   ] },
   { titulo: "Geral", ajuda: "Desfecho final de cada lead no período", base: "ger", itens: [
     { rotulo: "Total", chave: "ger", tom: "total" },
