@@ -1435,9 +1435,15 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
   }, [channelFilter, excludePipelines, inaccessiblePipelineIds, leads, pipelineFilter]);
 
   // Sorting
-  const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured">("recent");
+  const [sortMode, setSortMode] = useState<"recent" | "longest_wait" | "featured" | "closed">("recent");
 
   const sortedFiltered = useMemo(() => {
+    if (sortMode === "closed") {
+      // Só conversas fechadas, da fechada há menos tempo para a mais antiga
+      const closed = filtered.filter(l => !!l.conversa_fechada_em);
+      closed.sort((a, b) => new Date(b.conversa_fechada_em!).getTime() - new Date(a.conversa_fechada_em!).getTime());
+      return closed;
+    }
     if (sortMode === "longest_wait") {
       // Apenas leads não lidos (inbound dentro da janela de 60 dias — igual aos
       // contadores), ordenados do last_inbound_at mais antigo para o mais novo
@@ -1554,9 +1560,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                        <DropdownMenuItem onClick={() => setSortMode("recent")} className={sortMode === "recent" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
                          Mais recentes {sortMode === "recent" && "✓"}
                        </DropdownMenuItem>
-                       <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
-                         Longa espera {sortMode === "longest_wait" && "✓"}
-                       </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
+                          Longa espera {sortMode === "longest_wait" && "✓"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSortMode("closed")} className={sortMode === "closed" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
+                          Fechadas {sortMode === "closed" && "✓"}
+                        </DropdownMenuItem>
                      </DropdownMenuContent>
                    </DropdownMenu>
                 </div>
