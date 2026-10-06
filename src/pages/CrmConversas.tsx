@@ -1560,9 +1560,12 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                        <DropdownMenuItem onClick={() => setSortMode("recent")} className={sortMode === "recent" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
                          Mais recentes {sortMode === "recent" && "✓"}
                        </DropdownMenuItem>
-                       <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
-                         Longa espera {sortMode === "longest_wait" && "✓"}
-                       </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSortMode("longest_wait")} className={sortMode === "longest_wait" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
+                          Longa espera {sortMode === "longest_wait" && "✓"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSortMode("closed")} className={sortMode === "closed" ? "rounded-lg bg-primary-soft-2 font-medium text-primary" : "rounded-lg"}>
+                          Fechadas {sortMode === "closed" && "✓"}
+                        </DropdownMenuItem>
                      </DropdownMenuContent>
                    </DropdownMenu>
                 </div>
