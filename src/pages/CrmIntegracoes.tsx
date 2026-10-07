@@ -247,6 +247,8 @@ export default function CrmIntegracoes() {
     }
 
     toast.success("Configurações salvas");
+    // Ativa recebimento de mensagens e status do número na hora, sem esperar a checagem automática.
+    supabase.functions.invoke("whatsapp-health-check", { body: {} }).catch(() => {});
 
     // Auto-sync templates from Meta when WABA is configured
     if (editEntry.config.waba_id && editEntry.config.token) {
