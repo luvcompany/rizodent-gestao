@@ -4506,6 +4506,7 @@ export type Database = {
           created_at: string
           id: string
           key: string
+          owner_role: string | null
           status: string
           tenant_id: string | null
           updated_at: string
@@ -4515,6 +4516,7 @@ export type Database = {
           created_at?: string
           id?: string
           key: string
+          owner_role?: string | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -4524,6 +4526,7 @@ export type Database = {
           created_at?: string
           id?: string
           key?: string
+          owner_role?: string | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -6095,6 +6098,10 @@ export type Database = {
         Args: { _account_id: string }
         Returns: boolean
       }
+      can_access_integration_world: {
+        Args: { _owner_role: string }
+        Returns: boolean
+      }
       can_access_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
       can_access_whatsapp_number: {
         Args: { _number_id: string }
@@ -6654,6 +6661,7 @@ export type Database = {
           waba_id: string
         }[]
       }
+      integration_world: { Args: { _role: string }; Returns: string }
       is_gestor_equipe: { Args: never; Returns: boolean }
       is_posvenda_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_posvenda_pipeline: { Args: { _pipeline_id: string }; Returns: boolean }
