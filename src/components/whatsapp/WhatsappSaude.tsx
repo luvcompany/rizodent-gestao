@@ -50,7 +50,7 @@ export function SeloSaudeWhatsapp({ phoneNumberId }: { phoneNumberId?: string | 
     if (error) toast({ title: "Não foi possível verificar agora", variant: "destructive" });
   };
 
-  const tone = s.health_status === "error" ? "destructive" : s.health_status === "warning" ? "warning" : s.health_status === "ok" ? "success" : "slate";
+  const tone = s.health_status === "error" ? "destructive" : s.health_status === "warning" ? "warning" : s.health_status === "ok" ? "success" : "muted";
   const rotulo = s.health_status === "error" ? (s.health_reason || "Problema na Meta")
     : s.health_status === "warning" ? (s.health_reason || "Qualidade baixa / Limitado")
     : s.health_status === "ok" ? "Conectado na Meta" : "Ainda não verificado";
@@ -80,7 +80,7 @@ export function AvisoWhatsappDesconectado() {
   return (
     <button
       type="button"
-      onClick={() => navigate("../integracoes", { relative: "path" })}
+      onClick={() => navigate("/crm/integracoes")}
       className="mb-3 flex w-full items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-left text-sm text-destructive"
     >
       <AlertTriangle size={16} className="shrink-0" />

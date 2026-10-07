@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
@@ -282,6 +283,7 @@ export default function MinhasConexoes() {
                       <span className="mt-0.5 block truncate font-mono text-[12.5px] tabular-nums text-muted-foreground">
                         {c.phone_e164 || "Número não identificado"}
                       </span>
+                      <SeloSaudeWhatsapp phoneNumberId={c.phone_number_id} />
                       {c.pipeline_name && (
                         <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
                           Funil: {c.pipeline_name}
