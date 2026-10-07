@@ -158,6 +158,8 @@ export default function MinhasConexoes() {
         pipeline_id: form.pipeline_id || undefined,
       },
     });
+    // Ativa recebimento de mensagens e status do número na hora.
+    if (!error) supabase.functions.invoke("whatsapp-health-check", { body: {} }).catch(() => {});
 
     // A function devolve a mensagem real da Meta no corpo; sem ler o contexto,
     // o erro chega ao usuário como "non-2xx status code".
