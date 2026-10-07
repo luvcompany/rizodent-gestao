@@ -26,7 +26,7 @@ import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbe
 import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsSection";
 import Api4ComSection from "@/components/integrations/Api4ComSection";
 import { PageHeader, StatusPill } from "@/components/crm-ui";
-import { SeloSaudeWhatsapp, PadraoEnvioWhatsapp } from "@/components/whatsapp/WhatsappSaude";
+import { SeloSaudeWhatsapp, PadraoEnvioWhatsapp, PadraoEnvioSwitch } from "@/components/whatsapp/WhatsappSaude";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -605,6 +605,7 @@ export default function CrmIntegracoes() {
                   <Label>Versão da API</Label>
                   <Input value={editEntry.config.api_version} onChange={(e) => setEditEntry(prev => prev ? { ...prev, config: { ...prev.config, api_version: e.target.value } } : prev)} placeholder="v25.0" />
                 </div>
+                <PadraoEnvioSwitch phoneNumberId={editEntry.config.phone_number_id} />
                 <div className="flex gap-2">
                   <Button onClick={handleSave} disabled={saving} className="flex-1">{saving ? "Salvando..." : "Salvar Configurações"}</Button>
                   <Button variant="outline" onClick={handleTestConnection} disabled={testing}>{testing ? "Testando..." : "Testar Conexão"}</Button>
