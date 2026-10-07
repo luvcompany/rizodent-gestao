@@ -618,7 +618,7 @@ export default function CrmModelos() {
           status: "DRAFT",
           created_by_user_id: atual?.id || null,
           owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
-          whatsapp_number_id: selectedNumero || null,
+          whatsapp_number_id: formNumeroId || null,
           updated_at: new Date().toISOString(),
         }]);
         if (error) { toast.error(erroDeGravacao(error)); return; }
