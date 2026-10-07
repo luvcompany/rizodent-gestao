@@ -481,6 +481,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       .from("messages")
       .select("created_at")
       .eq("lead_id", alvo)
+      .is("historico_de_lead_id" as any, null)
       .eq("direction", "inbound")
       .eq("channel", "whatsapp")
       .order("created_at", { ascending: false })
@@ -779,6 +780,7 @@ export function useChatConversation(leadId: string | null | undefined) {
         .from("messages")
         .select("*")
         .eq("lead_id", targetLeadId)
+        .is("historico_de_lead_id" as any, null)
         .gte("created_at", ultima)
         .order("created_at", { ascending: true })
         .limit(JANELA_DE_MENSAGENS);
