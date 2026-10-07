@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { PublicApp, TenantApp } from "./App.tsx";
 import { RESERVED_PATHS } from "./lib/rotasReservadas";
 import { recarregarUmaVez } from "./lib/recarregarAposPublicacao";
+import "./lib/renovarSessaoFuncoes";
 import "./index.css";
 
 // Subdomínios do próprio sistema que não são clínica (app.dominio, api.dominio…).
