@@ -415,6 +415,7 @@ async function sendAction(
         body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
       });
       const txt = await resp.text();
+      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
       if (!resp.ok) throw new Error(`send_audio ${resp.status}: ${txt.substring(0, 400)}`);
       return;
     }
@@ -441,6 +442,7 @@ async function sendAction(
         }),
       });
       const txt = await resp.text();
+      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
       if (!resp.ok) throw new Error(`send_file ${resp.status}: ${txt.substring(0, 400)}`);
       return;
     }

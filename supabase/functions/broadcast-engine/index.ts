@@ -164,6 +164,13 @@ Deno.serve(async (req) => {
             await new Promise(res => setTimeout(res, 2000));
             continue;
           }
+          const corpo = resp.ok ? await resp.clone().text() : "";
+          if (corpo.includes("whatsapp_disconnected")) {
+            // Número desconectado da Meta: pausa o disparo; destinatários
+            // continuam pendentes para a próxima rodada.
+            console.warn("[broadcast] WhatsApp desconectado — disparo pausado");
+            break;
+          }
           if (resp.ok) {
             await supabase.from("crm_broadcast_recipients").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", r.id);
             sentCount++;
