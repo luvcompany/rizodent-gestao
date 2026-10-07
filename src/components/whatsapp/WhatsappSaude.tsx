@@ -148,3 +148,63 @@ export function PadraoEnvioWhatsapp({ phoneNumberId }: { phoneNumberId?: string 
     </button>
   );
 }
+
+/**
+ * Versão em linha (para dentro da configuração do WhatsApp):
+ * interruptor "Número padrão de envio" com explicação.
+ */
+export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | null }) {
+  const { toast } = useToast();
+  const [num, setNum] = useState<{ id: string; is_default: boolean | null } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    if (!phoneNumberId) return;
+    const { data } = await supabase
+      .from("whatsapp_numbers")
+      .select("id, is_default")
+      .eq("phone_number_id", phoneNumberId)
+      .eq("is_active", true)
+      .maybeSingle();
+    setNum(data as any);
+  }, [phoneNumberId]);
+
+  useEffect(() => { carregar(); }, [carregar]);
+  if (!num) return null;
+
+  const alternar = async () => {
+    setSalvando(true);
+    const novo = !num.is_default;
+    if (novo) await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", num.id);
+    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: novo }).eq("id", num.id);
+    setSalvando(false);
+    if (error) {
+      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: novo ? "Número padrão de envio definido" : "Número padrão removido — envios voltam ao número principal" });
+    setNum({ ...num, is_default: novo });
+    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+  };
+
+  return (
+    <div className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${num.is_default ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">Número padrão de envio</p>
+        <p className="text-[11px] text-muted-foreground">
+          Automações, bots, follow-up e leads sem número escolhido saem por este número.
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={!!num.is_default}
+        onClick={alternar}
+        disabled={salvando}
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${num.is_default ? "bg-primary" : "bg-muted"}`}
+      >
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${num.is_default ? "left-[22px]" : "left-0.5"}`} />
+      </button>
+    </div>
+  );
+}
