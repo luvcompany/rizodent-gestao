@@ -401,6 +401,7 @@ Deno.serve(async (req) => {
     // tenant" — era isso que fazia mover o lead de funil trocar o número de
     // saída e a resposta de bot sair pelo número errado.
     let resolvedCredentials = false;
+    let numeroUsadoId: string | null = null;
     const leadWaNumberId: string | null = (leadData as any)?.whatsapp_number_id ?? null;
 
     if (leadWaNumberId) {
@@ -449,8 +450,28 @@ Deno.serve(async (req) => {
       resolvedCredentials = true;
       console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
     } else {
+      // (b0) Número padrão de envio escolhido em Integrações: vale para todo
+      // lead sem número escolhido (ex.: contingência enquanto o principal cai).
+      const { data: padrao } = await supabase
+        .from("whatsapp_numbers")
+        .select("id")
+        .eq("tenant_id", leadTenantId)
+        .eq("is_active", true)
+        .eq("is_default", true)
+        .limit(1);
+      const padraoId = (padrao as any[] | null)?.[0]?.id;
+      if (padraoId) {
+        const esc = await escopoDoNumero(supabase, padraoId, leadTenantId);
+        if (esc?.token && esc.phoneNumberId) {
+          whatsappToken = esc.token;
+          phoneNumberId = esc.phoneNumberId;
+          numeroUsadoId = padraoId;
+          resolvedCredentials = true;
+          console.log(`[send-whatsapp] usando número padrão de envio ${esc.phoneNumberId}`);
+        }
+      }
       // (b) Lead do mundo legado: canal do funil e, na falta dele, whatsapp_config.
-      if (leadData?.pipeline_id) {
+      if (!resolvedCredentials && leadData?.pipeline_id) {
         const { data: funnelChannel } = await supabase
           .from("funnel_channels")
           .select("channel_config")
