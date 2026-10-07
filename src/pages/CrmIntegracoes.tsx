@@ -187,7 +187,7 @@ export default function CrmIntegracoes() {
     const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%");
     if (data) {
       // Números individuais (closer/recepção) ficam só na tela Conexões de quem conectou.
-      setWhatsappEntries(data.filter(d => !(d.config as Record<string, unknown> | null)?.owner_user_id).map(d => ({
+      setWhatsappEntries(data.filter(d => !(d as { owner_role?: string | null }).owner_role || (d as { owner_role?: string | null }).owner_role === "crc").map(d => ({
         id: d.id,
         key: d.key,
         config: { ...defaultConfig, ...(d.config as Record<string, unknown>) } as WhatsAppConfig,
@@ -229,7 +229,7 @@ export default function CrmIntegracoes() {
     if (editEntry.id) {
       await supabase.from("integrations").update(payload).eq("id", editEntry.id);
     } else {
-      const { data } = await supabase.from("integrations").insert({ key: editEntry.key, ...payload, status: "disconnected" }).select().single();
+      const { data } = await supabase.from("integrations").insert({ key: editEntry.key, ...payload, status: "disconnected", owner_role: "crc" }).select().single();
       if (data) {
         setEditEntry(prev => prev ? { ...prev, id: data.id } : prev);
       }

@@ -383,17 +383,19 @@ Deno.serve(async (req) => {
         if (typeof anterior === "string" && anterior) config.app_secret = anterior;
       }
 
+      const papelDono = papeis.find((p) => !["gerente", "superadmin"].includes(p)) ?? "crc";
+      const ownerRole = ["crc", "sdr", "crc_legacy"].includes(papelDono) ? "crc" : papelDono;
       let integrationId: string | null = existente?.id ?? null;
       if (integrationId) {
         const { error } = await admin
           .from("integrations")
-          .update({ config, status: "connected", updated_at: new Date().toISOString() })
+          .update({ config, owner_role: ownerRole, status: "connected", updated_at: new Date().toISOString() })
           .eq("id", integrationId);
         if (error) return json({ error: error.message }, 500);
       } else {
         const { data: nova, error } = await admin
           .from("integrations")
-          .insert({ tenant_id: tenantId, key, config, status: "connected" })
+          .insert({ tenant_id: tenantId, key, config, owner_role: ownerRole, status: "connected" })
           .select("id")
           .single();
         if (error) return json({ error: error.message }, 500);
