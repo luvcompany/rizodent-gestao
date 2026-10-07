@@ -29,6 +29,13 @@
       "when": 1791382759532,
       "tag": "0003_integrations_health",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791410405636,
+      "tag": "0004_bloquear_sem_telefone",
+      "breakpoints": true
     }
   ]
 }
