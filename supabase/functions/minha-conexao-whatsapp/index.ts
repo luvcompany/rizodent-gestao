@@ -48,6 +48,7 @@ interface ItemConexao {
   status: string | null;
   pipeline_id: string | null;
   pipeline_name: string | null;
+  app_id: string | null;
   criado_em: string | null;
   is_coexistence: boolean;
 }
@@ -105,6 +106,7 @@ async function listarMeusNumeros(
       waba_id: n.waba_id ?? cfg.waba_id ?? null,
       status: intg?.status ?? (n.is_active ? "connected" : "disabled"),
       pipeline_id: cfg.pipeline_id ?? null,
+      app_id: cfg.app_id ?? null,
       pipeline_name: cfg.pipeline_id ? (nomePipeline.get(cfg.pipeline_id) ?? null) : null,
       criado_em: n.created_at ?? null,
       is_coexistence: n.is_coexistence === true,
@@ -144,9 +146,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "connect") {
+      let { token } = body as Record<string, string | undefined>;
       const {
         display_name,
-        token,
         phone_number_id,
         waba_id,
         app_id,
@@ -171,6 +173,37 @@ Deno.serve(async (req) => {
           }
         }
       }
+
+      // Edição: sem token novo, reaproveita o já gravado — só se o número for do próprio usuário.
+      let configAnterior: any = null;
+      if (phone_number_id) {
+        const { data: intgAnt } = await admin
+          .from("integrations")
+          .select("config")
+          .eq("tenant_id", tenantId)
+          .eq("key", `whatsapp_${phone_number_id}`)
+          .maybeSingle();
+        const { data: numAnt } = await admin
+          .from("whatsapp_numbers")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("phone_number_id", phone_number_id)
+          .maybeSingle();
+        let meu = false;
+        if (numAnt) {
+          const { data: ov } = await admin
+            .from("user_permission_overrides")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("scope", "whatsapp_number")
+            .eq("resource_id", numAnt.id)
+            .eq("granted", true)
+            .maybeSingle();
+          meu = !!ov;
+        }
+        if (meu) configAnterior = intgAnt?.config ?? null;
+      }
+      if (!token && configAnterior?.token) token = configAnterior.token;
 
       const faltando = [
         !display_name && "Nome de exibição",
@@ -323,14 +356,16 @@ Deno.serve(async (req) => {
         token,
         phone_number_id,
         waba_id,
-        app_id: app_id ?? "",
+        app_id: app_id || configAnterior?.app_id || "",
         api_version: API_VERSION,
         // App secret do app Meta DESTE cliente (opcional). Usado só para
         // validar a assinatura HMAC do webhook — nunca é devolvido em respostas.
         app_secret: app_secret ?? "",
-        webhook_verify_token: webhook_verify_token ?? "",
+        webhook_verify_token: webhook_verify_token || configAnterior?.webhook_verify_token || "",
         display_name,
         pipeline_id: pipeline_id ?? "",
+        // Número individual (closer/recepção): não aparece na tela Integrações da clínica.
+        owner_user_id: papeis.some((p) => p === "closer" || p === "recepcao") ? userId : "",
       };
 
 
@@ -491,11 +526,13 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!numero) return json({ error: "Número não encontrado" }, 404);
 
-      await admin
-        .from("integrations")
-        .update({ status: "disabled", updated_at: new Date().toISOString() })
-        .eq("tenant_id", tenantId)
-        .eq("key", `whatsapp_${numero.phone_number_id}`);
+      // Excluir de verdade: remove a integração, o vínculo de funil e o acesso do usuário.
+      // O registro do número fica inativo só para preservar o histórico de mensagens.
+      const chave = `whatsapp_${numero.phone_number_id}`;
+      await admin.from("funnel_channels").delete().eq("tenant_id", tenantId)
+        .eq("channel_config->>integration_key", chave);
+      await admin.from("integrations").delete().eq("tenant_id", tenantId).eq("key", chave);
+      await admin.from("user_permission_overrides").delete().eq("id", override.id);
 
       await admin
         .from("whatsapp_numbers")
