@@ -54,6 +54,17 @@ window.addEventListener("vite:preloadError", (ev) => {
   if (recarregarUmaVez()) ev.preventDefault();
 });
 
+// Chamada a função do servidor com sessão vencida/ausente (401) não é falha da
+// tela: quem chamou já trata o erro; aqui só impedimos que uma promessa sem
+// catch derrube a página inteira.
+window.addEventListener("unhandledrejection", (ev) => {
+  const r = ev.reason as { name?: string; context?: { status?: number } } | undefined;
+  if (r?.name === "FunctionsHttpError" && r.context?.status === 401) {
+    ev.preventDefault();
+    console.warn("[auth] chamada sem sessão válida ignorada:", r);
+  }
+});
+
 const root = createRoot(document.getElementById("root")!);
 root.render(
   mode === "public"
