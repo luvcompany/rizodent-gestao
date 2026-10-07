@@ -4504,9 +4504,14 @@ export type Database = {
         Row: {
           config: Json | null
           created_at: string
+          health_checked_at: string | null
+          health_reason: string | null
+          health_status: string | null
           id: string
           key: string
+          meta_status: string | null
           owner_role: string | null
+          quality_rating: string | null
           status: string
           tenant_id: string | null
           updated_at: string
@@ -4514,9 +4519,14 @@ export type Database = {
         Insert: {
           config?: Json | null
           created_at?: string
+          health_checked_at?: string | null
+          health_reason?: string | null
+          health_status?: string | null
           id?: string
           key: string
+          meta_status?: string | null
           owner_role?: string | null
+          quality_rating?: string | null
           status?: string
           tenant_id?: string | null
           updated_at?: string
@@ -4524,9 +4534,14 @@ export type Database = {
         Update: {
           config?: Json | null
           created_at?: string
+          health_checked_at?: string | null
+          health_reason?: string | null
+          health_status?: string | null
           id?: string
           key?: string
+          meta_status?: string | null
           owner_role?: string | null
+          quality_rating?: string | null
           status?: string
           tenant_id?: string | null
           updated_at?: string

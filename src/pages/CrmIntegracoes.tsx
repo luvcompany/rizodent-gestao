@@ -26,6 +26,7 @@ import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbe
 import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsSection";
 import Api4ComSection from "@/components/integrations/Api4ComSection";
 import { PageHeader, StatusPill } from "@/components/crm-ui";
+import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -488,6 +489,7 @@ export default function CrmIntegracoes() {
                             <p className="text-xs text-muted-foreground font-mono truncate">
                               ID: {c.phone_number_id ? `••••${c.phone_number_id.slice(-4)}` : "—"}
                             </p>
+                            <SeloSaudeWhatsapp phoneNumberId={c.phone_number_id} />
                             {pName && (
                               <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                                 <GitBranch size={12} /> Funil: {pName}

@@ -249,6 +249,18 @@ Deno.serve(async (req) => {
         const msg = (e?.message || String(e)).substring(0, 1000);
         console.error(`[queue-worker] item ${item.id} failed:`, msg);
 
+        // Número desconectado da Meta: pausa (reagenda) sem contar tentativa.
+        if (msg.includes("WHATSAPP_DISCONNECTED")) {
+          const nextAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+          await supabase.from("crm_automation_queue").update({
+            status: "pending", scheduled_at: nextAt,
+            error_message: `pausado — WhatsApp desconectado da Meta; nova tentativa em ${nextAt}`,
+            updated_at: new Date().toISOString(),
+          }).eq("id", item.id);
+          stats.deferred++;
+          return;
+        }
+
         // 429 rate-limit do Edge Runtime / gateway — reagenda em vez de descartar
         const rateMatch = msg.match(/Rate limit exceeded[^]*?Retry after (\d+)\s*ms/i);
         if (rateMatch) {
@@ -370,6 +382,7 @@ async function sendAction(
         }),
       });
       const txt = await resp.text();
+      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
       if (!resp.ok) throw new Error(`send-whatsapp-message ${resp.status}: ${txt.substring(0, 400)}`);
       return;
     }
@@ -402,6 +415,7 @@ async function sendAction(
         body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
       });
       const txt = await resp.text();
+      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
       if (!resp.ok) throw new Error(`send_audio ${resp.status}: ${txt.substring(0, 400)}`);
       return;
     }
@@ -428,6 +442,7 @@ async function sendAction(
         }),
       });
       const txt = await resp.text();
+      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
       if (!resp.ok) throw new Error(`send_file ${resp.status}: ${txt.substring(0, 400)}`);
       return;
     }

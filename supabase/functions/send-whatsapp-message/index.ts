@@ -323,6 +323,7 @@ Deno.serve(async (req) => {
       // chamador service_role: vindo do app, permitiria gravar no histórico um
       // texto diferente do que a Meta entregou.
       log_content,
+      force_send,
     } = await req.json();
 
     if (!lead_id) {
@@ -549,6 +550,26 @@ Deno.serve(async (req) => {
       }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Conexão com problema na Meta: não tenta enviar (evita falhas em série).
+    // `force_send` permite um envio manual de teste para checar se voltou.
+    {
+      const { data: saude } = await supabase.from("integrations")
+        .select("health_reason")
+        .eq("tenant_id", leadTenantId)
+        .eq("health_status", "error")
+        .like("key", "whatsapp_%")
+        .filter("config->>phone_number_id", "eq", String(phoneNumberId))
+        .limit(1);
+      const problema = (saude as any[] | null)?.[0];
+      if (problema && !force_send) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: `WhatsApp desconectado da Meta — mensagem não enviada (${problema.health_reason || "conexão com problema"})`,
+          error_code: "whatsapp_disconnected",
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
 
@@ -1087,6 +1108,24 @@ Deno.serve(async (req) => {
       const metaError = waData?.error?.message || waData?.error?.error_user_msg || JSON.stringify(waData?.error || waData);
       const metaErrorCode = waData?.error?.code || waResponse.status;
       console.error(`[send-whatsapp] META API error (${metaErrorCode}) status=${waResponse.status}: ${metaError} | full=${JSON.stringify(waData)}`);
+
+      // Erro de CONTA (não do contato): marca a conexão com problema na hora,
+      // para pausar os envios automáticos até a checagem ver o número de volta.
+      const codigoConta = String(metaErrorCode);
+      const erroDeConta = ["133010", "131031", "190", "131042", "133000"].includes(codigoConta)
+        || /not registered|account.*(locked|restricted|disabled)|access token/i.test(metaError);
+      if (erroDeConta && leadTenantId) {
+        const motivo = codigoConta === "190" ? "Token expirado ou inválido"
+          : codigoConta === "131031" ? "Conta bloqueada/restrita pela Meta"
+          : codigoConta === "131042" ? "Problema de pagamento na conta Meta"
+          : "Número desconectado da Meta (não registrado)";
+        await supabase.from("integrations")
+          .update({ health_status: "error", health_reason: motivo, health_checked_at: new Date().toISOString() })
+          .eq("tenant_id", leadTenantId)
+          .like("key", "whatsapp_%")
+          .filter("config->>phone_number_id", "eq", String(phoneNumberId));
+      }
+
 
 
       // Translate common META errors to user-friendly Portuguese
