@@ -58,9 +58,17 @@ export async function authorizeInternal(
   // 3. Optional: accept a valid Supabase user JWT (for endpoints that the frontend hits directly).
   if (opts.allowUserJwt && bearer) {
     try {
-      const { data, error } = await supabase.auth.getClaims(bearer);
-      if (!error && data?.claims?.sub) {
-        return { ok: true, via: "user_jwt", userId: String(data.claims.sub) };
+      const auth = supabase.auth as any;
+      if (typeof auth.getClaims === "function") {
+        const { data, error } = await auth.getClaims(bearer);
+        if (!error && data?.claims?.sub) {
+          return { ok: true, via: "user_jwt", userId: String(data.claims.sub) };
+        }
+      }
+      // Versões antigas do cliente não têm getClaims: valida pelo getUser.
+      const { data: u, error: uErr } = await supabase.auth.getUser(bearer);
+      if (!uErr && u?.user?.id) {
+        return { ok: true, via: "user_jwt", userId: u.user.id };
       }
     } catch (_) {
       // ignore — treat as unauthorized
