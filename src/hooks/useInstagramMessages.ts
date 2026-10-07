@@ -66,7 +66,8 @@ export function useInstagramMessages() {
         supabase.from("instagram_messages").select("*").order("created_at", { ascending: false }),
       ]);
 
-      if (accErr) throw accErr;
+      // SDR não lê a tabela de contas (guarda tokens): sem nomes das contas, as conversas carregam igual.
+      if (accErr) console.warn("[useInstagramMessages] contas indisponíveis para este perfil", accErr.message);
       if (msgErr) throw msgErr;
 
       const map: Record<string, string> = {};
