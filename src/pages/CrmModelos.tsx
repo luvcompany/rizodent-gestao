@@ -932,6 +932,20 @@ export default function CrmModelos() {
                 <span className="text-[10px] text-muted-foreground">Apenas letras minúsculas, números e _</span>
               </div>
               <div>
+                <Label>Número de WhatsApp *</Label>
+                <Select value={formNumeroId} onValueChange={setFormNumeroId} disabled={somenteLeitura}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o número" /></SelectTrigger>
+                  <SelectContent>
+                    {numeros.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>
+                        {rotuloDoNumero(n)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground">O modelo será criado e enviado à Meta por este número.</span>
+              </div>
+              <div>
                 <Label>Categoria</Label>
                 <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))} disabled={somenteLeitura}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
