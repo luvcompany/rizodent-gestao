@@ -2077,7 +2077,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   // Divisória do número de WhatsApp: aparece quando muda o número que enviou/recebeu.
                   const ehWa = (m: any) => m && m.channel !== "instagram" && !chat.isSystemMessage(m);
                   let numSep: JSX.Element | null = null;
-                  if (multiNumberTenant && ehWa(msg)) {
+                  if ((numerosVisiveis?.length ?? 0) > 0 && ehWa(msg)) {
                     let anteriorWa: any = null;
                     for (let i = idx - 1; i >= 0; i--) { if (ehWa(chat.messages[i])) { anteriorWa = chat.messages[i]; break; } }
                     const atualNum = (msg as any).whatsapp_number_id ?? null;
@@ -2178,7 +2178,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {getLeadChannel(selectedLead) !== "instagram" && userRole !== "sdr" && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} lastInboundWaAt={chat.lastInboundWaAt} />
               )}
-              {getLeadChannel(selectedLead) !== "instagram" && multiNumberTenant && (
+              {getLeadChannel(selectedLead) !== "instagram" && (numerosVisiveis?.length ?? 0) > 0 && (
                 <SeletorNumeroEnvio
                   leadId={selectedLeadId}
                   atual={(selectedLead as any).whatsapp_number_id ?? null}
