@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Pencil } from "lucide-react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -94,6 +95,20 @@ export default function MinhasConexoes() {
   const [conectando, setConectando] = useState(false);
   const [paraRemover, setParaRemover] = useState<Item | null>(null);
   const [salvandoCoex, setSalvandoCoex] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
+
+  const abrirEdicao = (item: Item) => {
+    setForm({
+      ...formInicial,
+      display_name: item.display_name ?? "",
+      phone_number_id: item.phone_number_id ?? "",
+      waba_id: item.waba_id ?? "",
+      app_id: (item as any).app_id ?? "",
+      pipeline_id: item.pipeline_id ?? "",
+    });
+    setEditando(item.number_id);
+    setMostrarForm(true);
+  };
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
@@ -163,9 +178,10 @@ export default function MinhasConexoes() {
       return;
     }
 
-    toast.success("Número conectado");
+    toast.success(editando ? "Dados atualizados" : "Número conectado");
     const chave = data?.integration_key as string | undefined;
     setForm(formInicial);
+    setEditando(null);
     setMostrarForm(false);
     await carregar();
 
@@ -201,9 +217,9 @@ export default function MinhasConexoes() {
     const { error } = await supabase.functions.invoke("minha-conexao-whatsapp", {
       body: { action: "disconnect", number_id: item.number_id },
     });
-    if (error) toast.error("Não foi possível desconectar: " + (await detalheDoErro(error)));
+    if (error) toast.error("Não foi possível excluir: " + (await detalheDoErro(error)));
     else {
-      toast.success("Número desconectado");
+      toast.success("Número excluído");
       carregar();
     }
     setParaRemover(null);
@@ -295,7 +311,15 @@ export default function MinhasConexoes() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      aria-label="Desconectar número"
+                      aria-label="Editar dados do número"
+                      onClick={() => abrirEdicao(c)}
+                    >
+                      <Pencil size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Excluir número"
                       onClick={() => setParaRemover(c)}
                     >
                       <Trash2 size={16} />
@@ -333,7 +357,7 @@ export default function MinhasConexoes() {
         {mostrarForm && (
           <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-[18px] shadow-sm">
             <div>
-              <h2 className="text-base font-bold tracking-tight text-foreground">Conectar número</h2>
+              <h2 className="text-base font-bold tracking-tight text-foreground">{editando ? "Editar número" : "Conectar número"}</h2>
               <p className="mt-0.5 text-[12.5px] text-muted-foreground">
                 Os dados vêm do Meta for Developers. O token é verificado e guardado no servidor.
               </p>
@@ -419,13 +443,14 @@ export default function MinhasConexoes() {
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={conectar} disabled={conectando}>
-                {conectando && <Loader2 className="animate-spin" size={16} />} Testar e conectar
+                {conectando && <Loader2 className="animate-spin" size={16} />} {editando ? "Testar e salvar" : "Testar e conectar"}
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => {
                   setMostrarForm(false);
                   setForm(formInicial);
+                  setEditando(null);
                 }}
               >
                 Cancelar
@@ -453,16 +478,16 @@ export default function MinhasConexoes() {
       <AlertDialog open={!!paraRemover} onOpenChange={(o) => !o && setParaRemover(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Desconectar este número?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir este número?</AlertDialogTitle>
             <AlertDialogDescription>
-              As mensagens já recebidas continuam no histórico, mas o número para de enviar e
-              receber por aqui até ser conectado de novo.
+              O número sai da sua lista e para de enviar e receber por aqui. As mensagens já
+              recebidas continuam no histórico.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Manter conectado</AlertDialogCancel>
             <AlertDialogAction onClick={() => paraRemover && desconectar(paraRemover)}>
-              Desconectar
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
