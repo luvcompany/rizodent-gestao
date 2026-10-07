@@ -4645,6 +4645,7 @@ export type Database = {
           direction: string
           error_reason: string | null
           from_device: boolean
+          historico_de_lead_id: string | null
           id: string
           instagram_account_id: string | null
           instagram_comment_id: string | null
@@ -4682,6 +4683,7 @@ export type Database = {
           direction?: string
           error_reason?: string | null
           from_device?: boolean
+          historico_de_lead_id?: string | null
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -4719,6 +4721,7 @@ export type Database = {
           direction?: string
           error_reason?: string | null
           from_device?: boolean
+          historico_de_lead_id?: string | null
           id?: string
           instagram_account_id?: string | null
           instagram_comment_id?: string | null
@@ -6689,6 +6692,10 @@ export type Database = {
           servico: string
           similarity: number
         }[]
+      }
+      mesclar_lead_no_closer: {
+        Args: { _destino: string; _origem: string; _por: string }
+        Returns: undefined
       }
       meta_capi_claim: {
         Args: { p_limite?: number }
