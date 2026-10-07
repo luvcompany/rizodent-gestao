@@ -143,6 +143,29 @@ Deno.serve(async (req) => {
     const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
+    // Destino closer que já tem este telefone no mundo dele: mescla no lead do
+    // closer (o lead de origem some; as mensagens viram "histórico anterior").
+    if (targetRoles.includes("closer") && lead.phone) {
+      const { data: numerosCloser } = await supabase
+        .from("user_permission_overrides").select("resource_id")
+        .eq("user_id", newUserId).eq("scope", "whatsapp_number").eq("granted", true);
+      const ids = ((numerosCloser || []) as any[]).map((r) => r.resource_id).filter(Boolean);
+      const origemNoMundoDoCloser = ids.includes((lead as any).whatsapp_number_id);
+      if (ids.length && !origemNoMundoDoCloser) {
+        const { data: alvo } = await supabase
+          .from("crm_leads").select("id")
+          .eq("tenant_id", lead.tenant_id).eq("phone", lead.phone).neq("id", lead.id)
+          .in("whatsapp_number_id", ids).limit(1).maybeSingle();
+        if (alvo) {
+          const { error: mErr } = await supabase.rpc("mesclar_lead_no_closer", {
+            _origem: lead.id, _destino: (alvo as any).id, _por: user.id,
+          });
+          if (mErr) return json({ error: "Não foi possível mesclar com o lead do closer: " + mErr.message }, 500);
+          return json({ success: true, merged: true, leadId: (alvo as any).id });
+        }
+      }
+    }
+
     const oldUserId = lead.assigned_to;
     // Fetch profiles for all relevant users (old owner, requester, new owner)
     const profileIds = [user.id, newUserId, oldUserId].filter(Boolean) as string[];

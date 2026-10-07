@@ -224,7 +224,8 @@ async function buscarJanela(
   ate?: string,
   limite: number = JANELA_DE_MENSAGENS,
 ): Promise<{ lista: ChatMessage[]; erro: boolean }> {
-  let q = supabase.from("messages").select("*").eq("lead_id", leadId);
+  // Mensagens de lead mesclado (historico_de_lead_id) ficam na aba "Histórico anterior".
+  let q = supabase.from("messages").select("*").eq("lead_id", leadId).is("historico_de_lead_id" as any, null);
   // lte + deduplicação pelo id: mensagens do histórico importado podem ter o
   // MESMO created_at, e lt pularia as que empatam com a mais antiga carregada.
   if (ate) q = q.lte("created_at", ate);
@@ -480,6 +481,7 @@ export function useChatConversation(leadId: string | null | undefined) {
       .from("messages")
       .select("created_at")
       .eq("lead_id", alvo)
+      .is("historico_de_lead_id" as any, null)
       .eq("direction", "inbound")
       .eq("channel", "whatsapp")
       .order("created_at", { ascending: false })
@@ -778,6 +780,7 @@ export function useChatConversation(leadId: string | null | undefined) {
         .from("messages")
         .select("*")
         .eq("lead_id", targetLeadId)
+        .is("historico_de_lead_id" as any, null)
         .gte("created_at", ultima)
         .order("created_at", { ascending: true })
         .limit(JANELA_DE_MENSAGENS);
