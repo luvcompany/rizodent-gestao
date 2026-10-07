@@ -53,6 +53,7 @@ import SendToPosvendaButton from "@/components/chat/SendToPosvendaButton";
 import FecharConversaButton, { ConversaFechadaBadge, FecharConversaMenuItem } from "@/components/chat/FecharConversaButton";
 import ChatActivityToast from "@/components/chat/ChatActivityToast";
 import ChatMessageBubble from "@/components/chat/ChatMessageBubble";
+import { useHistoricoAnterior, AbasHistorico, ListaHistoricoAnterior } from "@/components/chat/HistoricoAnterior";
 import { parseCallPermissionReply, formatCallPermissionReply, formatCallPermissionPreview } from "@/lib/callPermissionReply";
 import LeadAiAssistPanel from "@/components/chat/LeadAiAssistPanel";
 import ChatMediaPreview from "@/components/chat/ChatMediaPreview";
@@ -564,6 +565,9 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
 
   // Unified chat hook — só com a conversa confirmada (REC-04).
   const chat = useChatConversation(leadAbertoId);
+  const qtdHistorico = useHistoricoAnterior(leadAbertoId);
+  const [abaHistorico, setAbaHistorico] = useState<"conversa" | "historico">("conversa");
+  useEffect(() => { setAbaHistorico("conversa"); }, [leadAbertoId]);
   const convNotes = useConversationNotes(leadAbertoId);
 
   const handleSelectLead = useCallback((lead: LeadConversation) => {
@@ -2023,8 +2027,11 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {/* Notes Bar */}
               <NotesBar notes={selectedLead.notes} onUpdateNotes={handleSaveNotes} />
 
+              {qtdHistorico > 0 && <AbasHistorico aba={abaHistorico} onChange={setAbaHistorico} />}
+              {qtdHistorico > 0 && abaHistorico === "historico" && leadAbertoId && <ListaHistoricoAnterior leadId={leadAbertoId} />}
+
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto m-2 sm:m-3 rounded-2xl bg-surface-sunken dark:bg-background px-3 py-4 sm:p-5 space-y-3">
+              <div className={`${qtdHistorico > 0 && abaHistorico === "historico" ? "hidden " : ""}flex-1 overflow-y-auto m-2 sm:m-3 rounded-2xl bg-surface-sunken dark:bg-background px-3 py-4 sm:p-5 space-y-3`}>
                 <ChatActivityToast activities={chat.activityToasts} onDismiss={chat.dismissToast} />
 
                 {chat.loading ? (
