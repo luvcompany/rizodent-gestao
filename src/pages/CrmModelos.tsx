@@ -566,8 +566,8 @@ export default function CrmModelos() {
         return;
       }
     }
-    if (submit && !selectedNumero) {
-      toast.error("Nenhum número de WhatsApp conectado. Salve como rascunho e envie quando houver um número.");
+    if (submit && !formNumeroId) {
+      toast.error("Escolha o número de WhatsApp que vai usar este modelo.");
       return;
     }
 
@@ -594,7 +594,7 @@ export default function CrmModelos() {
           .update({
             ...conteudo,
             buttons: (conteudo.buttons ?? null) as Json,
-            whatsapp_number_id: selectedNumero || null,
+            whatsapp_number_id: formNumeroId || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", rascunhoId)
@@ -634,7 +634,7 @@ export default function CrmModelos() {
       const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
         body: {
           action: "create",
-          whatsapp_number_id: selectedNumero,
+          whatsapp_number_id: formNumeroId,
           ...conteudo,
           body_examples: indicesNoCorpo.map(amostraDe),
         },
@@ -802,7 +802,7 @@ export default function CrmModelos() {
               </Button>
             </span>
           )}
-           <Button size="sm" className="h-10 rounded-xl shadow-brand" onClick={() => { resetForm(); setModalOpen(true); }}>
+           <Button size="sm" className="h-10 rounded-xl shadow-brand" onClick={() => { resetForm(); setFormNumeroId(selectedNumero); setModalOpen(true); }}>
             <Plus size={14} className="mr-1" /> Novo Modelo
           </Button>
         </div>
