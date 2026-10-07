@@ -559,7 +559,7 @@ Deno.serve(async (req) => {
 
     // WABA efetiva deste envio (para casar o template no mundo certo).
     const escopoEnvio = await escopoDoLead(supabase, {
-      whatsapp_number_id: (leadData as any)?.whatsapp_number_id ?? null,
+      whatsapp_number_id: numeroUsadoId ?? (leadData as any)?.whatsapp_number_id ?? null,
       tenant_id: leadTenantId,
     });
     const wabaDoEnvio = escopoEnvio.wabaId;
