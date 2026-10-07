@@ -56,8 +56,13 @@ Deno.serve(async (req) => {
     let q = supabase.from("integrations").select("id, tenant_id, key, config, status").like("key", "whatsapp_%").neq("status", "disabled");
     if (auth.via === "user_jwt") {
       const { data: prof } = await supabase.from("profiles").select("tenant_id").eq("user_id", auth.userId!).maybeSingle();
-      if (!prof?.tenant_id) return new Response(JSON.stringify({ error: "sem tenant" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      q = q.eq("tenant_id", prof.tenant_id);
+      if (prof?.tenant_id) {
+        q = q.eq("tenant_id", prof.tenant_id);
+      } else {
+        // Sem clínica vinculada: só o superadmin (Luv Agency) pode checar todos.
+        const { data: isSuper } = await supabase.rpc("has_role", { _user_id: auth.userId!, _role: "superadmin" });
+        if (!isSuper) return new Response(JSON.stringify({ ok: true, checked: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
     const { data: rows, error } = await q;
     if (error) throw error;
