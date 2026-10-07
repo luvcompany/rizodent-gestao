@@ -262,6 +262,9 @@ export default function CrmModelos() {
   const [numeros, setNumeros] = useState<NumeroVisivel[]>([]);
   const [numerosCarregados, setNumerosCarregados] = useState(false);
   const [selectedNumero, setSelectedNumero] = useState<string>("");
+  // Número escolhido DENTRO do editor (Novo Modelo / Editar rascunho): é ele
+  // que recebe o rascunho e para quem a Meta cria o modelo — não o filtro do topo.
+  const [formNumeroId, setFormNumeroId] = useState<string>("");
   // Formulários (Flows) publicados na conexão escolhida — carregados só quando
   // o editor abre, porque a Meta cobra uma chamada por formulário.
   const [formularios, setFormularios] = useState<FormularioDaMeta[]>([]);
@@ -385,6 +388,7 @@ export default function CrmModelos() {
   const resetForm = () => setForm(formVazio);
 
   const openEdit = (t: WhatsAppTemplate) => {
+    setFormNumeroId(t.whatsapp_number_id ?? selectedNumero ?? "");
     setForm({
       id: t.id, name: t.name, category: t.category, language: t.language,
       header_type: t.header_type || "", header_content: t.header_content || "",
@@ -562,8 +566,8 @@ export default function CrmModelos() {
         return;
       }
     }
-    if (submit && !selectedNumero) {
-      toast.error("Nenhum número de WhatsApp conectado. Salve como rascunho e envie quando houver um número.");
+    if (submit && !formNumeroId) {
+      toast.error("Escolha o número de WhatsApp que vai usar este modelo.");
       return;
     }
 
@@ -590,7 +594,7 @@ export default function CrmModelos() {
           .update({
             ...conteudo,
             buttons: (conteudo.buttons ?? null) as Json,
-            whatsapp_number_id: selectedNumero || null,
+            whatsapp_number_id: formNumeroId || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", rascunhoId)
@@ -614,7 +618,7 @@ export default function CrmModelos() {
           status: "DRAFT",
           created_by_user_id: atual?.id || null,
           owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
-          whatsapp_number_id: selectedNumero || null,
+          whatsapp_number_id: formNumeroId || null,
           updated_at: new Date().toISOString(),
         }]);
         if (error) { toast.error(erroDeGravacao(error)); return; }
@@ -630,7 +634,7 @@ export default function CrmModelos() {
       const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
         body: {
           action: "create",
-          whatsapp_number_id: selectedNumero,
+          whatsapp_number_id: formNumeroId,
           ...conteudo,
           body_examples: indicesNoCorpo.map(amostraDe),
         },
@@ -798,7 +802,7 @@ export default function CrmModelos() {
               </Button>
             </span>
           )}
-           <Button size="sm" className="h-10 rounded-xl shadow-brand" onClick={() => { resetForm(); setModalOpen(true); }}>
+           <Button size="sm" className="h-10 rounded-xl shadow-brand" onClick={() => { resetForm(); setFormNumeroId(selectedNumero); setModalOpen(true); }}>
             <Plus size={14} className="mr-1" /> Novo Modelo
           </Button>
         </div>
@@ -926,6 +930,20 @@ export default function CrmModelos() {
                 <Label>Nome do modelo *</Label>
                 <Input className="font-mono text-sm" placeholder="boas_vindas_lead" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") }))} />
                 <span className="text-[10px] text-muted-foreground">Apenas letras minúsculas, números e _</span>
+              </div>
+              <div>
+                <Label>Número de WhatsApp *</Label>
+                <Select value={formNumeroId} onValueChange={setFormNumeroId} disabled={somenteLeitura}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o número" /></SelectTrigger>
+                  <SelectContent>
+                    {numeros.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>
+                        {rotuloDoNumero(n)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground">O modelo será criado e enviado à Meta por este número.</span>
               </div>
               <div>
                 <Label>Categoria</Label>
