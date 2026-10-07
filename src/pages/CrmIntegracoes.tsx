@@ -186,7 +186,8 @@ export default function CrmIntegracoes() {
   const loadEntries = async () => {
     const { data } = await supabase.from("integrations").select("*").like("key", "whatsapp_%");
     if (data) {
-      setWhatsappEntries(data.map(d => ({
+      // Números individuais (closer/recepção) ficam só na tela Conexões de quem conectou.
+      setWhatsappEntries(data.filter(d => !(d.config as Record<string, unknown> | null)?.owner_user_id).map(d => ({
         id: d.id,
         key: d.key,
         config: { ...defaultConfig, ...(d.config as Record<string, unknown>) } as WhatsAppConfig,
