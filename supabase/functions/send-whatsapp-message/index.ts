@@ -323,6 +323,7 @@ Deno.serve(async (req) => {
       // chamador service_role: vindo do app, permitiria gravar no histórico um
       // texto diferente do que a Meta entregou.
       log_content,
+      force_send,
     } = await req.json();
 
     if (!lead_id) {
@@ -562,7 +563,7 @@ Deno.serve(async (req) => {
         .filter("config->>phone_number_id", "eq", String(phoneNumberId))
         .limit(1);
       const problema = (saude as any[] | null)?.[0];
-      if (problema && !(reqBody as any)?.force_send) {
+      if (problema && !force_send) {
         return new Response(JSON.stringify({
           ok: false,
           error: `WhatsApp desconectado da Meta — mensagem não enviada (${problema.health_reason || "conexão com problema"})`,
