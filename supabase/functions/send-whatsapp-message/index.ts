@@ -401,6 +401,7 @@ Deno.serve(async (req) => {
     // tenant" — era isso que fazia mover o lead de funil trocar o número de
     // saída e a resposta de bot sair pelo número errado.
     let resolvedCredentials = false;
+    let numeroUsadoId: string | null = null;
     const leadWaNumberId: string | null = (leadData as any)?.whatsapp_number_id ?? null;
 
     if (leadWaNumberId) {
@@ -449,8 +450,28 @@ Deno.serve(async (req) => {
       resolvedCredentials = true;
       console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
     } else {
+      // (b0) Número padrão de envio escolhido em Integrações: vale para todo
+      // lead sem número escolhido (ex.: contingência enquanto o principal cai).
+      const { data: padrao } = await supabase
+        .from("whatsapp_numbers")
+        .select("id")
+        .eq("tenant_id", leadTenantId)
+        .eq("is_active", true)
+        .eq("is_default", true)
+        .limit(1);
+      const padraoId = (padrao as any[] | null)?.[0]?.id;
+      if (padraoId) {
+        const esc = await escopoDoNumero(supabase, padraoId, leadTenantId);
+        if (esc?.token && esc.phoneNumberId) {
+          whatsappToken = esc.token;
+          phoneNumberId = esc.phoneNumberId;
+          numeroUsadoId = padraoId;
+          resolvedCredentials = true;
+          console.log(`[send-whatsapp] usando número padrão de envio ${esc.phoneNumberId}`);
+        }
+      }
       // (b) Lead do mundo legado: canal do funil e, na falta dele, whatsapp_config.
-      if (leadData?.pipeline_id) {
+      if (!resolvedCredentials && leadData?.pipeline_id) {
         const { data: funnelChannel } = await supabase
           .from("funnel_channels")
           .select("channel_config")
@@ -538,7 +559,7 @@ Deno.serve(async (req) => {
 
     // WABA efetiva deste envio (para casar o template no mundo certo).
     const escopoEnvio = await escopoDoLead(supabase, {
-      whatsapp_number_id: (leadData as any)?.whatsapp_number_id ?? null,
+      whatsapp_number_id: numeroUsadoId ?? (leadData as any)?.whatsapp_number_id ?? null,
       tenant_id: leadTenantId,
     });
     const wabaDoEnvio = escopoEnvio.wabaId;
@@ -1160,6 +1181,7 @@ Deno.serve(async (req) => {
         reply_to_message_id: reply_to_message_id || null,
         // A tentativa humana também conta como "respondeu" (mesma regra do envio ok).
         sender_id: caller.userId ?? null,
+        whatsapp_number_id: numeroUsadoId ?? leadWaNumberId,
         ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
       }).select().single();
 
@@ -1186,6 +1208,7 @@ Deno.serve(async (req) => {
       // cron). É o que separa "respondido por humano" de "respondido pelo
       // bot" — base da regra "1 hora sem resposta do SDR" e dos relatórios.
       sender_id: caller.userId ?? null,
+      whatsapp_number_id: numeroUsadoId ?? leadWaNumberId,
       ...(leadTenantId ? { tenant_id: leadTenantId } : {}),
     }).select().single();
 

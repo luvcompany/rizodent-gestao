@@ -94,3 +94,57 @@ export function AvisoWhatsappDesconectado() {
     </button>
   );
 }
+
+/**
+ * Chave "Número padrão de envio": tudo o que não tem número escolhido
+ * (automações, bots, follow-up, leads sem número) sai por este número.
+ */
+export function PadraoEnvioWhatsapp({ phoneNumberId }: { phoneNumberId?: string | null }) {
+  const { toast } = useToast();
+  const [num, setNum] = useState<{ id: string; is_default: boolean | null } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    if (!phoneNumberId) return;
+    const { data } = await supabase
+      .from("whatsapp_numbers")
+      .select("id, is_default")
+      .eq("phone_number_id", phoneNumberId)
+      .eq("is_active", true)
+      .maybeSingle();
+    setNum(data as any);
+  }, [phoneNumberId]);
+
+  useEffect(() => { carregar(); }, [carregar]);
+  if (!num) return null;
+
+  const alternar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSalvando(true);
+    const novo = !num.is_default;
+    if (novo) await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", num.id);
+    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: novo }).eq("id", num.id);
+    setSalvando(false);
+    if (error) {
+      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: novo ? "Número padrão de envio definido" : "Número padrão removido — envios voltam ao número principal" });
+    setNum({ ...num, is_default: novo });
+    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={alternar}
+      disabled={salvando}
+      className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+        num.is_default ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+      }`}
+    >
+      <span className={`h-2 w-2 rounded-full ${num.is_default ? "bg-primary" : "bg-muted-foreground/40"}`} />
+      {num.is_default ? "Número padrão de envio" : "Usar como padrão de envio"}
+    </button>
+  );
+}

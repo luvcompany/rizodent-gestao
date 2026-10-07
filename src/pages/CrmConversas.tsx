@@ -45,6 +45,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import ChatInput from "@/components/chat/ChatInput";
+import ChatNumberSeparator from "@/components/chat/ChatNumberSeparator";
+import SeletorNumeroEnvio from "@/components/chat/SeletorNumeroEnvio";
 import AiSuggestionStrip from "@/components/chat/AiSuggestionStrip";
 import ChatActivitySeparator from "@/components/chat/ChatActivitySeparator";
 import ChatDateSeparator from "@/components/chat/ChatDateSeparator";
@@ -2069,9 +2071,23 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                   const currIgAcc = (msg as any).channel === "instagram" ? (msg as any).instagram_account_id : null;
                   const prevIgAcc = prevMsg && (prevMsg as any).channel === "instagram" ? (prevMsg as any).instagram_account_id : null;
                   const showAccSep = !!currIgAcc && currIgAcc !== prevIgAcc && !!igAccountsMap[currIgAcc];
-                  const accSep = showAccSep ? (
+                  const accSepIg = showAccSep ? (
                     <ChatAccountSeparator key={`acc-${msg.id}`} username={igAccountsMap[currIgAcc]} />
                   ) : null;
+                  // Divisória do número de WhatsApp: aparece quando muda o número que enviou/recebeu.
+                  const ehWa = (m: any) => m && m.channel !== "instagram" && !chat.isSystemMessage(m);
+                  let numSep: JSX.Element | null = null;
+                  if ((numerosVisiveis?.length ?? 0) > 0 && ehWa(msg)) {
+                    let anteriorWa: any = null;
+                    for (let i = idx - 1; i >= 0; i--) { if (ehWa(chat.messages[i])) { anteriorWa = chat.messages[i]; break; } }
+                    const atualNum = (msg as any).whatsapp_number_id ?? null;
+                    const antNum = anteriorWa ? ((anteriorWa as any).whatsapp_number_id ?? null) : undefined;
+                    if (antNum === undefined || antNum !== atualNum) {
+                      const rotulo = atualNum ? (numberNames[atualNum] ?? "Outro número") : "Número principal";
+                      numSep = <ChatNumberSeparator key={`num-${msg.id}`} label={rotulo} />;
+                    }
+                  }
+                  const accSep = accSepIg || numSep ? <>{accSepIg}{numSep}</> : null;
 
                   if (chat.isSystemMessage(msg)) {
                     const cpr = parseCallPermissionReply(msg.content);
@@ -2161,6 +2177,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
               {/* SDR: IA fora do perfil (generate-reply-suggestion devolve 403) — sem faixa de sugestões. */}
               {getLeadChannel(selectedLead) !== "instagram" && userRole !== "sdr" && (
                 <AiSuggestionStrip leadId={selectedLeadId} leadPhone={selectedLead.phone} lastInboundWaAt={chat.lastInboundWaAt} />
+              )}
+              {getLeadChannel(selectedLead) !== "instagram" && (numerosVisiveis?.length ?? 0) > 0 && (
+                <SeletorNumeroEnvio
+                  leadId={selectedLeadId}
+                  atual={(selectedLead as any).whatsapp_number_id ?? null}
+                  numeros={(numerosVisiveis ?? []).map((n) => ({ id: n.id, nome: nomeDoNumero(n) }))}
+                  onChange={(id) => { (selectedLead as any).whatsapp_number_id = id; }}
+                />
               )}
               <ChatInput
                 leadId={selectedLeadId}
