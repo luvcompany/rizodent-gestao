@@ -262,6 +262,9 @@ export default function CrmModelos() {
   const [numeros, setNumeros] = useState<NumeroVisivel[]>([]);
   const [numerosCarregados, setNumerosCarregados] = useState(false);
   const [selectedNumero, setSelectedNumero] = useState<string>("");
+  // Número escolhido DENTRO do editor (Novo Modelo / Editar rascunho): é ele
+  // que recebe o rascunho e para quem a Meta cria o modelo — não o filtro do topo.
+  const [formNumeroId, setFormNumeroId] = useState<string>("");
   // Formulários (Flows) publicados na conexão escolhida — carregados só quando
   // o editor abre, porque a Meta cobra uma chamada por formulário.
   const [formularios, setFormularios] = useState<FormularioDaMeta[]>([]);
@@ -385,6 +388,7 @@ export default function CrmModelos() {
   const resetForm = () => setForm(formVazio);
 
   const openEdit = (t: WhatsAppTemplate) => {
+    setFormNumeroId(t.whatsapp_number_id ?? selectedNumero ?? "");
     setForm({
       id: t.id, name: t.name, category: t.category, language: t.language,
       header_type: t.header_type || "", header_content: t.header_content || "",
