@@ -1352,6 +1352,28 @@ Deno.serve(async (req) => {
                 .eq("tenant_id", tenantId).eq("phone", from).eq("whatsapp_number_id", waNumberId)
                 .order("created_at", { ascending: true }).limit(1);
               lead = mesmoNumero?.[0] || null;
+              // Número do mundo CRC/SDR (o mesmo do número principal, ex.: contingência):
+              // a pessoa é a MESMA do número principal. Adota o lead já existente desse
+              // mundo em vez de criar um duplicado (que o rodízio distribuía de novo
+              // para outra SDR).
+              const donoNumero = String((matchedIntegration as any)?.owner_role ?? "");
+              if (!lead && ["crc", "sdr", "crc_legacy", ""].includes(donoNumero)) {
+                const { data: numerosCrc } = await supabase
+                  .from("integrations").select("key, owner_role")
+                  .eq("tenant_id", tenantId).like("key", "whatsapp_%");
+                const pnidsCrc = (numerosCrc || [])
+                  .filter((i: any) => ["crc", "sdr", "crc_legacy", null, ""].includes(i.owner_role ?? null))
+                  .map((i: any) => String(i.key).replace(/^whatsapp_(es_)?/, ""));
+                const { data: idsCrc } = pnidsCrc.length
+                  ? await supabase.from("whatsapp_numbers").select("id").eq("tenant_id", tenantId).in("phone_number_id", pnidsCrc)
+                  : { data: [] as any[] };
+                const filtro = ["whatsapp_number_id.is.null", ...((idsCrc || []).map((r: any) => `whatsapp_number_id.eq.${r.id}`))].join(",");
+                const { data: doMundo } = await supabase
+                  .from("crm_leads").select(LEAD_COLS)
+                  .eq("tenant_id", tenantId).eq("phone", from).or(filtro)
+                  .order("created_at", { ascending: true }).limit(1);
+                lead = doMundo?.[0] || null;
+              }
             } else {
               // Número principal (sem linha em whatsapp_numbers): só o mundo
               // legado. Nunca casa lead carimbado de outro número.
