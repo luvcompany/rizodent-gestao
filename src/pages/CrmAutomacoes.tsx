@@ -36,7 +36,7 @@ type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
   action_config: Record<string, unknown>; is_active: boolean;
 };
-type Template = { id: string; name: string; status: string };
+type Template = { id: string; name: string; status: string; waba_id?: string | null; whatsapp_number_id?: string | null };
 type BotEntry = { id: string; name: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
