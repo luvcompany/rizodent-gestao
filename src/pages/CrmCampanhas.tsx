@@ -17,7 +17,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { Switch } from "@/components/ui/switch";
 import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
-import { formatPhoneDisplayBR } from "@/lib/phoneUtils";
 import { acaoDaTransmissao, envioAtivo, statusDaTransmissao } from "@/lib/transmissao";
 
 /**
