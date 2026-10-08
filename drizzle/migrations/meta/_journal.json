@@ -64,6 +64,13 @@
       "when": 1791490499907,
       "tag": "0008_numero_novo_concede_ao_grupo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791490919334,
+      "tag": "0009_desativa_numero_ao_excluir_integracao",
+      "breakpoints": true
     }
   ]
 }
