@@ -36,7 +36,7 @@ type Automation = {
   id: string; stage_id: string; trigger_type: string; action_type: string;
   action_config: Record<string, unknown>; is_active: boolean;
 };
-type Template = { id: string; name: string; status: string };
+type Template = { id: string; name: string; status: string; waba_id?: string | null; whatsapp_number_id?: string | null };
 type BotEntry = { id: string; name: string };
 type FunnelChannel = { id: string; pipeline_id: string; channel_type: string; channel_config: Record<string, unknown> | null };
 type FollowUpCfg = { id: string; stage_id: string; is_active: boolean; disparo1_type: string; disparo1_delay_minutes: number; max_attempts: number };
@@ -189,7 +189,7 @@ export default function CrmAutomacoes() {
       const [stagesRes, autoRes, tplRes, chRes, fuRes, botsRes] = await Promise.all([
         supabase.from("crm_stages").select("*").eq("pipeline_id", pid).order("position"),
         supabase.from("crm_automations").select("*"),
-        supabase.from("crm_whatsapp_templates").select("id, name, status").eq("status", "APPROVED").order("created_at", { ascending: false }),
+        supabase.from("crm_whatsapp_templates").select("id, name, status, waba_id, whatsapp_number_id").eq("status", "APPROVED").order("created_at", { ascending: false }),
         supabase.from("funnel_channels").select("*").eq("pipeline_id", pid),
         supabase.from("crm_followup_configs").select("id, stage_id, is_active, disparo1_type, disparo1_delay_minutes, max_attempts"),
         supabase.from("bots").select("id, name").eq("status", "published").order("name"),
@@ -1319,6 +1319,7 @@ export default function CrmAutomacoes() {
         templates={templates}
         publishedBots={publishedBots}
         onSave={handleSaveAutomation}
+        pipelineId={selectedPipelineId}
       />
       <Dialog open={ordemOpen} onOpenChange={(open) => { if (!salvandoOrdem) setOrdemOpen(open); }}>
         <DialogContent className="max-w-sm">
