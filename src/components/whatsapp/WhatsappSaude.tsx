@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { StatusPill } from "@/components/crm-ui";
 import { useToast } from "@/hooks/use-toast";
@@ -71,29 +70,6 @@ export function SeloSaudeWhatsapp({ phoneNumberId }: { phoneNumberId?: string | 
   );
 }
 
-/** Faixa no topo do CRM quando algum número do grupo do usuário está com problema. */
-export function AvisoWhatsappDesconectado() {
-  const { itens } = useSaudeWhatsapp();
-  const navigate = useNavigate();
-  const comProblema = itens.filter((i) => i.health_status === "error");
-  if (comProblema.length === 0) return null;
-  return (
-    <button
-      type="button"
-      onClick={() => navigate("/crm/integracoes")}
-      className="mb-3 flex w-full items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-left text-sm text-destructive"
-    >
-      <AlertTriangle size={16} className="shrink-0" />
-      <span className="min-w-0 flex-1">
-        {comProblema.map((i) => (
-          <span key={i.key} className="block truncate">
-            <strong>{i.config?.display_name || "WhatsApp"}</strong>: {i.health_reason || "desconectado da Meta"} — automações pausadas
-          </span>
-        ))}
-      </span>
-    </button>
-  );
-}
 
 /**
  * Chave "Número padrão de envio": tudo o que não tem número escolhido
