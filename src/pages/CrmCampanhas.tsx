@@ -17,7 +17,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { Switch } from "@/components/ui/switch";
 import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
-import { formatPhoneDisplayBR } from "@/lib/phoneUtils";
 import { acaoDaTransmissao, envioAtivo, statusDaTransmissao } from "@/lib/transmissao";
 
 /**
@@ -76,6 +75,21 @@ type NumeroDoDisparo = {
   saude: string | null;
   motivo: string | null;
 };
+
+/**
+ * Telefone do número de envio para exibição. Diferente de formatPhoneDisplayBR
+ * (que completa o 9 do celular): aqui o número aparece exatamente como está
+ * gravado — o selo diz "conectado na Meta" e a pessoa confere a linha pelo
+ * número, então mostrar um 9 a mais faria conferir um número que não existe.
+ */
+function telefoneParaExibir(e164: string | null | undefined): string {
+  const bruto = String(e164 || "").replace(/\D/g, "");
+  if (!bruto) return "";
+  const semPais = bruto.startsWith("55") && bruto.length >= 12 ? bruto.slice(2) : bruto;
+  if (semPais.length === 10) return `(${semPais.slice(0, 2)}) ${semPais.slice(2, 6)}-${semPais.slice(6)}`;
+  if (semPais.length === 11) return `(${semPais.slice(0, 2)}) ${semPais.slice(2, 7)}-${semPais.slice(7)}`;
+  return `+${bruto}`;
+}
 
 /** Enquanto houver transmissão "Enviando", a lista se atualiza a cada 5 s. */
 const ATUALIZAR_A_CADA_MS = 5000;
@@ -356,11 +370,11 @@ export default function CrmCampanhas() {
                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
                      <span className="text-muted-foreground">Vai sair por:</span>
                      <span className="font-semibold">{numeroDoDisparo.nome ?? "número não definido"}</span>
-                     {numeroDoDisparo.phone_e164 && (
-                       <span className="text-xs text-muted-foreground">
-                         {formatPhoneDisplayBR(numeroDoDisparo.phone_e164)}
-                       </span>
-                     )}
+                      {numeroDoDisparo.phone_e164 && (
+                        <span className="text-xs text-muted-foreground">
+                          {telefoneParaExibir(numeroDoDisparo.phone_e164)}
+                        </span>
+                      )}
                      <span className="text-[11px] text-muted-foreground">
                        {numeroDoDisparo.origem === "funil"
                          ? "número do funil"

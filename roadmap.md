@@ -10,3 +10,4 @@
 - [ ] Publicar para crclin.com.br — aguardando confirmação do usuário.
 - [ ] Auditoria: 6 decisões de negócio aguardando o usuário (faturamento oficial, agendamentos do período, novo lead, venda, tempo de resposta, duplicados).
 - [x] Separar a aba Instagram em Comentários e Direct pela interação mais recente do lead.
+- [x] Transmissão: mostrar por qual número o disparo sai e filtrar os modelos pela conta desse número.
