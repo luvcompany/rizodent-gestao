@@ -370,11 +370,11 @@ export default function CrmCampanhas() {
                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
                      <span className="text-muted-foreground">Vai sair por:</span>
                      <span className="font-semibold">{numeroDoDisparo.nome ?? "número não definido"}</span>
-                     {numeroDoDisparo.phone_e164 && (
-                       <span className="text-xs text-muted-foreground">
-                         {formatPhoneDisplayBR(numeroDoDisparo.phone_e164)}
-                       </span>
-                     )}
+                      {numeroDoDisparo.phone_e164 && (
+                        <span className="text-xs text-muted-foreground">
+                          {telefoneParaExibir(numeroDoDisparo.phone_e164)}
+                        </span>
+                      )}
                      <span className="text-[11px] text-muted-foreground">
                        {numeroDoDisparo.origem === "funil"
                          ? "número do funil"
