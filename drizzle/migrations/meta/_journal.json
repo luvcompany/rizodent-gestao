@@ -43,6 +43,13 @@
       "when": 1791466012405,
       "tag": "0005_numero_de_envio_do_disparo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791473837124,
+      "tag": "0006_rodizio_distribui_resposta_por_botao",
+      "breakpoints": true
     }
   ]
 }
