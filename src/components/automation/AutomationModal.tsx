@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Zap } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem, CommandGroup } from "@/components/ui/command";
@@ -15,9 +16,18 @@ import { cn } from "@/lib/utils";
 import ConditionsBuilder from "@/components/automation/ConditionsBuilder";
 import type { ConditionsConfig } from "@/lib/automationConditions";
 import { FilePicker, AudioPicker } from "@/components/automation/AutomationMediaPicker";
+import { supabase } from "@/integrations/supabase/client";
+import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
 
 type Stage = { id: string; name: string; color: string };
-type Template = { id: string; name: string; status: string };
+type Template = {
+  id: string;
+  name: string;
+  status: string;
+  waba_id?: string | null;
+  whatsapp_number_id?: string | null;
+  rotulo_numero?: string;
+};
 type BotEntry = { id: string; name: string };
 
 interface AutoFormState {
@@ -37,6 +47,7 @@ interface Props {
   templates: Template[];
   publishedBots: BotEntry[];
   onSave: () => void;
+  pipelineId?: string;
 }
 
 const TRIGGER_DESCRIPTIONS: Record<string, string> = {
@@ -85,6 +96,7 @@ function TemplateCombobox({
                 >
                   <Check className={cn("mr-2 h-3 w-3", value === t.id ? "opacity-100" : "opacity-0")} />
                   {cleanTemplateName(t.name)}
+                  {t.rotulo_numero && <span className="ml-1 text-muted-foreground">· {t.rotulo_numero}</span>}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -405,7 +417,71 @@ function ReengagementLayers({
   );
 }
 
-export default function AutomationModal({ open, onOpenChange, autoForm, setAutoForm, stages, templates, publishedBots, onSave }: Props) {
+type NumeroDoEnvio = {
+  numero_id: string | null;
+  nome: string | null;
+  phone_e164: string | null;
+  phone_number_id: string | null;
+  waba_id: string | null;
+  origem: string | null;
+};
+
+// Telefone do próprio número de envio: mostra o E.164 como está (sem completar o 9).
+function telefoneDoNumero(e164: string): string {
+  const d = e164.replace(/\D/g, "");
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) {
+    const ddd = d.slice(2, 4);
+    const rest = d.slice(4);
+    return `(${ddd}) ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
+  }
+  return `+${d}`;
+}
+
+export default function AutomationModal({ open, onOpenChange, autoForm, setAutoForm, stages, templates, publishedBots, onSave, pipelineId }: Props) {
+  // ─── Por qual número os gatilhos deste funil saem (mesma regra da Transmissão) ───
+  const [numeroDoEnvio, setNumeroDoEnvio] = useState<NumeroDoEnvio | null>(null);
+  const [mostrarOutrosNumeros, setMostrarOutrosNumeros] = useState(false);
+  const [numeros, setNumeros] = useState<{ id: string; display_name: string | null; waba_id: string | null }[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("numero_de_envio_do_disparo", {
+        p_pipeline_id: (pipelineId || null) as unknown as string,
+      });
+      if (!vivo) return;
+      setNumeroDoEnvio(error ? null : ((data ?? []) as unknown as NumeroDoEnvio[])[0] ?? null);
+    })();
+    supabase
+      .from("whatsapp_numbers")
+      .select("id, display_name, waba_id")
+      .then(({ data }) => { if (vivo) setNumeros((data as typeof numeros) || []); });
+    return () => { vivo = false; };
+  }, [open, pipelineId]);
+
+  const wabaDoEnvio = numeroDoEnvio?.waba_id ?? null;
+  const rotuloDoNumero = (t: Template): string => {
+    if (!t.whatsapp_number_id) {
+      const peloWaba = numeros.find(n => n.waba_id && n.waba_id === t.waba_id);
+      return peloWaba?.display_name ?? "Número principal";
+    }
+    const peloId = numeros.find(n => n.id === t.whatsapp_number_id);
+    if (peloId?.display_name) return peloId.display_name;
+    const peloWaba = numeros.find(n => n.waba_id && n.waba_id === t.waba_id);
+    return peloWaba?.display_name ?? "Outro número";
+  };
+  const doNumero = (t: Template) => !wabaDoEnvio || String(t.waba_id ?? "") === String(wabaDoEnvio);
+  // Modelos já escolhidos (inclusive nas combinações) nunca somem da lista.
+  const configTexto = JSON.stringify(autoForm.action_config ?? {});
+  const escolhidos = templates.filter(t => configTexto.includes(`"${t.id}"`));
+  const modelosDeOutroNumero = wabaDoEnvio ? escolhidos.filter(t => !doNumero(t)) : [];
+  const modelosNaTela: Template[] = useMemo(() => {
+    const base = mostrarOutrosNumeros ? templates : templates.filter(t => doNumero(t) || escolhidos.includes(t));
+    return base.map(t => ({ ...t, rotulo_numero: rotuloDoNumero(t) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates, mostrarOutrosNumeros, wabaDoEnvio, numeros, configTexto]);
+
   const updateConfig = (patch: Record<string, unknown>) => {
     setAutoForm(p => ({ ...p, action_config: { ...p.action_config, ...patch } }));
   };
@@ -429,6 +505,42 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 bg-surface-sunken/40 p-6">
+          {/* POR QUAL NÚMERO OS MODELOS DESTE FUNIL SAEM */}
+          {numeroDoEnvio && (
+            <div className="space-y-2 rounded-card border border-border/60 bg-card p-4 shadow-card">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                <span className="text-muted-foreground">Vai sair por:</span>
+                <span className="font-semibold">{numeroDoEnvio.nome ?? "número não definido"}</span>
+                {numeroDoEnvio.phone_e164 && (
+                  <span className="text-xs text-muted-foreground">{telefoneDoNumero(numeroDoEnvio.phone_e164)}</span>
+                )}
+                <span className="text-[11px] text-muted-foreground">
+                  {numeroDoEnvio.origem === "funil"
+                    ? "número do funil"
+                    : numeroDoEnvio.origem === "principal"
+                      ? "número principal"
+                      : "número padrão de envio"}
+                </span>
+              </div>
+              <SeloSaudeWhatsapp phoneNumberId={numeroDoEnvio.phone_number_id} />
+              <p className="text-[11px] text-muted-foreground">
+                Leads com número próprio escolhido ("Enviar por:") saem pelo número deles.
+              </p>
+              {modelosDeOutroNumero.length > 0 && (
+                <p className="text-xs text-destructive">
+                  {modelosDeOutroNumero.length === 1 ? "O modelo escolhido é" : "Há modelos escolhidos que são"} de outro número
+                  ({modelosDeOutroNumero.map(t => rotuloDoNumero(t)).join(", ")}). A Meta vai recusar o envio por{" "}
+                  {numeroDoEnvio.nome ?? "este número"}. Escolha um modelo do número que vai enviar.
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <Switch id="auto-outros-numeros" checked={mostrarOutrosNumeros} onCheckedChange={setMostrarOutrosNumeros} />
+                <label htmlFor="auto-outros-numeros" className="cursor-pointer select-none text-xs text-muted-foreground">
+                  Mostrar modelos de outros números
+                </label>
+              </div>
+            </div>
+          )}
           {/* EVENTO */}
           <div className="rounded-card border border-border/60 bg-card p-4 shadow-card">
             <Label>Evento</Label>
@@ -732,7 +844,7 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
                 actionType={autoForm.action_type}
                 config={autoForm.action_config}
                 onChange={updateConfig}
-                templates={templates}
+                templates={modelosNaTela}
                 publishedBots={publishedBots}
                 stages={stages}
               />
@@ -764,13 +876,13 @@ export default function AutomationModal({ open, onOpenChange, autoForm, setAutoF
               </div>
 
               {isCombo ? (
-                <ComboActions config={autoForm.action_config} setConfig={setConfig} templates={templates} publishedBots={publishedBots} stages={stages} />
+                <ComboActions config={autoForm.action_config} setConfig={setConfig} templates={modelosNaTela} publishedBots={publishedBots} stages={stages} />
               ) : (
                 <ActionConfigFields
                   actionType={autoForm.action_type}
                   config={autoForm.action_config}
                   onChange={updateConfig}
-                  templates={templates}
+                  templates={modelosNaTela}
                   publishedBots={publishedBots}
                   stages={stages}
                 />
