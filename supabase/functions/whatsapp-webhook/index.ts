@@ -906,7 +906,7 @@ Deno.serve(async (req) => {
           if (incomingPhoneNumberId) {
             const { data: allIntegrations } = await supabase
               .from("integrations")
-              .select("id, key, config, status, tenant_id")
+              .select("id, key, config, status, tenant_id, owner_role")
               .like("key", "whatsapp_%");
 
             if (allIntegrations) {
@@ -1356,8 +1356,8 @@ Deno.serve(async (req) => {
               // a pessoa é a MESMA do número principal. Adota o lead já existente desse
               // mundo em vez de criar um duplicado (que o rodízio distribuía de novo
               // para outra SDR).
-              const donoNumero = String((matchedIntegration as any)?.owner_role ?? "");
-              if (!lead && ["crc", "sdr", "crc_legacy", ""].includes(donoNumero)) {
+              const donoNumero = String((matchedIntegration as any)?.owner_role ?? "crc");
+              if (!lead && ["crc", "sdr", "crc_legacy"].includes(donoNumero)) {
                 const { data: numerosCrc } = await supabase
                   .from("integrations").select("key, owner_role")
                   .eq("tenant_id", tenantId).like("key", "whatsapp_%");
