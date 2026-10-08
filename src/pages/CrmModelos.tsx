@@ -325,8 +325,8 @@ export default function CrmModelos() {
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     // Só do banco local — a leitura na Meta é o botão "Sincronizar".
-    const { data, error } = await lerModelos();
-    if (!error) setTemplates((data as WhatsAppTemplate[]) || []);
+    const [{ data, error }, inativos] = await Promise.all([lerModelos(), listarIdsNumerosInativos()]);
+    if (!error) setTemplates(somenteModelosDeNumerosAtivos((data as WhatsAppTemplate[]) || [], inativos));
     setLoading(false);
   }, [lerModelos]);
 

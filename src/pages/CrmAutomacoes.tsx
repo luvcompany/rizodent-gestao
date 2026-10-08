@@ -196,7 +196,8 @@ export default function CrmAutomacoes() {
       ]);
       setStages((stagesRes.data as Stage[]) || []);
       setAutomations((autoRes.data as Automation[]) || []);
-      setTemplates(deduplicateTemplates((tplRes.data as Template[]) || []));
+      const inativos = await listarIdsNumerosInativos();
+      setTemplates(deduplicateTemplates(somenteModelosDeNumerosAtivos((tplRes.data as Template[]) || [], inativos)));
       setChannels((chRes.data as FunnelChannel[]) || []);
       setFollowUpConfigs((fuRes.data as FollowUpCfg[]) || []);
       setPublishedBots((botsRes.data as BotEntry[]) || []);
