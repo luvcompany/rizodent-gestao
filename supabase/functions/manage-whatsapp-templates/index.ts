@@ -111,6 +111,16 @@ Deno.serve(async (req) => {
     // Ignorá-la fazia o seletor de conexão virar decoração — e, num cliente novo,
     // não havia outro jeito de dizer qual número usar. Aqui ela é traduzida para
     // phone_number_id; o acesso continua sendo checado abaixo.
+    // A tela de Modelos manda `whatsapp_number_id` (id da linha em whatsapp_numbers).
+    // Sem esta tradução o modelo caía na WABA do número antigo.
+    if (!body.phone_number_id && typeof body.whatsapp_number_id === "string" && body.whatsapp_number_id) {
+      const { data: numSel } = await supabase
+        .from("whatsapp_numbers")
+        .select("phone_number_id")
+        .eq("id", body.whatsapp_number_id)
+        .maybeSingle();
+      if ((numSel as any)?.phone_number_id) body.phone_number_id = String((numSel as any).phone_number_id);
+    }
     if (!body.phone_number_id && typeof body.integration_key === "string" && body.integration_key) {
       const chave = body.integration_key as string;
       if (chave !== "whatsapp_config") {
