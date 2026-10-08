@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { deduplicateTemplates } from "@/lib/templateUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,9 @@ import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 import ShareRoleDialog, { OwnerRoleBadge, type OwnerRole } from "@/components/crm/ShareRoleDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
+import { Switch } from "@/components/ui/switch";
+import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
+import { formatPhoneDisplayBR } from "@/lib/phoneUtils";
 import { acaoDaTransmissao, envioAtivo, statusDaTransmissao } from "@/lib/transmissao";
 
 /**
@@ -58,6 +61,22 @@ type ModeloAprovado = {
   updated_at: string;
 };
 
+/**
+ * Número por onde o disparo em massa vai sair (RPC numero_de_envio_do_disparo).
+ * Os campos podem vir vazios: o número legado (whatsapp_config) não tem linha
+ * em whatsapp_numbers, e enquanto a RPC não responde nada foi resolvido.
+ */
+type NumeroDoDisparo = {
+  numero_id: string | null;
+  nome: string | null;
+  phone_e164: string | null;
+  phone_number_id: string | null;
+  waba_id: string | null;
+  origem: string | null;
+  saude: string | null;
+  motivo: string | null;
+};
+
 /** Enquanto houver transmissão "Enviando", a lista se atualiza a cada 5 s. */
 const ATUALIZAR_A_CADA_MS = 5000;
 
@@ -92,6 +111,11 @@ export default function CrmCampanhas() {
   // Transmissões com clique em andamento (botão desabilitado até a resposta).
   const [disparando, setDisparando] = useState<Set<string>>(new Set());
   const [shareTarget, setShareTarget] = useState<Transmissao | null>(null);
+  // Número por onde o disparo vai sair (resolvido pelo banco, no funil escolhido)
+  // e o interruptor que devolve à lista os modelos dos outros números.
+  const [numeroDoDisparo, setNumeroDoDisparo] = useState<NumeroDoDisparo | null>(null);
+  const [mostrarOutrosNumeros, setMostrarOutrosNumeros] = useState(false);
+  const [numeros, setNumeros] = useState<{ id: string; display_name: string | null; waba_id: string | null }[]>([]);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("crm_broadcasts").select("*").order("created_at", { ascending: false });
@@ -112,6 +136,67 @@ export default function CrmCampanhas() {
   useEffect(() => {
     if (form.pipeline_id) supabase.from("crm_stages").select("id, name").eq("pipeline_id", form.pipeline_id).order("position").then(({ data }) => setStages(data || []));
   }, [form.pipeline_id]);
+
+  // ─── Por qual número este disparo vai sair ───
+  // O servidor resolve o número na hora do envio (carimbo do lead → número
+  // padrão de envio → canal do funil → número principal). A RPC abaixo refaz a
+  // MESMA ordem para o funil escolhido só para a tela poder avisar antes e
+  // listar os modelos que existem na conta desse número — um modelo aprovado em
+  // outra conta é recusado pela Meta em TODAS as mensagens do disparo.
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("numero_de_envio_do_disparo", {
+        p_pipeline_id: (form.pipeline_id || null) as unknown as string,
+      });
+      if (!vivo) return;
+      setNumeroDoDisparo(error ? null : ((data ?? []) as unknown as NumeroDoDisparo[])[0] ?? null);
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, [open, form.pipeline_id]);
+
+  // Nomes dos números para etiquetar cada modelo da lista (como o Instagram
+  // mostra por qual conta a mensagem saiu).
+  useEffect(() => {
+    supabase
+      .from("whatsapp_numbers")
+      .select("id, display_name, waba_id")
+      .then(({ data }) =>
+        setNumeros((data as { id: string; display_name: string | null; waba_id: string | null }[]) || []),
+      );
+  }, []);
+
+  const wabaDoEnvio = numeroDoDisparo?.waba_id ?? null;
+
+  const nomeDoNumeroDoModelo = (t: ModeloAprovado): string => {
+    if (!t.whatsapp_number_id) return "Número principal";
+    const peloId = numeros.find((n) => n.id === t.whatsapp_number_id);
+    if (peloId?.display_name) return peloId.display_name;
+    const peloWaba = numeros.find((n) => n.waba_id && n.waba_id === t.waba_id);
+    return peloWaba?.display_name ?? "Outro número";
+  };
+
+  const templatesDoNumero = useMemo(
+    () => (wabaDoEnvio ? templates.filter((t) => String(t.waba_id ?? "") === String(wabaDoEnvio)) : templates),
+    [templates, wabaDoEnvio],
+  );
+
+  // O modelo já escolhido nunca some da lista: se ele é de outro número, continua
+  // ali (com a etiqueta do número) e a tela avisa — nada é escondido de quem já
+  // selecionou.
+  const modelosNaTela = useMemo(() => {
+    if (mostrarOutrosNumeros) return templates;
+    const sel = templates.find((t) => t.id === form.template_id);
+    if (sel && !templatesDoNumero.includes(sel)) return [sel, ...templatesDoNumero];
+    return templatesDoNumero;
+  }, [mostrarOutrosNumeros, templates, templatesDoNumero, form.template_id]);
+
+  const modeloEscolhido = templates.find((t) => t.id === form.template_id) ?? null;
+  const avisoNumeroDiferente =
+    !!modeloEscolhido && !!wabaDoEnvio && String(modeloEscolhido.waba_id ?? "") !== String(wabaDoEnvio);
 
   // Atualização automática enquanto alguma transmissão está sendo enviada (um
   // 'sending' parado há 10 min não prende a tela; ele oferece Continuar envio).
@@ -266,7 +351,50 @@ export default function CrmCampanhas() {
              </div>
              <div className="space-y-4 p-5 sm:p-6">
                 <div className="space-y-1.5"><Label>Nome</Label><Input className="h-10 rounded-xl" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
-               <div className="space-y-1.5"><Label>Modelo</Label><TemplateSearchSelect templates={templates} value={form.template_id || undefined} onValueChange={v => setForm(p => ({ ...p, template_id: v }))} placeholder="Selecione o modelo" /></div>
+               {numeroDoDisparo && (
+                 <div className="rounded-xl border border-border/60 bg-surface-sunken p-3">
+                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                     <span className="text-muted-foreground">Vai sair por:</span>
+                     <span className="font-semibold">{numeroDoDisparo.nome ?? "número não definido"}</span>
+                     {numeroDoDisparo.phone_e164 && (
+                       <span className="text-xs text-muted-foreground">
+                         {formatPhoneDisplayBR(numeroDoDisparo.phone_e164)}
+                       </span>
+                     )}
+                     <span className="text-[11px] text-muted-foreground">
+                       {numeroDoDisparo.origem === "funil"
+                         ? "número do funil"
+                         : numeroDoDisparo.origem === "principal"
+                           ? "número principal"
+                           : "número padrão de envio"}
+                     </span>
+                   </div>
+                   <SeloSaudeWhatsapp phoneNumberId={numeroDoDisparo.phone_number_id} />
+                 </div>
+               )}
+               <div className="space-y-1.5">
+                 <Label>Modelo</Label>
+                 <TemplateSearchSelect
+                   templates={modelosNaTela}
+                   value={form.template_id || undefined}
+                   onValueChange={v => setForm(p => ({ ...p, template_id: v }))}
+                   placeholder="Selecione o modelo"
+                   labelExtra={t => nomeDoNumeroDoModelo(t as ModeloAprovado)}
+                 />
+                 {avisoNumeroDiferente && (
+                   <p className="text-xs text-destructive">
+                     Este modelo é do número {modeloEscolhido ? nomeDoNumeroDoModelo(modeloEscolhido) : "outro"} — o
+                     disparo sai por {numeroDoDisparo?.nome ?? "outro número"}. Escolha um modelo do número que vai
+                     enviar.
+                   </p>
+                 )}
+                 <div className="flex items-center gap-2 pt-1">
+                   <Switch id="mostrar-outros-numeros" checked={mostrarOutrosNumeros} onCheckedChange={setMostrarOutrosNumeros} />
+                   <label htmlFor="mostrar-outros-numeros" className="cursor-pointer select-none text-xs text-muted-foreground">
+                     Mostrar modelos de outros números
+                   </label>
+                 </div>
+               </div>
                <div className="space-y-1.5"><Label>Funil (filtro)</Label><Select value={form.pipeline_id} onValueChange={v => setForm(p => ({ ...p, pipeline_id: v, stage_id: "" }))}><SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent>{pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
                {form.pipeline_id && <div className="space-y-1.5"><Label>Etapa (filtro)</Label><Select value={form.stage_id} onValueChange={v => setForm(p => ({ ...p, stage_id: v }))}><SelectTrigger className="h-10 rounded-xl"><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent>{stages.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>}
                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface-sunken p-3">
