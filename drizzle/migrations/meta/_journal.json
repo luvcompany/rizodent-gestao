@@ -50,6 +50,13 @@
       "when": 1791473837124,
       "tag": "0006_rodizio_distribui_resposta_por_botao",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791490275319,
+      "tag": "0007_integracao_whatsapp_vira_numero",
+      "breakpoints": true
     }
   ]
 }
