@@ -76,6 +76,21 @@ type NumeroDoDisparo = {
   motivo: string | null;
 };
 
+/**
+ * Telefone do número de envio para exibição. Diferente de formatPhoneDisplayBR
+ * (que completa o 9 do celular): aqui o número aparece exatamente como está
+ * gravado — o selo diz "conectado na Meta" e a pessoa confere a linha pelo
+ * número, então mostrar um 9 a mais faria conferir um número que não existe.
+ */
+function telefoneParaExibir(e164: string | null | undefined): string {
+  const bruto = String(e164 || "").replace(/\D/g, "");
+  if (!bruto) return "";
+  const semPais = bruto.startsWith("55") && bruto.length >= 12 ? bruto.slice(2) : bruto;
+  if (semPais.length === 10) return `(${semPais.slice(0, 2)}) ${semPais.slice(2, 6)}-${semPais.slice(6)}`;
+  if (semPais.length === 11) return `(${semPais.slice(0, 2)}) ${semPais.slice(2, 7)}-${semPais.slice(7)}`;
+  return `+${bruto}`;
+}
+
 /** Enquanto houver transmissão "Enviando", a lista se atualiza a cada 5 s. */
 const ATUALIZAR_A_CADA_MS = 5000;
 
