@@ -208,3 +208,72 @@ export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | 
     </div>
   );
 }
+
+/**
+ * Seletor do número padrão de envio: lista todos os números ativos do grupo
+ * e permite escolher por qual saem automações, bots, follow-up e leads sem
+ * número escolhido.
+ */
+export function PadraoEnvioSelect() {
+  const { toast } = useToast();
+  const [numeros, setNumeros] = useState<{ id: string; display_name: string | null; phone_number_id: string; is_default: boolean | null }[]>([]);
+  const [salvando, setSalvando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    const { data } = await supabase
+      .from("whatsapp_numbers")
+      .select("id, display_name, phone_number_id, is_default")
+      .eq("is_active", true)
+      .order("display_name");
+    setNumeros((data as any) ?? []);
+  }, []);
+
+  useEffect(() => {
+    carregar();
+    const onChange = () => carregar();
+    window.addEventListener("whatsapp-padrao-alterado", onChange);
+    return () => window.removeEventListener("whatsapp-padrao-alterado", onChange);
+  }, [carregar]);
+
+  if (numeros.length === 0) return null;
+  const atual = numeros.find((n) => n.is_default);
+
+  const escolher = async (id: string) => {
+    if (!id || id === atual?.id) return;
+    setSalvando(true);
+    await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", id);
+    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: true }).eq("id", id);
+    setSalvando(false);
+    if (error) {
+      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Número padrão de envio definido" });
+    await carregar();
+    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">Número padrão de envio</p>
+        <p className="text-[11px] text-muted-foreground">
+          Automações, bots, follow-up e leads sem número escolhido saem por este número.
+        </p>
+      </div>
+      <select
+        value={atual?.id ?? ""}
+        onChange={(e) => escolher(e.target.value)}
+        disabled={salvando}
+        className="h-10 rounded-xl border border-border bg-background px-3 text-sm text-foreground disabled:opacity-50"
+      >
+        {!atual && <option value="">Escolha o número…</option>}
+        {numeros.map((n) => (
+          <option key={n.id} value={n.id}>
+            {n.display_name || n.phone_number_id}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

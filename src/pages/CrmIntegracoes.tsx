@@ -26,7 +26,7 @@ import WhatsAppEmbeddedSignupButton from "@/components/integrations/WhatsAppEmbe
 import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsSection";
 import Api4ComSection from "@/components/integrations/Api4ComSection";
 import { PageHeader, StatusPill } from "@/components/crm-ui";
-import { SeloSaudeWhatsapp, PadraoEnvioWhatsapp, PadraoEnvioSwitch } from "@/components/whatsapp/WhatsappSaude";
+import { SeloSaudeWhatsapp, PadraoEnvioWhatsapp, PadraoEnvioSwitch, PadraoEnvioSelect } from "@/components/whatsapp/WhatsappSaude";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -414,6 +414,11 @@ export default function CrmIntegracoes() {
           const liteEntries = whatsappEntries.filter(e => !e.key.startsWith("whatsapp_es_"));
           return (
             <>
+              {/* Escolha do número padrão de envio */}
+              <div className="mb-4">
+                <PadraoEnvioSelect />
+              </div>
+
               {/* WhatsApp (oficial - Embedded Signup) */}
               <WhatsAppAccountsSection
                 entries={officialEntries}
