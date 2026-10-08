@@ -6790,6 +6790,19 @@ export type Database = {
         Args: { p_cidade: string; p_source: string; p_tipo: string }
         Returns: undefined
       }
+      numero_de_envio_do_disparo: {
+        Args: { p_pipeline_id: string }
+        Returns: {
+          motivo: string
+          nome: string
+          numero_id: string
+          origem: string
+          phone_e164: string
+          phone_number_id: string
+          saude: string
+          waba_id: string
+        }[]
+      }
       pacientes_whatsapp_direto: {
         Args: { p_paciente_ids: string[] }
         Returns: {

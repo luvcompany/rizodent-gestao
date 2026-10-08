@@ -18,13 +18,28 @@ export const cleanTemplateName = (name: string): string => {
 
 /**
  * Deduplicates templates by base name, keeping the most recently updated one.
+ *
+ * O MESMO nome pode existir em números diferentes (ex.: "agendamento" no número
+ * principal e no de contingência — a Meta aprova o mesmo texto em cada conta).
+ * Juntar os dois só pelo nome fazia a lista de Transmissão sortear um dos dois,
+ * e se o sorteado fosse o do número errado o disparo inteiro era recusado pela
+ * Meta ("modelo não existe na conta deste número"). Por isso a chave leva o
+ * número: só junta nomes que são do mesmo número. Chamadas que não informam
+ * número (as outras telas) continuam com a chave só pelo nome.
  */
-export function deduplicateTemplates<T extends { name: string; updated_at?: string; created_at?: string }>(
-  templates: T[]
-): T[] {
+export function deduplicateTemplates<
+  T extends {
+    name: string;
+    updated_at?: string;
+    created_at?: string;
+    whatsapp_number_id?: string | null;
+    waba_id?: string | null;
+  },
+>(templates: T[]): T[] {
   const map = new Map<string, T>();
   for (const t of templates) {
-    const key = cleanTemplateName(t.name);
+    const numero = t.whatsapp_number_id ?? t.waba_id ?? "";
+    const key = numero ? `${cleanTemplateName(t.name)}|${numero}` : cleanTemplateName(t.name);
     const existing = map.get(key);
     if (!existing) {
       map.set(key, t);

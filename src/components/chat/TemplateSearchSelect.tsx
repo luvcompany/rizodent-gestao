@@ -18,6 +18,8 @@ interface Props {
   /** Show a "Nenhum" option at the top */
   allowNone?: boolean;
   noneLabel?: string;
+  /** Sufixo discreto em cada opção — ex.: o número de WhatsApp do modelo. */
+  labelExtra?: (t: Template) => string | null;
 }
 
 export default function TemplateSearchSelect({
@@ -27,6 +29,7 @@ export default function TemplateSearchSelect({
   placeholder = "Selecionar template",
   allowNone = false,
   noneLabel = "Nenhum",
+  labelExtra,
 }: Props) {
   const [search, setSearch] = useState("");
 
@@ -66,7 +69,12 @@ export default function TemplateSearchSelect({
           )}
           {filtered.map((t) => (
             <SelectItem key={t.id} value={t.id}>
-              {display(t.name)}
+              <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+                <span>{display(t.name)}</span>
+                {labelExtra?.(t) && (
+                  <span className="text-[10px] text-muted-foreground">· {labelExtra(t)}</span>
+                )}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>
