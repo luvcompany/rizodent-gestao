@@ -22,7 +22,6 @@ import { useModulos, podeMostrar } from "@/hooks/useModule";
 import { useVocab, type Vocab } from "@/hooks/useVocab";
 import { moduloDaRota, type ModuloKey } from "@/lib/modulos";
 import { supabase } from "@/integrations/supabase/client";
-import { AvisoWhatsappDesconectado } from "@/components/whatsapp/WhatsappSaude";
 import NotificationBell from "@/components/chat/NotificationBell";
 import SeletorCliente from "@/components/SeletorCliente";
 import AtalhoChegando from "@/components/setores/AtalhoChegando";
@@ -661,7 +660,6 @@ const CrmLayout = () => {
               sozinho sem perguntar. Montado uma única vez; ele mesmo se cala
               para os outros papéis. */}
           <AvisoFimExpediente />
-          <AvisoWhatsappDesconectado />
           <ErrorBoundary key={location.pathname}>
             <Outlet />
           </ErrorBoundary>
