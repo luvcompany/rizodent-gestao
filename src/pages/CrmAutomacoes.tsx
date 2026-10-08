@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import TemplateSearchSelect from "@/components/chat/TemplateSearchSelect";
 import AutomationModal from "@/components/automation/AutomationModal";
+import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
 
 // created_by entra no tipo porque é a coluna que dá AUTORIA à linha (migration
 // 20260910130000_sdr_desfecho_e_autonomia.sql desta rodada): a SDR só altera e

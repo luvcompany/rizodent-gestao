@@ -18,6 +18,7 @@ import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { Switch } from "@/components/ui/switch";
 import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
 import { acaoDaTransmissao, envioAtivo, statusDaTransmissao } from "@/lib/transmissao";
+import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
 
 /**
  * Transmissão (envio de um modelo aprovado para vários leads).

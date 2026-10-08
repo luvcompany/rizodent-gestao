@@ -16,6 +16,7 @@ import { useServicosDoTenant } from "@/hooks/useOpcoesDoTenant";
 import { useVocab } from "@/hooks/useVocab";
 import { uploadAutomationMedia } from "@/components/automation/automationMediaUpload";
 import { useAuth } from "@/contexts/AuthContext";
+import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
 import type { Database, Json } from "@/integrations/supabase/types";
 // Tipo local: no CRClin a lista de números vem de whatsapp_numbers direto
 // (colunas públicas); os campos de diagnóstico do v2 ficam opcionais.

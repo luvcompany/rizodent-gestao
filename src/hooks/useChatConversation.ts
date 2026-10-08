@@ -10,6 +10,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { envioFalhou, motivoDoEnvio } from "@/lib/erroDoEnvio";
 import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
 import type { ModeloParaEnviar } from "@/components/chat/EnviarModeloDialog";
+import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
 
 // Janela de mensagens por conversa (CONV-5). A conversa abre nas N mais
 // RECENTES e "Carregar anteriores" traz as de antes, N por vez. Antes a
@@ -292,7 +293,8 @@ export async function carregarModelosDoLead(
   }
 
   const numeroDeEnvio = linhas.find((l) => l.numero_de_envio_id)?.numero_de_envio_id ?? null;
-  const deduplicados = deduplicateTemplates(linhas);
+  const inativos = await listarIdsNumerosInativos();
+  const deduplicados = deduplicateTemplates(somenteModelosDeNumerosAtivos(linhas, inativos));
   return { modelos: await sortTemplatesByUsage(deduplicados, tenantId), erro: null };
 }
 
