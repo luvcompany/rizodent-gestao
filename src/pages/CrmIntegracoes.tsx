@@ -230,7 +230,11 @@ export default function CrmIntegracoes() {
     if (editEntry.id) {
       await supabase.from("integrations").update(payload).eq("id", editEntry.id);
     } else {
-      const { data } = await supabase.from("integrations").insert({ key: editEntry.key, ...payload, status: "disconnected", owner_role: "crc" }).select().single();
+      // Chave pelo identificador do próprio número (o banco cria o cadastro do número a partir dela).
+      const pnid = String(editEntry.config.phone_number_id || "").trim();
+      const chave = pnid ? `whatsapp_${pnid}` : editEntry.key;
+      editEntry.key = chave;
+      const { data } = await supabase.from("integrations").insert({ key: chave, ...payload, status: "disconnected", owner_role: "crc" }).select().single();
       if (data) {
         setEditEntry(prev => prev ? { ...prev, id: data.id } : prev);
       }

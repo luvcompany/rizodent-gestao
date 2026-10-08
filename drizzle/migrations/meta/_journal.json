@@ -57,6 +57,13 @@
       "when": 1791490275319,
       "tag": "0007_integracao_whatsapp_vira_numero",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791490499907,
+      "tag": "0008_numero_novo_concede_ao_grupo",
+      "breakpoints": true
     }
   ]
 }
