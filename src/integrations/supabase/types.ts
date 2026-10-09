@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_overrides_20261009: {
+        Row: {
+          copiado_em: string | null
+          created_at: string | null
+          created_by: string | null
+          granted: boolean | null
+          id: string | null
+          motivo: string | null
+          resource_id: string | null
+          scope: string | null
+          user_id: string | null
+        }
+        Insert: {
+          copiado_em?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          granted?: boolean | null
+          id?: string | null
+          motivo?: string | null
+          resource_id?: string | null
+          scope?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          copiado_em?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          granted?: boolean | null
+          id?: string | null
+          motivo?: string | null
+          resource_id?: string | null
+          scope?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       _bkp_distribuido_em_20261003: {
         Row: {
           distribuido_em: string | null
@@ -6113,6 +6149,7 @@ export type Database = {
           role: string
         }[]
       }
+      agenda_quantas_unidades: { Args: never; Returns: number }
       api4com_call_label: {
         Args: { _direction: string; _dur: number; _status: string }
         Returns: string
@@ -6836,6 +6873,27 @@ export type Database = {
         Args: { p_limite?: number }
         Returns: number
       }
+      modelos_do_lead: {
+        Args: { p_lead_id: string }
+        Returns: {
+          body_text: string
+          buttons: Json
+          category: string
+          created_at: string
+          footer_text: string
+          header_content: string
+          header_type: string
+          id: string
+          language: string
+          name: string
+          numero_de_envio_id: string
+          owner_role: Database["public"]["Enums"]["app_role"]
+          status: string
+          updated_at: string
+          waba_id: string
+          whatsapp_number_id: string
+        }[]
+      }
       mundo_do_lead: { Args: { p_lead: string }; Returns: string }
       mundo_numero_whatsapp: {
         Args: { p_number_id: string; p_tenant: string }
@@ -6858,6 +6916,28 @@ export type Database = {
           phone_number_id: string
           saude: string
           waba_id: string
+        }[]
+      }
+      numero_de_envio_do_lead: {
+        Args: { p_lead_id: string }
+        Returns: {
+          acessivel: boolean
+          conectado: boolean
+          nome: string
+          numero_id: string
+          origem: string
+          pausado: boolean
+          phone_e164: string
+          pronto: boolean
+          tenant_id: string
+          waba_id: string
+        }[]
+      }
+      numero_de_saida_do_lead: {
+        Args: { p_lead_id: string }
+        Returns: {
+          numero_id: string
+          origem: string
         }[]
       }
       pacientes_whatsapp_direto: {
@@ -7587,7 +7667,10 @@ export type Database = {
         Args: { p_termo: string }
         Returns: string
       }
-      transfer_lead_to_whatsapp: { Args: { p_lead_id: string }; Returns: Json }
+      transfer_lead_to_whatsapp: {
+        Args: { p_lead_id: string; p_phone?: string }
+        Returns: Json
+      }
       unaccent: { Args: { "": string }; Returns: string }
       update_whatsapp_template_sharing: {
         Args: {
