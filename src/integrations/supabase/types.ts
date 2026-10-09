@@ -5938,10 +5938,12 @@ export type Database = {
           app_secret: string | null
           created_at: string
           display_name: string | null
+          dono_user_id: string | null
           id: string
           is_active: boolean
           is_coexistence: boolean
           is_default: boolean
+          mundo: string | null
           phone_e164: string | null
           phone_number_id: string
           tenant_id: string
@@ -5955,10 +5957,12 @@ export type Database = {
           app_secret?: string | null
           created_at?: string
           display_name?: string | null
+          dono_user_id?: string | null
           id?: string
           is_active?: boolean
           is_coexistence?: boolean
           is_default?: boolean
+          mundo?: string | null
           phone_e164?: string | null
           phone_number_id: string
           tenant_id: string
@@ -5972,10 +5976,12 @@ export type Database = {
           app_secret?: string | null
           created_at?: string
           display_name?: string | null
+          dono_user_id?: string | null
           id?: string
           is_active?: boolean
           is_coexistence?: boolean
           is_default?: boolean
+          mundo?: string | null
           phone_e164?: string | null
           phone_number_id?: string
           tenant_id?: string
@@ -7567,6 +7573,7 @@ export type Database = {
       set_tenant_business_hours: { Args: { p_hours: Json }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      telefone_canonico: { Args: { p_raw: string }; Returns: string }
       tenant_of_lead: { Args: { _lead_id: string }; Returns: string }
       tenant_of_message: { Args: { _message_id: string }; Returns: string }
       tenant_set_user_role: {
@@ -7634,6 +7641,10 @@ export type Database = {
       }
       user_override: {
         Args: { _resource_id: string; _scope: string; _user_id: string }
+        Returns: boolean
+      }
+      usuario_do_mundo_do_numero: {
+        Args: { _dono: string; _mundo: string }
         Returns: boolean
       }
       varre_agendado_sem_agendamento: {
