@@ -187,6 +187,8 @@ type NewLeadDialogProps = {
   onCreated: () => void;
 };
 
+const MSG_ORIGEM_OBRIGATORIA = "Escolha a origem do lead.";
+
 const NewLeadDialog = memo(function NewLeadDialog({
   open, onOpenChange, pipelines, stages, defaultPipelineId, defaultStageId,
   profiles, userId, leadCountByStage, onCreated,
@@ -240,13 +242,16 @@ const NewLeadDialog = memo(function NewLeadDialog({
       ? pipelines.find(p => p.id === currentForm.pipeline_id)
       : pipelines.find(p => p.id === defaultPipelineId) || pipelines[0];
     if (!targetPipeline) return;
+    // Origem obrigatória: lead sem origem caía em "Outros" nos relatórios
+    // (68 leads de outubro/2026). Também cobre o "Duplicar mesmo assim".
+    if (!currentForm.source) { toast.error(MSG_ORIGEM_OBRIGATORIA); return; }
     const tagsArray = currentForm.tags ? currentForm.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
     const { error } = await supabase.from("crm_leads").insert({
       name: currentForm.name,
       phone: gravar,
       stage_id: currentForm.stage_id,
       pipeline_id: targetPipeline.id,
-      source: currentForm.source || null,
+      source: currentForm.source,
       ...(currentForm.cidade ? { cidade: currentForm.cidade } : {}),
       tags: tagsArray,
       value: currentForm.value ? parseFloat(currentForm.value) : 0,
@@ -291,6 +296,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
     if (salvandoRef.current) return;
     if (!form.name.trim()) { toast.error("Informe o nome do lead."); return; }
     if (!form.stage_id) { toast.error("Escolha a etapa inicial."); return; }
+    if (!form.source) { toast.error(MSG_ORIGEM_OBRIGATORIA); return; }
     const tel = lerTelefoneDigitado(form.phone);
     if (tel.erro) { toast.error(tel.erro); return; }
     salvandoRef.current = true;
@@ -436,7 +442,7 @@ const NewLeadDialog = memo(function NewLeadDialog({
               />
             </div>
             <div>
-              <Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Origem</Label>
+              <Label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Origem *</Label>
               <Select value={form.source} onValueChange={v => set("source", v)}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
