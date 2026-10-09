@@ -145,7 +145,12 @@ export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | 
     setNum(data as any);
   }, [phoneNumberId]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => {
+    carregar();
+    const onChange = () => carregar();
+    window.addEventListener("whatsapp-padrao-alterado", onChange);
+    return () => window.removeEventListener("whatsapp-padrao-alterado", onChange);
+  }, [carregar]);
   if (!num) return null;
 
   const alternar = async () => {
@@ -164,24 +169,21 @@ export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | 
   };
 
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${num.is_default ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${num.is_default ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+      <input
+        type="checkbox"
+        checked={!!num.is_default}
+        onChange={alternar}
+        disabled={salvando}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:opacity-50"
+      />
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">Número padrão de envio</p>
         <p className="text-[11px] text-muted-foreground">
-          Automações, bots, follow-up e leads sem número escolhido saem por este número.
+          Automações, bots, follow-up e leads sem número escolhido saem por este número. Marcar aqui desmarca os outros números.
         </p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={!!num.is_default}
-        onClick={alternar}
-        disabled={salvando}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${num.is_default ? "bg-primary" : "bg-muted"}`}
-      >
-        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${num.is_default ? "left-[22px]" : "left-0.5"}`} />
-      </button>
-    </div>
+    </label>
   );
 }
 
