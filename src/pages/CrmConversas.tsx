@@ -1687,9 +1687,10 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                                   <Badge variant="soft-destructive" className="order-1 h-5 shrink-0 px-2 text-[10px]" title="Lead bloqueado — só aparece na busca">Bloqueado</Badge>
                                 )}
                                 <span className="order-2 min-w-0 flex-1 break-normal leading-snug line-clamp-2">{lead.name}</span>
-                                {multiNumberTenant && (() => {
+                                {multiNumberTenant && getLeadChannel(lead) !== "instagram" && (() => {
                                   const numeroDoLead = (lead as any).whatsapp_number_id as string | null | undefined;
-                                  const rotulo = rotuloNumeroDoLead(numeroDoLead);
+                                  const padrao = (numerosVisiveis ?? []).find((n: any) => n.is_default && n.is_active);
+                                  const rotulo = numeroDoLead ? rotuloNumeroDoLead(numeroDoLead) : padrao ? `${nomeDoNumero(padrao)} (padrão)` : rotuloNumeroDoLead(null);
                                   if (!rotulo) return null;
                                   // S29P-3d: número com o WhatsApp pausado pelo suporte.
                                   const pausado = !!numeroDoLead && numerosPausados.has(numeroDoLead);
