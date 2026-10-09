@@ -1459,30 +1459,46 @@ Deno.serve(async (req) => {
                     console.log(`[WEBHOOK] Round-robin atribuiu lead a: ${assignedTo}`);
                   }
 
-                  const { data: newLead, error: insertLeadErr } = await supabase
+                  const { data: newLeadRaw, error: insertLeadErr } = await supabase
                     .from("crm_leads")
                     .insert(insertData)
                     .select("id, name, source")
                     .single();
+                  let newLead: any = newLeadRaw;
 
                   if (insertLeadErr && (insertLeadErr as any).code === "23505") {
-                    // Race: another webhook just created this lead. Reuse it.
-                    let raceQuery = supabase
-                      .from("crm_leads")
-                      .select("id, name, source")
-                      .eq("tenant_id", tenantId).eq("phone", from);
-                    // Mesmo escopo da busca: por número quando cadastrado, mundo
-                    // legado (NULL) quando é o número principal.
-                    raceQuery = waNumberId
-                      ? raceQuery.eq("whatsapp_number_id", waNumberId)
-                      : raceQuery.is("whatsapp_number_id", null);
-                    const { data: existing } = await raceQuery
-                      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+                    // Race: another webhook just created this lead. Reuse it (same world).
+                    const { data: existenteId } = await supabase.rpc("lead_whatsapp_existente", {
+                      p_tenant: tenantId, p_phone: from, p_mundo: mundoDoNumero,
+                    });
+                    const { data: existing } = existenteId
+                      ? await supabase.from("crm_leads").select(LEAD_COLS).eq("id", existenteId).maybeSingle()
+                      : { data: null };
                     lead = existing as any;
                     console.log(`[WEBHOOK] Race avoided — reusing existing lead ${existing?.id} for ${from}`);
                   } else {
                     lead = newLead;
                     console.log(`[WEBHOOK] Lead criado: id=${newLead?.id}, pipeline=${pipelineId}, assigned=${assignedTo || "none"}, ad_id=${adSourceId || "N/A"}`);
+                  }
+
+                  // Rede de segurança: se outro lead do MESMO mundo já tem este telefone
+                  // (ex.: corrida entre mensagens), mescla no mais antigo e segue com ele.
+                  if (newLead?.id) {
+                    try {
+                      const { data: mantidoId, error: mergeErr } = await supabase.rpc(
+                        "mesclar_lead_duplicado_mesmo_mundo", { p_lead: newLead.id },
+                      );
+                      if (mergeErr) console.warn("[WEBHOOK] auto-merge error", mergeErr.message);
+                      if (mantidoId) {
+                        const { data: mantido } = await supabase
+                          .from("crm_leads").select(LEAD_COLS).eq("id", mantidoId).maybeSingle();
+                        console.log(`[WEBHOOK] Lead ${newLead.id} mesclado automaticamente em ${mantidoId}`);
+                        lead = mantido;
+                        newLead = null;
+                      }
+                    } catch (e) {
+                      console.warn("[WEBHOOK] auto-merge exception", e);
+                    }
                   }
 
                   // Execute on_create + on_enter + on_create_or_enter automations for the new lead's first stage
