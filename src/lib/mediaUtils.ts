@@ -88,31 +88,42 @@ export async function getSignedMediaUrl(storedUrl: string): Promise<string> {
   const existing = inflightRequests.get(path);
   if (existing) return existing;
 
-  const promise = (async () => {
-    try {
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .createSignedUrl(path, 3600);
-
-      if (error || !data?.signedUrl) {
-        console.warn("[mediaUtils] Failed to create signed URL for", path, error);
-        return storedUrl;
-      }
-
-      // Cache the result
-      signedUrlCache.set(path, {
-        url: data.signedUrl,
-        expiresAt: Date.now() + SIGNED_URL_TTL,
-      });
-
-      return data.signedUrl;
-    } finally {
-      inflightRequests.delete(path);
-    }
-  })();
+  const promise = new Promise<string>((resolve) => {
+    pendingSign.push({ path, storedUrl, resolve });
+    if (!flushTimer) flushTimer = setTimeout(flushPendingSign, 15);
+  });
 
   inflightRequests.set(path, promise);
   return promise;
+}
+
+// Junta as assinaturas pedidas no mesmo instante (todas as mídias de uma
+// conversa) numa única chamada, em vez de uma requisição por arquivo.
+type PendingSign = { path: string; storedUrl: string; resolve: (u: string) => void };
+let pendingSign: PendingSign[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function flushPendingSign() {
+  const lote = pendingSign;
+  pendingSign = [];
+  flushTimer = null;
+  const paths = Array.from(new Set(lote.map((p) => p.path)));
+  const assinadas = new Map<string, string>();
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 3600);
+    if (error) console.warn("[mediaUtils] Failed to batch sign", error);
+    (data ?? []).forEach((d: any) => {
+      if (d?.path && d?.signedUrl) assinadas.set(d.path, d.signedUrl);
+    });
+  } catch (e) {
+    console.warn("[mediaUtils] batch sign error", e);
+  }
+  for (const p of lote) {
+    const url = assinadas.get(p.path);
+    if (url) signedUrlCache.set(p.path, { url, expiresAt: Date.now() + SIGNED_URL_TTL });
+    inflightRequests.delete(p.path);
+    p.resolve(url ?? p.storedUrl);
+  }
 }
 
 /**
