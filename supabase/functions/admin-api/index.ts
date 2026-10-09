@@ -2177,6 +2177,240 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
   });
 }
 
+// ===== /reports/sdr =====
+// Relatório por SDR — o MESMO da tela "Relatório por SDR", só leitura e só
+// números agregados (nenhum lead, nenhum telefone). Criado p/ o painel de TV.
+//   • linha (relatorio_sdr_calc, motor oficial liberado só p/ service_role):
+//     recebidos, respondidos, 1ª resposta, coorte de agendamentos pela data em
+//     que a SDR marcou, conversas fechadas, pesquisa e expediente — uma linha
+//     por SDR + total da equipe.
+//   • blocos: cópia da regra de relatorio_sdr_blocos (consultas marcadas PARA o
+//     período: 1ª consulta × remarcadas × desfecho final por lead). A RPC lê
+//     auth.uid()/current_tenant_id(), que não existem com a chave da API.
+//   • producao: cópia de relatorio_sdr_diario — agendamentos que cada SDR
+//     MARCOU no período, pela situação atual (aba Produção).
+//   • ligacoes: cópia de relatorio_sdr_ligacoes (telefonia + WhatsApp, saintes).
+// Se mudar uma das RPCs, mudar aqui também.
+async function reportSdr(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+
+  const [calcRes, rolesRes] = await Promise.all([
+    admin.rpc("relatorio_sdr_calc", { p_tenant: tenantId, p_de: fromDay, p_ate: toDay, p_user: null, p_total: true }),
+    admin.from("user_roles").select("user_id").eq("role", "sdr"),
+  ]);
+  if (calcRes.error) return json({ error: `relatorio_sdr_calc: ${calcRes.error.message}` }, 500);
+  if (rolesRes.error) return json({ error: `user_roles: ${rolesRes.error.message}` }, 500);
+  const ehSdr = new Set<string>((rolesRes.data || []).map((r: any) => r.user_id));
+
+  type Ap = {
+    id: string; lead_id: string | null; scheduled_date: string; scheduled_time: string | null;
+    created_at: string; responsavel_credito_id: string | null; status: string;
+  };
+  const aps = await fetchAllPaged<Ap>(
+    () => admin.from("crm_appointments")
+      .select("id, lead_id, scheduled_date, scheduled_time, created_at, responsavel_credito_id, status")
+      .eq("tenant_id", tenantId),
+    "id",
+  );
+  const ms = new Map<string, number>(aps.map((a) => [a.id, Date.parse(a.created_at)]));
+  const hora = (a: Ap) => (a.scheduled_time ?? "").slice(0, 8);
+  // (scheduled_date, COALESCE(scheduled_time,'00:00'), created_at) de x > de b
+  const depois = (x: Ap, b: Ap) => {
+    if (x.scheduled_date !== b.scheduled_date) return x.scheduled_date > b.scheduled_date;
+    const hx = hora(x) || "00:00:00", hb = hora(b) || "00:00:00";
+    if (hx !== hb) return hx > hb;
+    return ms.get(x.id)! > ms.get(b.id)!;
+  };
+  const porLead = new Map<string, Ap[]>();
+  for (const a of aps) {
+    if (!a.lead_id) continue;
+    const l = porLead.get(a.lead_id);
+    if (l) l.push(a); else porLead.set(a.lead_id, [a]);
+  }
+
+  // ---- blocos (relatorio_sdr_blocos)
+  // todas: cancelada que tem consulta posterior do mesmo lead (não substituída) vira 'rescheduled'.
+  const stB = new Map<string, string>();
+  for (const a of aps) {
+    if (!a.lead_id) continue;
+    let s = a.status;
+    if (s === "cancelled" && porLead.get(a.lead_id)!.some((x) => x.id !== a.id && x.status !== "rescheduled" && depois(x, a))) s = "rescheduled";
+    stB.set(a.id, s);
+  }
+  // primeiro: 1ª consulta do lead (data, hora NULLS LAST, created_at).
+  const primeiro = new Map<string, Ap>();
+  for (const [lead, lista] of porLead) {
+    let m = lista[0];
+    for (const a of lista) {
+      const ha = a.scheduled_time == null ? "￿" : hora(a), hm = m.scheduled_time == null ? "￿" : hora(m);
+      if (a.scheduled_date < m.scheduled_date
+        || (a.scheduled_date === m.scheduled_date && (ha < hm || (ha === hm && ms.get(a.id)! < ms.get(m.id)!)))) m = a;
+    }
+    primeiro.set(lead, m);
+  }
+  const noPeriodo = (d: string) => d >= fromDay && d <= toDay;
+  const res1 = (s: string) =>
+    s === "contracted" || s === "not_contracted" ? "compareceu"
+      : s === "no_show" ? "falta" : s === "cancelled" ? "cancelou" : s === "rescheduled" ? "remarcou" : "pendente";
+  // o mais recente: data DESC, hora DESC NULLS LAST, created_at DESC
+  const maisRecente = (lista: Ap[], comData: boolean) => lista.reduce((m, a) => {
+    if (comData && a.scheduled_date !== m.scheduled_date) return a.scheduled_date > m.scheduled_date ? a : m;
+    const ha = a.scheduled_time == null ? "" : hora(a), hm = m.scheduled_time == null ? "" : hora(m);
+    if (ha !== hm) return ha > hm ? a : m;
+    return ms.get(a.id)! > ms.get(m.id)! ? a : m;
+  });
+  const CHAVES = ["agd", "agd_compareceu", "agd_falta", "agd_cancelou", "agd_pendente", "agd_remarcou",
+    "rem", "rem_compareceu", "rem_falta", "rem_cancelou", "rem_pendente", "rem_remarcou",
+    "ger", "ger_compareceu", "ger_falta", "ger_cancelou", "ger_pendente", "contratados"];
+  const blocos = new Map<string, Record<string, string[]>>();
+  const bl = (uid: string) => {
+    let b = blocos.get(uid);
+    if (!b) { b = Object.fromEntries(CHAVES.map((k) => [k, [] as string[]])); blocos.set(uid, b); }
+    return b;
+  };
+  for (const [lead, p1] of primeiro) {
+    const sdr = p1.responsavel_credito_id;
+    if (!sdr || !ehSdr.has(sdr) || !noPeriodo(p1.scheduled_date)) continue;
+    const b = bl(sdr);
+    b.agd.push(lead);
+    b[`agd_${res1(stB.get(p1.id)!)}`].push(lead);
+  }
+  const ger = new Map<string, Ap[]>(); // sdr|lead
+  const rem = new Map<string, Ap[]>(); // sdr|lead|data
+  for (const a of aps) {
+    if (!a.lead_id) continue;
+    const sdr = a.responsavel_credito_id;
+    if (!sdr || !ehSdr.has(sdr) || !noPeriodo(a.scheduled_date)) continue;
+    const kg = `${sdr}|${a.lead_id}`;
+    (ger.get(kg) ?? ger.set(kg, []).get(kg)!).push(a);
+    if (a.id !== primeiro.get(a.lead_id)!.id) {
+      const kr = `${kg}|${a.scheduled_date}`;
+      (rem.get(kr) ?? rem.set(kr, []).get(kr)!).push(a);
+    }
+  }
+  const compareceu = (lista: Ap[]) => lista.some((a) => ["contracted", "not_contracted"].includes(stB.get(a.id)!));
+  for (const [k, lista] of ger) {
+    const [sdr, lead] = k.split("|");
+    const b = bl(sdr);
+    b.ger.push(lead);
+    if (compareceu(lista)) b.ger_compareceu.push(lead);
+    else {
+      const s = stB.get(maisRecente(lista, true).id)!;
+      b[s === "no_show" ? "ger_falta" : s === "cancelled" ? "ger_cancelou" : "ger_pendente"].push(lead);
+    }
+    if (lista.some((a) => stB.get(a.id) === "contracted")) b.contratados.push(lead);
+  }
+  for (const [k, lista] of rem) {
+    const [sdr, lead] = k.split("|");
+    const b = bl(sdr);
+    b.rem.push(lead);
+    b[`rem_${compareceu(lista) ? "compareceu" : res1(stB.get(maisRecente(lista, false).id)!)}`].push(lead);
+  }
+
+  // ---- producao (relatorio_sdr_diario, aba Produção): o que ela MARCOU no período.
+  const SITUACOES = ["compareceu", "falta", "cancelado", "remarcado", "pendente"];
+  const producao = new Map<string, Record<string, number>>();
+  for (const a of aps) {
+    const sdr = a.responsavel_credito_id;
+    if (!sdr || !ehSdr.has(sdr) || !noPeriodo(dayKeyBahia(a.created_at))) continue;
+    let s = a.status === "contracted" || a.status === "not_contracted" ? "compareceu"
+      : a.status === "no_show" ? "falta" : a.status === "rescheduled" ? "remarcado" : "pendente";
+    if (a.status === "cancelled") {
+      s = a.lead_id && porLead.get(a.lead_id)!.some((x) => x.id !== a.id && depois(x, a)) ? "remarcado" : "cancelado";
+    }
+    const pr = producao.get(sdr) ?? Object.fromEntries([["marcados", 0], ...SITUACOES.map((k) => [k, 0])]);
+    pr.marcados++; pr[s]++;
+    producao.set(sdr, pr);
+  }
+
+  // ---- ligacoes (relatorio_sdr_ligacoes): saintes, por quem ligou.
+  const iniMs = Date.parse(gteIso), fimMs = Date.parse(lteIso);
+  const folgaIni = new Date(iniMs - 2 * 86400000).toISOString(), folgaFim = new Date(fimMs + 2 * 86400000).toISOString();
+  const [tel, wa] = await Promise.all([
+    fetchAllPaged<any>(
+      () => admin.from("api4com_calls")
+        .select("id, status, duration_seconds, started_at, created_at, uid:raw_payload->metadata->>userId")
+        .eq("tenant_id", tenantId).eq("direction", "outbound")
+        .gte("created_at", folgaIni).lte("created_at", folgaFim),
+      "id",
+    ),
+    fetchAllPaged<any>(
+      () => admin.from("whatsapp_calls")
+        .select("id, status, duration_seconds, started_at, created_at, connected_at, initiated_by")
+        .eq("tenant_id", tenantId).eq("direction", "outbound").not("initiated_by", "is", null)
+        .gte("created_at", folgaIni).lte("created_at", folgaFim),
+      "id",
+    ),
+  ]);
+  const ligacoes = new Map<string, { feitas: number; atendidas: number; telefonia: number; whatsapp: number; dur: number[] }>();
+  const somaLig = (uid: string | null, atendida: boolean, dur: number | null, origem: "telefonia" | "whatsapp") => {
+    if (!uid || !ehSdr.has(uid)) return;
+    const l = ligacoes.get(uid) ?? { feitas: 0, atendidas: 0, telefonia: 0, whatsapp: 0, dur: [] };
+    l.feitas++; l[origem]++;
+    if (atendida) { l.atendidas++; if (typeof dur === "number" && dur > 0) l.dur.push(dur); }
+    ligacoes.set(uid, l);
+  };
+  const dentro = (r: any) => { const t = Date.parse(r.started_at ?? r.created_at); return t >= iniMs && t <= fimMs; };
+  for (const r of tel) if (r.uid && dentro(r)) somaLig(r.uid, r.status === "answered", r.duration_seconds, "telefonia");
+  for (const r of wa) if (dentro(r)) somaLig(r.initiated_by, r.connected_at != null || ["accepted", "completed"].includes(r.status), r.duration_seconds, "whatsapp");
+  const ligOut = (l?: { feitas: number; atendidas: number; telefonia: number; whatsapp: number; dur: number[] }) => ({
+    feitas: l?.feitas ?? 0, atendidas: l?.atendidas ?? 0, telefonia: l?.telefonia ?? 0, whatsapp: l?.whatsapp ?? 0,
+    duracao_media_seg: l && l.dur.length ? Math.round(l.dur.reduce((s, d) => s + d, 0) / l.dur.length) : 0,
+  });
+
+  // ---- resposta
+  const num = (v: any) => (v == null ? null : Number(v));
+  const contar = (b?: Record<string, string[]>) => Object.fromEntries(CHAVES.map((k) => [k, b ? b[k].length : 0]));
+  const linha = (r: any) => ({
+    nome: r.nome,
+    no_rodizio: r.no_rodizio,
+    bloqueada: r.bloqueada,
+    leads_recebidos: num(r.leads_recebidos) ?? 0,
+    leads_respondidos: num(r.leads_respondidos) ?? 0,
+    resp_amostra: num(r.resp_amostra) ?? 0,
+    resp_mediana_seg: num(r.resp_mediana_seg),
+    resp_media_seg: num(r.resp_media_seg),
+    agendamentos: num(r.agendamentos) ?? 0,
+    compareceram: num(r.compareceram) ?? 0,
+    faltas: num(r.faltas) ?? 0,
+    contratados: num(r.contratados) ?? 0,
+    agend_cancelados: num(r.agend_cancelados) ?? 0,
+    conversas_fechadas: num(r.conversas_fechadas) ?? 0,
+    pesquisa_respostas: num(r.pesquisa_respostas) ?? 0,
+    pesquisa_nota_media: num(r.pesquisa_nota_media),
+    minutos_expediente: num(r.minutos_expediente) ?? 0,
+    minutos_pausa: num(r.minutos_pausa) ?? 0,
+  });
+  const linhas = (calcRes.data || []) as any[];
+  const sdrs = linhas.filter((r) => !r.is_total).map((r) => ({
+    user_id: r.user_id,
+    ...linha(r),
+    blocos: contar(blocos.get(r.user_id)),
+    producao: producao.get(r.user_id) ?? Object.fromEntries([["marcados", 0], ...SITUACOES.map((k) => [k, 0])]),
+    ligacoes: ligOut(ligacoes.get(r.user_id)),
+  }));
+  // Equipe: blocos pela união de leads (um lead nunca conta duas vezes), como a tela.
+  const uniao = (k: string) => { const s = new Set<string>(); for (const b of blocos.values()) for (const id of b[k]) s.add(id); return s.size; };
+  const prodEquipe = Object.fromEntries([["marcados", 0], ...SITUACOES.map((k) => [k, 0])]);
+  for (const pr of producao.values()) for (const k of Object.keys(prodEquipe)) prodEquipe[k] += pr[k] ?? 0;
+  const ligEquipe = { feitas: 0, atendidas: 0, telefonia: 0, whatsapp: 0, dur: [] as number[] };
+  for (const l of ligacoes.values()) {
+    ligEquipe.feitas += l.feitas; ligEquipe.atendidas += l.atendidas;
+    ligEquipe.telefonia += l.telefonia; ligEquipe.whatsapp += l.whatsapp; ligEquipe.dur.push(...l.dur);
+  }
+  const tot = linhas.find((r) => r.is_total);
+  return json({
+    period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
+    sdrs,
+    equipe: tot ? {
+      ...linha(tot),
+      blocos: Object.fromEntries(CHAVES.map((k) => [k, uniao(k)])),
+      producao: prodEquipe,
+      ligacoes: ligOut(ligEquipe),
+    } : null,
+  });
+}
+
 Deno.serve(async (req) => {
   cors = buildCorsFor(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -2223,6 +2457,7 @@ Deno.serve(async (req) => {
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
           "GET /reports/ligacoes?from=YYYY-MM-DD&to=YYYY-MM-DD",
+          "GET /reports/sdr?from=YYYY-MM-DD&to=YYYY-MM-DD  (relatório por SDR: atendimento, blocos de agendamento, produção, ligações; só números)",
           "GET /templates?name=&phone_number_id=  (lista status dos templates na Meta; sem phone_number_id usa o número principal)",
           "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
           "POST /sync-comparecimento  { from, to, dryRun (default true) }  → resumo por unidade",
@@ -2273,6 +2508,7 @@ Deno.serve(async (req) => {
       if (parts[1] === "financeiro") return await reportFinanceiro(tenantId, p);
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
       if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
+      if (parts[1] === "sdr") return await reportSdr(tenantId, p);
     }
     if (parts[0] === "flows") {
       if (parts[1] === "confirmacao" && req.method === "POST") return await flowsConfirmacao(tenantId, body);
