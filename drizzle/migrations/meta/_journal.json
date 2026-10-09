@@ -92,6 +92,13 @@
       "when": 1791575739605,
       "tag": "0012_mescla_mantem_sdr_do_rodizio",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791575908517,
+      "tag": "0013_preserva_conversas_ao_trocar_numero",
+      "breakpoints": true
     }
   ]
 }
