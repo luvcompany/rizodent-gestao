@@ -174,8 +174,13 @@ export async function papelDonoDoNumero(supabase: any, numberId: string | null):
     .from("user_roles")
     .select("role")
     .in("user_id", userIds);
+  // SDR vive no mundo do CRC: um número usado pelas duas tem dono "crc".
   const distintos = Array.from(
-    new Set(((roles || []) as any[]).map((r) => r.role).filter((r) => r && r !== "superadmin" && r !== "gerente")),
+    new Set(
+      ((roles || []) as any[])
+        .map((r) => (r.role === "sdr" ? "crc" : r.role))
+        .filter((r) => r && r !== "superadmin" && r !== "gerente" && r !== "crc_legacy"),
+    ),
   );
   return distintos.length === 1 ? String(distintos[0]) : null;
 }

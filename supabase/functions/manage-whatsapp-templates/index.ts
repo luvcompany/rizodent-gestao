@@ -215,8 +215,9 @@ Deno.serve(async (req) => {
     const escopoNumberId = escopo?.whatsappNumberId ?? null;
     // owner_role do template: no mundo legado fica com o papel do chamador; num
     // número próprio, com o papel dono daquele número (quando houver um só).
+    const donoDoNumero = escopoNumberId ? await papelDonoDoNumero(supabase, escopoNumberId) : null;
     const ownerRoleTemplate = escopoNumberId
-      ? (await papelDonoDoNumero(supabase, escopoNumberId)) || callerPrimaryRole
+      ? donoDoNumero || callerPrimaryRole
       : callerPrimaryRole;
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
@@ -338,8 +339,10 @@ Deno.serve(async (req) => {
           // atualizava o texto e o status, e nunca o carimbo.
           // Só vale para número próprio: no mundo legado, owner_role NULL
           // significa "modelo geral" e carimbá-lo o esconderia dos demais papéis.
+          // Nunca carimba com o papel de quem clicou em sincronizar: sem dono
+          // claro do número, o modelo continua geral (visível a todos).
           if (escopoNumberId) {
-            if (!existing.owner_role && ownerRoleTemplate) patch.owner_role = ownerRoleTemplate;
+            if (!existing.owner_role && donoDoNumero) patch.owner_role = donoDoNumero;
             if (!existing.whatsapp_number_id) patch.whatsapp_number_id = escopoNumberId;
           }
           await supabase
