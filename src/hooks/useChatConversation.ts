@@ -758,7 +758,12 @@ export function useChatConversation(leadId: string | null | undefined) {
           return updated;
         });
       })
-      .subscribe();
+      .subscribe((status) => {
+        // Ao (re)conectar ou cair, busca na hora o que chegou no intervalo.
+        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          window.dispatchEvent(new Event("chat-realtime-resync"));
+        }
+      });
     return () => { supabase.removeChannel(channel); };
   }, [leadId, gravarCache]);
 
@@ -770,7 +775,9 @@ export function useChatConversation(leadId: string | null | undefined) {
     const targetLeadId = leadId;
     if (!targetLeadId) return;
 
-    const interval = setInterval(async () => {
+    let rodando = false;
+    const conferir = async () => {
+      if (rodando) return;
       if (activeLeadRef.current !== targetLeadId) return;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       const ultima = ultimaDoBanco(messagesRef.current, otimistasRef.current);
@@ -778,24 +785,45 @@ export function useChatConversation(leadId: string | null | undefined) {
         void fetchMessages(true, true);
         return;
       }
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("lead_id", targetLeadId)
-        .is("historico_de_lead_id" as any, null)
-        .gte("created_at", ultima)
-        .order("created_at", { ascending: true })
-        .limit(JANELA_DE_MENSAGENS);
-      if (error || !data || activeLeadRef.current !== targetLeadId) return;
-      const novas = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
-      setMessages((prev) => {
-        if (activeLeadRef.current !== targetLeadId) return prev;
-        const mesclada = mesclarMensagens(prev, novas, otimistasRef.current);
-        if (mesclada !== prev) gravarCache(targetLeadId, mesclada);
-        return mesclada;
-      });
-    }, 60000); // 60s — realtime carries the load; this is just a safety net
-    return () => clearInterval(interval);
+      rodando = true;
+      try {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("lead_id", targetLeadId)
+          .is("historico_de_lead_id" as any, null)
+          .gte("created_at", ultima)
+          .order("created_at", { ascending: true })
+          .limit(JANELA_DE_MENSAGENS);
+        if (error || !data || activeLeadRef.current !== targetLeadId) return;
+        const novas = (data as unknown as ChatMessage[]).map(normalizeOutboundStatus);
+        setMessages((prev) => {
+          if (activeLeadRef.current !== targetLeadId) return prev;
+          const mesclada = mesclarMensagens(prev, novas, otimistasRef.current);
+          if (mesclada !== prev) gravarCache(targetLeadId, mesclada);
+          return mesclada;
+        });
+      } finally {
+        rodando = false;
+      }
+    };
+
+    // 15s de rede de segurança; e conferência imediata quando a aba volta,
+    // a internet volta ou o canal ao vivo se reconecta.
+    const interval = setInterval(conferir, 15000);
+    const onVisible = () => { if (document.visibilityState === "visible") void conferir(); };
+    const onResync = () => { void conferir(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onResync);
+    window.addEventListener("focus", onResync);
+    window.addEventListener("chat-realtime-resync", onResync);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onResync);
+      window.removeEventListener("focus", onResync);
+      window.removeEventListener("chat-realtime-resync", onResync);
+    };
   }, [leadId, fetchMessages, gravarCache]);
 
 
