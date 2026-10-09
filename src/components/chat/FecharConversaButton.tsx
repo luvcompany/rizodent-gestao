@@ -41,7 +41,17 @@ import { CheckCircle2, Loader2, Star, Unlock } from "lucide-react";
  * uma sonda por sessão) em vez de abrir um diálogo que vai falhar.
  */
 
-const PAPEIS_QUE_FECHAM = new Set(["sdr", "crc", "gerente", "superadmin"]);
+// Mesma régua do banco (conversa_lead_alcancavel): a gestão fecha qualquer
+// conversa que enxerga; os outros papéis (SDR, closer, pós-venda, recepção)
+// fecham a conversa dos leads de que são responsáveis. Antes a lista fixa
+// escondia o botão do closer e da pós-venda e mostrava à SDR em lead alheio.
+const PAPEIS_DA_GESTAO = new Set(["crc", "gerente", "superadmin"]);
+
+function podeFechar(userRole: string | null | undefined, userId: string | null | undefined, responsavelId: string | null | undefined): boolean {
+  if (!userRole) return false;
+  if (PAPEIS_DA_GESTAO.has(userRole)) return true;
+  return !!userId && responsavelId === userId;
+}
 
 const TEXTO_FECHAR =
   "O atendimento é dado como concluído e o lead continua com a responsável atual; se ele mandar qualquer mensagem nova, a conversa reabre sozinha.";
@@ -49,6 +59,8 @@ const TEXTO_FECHAR =
 type Props = {
   leadId: string;
   fechadaEm: string | null | undefined;
+  /** crm_leads.assigned_to — quem não é da gestão só fecha lead dela. */
+  responsavelId?: string | null;
   onChange: (fechadaEm: string | null) => void;
 };
 
@@ -107,8 +119,8 @@ export function ConversaFechadaBadge({ fechadaEm }: { fechadaEm: string | null |
 }
 
 /** Ícone no cabeçalho da conversa (fechar com diálogo; reabrir direto). */
-export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Props) {
-  const { userRole } = useAuth();
+export default function FecharConversaButton({ leadId, fechadaEm, responsavelId, onChange }: Props) {
+  const { userRole, user } = useAuth();
   const [ocupado, setOcupado] = useState(false);
   const [aberto, setAberto] = useState(false);
   const [enviarPesquisa, setEnviarPesquisa] = useState(true);
@@ -116,7 +128,7 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
   const oferta = usePesquisaOferta(leadId, aberto && !fechadaEm);
   // A caixa não herda o "desmarcado" do lead anterior.
   useEffect(() => { setEnviarPesquisa(true); }, [leadId]);
-  if (!userRole || !PAPEIS_QUE_FECHAM.has(userRole)) return null;
+  if (!podeFechar(userRole, user?.id, responsavelId)) return null;
   if (!disponivel) return null;
 
   if (fechadaEm) {
@@ -213,13 +225,13 @@ export default function FecharConversaButton({ leadId, fechadaEm, onChange }: Pr
  * "Bloquear lead"): "Fechar conversa" e "Fechar e enviar pesquisa" — a mesma
  * escolha que o diálogo do cabeçalho dá pela caixa de seleção.
  */
-export function FecharConversaMenuItem({ leadId, fechadaEm, onChange }: Props) {
-  const { userRole } = useAuth();
+export function FecharConversaMenuItem({ leadId, fechadaEm, responsavelId, onChange }: Props) {
+  const { userRole, user } = useAuth();
   const disponivel = useConversaRpcDisponivel();
   // O conteúdo do menu só monta quando ele abre, então a consulta acontece no
   // clique, não a cada linha da lista.
   const oferta = usePesquisaOferta(leadId, !fechadaEm);
-  if (!userRole || !PAPEIS_QUE_FECHAM.has(userRole)) return null;
+  if (!podeFechar(userRole, user?.id, responsavelId)) return null;
   if (!disponivel) return null;
   if (fechadaEm) {
     return (

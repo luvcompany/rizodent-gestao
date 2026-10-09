@@ -1821,6 +1821,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                             <FecharConversaMenuItem
                               leadId={lead.id}
                               fechadaEm={lead.conversa_fechada_em}
+                              responsavelId={lead.assigned_to}
                               onChange={(quando) => atualizarFechada(lead.id, quando)}
                             />
                             <DropdownMenuItem
@@ -2009,6 +2010,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <FecharConversaButton
                   leadId={selectedLead.id}
                   fechadaEm={selectedLead.conversa_fechada_em}
+                  responsavelId={selectedLead.assigned_to}
                   onChange={(quando) => atualizarFechada(selectedLead.id, quando)}
                 />
                 {/* SDR: IA fora do perfil — ai-conversation-assist devolve 403 e
