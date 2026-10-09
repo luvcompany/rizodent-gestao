@@ -240,7 +240,7 @@ async function handleCallsChange(supabase: any, value: any, signatureCheck: Sign
   // Resolver tenant via integrations (mesmo padrão de mensagens)
   const { data: allIntegrations } = await supabase
     .from("integrations")
-    .select("id, key, config, status, tenant_id")
+    .select("id, key, config, status, tenant_id, owner_role")
     .like("key", "whatsapp_%");
   const matched = (allIntegrations || []).find((intg: any) => (intg.config as any)?.phone_number_id === phoneNumberId);
   if (!matched) {
@@ -299,20 +299,11 @@ async function handleCallsChange(supabase: any, value: any, signatureCheck: Sign
     let normalizedRemote: string | null = null;
     if (remotePhone) {
       normalizedRemote = String(remotePhone).replace(/\D/g, "");
-      // Cada número é um mundo: a ligação só casa com lead do MESMO número.
-      // Número não cadastrado em whatsapp_numbers = mundo legado (whatsapp_number_id NULL).
-      let leadQuery = supabase
-        .from("crm_leads")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("phone", normalizedRemote);
-      leadQuery = whatsappNumberId
-        ? leadQuery.eq("whatsapp_number_id", whatsappNumberId)
-        : leadQuery.is("whatsapp_number_id", null);
-      const { data: leadRows } = await leadQuery
-        .order("created_at", { ascending: true })
-        .limit(1);
-      leadId = leadRows?.[0]?.id ?? null;
+      // Um telefone = um lead por mundo (SDR/CRC compartilham todos os números).
+      const { data: callLeadId } = await supabase.rpc("lead_whatsapp_existente", {
+        p_tenant: tenantId, p_phone: normalizedRemote, p_mundo: String((matched as any).owner_role ?? "crc"),
+      });
+      leadId = (callLeadId as string | null) ?? null;
     }
 
     // Auto-criar lead para ligações recebidas de números fora do CRM
