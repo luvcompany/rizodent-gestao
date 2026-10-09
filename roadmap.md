@@ -12,4 +12,4 @@
 - [x] Separar a aba Instagram em Comentários e Direct pela interação mais recente do lead.
 - [x] Transmissão: mostrar por qual número o disparo sai e filtrar os modelos pela conta desse número.
 - [x] Regra geral: excluir integração de qualquer número desativa o número, some das opções de envio/padrão e esconde seus modelos (trigger automático)
-- [ ] WhatsApp: leads duplicados por número oficial — busca por mundo, mesclar Vitor, auditar hoje, mescla automática (webhook + checagem 5 min).
+- [x] WhatsApp: leads duplicados por número oficial — busca por mundo, mesclar Vitor, auditar hoje, mescla automática (webhook + checagem 5 min).
