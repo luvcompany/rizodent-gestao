@@ -109,7 +109,7 @@ async function handleMessageEchoes(supabase: any, value: any, signatureCheck: Si
 
   const { data: allIntegrations } = await supabase
     .from("integrations")
-    .select("id, key, config, status, tenant_id")
+    .select("id, key, config, status, tenant_id, owner_role")
     .like("key", "whatsapp_%");
   const matched = (allIntegrations || []).find(
     (intg: any) => (intg.config as any)?.phone_number_id === phoneNumberId,
@@ -152,19 +152,13 @@ async function handleMessageEchoes(supabase: any, value: any, signatureCheck: Si
       if (dup?.id) continue;
     }
 
-    let leadQuery = supabase
-      .from("crm_leads")
-      .select("id, last_message_at")
-      .eq("tenant_id", tenantId)
-      .eq("phone", toPhone);
-    // Espelho: número principal (sem cadastro) só casa lead SEM carimbo.
-    leadQuery = waNumberId
-      ? leadQuery.eq("whatsapp_number_id", waNumberId)
-      : leadQuery.is("whatsapp_number_id", null);
-    const { data: leadRows } = await leadQuery
-      .order("created_at", { ascending: true })
-      .limit(1);
-    const lead = leadRows?.[0];
+    // Um telefone = um lead por mundo (SDR/CRC compartilham todos os números).
+    const { data: echoLeadId } = await supabase.rpc("lead_whatsapp_existente", {
+      p_tenant: tenantId, p_phone: toPhone, p_mundo: String(matched.owner_role ?? "crc"),
+    });
+    const { data: lead } = echoLeadId
+      ? await supabase.from("crm_leads").select("id, last_message_at").eq("id", echoLeadId).maybeSingle()
+      : { data: null as any };
     if (!lead) {
       console.log(`[WEBHOOK-ECHOES] sem lead para ${toPhone} — echo ignorado`);
       continue;
