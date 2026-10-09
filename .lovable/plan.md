@@ -14,7 +14,12 @@
 2. **Apply the same rule to the other places that look up a lead by phone** inside the WhatsApp receiver (handling a lead created at the same moment, and linking calls). Then no other path can create a duplicate this way.
 3. **Merge the new Vitor lead** (Kelly, "Outros") into the original lead (Bia, Funil Principal), using the same method as earlier merges. The message, history and other items move to the original lead, and the copy goes to the trash for 90 days.
 4. **Check other duplicates since the official number was reconnected.** Find every lead created today by a message to the official number whose phone already existed in the SDR/CRC group, and merge them the same way. I'll tell you the names before merging if there are more than just Vitor.
-5. **Record the rule** in the project's architecture notes: within one group, the same phone number is always the same lead, whatever number the person writes to.
+5. **Automatic merging from now on (safety net).** Even after the lookup fix, a duplicate could still slip through if a number is connected some new way in the future, or if two messages arrive at the same moment. To catch that, the system will merge these duplicates on its own:
+   - Right after a message creates a lead, it checks whether the same phone already has a lead in the same group. If it does, it moves the message and everything else into the oldest lead and sends the copy to the trash. The conversation shows up only in the original lead, with the SDR who already had it.
+   - A check also runs every 5 minutes. It looks for same-phone, same-group duplicates created by incoming messages and merges them the same way. A record of each merge is kept so you can see what was merged.
+   - This only happens within the same group. If a Closer creates a lead by hand when the person already exists for SDR/CRC, it stays separate, as agreed before.
+   - Leads created by hand inside the same group keep showing the "Lead já cadastrado" warning, as today.
+6. **Record the rule** in the project's architecture notes: within one group, the same phone number is always the same lead, whatever number the person writes to, and any duplicate created by an incoming message is merged automatically.
 
 ## What will not change
 
