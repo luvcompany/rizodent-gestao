@@ -332,7 +332,34 @@ async function conversationsUnreadCount(tenantId: string) {
   // do Instagram NÃO conta como conversa. Base = last_relevant_inbound
   // (max created_at de messages inbound não deletadas SEM instagram_comment_id).
   const unread = await fetchUnreadBase(tenantId);
+  return json(await resumoConversas(tenantId, unread, "last_relevant_inbound"));
+}
 
+// ===== /conversations/em-aberto =====
+// Conversas EM ABERTO pela MESMA regra do CRM (badge da barra lateral e abas da
+// tela Conversas — get_crm_unread_leads_count_by_channel): a última mensagem é
+// do lead (crm_leads.last_inbound_at > last_outbound_at), entrada nos últimos
+// 60 dias, conversa NÃO fechada e lead não bloqueado. Visão do gestor (todos
+// os números e funis). Mesmo formato de /conversations/unread-count, que segue
+// com a regra antiga (contava conversa fechada como aberta).
+async function conversationsEmAberto(tenantId: string) {
+  const desde = new Date(Date.now() - 60 * 86400000).toISOString();
+  const rows = await fetchAllPaged<any>(
+    () => admin.from("crm_leads")
+      .select("id, last_inbound_at, last_outbound_at, stage_id, instagram_user_id, cidade")
+      .eq("tenant_id", tenantId)
+      .eq("is_blocked", false)
+      .is("conversa_fechada_em", null)
+      .gte("last_inbound_at", desde),
+    "id",
+  );
+  const abertas = rows.filter((l) =>
+    !l.last_outbound_at || Date.parse(l.last_inbound_at) > Date.parse(l.last_outbound_at));
+  return json(await resumoConversas(tenantId, abertas, "last_inbound_at"));
+}
+
+/** Separa comercial × pós-venda (pelo nome do funil), canal e cidade. */
+async function resumoConversas(tenantId: string, rows: any[], campoEntrada: string) {
   // Mapa stage_id → é pós-venda? Identifica pipeline pelo nome (case+acentos insensitive).
   const norm = (s: string) => (s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
   const { data: pipelines } = await admin.from("crm_pipelines").select("id,name").eq("tenant_id", tenantId);
@@ -344,8 +371,8 @@ async function conversationsUnreadCount(tenantId: string) {
   let maisAntigoComercial: string | null = null;
   let maisAntigoPosVenda: string | null = null;
   const porCidade = new Map<string, number>();
-  for (const l of unread) {
-    const rel = l.last_relevant_inbound as string | null;
+  for (const l of rows) {
+    const rel = l[campoEntrada] as string | null;
     if (l.stage_id && posVendaStageIds.has(l.stage_id)) {
       pos_venda++;
       if (rel && (!maisAntigoPosVenda || rel < maisAntigoPosVenda)) {
@@ -364,15 +391,15 @@ async function conversationsUnreadCount(tenantId: string) {
   const por_unidade = Array.from(porCidade.entries())
     .map(([cidade, count]) => ({ cidade, count }))
     .sort((a, b) => b.count - a.count);
-  return json({
-    total: unread.length,
+  return {
+    total: rows.length,
     comercial,
     pos_venda,
     mais_antigo_comercial: maisAntigoComercial,
     mais_antigo_pos_venda: maisAntigoPosVenda,
     por_canal: { whatsapp: wa, instagram: ig },
     por_unidade,
-  });
+  };
 
 }
 
@@ -2445,6 +2472,7 @@ Deno.serve(async (req) => {
           "GET /media/sign?url=...  or  ?bucket=&path=&expires_in=3600",
           "GET /conversations?limit=&unread=true",
           "GET /conversations/unread-count  → { total, comercial, pos_venda, por_canal, por_unidade }",
+          "GET /conversations/em-aberto  → mesmo formato, pela regra do CRM (sem conversa fechada; igual ao balão das Conversas)",
           "GET /appointments?from=&to=",
           "POST /appointments",
           "PATCH /appointments/:id",
@@ -2493,6 +2521,9 @@ Deno.serve(async (req) => {
     }
     if (parts[0] === "conversations" && parts[1] === "unread-count" && req.method === "GET") {
       return await conversationsUnreadCount(tenantId);
+    }
+    if (parts[0] === "conversations" && parts[1] === "em-aberto" && req.method === "GET") {
+      return await conversationsEmAberto(tenantId);
     }
     if (parts[0] === "conversations" && req.method === "GET") return await conversations(tenantId, p);
     if (parts[0] === "messages" && parts[1] && parts[2] === "download" && req.method === "GET") {
