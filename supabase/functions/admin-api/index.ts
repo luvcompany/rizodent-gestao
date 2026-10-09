@@ -16,6 +16,7 @@ import {
   addDays,
   assertDay,
   businessDaysBetween,
+  diasAbertosDoHorario,
   chunk,
   dayKeyBahia,
   fetchAllPaged,
@@ -536,9 +537,13 @@ async function tasks(tenantId: string, method: string, p: URLSearchParams, body:
   return json({ error: "method_not_allowed" }, 405);
 }
 
-// ===== Definição canônica de CONTRATADO =====
-// Paciente cujo PRIMEIRO pagamento no tenant (todas as clínicas, sem recorte
-// de período) cai dentro do período. Nunca usa updated_at nem crm_leads.value.
+// ===== Definição canônica de CONTRATADO (cliente novo) =====
+// Regra do dono (02/10/2026): cliente NOVO = 1º mês pagando, contando o histórico
+// do Dontus — é o que pagamentos.tipo = 'primeiro' marca. Fora manutenção de
+// ortodontia e pagamento marcado como não-marketing (mesma régua do faturamento,
+// contaComoFaturamento). Antes era "1º pagamento no histórico do CRClin", que
+// contava como novo quem já tinha pago no Dontus (out/2026: 39 em vez de 26).
+// Nunca usa updated_at nem crm_leads.value.
 async function contratadosCanonicos(
   clinicaIds: string[],
   fromDay: string,
@@ -546,19 +551,18 @@ async function contratadosCanonicos(
 ): Promise<{ paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[]> {
   if (!clinicaIds.length) return [];
   // pagamentos NÃO tem tenant_id — o escopo vem de clinica_id ∈ clinicas do tenant.
-  // Pagamentos marcados como recorrência de ortodontia não contam como
-  // "início de tratamento" (regra oficial de 07/2026): excluímos da lista
-  // usada para determinar o primeiro pagamento do paciente.
   const noPeriodo = await fetchAllPaged<any>(
     () => admin.from("pagamentos")
       .select("id, paciente_id, clinica_id, data_pagamento, created_at")
       .in("clinica_id", clinicaIds)
+      .eq("tipo", "primeiro")
       .eq("recorrencia_orto", false)
+      .eq("nao_marketing", false)
       .gte("data_pagamento", fromDay).lte("data_pagamento", toDay),
     "id",
   );
-  // Primeiro pagamento do período por paciente (desempate determinístico por
-  // data_pagamento, created_at, id — mesmo critério da RPC rpt_contratados).
+  // 1º pagamento do período por paciente (desempate determinístico por
+  // data_pagamento, created_at, id) — define a clínica do contratado.
   const keyOf = (r: any) => `${r.data_pagamento}|${r.created_at}|${r.id}`;
   const primeiroPorPaciente = new Map<string, any>();
   for (const r of noPeriodo) {
@@ -566,25 +570,11 @@ async function contratadosCanonicos(
     const atual = primeiroPorPaciente.get(r.paciente_id);
     if (!atual || keyOf(r) < keyOf(atual)) primeiroPorPaciente.set(r.paciente_id, r);
   }
-  if (!primeiroPorPaciente.size) return [];
-  // Exclui quem já tinha pagamento ANTES do período (em qualquer clínica do tenant).
-  const comPagamentoAnterior = new Set<string>();
-  for (const ids of chunk([...primeiroPorPaciente.keys()], 150)) {
-    const prev = await fetchAllPaged<any>(
-      () => admin.from("pagamentos").select("id, paciente_id")
-        .in("clinica_id", clinicaIds).in("paciente_id", ids)
-        .eq("recorrencia_orto", false)
-        .lt("data_pagamento", fromDay),
-      "id",
-    );
-    for (const r of prev) comPagamentoAnterior.add(r.paciente_id);
-  }
-  const out: { paciente_id: string; clinica_id: string | null; primeiro_pagamento: string }[] = [];
-  for (const [pid, r] of primeiroPorPaciente) {
-    if (comPagamentoAnterior.has(pid)) continue;
-    out.push({ paciente_id: pid, clinica_id: r.clinica_id ?? null, primeiro_pagamento: r.data_pagamento });
-  }
-  return out;
+  return [...primeiroPorPaciente.entries()].map(([pid, r]) => ({
+    paciente_id: pid,
+    clinica_id: r.clinica_id ?? null,
+    primeiro_pagamento: r.data_pagamento,
+  }));
 }
 
 // ===== /reports/financeiro =====
@@ -678,6 +668,10 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
     .select("id, data, descricao, clinica_id").eq("tenant_id", tenantId);
   if (holRes.error) return json({ error: holRes.error.message }, 500);
   const holidays = (holRes.data || []) as any[];
+  // Horário comercial do cliente decide quais dias da semana contam como úteis
+  // (mesma régua da tela Dashboard do CRM — diasAbertosParaRelatorio).
+  const tenRes = await admin.from("tenants").select("business_hours").eq("id", tenantId).maybeSingle();
+  const diasAbertos = diasAbertosDoHorario((tenRes.data as any)?.business_hours);
 
   const num = (v: any) => Number(v) || 0;
 
@@ -758,7 +752,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   // mesma regra de src/pages/Relatorios.tsx (predictability).
   const ultimoDiaLancado = pagamentos.reduce((mx, pg) => (pg.data_pagamento > mx ? pg.data_pagamento : mx), "");
   const fimJanela = ultimoDiaLancado || to;
-  const diasUteisPassados = (ultimoDiaLancado && fimJanela >= from) ? Math.max(businessDaysBetween(from, fimJanela, holidaySet), 0.5) : 0;
+  const diasUteisPassados = (ultimoDiaLancado && fimJanela >= from) ? Math.max(businessDaysBetween(from, fimJanela, holidaySet, diasAbertos), 0.5) : 0;
   const fatAteOntem = fatTotal; // todos os pagamentos lançados no período (todos <= ultimoDiaLancado)
   const faturamentoMedioDiaUtil = diasUteisPassados > 0 ? fatAteOntem / diasUteisPassados : 0;
 
@@ -769,7 +763,7 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
   // (regra única em _shared/reporting.ts + src/lib/businessDays.ts).
   const firstOfCurMonth = `${hoje.slice(0, 8)}01`;
   const lastOfCurMonth = new Date(Date.UTC(hy, hm, 0)).toISOString().slice(0, 10);
-  const diasUteisTotaisMes = Math.max(businessDaysBetween(firstOfCurMonth, lastOfCurMonth, holidaySet), 1);
+  const diasUteisTotaisMes = Math.max(businessDaysBetween(firstOfCurMonth, lastOfCurMonth, holidaySet, diasAbertos), 1);
   const projecaoMes = faturamentoMedioDiaUtil * diasUteisTotaisMes;
 
   // por especialidade
@@ -968,21 +962,16 @@ async function reportFinanceiro(tenantId: string, p: URLSearchParams) {
 
 
   // RECORRENTES — reusa os números de dinheiro já calculados (nada novo de
-  // faturamento). Recorrente = paciente com pagamento no período cuja PRIMEIRA
-  // compra histórica (min data_pagamento) é ANTERIOR ao período.
-  const pacientesRecorrentes = new Set<string>();
-  for (const ids of chunk([...pacientesTotalSet] as string[], 150)) {
-    const r = await admin.from("pagamentos")
-      .select("paciente_id")
-      .in("paciente_id", ids)
-      .lt("data_pagamento", from)
-      .limit(5000);
-    if (r.error) return json({ error: r.error.message }, 500);
-    (r.data || []).forEach((pg: any) => { if (pg.paciente_id) pacientesRecorrentes.add(pg.paciente_id); });
-  }
+  // faturamento). A contagem segue a MESMA régua do dinheiro (campo tipo, regra
+  // do dono de 02/10: novo = 1º mês pagando, com o histórico do Dontus), dentro
+  // dos pagamentos que contam como faturamento. Antes "recorrente" era quem tinha
+  // pagamento anterior no CRClin e 39 novos + 28 recorrentes não fechava com os
+  // 66 pagantes nem com faturamento_novos/recorrentes.
+  const pacientesPorTipo = (tipo: string) =>
+    new Set(pagamentos.filter((pg) => pg.tipo === tipo && pg.paciente_id).map((pg) => pg.paciente_id)).size;
   const recorrentes = {
-    pacientes_novos: contratadosNoFiltro.length,
-    pacientes_recorrentes: pacientesRecorrentes.size,
+    pacientes_novos: pacientesPorTipo("primeiro"),
+    pacientes_recorrentes: pacientesPorTipo("recorrente"),
     faturamento_novos: fatNovos,
     faturamento_recorrentes: fatRecorrentes,
   };
