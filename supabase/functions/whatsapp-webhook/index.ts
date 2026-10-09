@@ -1098,12 +1098,17 @@ Deno.serve(async (req) => {
             // ainda teremos o ad_account_name e a cidade corretos do primeiro sucesso.
             if (referral && adSourceId) {
               try {
-                const { data: cached } = await supabase
+                // Mesma fonte do `const tenantId` declarado adiante (bloco do
+                // lead): aqui ele ainda não existe (TDZ) e o lookup de cache
+                // falhava silenciosamente. Só filtra por tenant quando ele é
+                // conhecido — igual ao upsert lá embaixo.
+                const cacheLookupTenantId = matchedIntegration?.tenant_id ?? null;
+                let cacheQ = supabase
                   .from("ad_id_mapping")
                   .select("ad_account_id, ad_account_name, ad_name, ad_headline, ad_body, thumbnail_url")
-                  .eq("ad_id", adSourceId)
-                  .eq("tenant_id", tenantId)
-                  .maybeSingle();
+                  .eq("ad_id", adSourceId);
+                if (cacheLookupTenantId) cacheQ = cacheQ.eq("tenant_id", cacheLookupTenantId);
+                const { data: cached } = await cacheQ.maybeSingle();
                 if (cached) {
                   if (!adAccountId && cached.ad_account_id) adAccountId = cached.ad_account_id;
                   if (!adAccountName && cached.ad_account_name) adAccountName = cached.ad_account_name;
