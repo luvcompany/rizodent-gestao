@@ -85,6 +85,13 @@
       "when": 1791574824584,
       "tag": "0011_mescla_automatica_lead_mesmo_mundo",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791575739605,
+      "tag": "0012_mescla_mantem_sdr_do_rodizio",
+      "breakpoints": true
     }
   ]
 }
