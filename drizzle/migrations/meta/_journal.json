@@ -148,6 +148,13 @@
       "when": 1791589203389,
       "tag": "0020_excluir_funil_sem_cascata",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791589730791,
+      "tag": "0021_relatorio_agendamentos_escopo",
+      "breakpoints": true
     }
   ]
 }
