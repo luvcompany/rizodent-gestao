@@ -116,13 +116,22 @@ export async function resolveCaller(
 
   // Read tenant + roles (service-role bypasses RLS, which is what we want).
   const [{ data: profile }, { data: roles }] = await Promise.all([
-    admin.from("profiles").select("tenant_id").eq("id", userId).maybeSingle(),
+    admin.from("profiles").select("tenant_id, is_blocked").eq("id", userId).maybeSingle(),
     admin.from("user_roles").select("role").eq("user_id", userId),
   ]);
 
   const tenantId: string | null = profile?.tenant_id ?? null;
   const roleList: string[] = Array.isArray(roles) ? roles.map((r: any) => String(r.role)) : [];
   const isSuperadmin = roleList.includes("superadmin");
+
+  // Conta sem papel ou bloqueada não age por nenhuma função — a mesma régua
+  // do banco (current_tenant_id exige papel e conta desbloqueada).
+  if (roleList.length === 0) {
+    return { ok: false, status: 403, error: "Sua conta está sem perfil de acesso. Fale com o administrador da clínica." };
+  }
+  if (profile?.is_blocked && !isSuperadmin) {
+    return { ok: false, status: 403, error: "Conta bloqueada." };
+  }
 
   if (!tenantId && !isSuperadmin) {
     return { ok: false, status: 403, error: "Usuário sem tenant associado" };
