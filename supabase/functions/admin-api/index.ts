@@ -355,7 +355,35 @@ async function conversationsEmAberto(tenantId: string) {
   );
   const abertas = rows.filter((l) =>
     !l.last_outbound_at || Date.parse(l.last_inbound_at) > Date.parse(l.last_outbound_at));
-  return json(await resumoConversas(tenantId, abertas, "last_inbound_at"));
+  // Desde quando o lead espera: 1ª mensagem dele DEPOIS da nossa última (pelas
+  // mensagens; a coluna last_outbound_at às vezes fica para trás). Sem isso o
+  // "mais antigo aguardando" contava da última mensagem e escondia quem insiste há dias.
+  for (const bloco of chunk(abertas.map((l) => l.id), 100)) {
+    const msgs = await fetchAllPaged<any>(
+      () => admin.from("messages").select("id, lead_id, direction, created_at, deleted_at, instagram_comment_id")
+        .in("lead_id", bloco).gte("created_at", desde),
+      "id",
+    );
+    const ultSaida = new Map<string, number>();
+    for (const m of msgs) {
+      if (m.direction !== "outbound" || m.deleted_at) continue;
+      const t = Date.parse(m.created_at);
+      if (t > (ultSaida.get(m.lead_id) ?? -Infinity)) ultSaida.set(m.lead_id, t);
+    }
+    const desdeLead = new Map<string, number>();
+    for (const m of msgs) {
+      if (m.direction !== "inbound" || m.deleted_at || m.instagram_comment_id) continue;
+      const t = Date.parse(m.created_at);
+      if (t <= (ultSaida.get(m.lead_id) ?? -Infinity)) continue;
+      if (t < (desdeLead.get(m.lead_id) ?? Infinity)) desdeLead.set(m.lead_id, t);
+    }
+    for (const l of abertas) {
+      const t = desdeLead.get(l.id);
+      if (t !== undefined) l.aguardando_desde = new Date(t).toISOString();
+    }
+  }
+  for (const l of abertas) l.aguardando_desde ??= l.last_inbound_at;
+  return json(await resumoConversas(tenantId, abertas, "aguardando_desde"));
 }
 
 /** Separa comercial × pós-venda (pelo nome do funil), canal e cidade. */
@@ -2204,6 +2232,222 @@ async function reportLigacoes(tenantId: string, p: URLSearchParams) {
   });
 }
 
+// Núcleo (puro) da conta de leads DIFERENTES do relatório por SDR. Mesma régua
+// de recebidos/posse/1ª resposta de relatorio_sdr_calc — copiada porque a RPC
+// só devolve pares lead×SDR (um lead que o rodízio passou para as duas conta 2).
+const FASES_ENTRADA = new Set(["aplicacao", "corte_9h", "realocacao_1h", "manual"]);
+const FASES_SAIDA = new Set(["aplicacao", "corte_9h", "realocacao_1h", "manual", "comparecimento"]);
+
+type Atrib = { lead_id: string; de_user_id: string | null; para_user_id: string | null; fase: string; em: number };
+/** k = 1: mensagem do lead que conta como entrada; k = 2: resposta humana (rodizio_msg_humana). */
+type Msg = { ts: number; k: 1 | 2 };
+
+function contarDistintos(p: {
+  sdrs: Set<string>;
+  ini: number; fim: number;
+  distribuidos: { id: string; assigned_to: string; em: number }[];
+  atribuicoes: Atrib[];
+  criadoEm: Map<string, number>;
+  mensagens: Map<string, Msg[]>; // por lead, em ordem de ts
+}) {
+  // recebidos: (sdr, lead) → menor instante de entrega no período
+  const recebido = new Map<string, number>();
+  const marca = (uid: string, lead: string, em: number) => {
+    const k = `${uid}|${lead}`;
+    const v = recebido.get(k);
+    if (v === undefined || em < v) recebido.set(k, em);
+  };
+  for (const d of p.distribuidos) if (p.sdrs.has(d.assigned_to) && d.em >= p.ini && d.em < p.fim) marca(d.assigned_to, d.id, d.em);
+  const saidasPorLead = new Map<string, Atrib[]>();
+  for (const a of p.atribuicoes) {
+    // criadoEm só tem lead que existe nesta clínica (a RPC exige o JOIN com crm_leads do tenant).
+    if (a.para_user_id && p.sdrs.has(a.para_user_id) && FASES_ENTRADA.has(a.fase) && a.em >= p.ini && a.em < p.fim && p.criadoEm.has(a.lead_id)) marca(a.para_user_id, a.lead_id, a.em);
+    if (a.de_user_id && FASES_SAIDA.has(a.fase)) {
+      const l = saidasPorLead.get(a.lead_id);
+      if (l) l.push(a); else saidasPorLead.set(a.lead_id, [a]);
+    }
+  }
+  const porSdr = new Map<string, { recebidos: number; respondidos: number; novos: number; novos_respondidos: number }>();
+  const leads = new Map<string, boolean>(); // lead → alguma SDR respondeu enquanto era dela
+  for (const [k, rec] of recebido) {
+    const [uid, lead] = k.split("|");
+    let saida = Infinity;
+    for (const a of saidasPorLead.get(lead) ?? []) if (a.de_user_id === uid && a.em > rec && a.em < saida) saida = a.em;
+    const ms = p.mensagens.get(lead) ?? [];
+    let ultEntradaAntes = -Infinity, ultHumanaAntes = -Infinity, primeiraEntradaNaPosse: number | null = null;
+    for (const m of ms) {
+      if (m.ts < rec) { if (m.k === 1) ultEntradaAntes = m.ts; else ultHumanaAntes = m.ts; }
+      else if (m.ts < saida && m.k === 1 && primeiraEntradaNaPosse === null) primeiraEntradaNaPosse = m.ts;
+    }
+    // t0: havia mensagem do lead esperando na entrega → a entrega; senão, a 1ª entrada depois.
+    const pendente = ultEntradaAntes > -Infinity && ultHumanaAntes < ultEntradaAntes;
+    const t0 = pendente ? rec : primeiraEntradaNaPosse;
+    const desde = t0 ?? rec;
+    const respondeu = ms.some((m) => m.k === 2 && m.ts >= desde && m.ts < saida);
+    const novo = (p.criadoEm.get(lead) ?? -Infinity) >= p.ini;
+    const s = porSdr.get(uid) ?? { recebidos: 0, respondidos: 0, novos: 0, novos_respondidos: 0 };
+    s.recebidos++; if (respondeu) s.respondidos++;
+    if (novo) { s.novos++; if (respondeu) s.novos_respondidos++; }
+    porSdr.set(uid, s);
+    leads.set(lead, (leads.get(lead) ?? false) || respondeu);
+  }
+  let novos = 0, novosResp = 0, resp = 0;
+  for (const [lead, r] of leads) {
+    if (r) resp++;
+    if ((p.criadoEm.get(lead) ?? -Infinity) >= p.ini) { novos++; if (r) novosResp++; }
+  }
+  return { porSdr, equipe: { leads_distintos: leads.size, leads_distintos_respondidos: resp, leads_novos: novos, leads_novos_respondidos: novosResp } };
+}
+
+/** Mesma régua de public.rodizio_msg_humana (resposta HUMANA, sem robô/modelo/espera automática). */
+function msgHumana(m: { direction: string; deleted_at: string | null; status: string | null; sender_id: string | null; from_device: boolean | null; type: string | null; content: string | null }): boolean {
+  if (m.direction !== "outbound" || m.deleted_at) return false;
+  if (["system", "failed"].includes(m.status ?? "")) return false;
+  const c = m.content ?? "";
+  if (m.sender_id || m.from_device) return true;
+  if (m.type === "call") return !/n[ãa]o atendida/i.test(c);
+  return ["text", "audio", "image", "document", "video"].includes(m.type ?? "")
+    && !c.replace(/^ +/, "").startsWith("*Elisa:*")
+    && !c.startsWith("📋 Template:")
+    && !c.startsWith("Aguarde você será atendido");
+}
+
+/**
+ * Leads DIFERENTES que chegaram às SDRs no período (o relatório conta pares
+ * lead×SDR) e quantos tiveram resposta humana de uma SDR enquanto eram dela.
+ * Lê o mesmo que relatorio_sdr_calc lê: crm_leads.distribuido_em, o livro
+ * crm_lead_atribuicoes e o histórico de mensagens desses leads.
+ */
+async function leadsDistintosSdr(tenantId: string, sdrs: Set<string>, gteIso: string, lteIso: string) {
+  const ini = Date.parse(gteIso), fim = Date.parse(lteIso) + 1; // fim exclusivo = 00:00 do dia seguinte
+  const ids = [...sdrs];
+  if (!ids.length) return null;
+  const [dist, atrib] = await Promise.all([
+    fetchAllPaged<any>(
+      () => admin.from("crm_leads").select("id, assigned_to, distribuido_em")
+        .eq("tenant_id", tenantId).in("assigned_to", ids)
+        .gte("distribuido_em", gteIso).lte("distribuido_em", lteIso),
+      "id",
+    ),
+    fetchAllPaged<any>(
+      () => admin.from("crm_lead_atribuicoes").select("id, lead_id, de_user_id, para_user_id, fase, criado_em")
+        .eq("tenant_id", tenantId).gte("criado_em", gteIso),
+      "id",
+    ),
+  ]);
+  const atribuicoes = atrib.map((a: any) => ({ lead_id: a.lead_id, de_user_id: a.de_user_id, para_user_id: a.para_user_id, fase: a.fase, em: Date.parse(a.criado_em) }));
+  const leadIds = new Set<string>(dist.map((d: any) => d.id));
+  for (const a of atribuicoes) {
+    if (a.para_user_id && sdrs.has(a.para_user_id) && a.em >= ini && a.em < fim) leadIds.add(a.lead_id);
+  }
+  const criadoEm = new Map<string, number>();
+  const mensagens = new Map<string, { ts: number; k: 1 | 2 }[]>();
+  const push = (lead: string, ts: number, k: 1 | 2) => {
+    const l = mensagens.get(lead);
+    if (l) l.push({ ts, k }); else mensagens.set(lead, [{ ts, k }]);
+  };
+  for (const bloco of chunk([...leadIds], 100)) {
+    const [ls, entradas, saidas] = await Promise.all([
+      fetchAllPaged<any>(
+        () => admin.from("crm_leads").select("id, created_at").eq("tenant_id", tenantId).in("id", bloco),
+        "id",
+      ),
+      fetchAllPaged<any>(
+        () => admin.from("messages").select("id, lead_id, created_at")
+          .in("lead_id", bloco).eq("direction", "inbound")
+          .is("deleted_at", null).is("instagram_comment_id", null),
+        "id",
+      ),
+      fetchAllPaged<any>(
+        () => admin.from("messages").select("id, lead_id, created_at, direction, deleted_at, status, sender_id, from_device, type, content")
+          .in("lead_id", bloco).eq("direction", "outbound"),
+        "id",
+      ),
+    ]);
+    for (const l of ls) criadoEm.set(l.id, Date.parse(l.created_at));
+    for (const m of entradas) push(m.lead_id, Date.parse(m.created_at), 1);
+    for (const m of saidas) if (msgHumana(m)) push(m.lead_id, Date.parse(m.created_at), 2);
+  }
+  for (const l of mensagens.values()) l.sort((a, b) => a.ts - b.ts);
+  return contarDistintos({
+    sdrs, ini, fim,
+    distribuidos: dist.map((d: any) => ({ id: d.id, assigned_to: d.assigned_to, em: Date.parse(d.distribuido_em) })),
+    atribuicoes, criadoEm, mensagens,
+  });
+}
+
+// ===== /reports/leads-novos =====
+// Leads NOVOS do período pelas decisões já tomadas no CRM: fica de fora quem só
+// comentou no Instagram (comment_only), a conciliação com o Dontus (source kommo)
+// e o lead sintético criado a partir de pagamento (source Retroativo ou tag
+// sintetico_pagamento). Dia no fuso de Salvador. Devolve grupos cidade × source ×
+// clique de anúncio da Meta (ctwa_clid) para o painel classificar e separar por
+// unidade sem paginar /leads.
+async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+  const rows = await fetchAllPaged<any>(
+    () => admin.from("crm_leads").select("id, source, cidade, comment_only, tags, ctwa_clid")
+      .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
+    "id",
+  );
+  const excluidos = { comment_only: 0, kommo: 0, retroativo: 0, sintetico: 0 };
+  const grupos = new Map<string, { cidade: string; source: string | null; ctwa: boolean; n: number }>();
+  let total = 0;
+  for (const l of rows) {
+    const src = String(l.source ?? "").trim().toLowerCase();
+    if (l.comment_only) { excluidos.comment_only++; continue; }
+    if (src === "kommo") { excluidos.kommo++; continue; }
+    if (src === "retroativo") { excluidos.retroativo++; continue; }
+    if (Array.isArray(l.tags) && l.tags.includes("sintetico_pagamento")) { excluidos.sintetico++; continue; }
+    total++;
+    const cidade = String(l.cidade ?? "").trim();
+    const ctwa = !!l.ctwa_clid;
+    const k = `${cidade}|${l.source ?? ""}|${ctwa}`;
+    const g = grupos.get(k) ?? { cidade, source: l.source ?? null, ctwa, n: 0 };
+    g.n++;
+    grupos.set(k, g);
+  }
+  return json({ period: { from: fromDay, to: toDay, timezone: BAHIA_TZ }, total, excluidos, grupos: [...grupos.values()] });
+}
+
+// ===== /reports/agendamentos-marcados =====
+// Agendamentos que o time MARCOU no período (data de criação, fuso de Salvador)
+// pela régua de relatorio_sdr_calc: sai a linha substituída por remarcação feita
+// na mesma janela e a consulta cancelada que o paciente remarcou na janela.
+// Separado por cidade do lead ("" = sem cidade) e por dia.
+async function reportAgendamentosMarcados(tenantId: string, p: URLSearchParams) {
+  const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+  const rows = await fetchAllPaged<any>(
+    () => admin.from("crm_appointments")
+      .select("id, lead_id, status, created_at, outcome_at, updated_at, rescheduled_from_id, crm_leads(cidade)")
+      .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
+    "id",
+  );
+  const substituidas = new Set(rows.map((r) => r.rescheduled_from_id).filter(Boolean));
+  const conta = rows.filter((a) => {
+    if (a.status === "rescheduled" && substituidas.has(a.id)) return false;
+    if (a.status === "cancelled") {
+      const corte = Date.parse(a.outcome_at ?? a.updated_at);
+      if (rows.some((r) => r.lead_id === a.lead_id && r.id !== a.id && Date.parse(r.created_at) > corte)) return false;
+    }
+    return true;
+  });
+  const porCidade = new Map<string, number>();
+  const porDia: Record<string, number> = {};
+  for (const a of conta) {
+    const c = String(a.crm_leads?.cidade ?? "").trim();
+    porCidade.set(c, (porCidade.get(c) ?? 0) + 1);
+    const d = dayKeyBahia(a.created_at);
+    porDia[d] = (porDia[d] ?? 0) + 1;
+  }
+  return json({
+    period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
+    total: conta.length,
+    por_cidade: [...porCidade.entries()].map(([cidade, n]) => ({ cidade, n })).sort((a, b) => b.n - a.n),
+    por_dia: porDia,
+  });
+}
+
 // ===== /reports/sdr =====
 // Relatório por SDR — o MESMO da tela "Relatório por SDR", só leitura e só
 // números agregados (nenhum lead, nenhum telefone). Criado p/ o painel de TV.
@@ -2426,6 +2670,41 @@ async function reportSdr(tenantId: string, p: URLSearchParams) {
     ligEquipe.telefonia += l.telefonia; ligEquipe.whatsapp += l.whatsapp; ligEquipe.dur.push(...l.dur);
   }
   const tot = linhas.find((r) => r.is_total);
+  // Leads diferentes (a linha do relatório conta pares lead×SDR). Falha aqui não derruba a rota.
+  let distintos: Awaited<ReturnType<typeof leadsDistintosSdr>> = null;
+  let erroDistintos: string | null = null;
+  if (p.get("distintos") === "1") {
+    try {
+      distintos = await leadsDistintosSdr(tenantId, new Set(sdrs.map((s) => s.user_id)), gteIso, lteIso);
+    } catch (e) {
+      erroDistintos = e instanceof Error ? e.message : String(e);
+    }
+  }
+  // Blocos da equipe por cidade do lead (para o painel filtrar por clínica com a
+  // MESMA régua): união de leads por chave, separada pela cidade atual do lead.
+  const porChave = new Map<string, Set<string>>(CHAVES.map((k) => [k, new Set<string>()]));
+  for (const b of blocos.values()) for (const k of CHAVES) for (const id of b[k]) porChave.get(k)!.add(id);
+  const cidadeDo = new Map<string, string>();
+  const todosLeads = new Set<string>();
+  for (const set of porChave.values()) for (const id of set) todosLeads.add(id);
+  for (const bloco of chunk([...todosLeads], 150)) {
+    const r = await admin.from("crm_leads").select("id, cidade").eq("tenant_id", tenantId).in("id", bloco);
+    if (r.error) return json({ error: `crm_leads cidade: ${r.error.message}` }, 500);
+    for (const l of r.data || []) cidadeDo.set((l as any).id, String((l as any).cidade ?? "").trim());
+  }
+  const blocosPorCidade: Record<string, Record<string, number>> = {};
+  for (const [k, set] of porChave) {
+    for (const id of set) {
+      const c = cidadeDo.get(id) ?? "";
+      blocosPorCidade[c] ??= Object.fromEntries(CHAVES.map((x) => [x, 0]));
+      blocosPorCidade[c][k]++;
+    }
+  }
+  for (const s of sdrs) {
+    const d = distintos?.porSdr.get(s.user_id);
+    (s as any).leads_novos = d?.novos ?? null;
+    (s as any).leads_novos_respondidos = d?.novos_respondidos ?? null;
+  }
   return json({
     period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
     sdrs,
@@ -2434,7 +2713,10 @@ async function reportSdr(tenantId: string, p: URLSearchParams) {
       blocos: Object.fromEntries(CHAVES.map((k) => [k, uniao(k)])),
       producao: prodEquipe,
       ligacoes: ligOut(ligEquipe),
+      ...(distintos?.equipe ?? {}),
+      blocos_por_cidade: blocosPorCidade, // "" = lead sem cidade
     } : null,
+    ...(erroDistintos ? { erro_distintos: erroDistintos } : {}),
   });
 }
 
@@ -2485,7 +2767,9 @@ Deno.serve(async (req) => {
           "GET /reports/financeiro?from=YYYY-MM-DD&to=YYYY-MM-DD&clinica=<uuid?>",
           "GET /reports/clientes-pagantes?limit=&offset=",
           "GET /reports/ligacoes?from=YYYY-MM-DD&to=YYYY-MM-DD",
-          "GET /reports/sdr?from=YYYY-MM-DD&to=YYYY-MM-DD  (relatório por SDR: atendimento, blocos de agendamento, produção, ligações; só números)",
+          "GET /reports/sdr?from=YYYY-MM-DD&to=YYYY-MM-DD  (relatório por SDR: atendimento, blocos de agendamento, produção, ligações; só números; &distintos=1 acrescenta leads diferentes)",
+          "GET /reports/leads-novos?from=&to=  (leads novos pelas exclusões do CRM, por cidade × origem)",
+          "GET /reports/agendamentos-marcados?from=&to=  (agendamentos marcados no período, régua do relatório por SDR, por cidade e dia)",
           "GET /templates?name=&phone_number_id=  (lista status dos templates na Meta; sem phone_number_id usa o número principal)",
           "POST /templates/upload-media  { file_b64 | media_url, file_name, file_type }  → { handle }",
           "POST /sync-comparecimento  { from, to, dryRun (default true) }  → resumo por unidade",
@@ -2540,6 +2824,8 @@ Deno.serve(async (req) => {
       if (parts[1] === "clientes-pagantes") return await reportClientesPagantes(tenantId, p);
       if (parts[1] === "ligacoes") return await reportLigacoes(tenantId, p);
       if (parts[1] === "sdr") return await reportSdr(tenantId, p);
+      if (parts[1] === "leads-novos") return await reportLeadsNovos(tenantId, p);
+      if (parts[1] === "agendamentos-marcados") return await reportAgendamentosMarcados(tenantId, p);
     }
     if (parts[0] === "flows") {
       if (parts[1] === "confirmacao" && req.method === "POST") return await flowsConfirmacao(tenantId, body);
