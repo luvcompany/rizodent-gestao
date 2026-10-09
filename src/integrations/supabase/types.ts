@@ -2719,6 +2719,42 @@ export type Database = {
           },
         ]
       }
+      crm_lead_mesclagens_auto: {
+        Row: {
+          created_at: string
+          id: string
+          lead_mantido: string
+          lead_removido: string
+          mensagens_movidas: number
+          mundo: string | null
+          nome_removido: string | null
+          phone: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_mantido: string
+          lead_removido: string
+          mensagens_movidas?: number
+          mundo?: string | null
+          nome_removido?: string | null
+          phone?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_mantido?: string
+          lead_removido?: string
+          mensagens_movidas?: number
+          mundo?: string | null
+          nome_removido?: string | null
+          phone?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       crm_lead_pacientes: {
         Row: {
           created_at: string
@@ -6697,6 +6733,10 @@ export type Database = {
         Args: { p_lead_id: string }
         Returns: string
       }
+      lead_whatsapp_existente: {
+        Args: { p_mundo: string; p_phone: string; p_tenant: string }
+        Returns: string
+      }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
       map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
@@ -6716,10 +6756,15 @@ export type Database = {
           similarity: number
         }[]
       }
+      mesclar_lead_duplicado_mesmo_mundo: {
+        Args: { p_lead: string }
+        Returns: string
+      }
       mesclar_lead_no_closer: {
         Args: { _destino: string; _origem: string; _por: string }
         Returns: undefined
       }
+      mesclar_leads_duplicados_recentes: { Args: never; Returns: number }
       meta_capi_claim: {
         Args: { p_limite?: number }
         Returns: {
@@ -6785,6 +6830,12 @@ export type Database = {
         Args: { p_limite?: number }
         Returns: number
       }
+      mundo_do_lead: { Args: { p_lead: string }; Returns: string }
+      mundo_numero_whatsapp: {
+        Args: { p_number_id: string; p_tenant: string }
+        Returns: string
+      }
+      normaliza_mundo: { Args: { p_role: string }; Returns: string }
       normaliza_nome_etapa: { Args: { p_nome: string }; Returns: string }
       notify_dashboard_event: {
         Args: { p_cidade: string; p_source: string; p_tipo: string }
