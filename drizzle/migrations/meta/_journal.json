@@ -71,6 +71,13 @@
       "when": 1791490919334,
       "tag": "0009_desativa_numero_ao_excluir_integracao",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791546330266,
+      "tag": "0010_desativar_numero_mantem_historico",
+      "breakpoints": true
     }
   ]
 }
