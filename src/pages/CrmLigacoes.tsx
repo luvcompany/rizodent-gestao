@@ -18,6 +18,7 @@ import { DateRangeFilter, getDateRangeFromFilter, type DateRangeFilterValue } fr
 import CallPermissionsPanel from "@/components/ligacoes/CallPermissionsPanel";
 import { numeroConectado, useWhatsappCall } from "@/contexts/WhatsappCallContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchAllPaged } from "@/lib/reportKit";
 
 type CallCategory = "answered" | "missed" | "rejected" | "blocked" | "failed" | "ongoing";
 
@@ -69,6 +70,10 @@ function mapApi4comCall(r: any): CallRow {
     lead: r.lead ?? null,
   };
 }
+
+// A LISTA desenha no máximo este tanto de linhas por vez ("Mostrar mais" libera
+// o próximo bloco). Só a lista é cortada: os KPIs contam TODAS as ligações do período.
+const LISTA_PASSO = 500;
 
 const FILTERS: { key: CallCategory | "all"; label: string }[] = [
   { key: "all", label: "Todas" },
@@ -162,47 +167,87 @@ export default function CrmLigacoes() {
   const [selected, setSelected] = useState<CallRow | null>(null);
   const [period, setPeriod] = useState<DateRangeFilterValue>({ preset: "this_month" });
   const [view, setView] = useState<"ligacoes" | "permissoes">("ligacoes");
+  const [visiveis, setVisiveis] = useState(LISTA_PASSO);
 
-  const firstLoad = useRef(true);
+  const dateRange = useMemo(() => getDateRangeFromFilter(period), [period]);
+
+  // Período cujas ligações já estão em `calls` (undefined = nenhum ainda). Só
+  // mostra "Carregando…" no 1º load e ao trocar o período. Refetches do realtime
+  // rodam em segundo plano, mantendo a lista visível (evita o painel piscar a
+  // cada ligação/UPDATE).
+  const loadedRange = useRef<typeof dateRange | undefined>(undefined);
+  const reload = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
+    // Um load por vez: aviso do realtime que chega com um load em curso marca
+    // `deNovo` e ele roda outra vez ao terminar. Assim um load velho (agora
+    // paginado, mais demorado) nunca sobrescreve um mais novo, e uma rajada de
+    // avisos não deixa a tela sem gravar.
+    let emCurso = false;
+    let deNovo = false;
     async function load() {
-      // Só mostra "Carregando…" no 1º load. Refetches do realtime rodam em segundo
-      // plano, mantendo a lista visível (evita o painel piscar a cada ligação/UPDATE).
-      if (firstLoad.current) setLoading(true);
-      const [wa, api4com] = await Promise.all([
-        supabase
-          .from("whatsapp_calls")
-          .select(`
-            id, tenant_id, lead_id, from_phone, to_phone, direction, status,
-            started_at, connected_at, ended_at, duration_seconds, error_message,
-            recording_url, transcription, initiated_by, answered_by,
-            lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
-          `)
-          .order("started_at", { ascending: false, nullsFirst: false })
-          .limit(500),
-        supabase
-          .from("api4com_calls")
-          .select(`
-            id, tenant_id, lead_id, from_phone, to_phone, direction, status,
-            started_at, answered_at, ended_at, duration_seconds,
-            recording_url, transcription, created_at,
-            lead:crm_leads!api4com_calls_lead_id_fkey ( id, name, phone )
-          `)
-          .order("created_at", { ascending: false })
-          .limit(500),
+      if (emCurso) { deNovo = true; return; }
+      emCurso = true;
+      try {
+        do {
+          deNovo = false;
+          await buscar();
+        } while (deNovo && !cancelled);
+      } finally {
+        emCurso = false;
+      }
+    }
+    async function buscar() {
+      if (loadedRange.current !== dateRange) setLoading(true);
+      // TODAS as ligações do período: o período vai como filtro no banco e
+      // fetchAllPaged pagina em blocos de 1000. Antes eram as 500 mais recentes
+      // de cada tabela, filtradas aqui — em out/2026 a telefonia passou de 500
+      // no mês e a tela somava 522 ligações de 737 (165 atendidas de 214).
+      // O filtro do banco é o MESMO do `dateScoped` abaixo (que segue valendo).
+      const periodo = dateRange
+        ? { gte: dateRange.start.toISOString(), lte: dateRange.end.toISOString() }
+        : null;
+      const [wa, api4com] = await Promise.allSettled([
+        fetchAllPaged<any>(() => {
+          const q = supabase
+            .from("whatsapp_calls")
+            .select(`
+              id, tenant_id, lead_id, from_phone, to_phone, direction, status,
+              started_at, connected_at, ended_at, duration_seconds, error_message,
+              recording_url, transcription, initiated_by, answered_by,
+              lead:crm_leads!whatsapp_calls_lead_id_fkey ( id, name, phone )
+            `);
+          return periodo ? q.gte("started_at", periodo.gte).lte("started_at", periodo.lte) : q;
+        }, "id"),
+        fetchAllPaged<any>(() => {
+          const q = supabase
+            .from("api4com_calls")
+            .select(`
+              id, tenant_id, lead_id, from_phone, to_phone, direction, status,
+              started_at, answered_at, ended_at, duration_seconds,
+              recording_url, transcription, created_at,
+              lead:crm_leads!api4com_calls_lead_id_fkey ( id, name, phone )
+            `);
+          // A tela data a ligação da telefonia por started_at ?? created_at (mapApi4comCall).
+          return periodo
+            ? q.or(
+                `and(started_at.gte."${periodo.gte}",started_at.lte."${periodo.lte}"),` +
+                `and(started_at.is.null,created_at.gte."${periodo.gte}",created_at.lte."${periodo.lte}")`,
+              )
+            : q;
+        }, "id"),
       ]);
       if (cancelled) return;
-      if (wa.error) {
-        console.error("[ligacoes] whatsapp load error:", wa.error);
+      if (wa.status === "rejected") {
+        console.error("[ligacoes] whatsapp load error:", wa.reason);
         toast.error("Erro ao carregar ligações");
       }
       // api4com pode não estar configurado ainda — silencioso se der erro.
-      if (api4com.error) console.warn("[ligacoes] api4com load:", api4com.error?.message);
+      if (api4com.status === "rejected") console.warn("[ligacoes] api4com load:", (api4com.reason as Error)?.message);
 
-      const waRows: CallRow[] = ((wa.data as any) || []).map((r: any) => ({ ...r, source: "whatsapp" as const }));
-      const apiRows: CallRow[] = ((api4com.data as any) || []).map(mapApi4comCall);
+      const waRows: CallRow[] = (wa.status === "fulfilled" ? wa.value : []).map((r: any) => ({ ...r, source: "whatsapp" as const }));
+      const apiRows: CallRow[] = (api4com.status === "fulfilled" ? api4com.value : []).map(mapApi4comCall);
       const merged = [...waRows, ...apiRows].sort((a, b) => {
         const ta = a.started_at ? new Date(a.started_at).getTime() : 0;
         const tb = b.started_at ? new Date(b.started_at).getTime() : 0;
@@ -212,22 +257,35 @@ export default function CrmLigacoes() {
       // Mantém o detalhe aberto sincronizado com a versão mais nova da linha
       // (ex.: transcrição que acabou de ser gravada, status atualizado).
       setSelected((prev) => (prev ? merged.find((c) => c.id === prev.id) ?? prev : prev));
-      firstLoad.current = false;
+      loadedRange.current = dateRange;
       setLoading(false);
     }
+    reload.current = load;
     load();
-
-    const channel = supabase
-      .channel("ligacoes_all")
-      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_calls" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "api4com_calls" }, () => load())
-      .subscribe();
 
     return () => {
       cancelled = true;
+    };
+  }, [dateRange]);
+
+  // Realtime num efeito à parte: trocar o período não recria o canal; o evento
+  // recarrega o período que estiver selecionado no momento.
+  useEffect(() => {
+    const channel = supabase
+      .channel("ligacoes_all")
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_calls" }, () => reload.current())
+      .on("postgres_changes", { event: "*", schema: "public", table: "api4com_calls" }, () => reload.current())
+      .subscribe();
+
+    return () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // Filtro/período/busca novos voltam a lista para o 1º bloco.
+  useEffect(() => {
+    setVisiveis(LISTA_PASSO);
+  }, [dateRange, filter, directionFilter, search]);
 
   useEffect(() => {
     let ativo = true;
@@ -249,8 +307,6 @@ export default function CrmLigacoes() {
       : "Nenhum número de WhatsApp desta clínica faz ligações pela API agora; para ligar pelo CRM, conecte a telefonia em Integrações.";
   }, [numerosVisiveis, telefoniaPronta, podeLigarPorWhatsapp]);
   const podeAbrirIntegracoes = userRole === "crc" || userRole === "gerente" || userRole === "superadmin";
-
-  const dateRange = useMemo(() => getDateRangeFromFilter(period), [period]);
 
   const dateScoped = useMemo(() => {
     if (!dateRange) return calls;
@@ -436,8 +492,9 @@ export default function CrmLigacoes() {
             <p className="text-[15px] font-semibold text-foreground">Nenhuma ligação encontrada</p>
           </div>
         ) : (
+          <>
           <ul className="divide-y divide-border/60">
-            {filtered.map((c) => {
+            {filtered.slice(0, visiveis).map((c) => {
               const cat = categorize(c);
               const meta = categoryMeta(cat, c.direction);
               const Icon = meta.icon;
@@ -504,6 +561,22 @@ export default function CrmLigacoes() {
               );
             })}
           </ul>
+          {filtered.length > visiveis && (
+            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-border/60 px-4 py-3">
+              <span className="text-xs tabular-nums text-muted-foreground">
+                Mostrando {visiveis.toLocaleString("pt-BR")} de {filtered.length.toLocaleString("pt-BR")} ligações
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setVisiveis((v) => v + LISTA_PASSO)}
+                className="rounded-xl border border-border/60 bg-card font-medium hover:bg-muted"
+              >
+                Mostrar mais
+              </Button>
+            </div>
+          )}
+          </>
         )}
         </div>
       </div>
