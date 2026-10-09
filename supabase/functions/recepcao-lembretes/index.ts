@@ -20,6 +20,7 @@ import { authorizeInternal } from "../_shared/internalAuth.ts";
 import { mcpToolCall, resolveTeamToken } from "../_shared/dontusClient.ts";
 import { normalizeBrPhone, primeiroNome } from "../_shared/phoneBR.ts";
 import { localParts } from "../_shared/tz.ts";
+import { erroDoEnvio, falhaDefinitiva } from "../_shared/envioWhatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -171,11 +172,15 @@ async function enviarTemplate(
         log_content: logContent,
       }),
     });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = String(body?.error ?? res.status);
-      const retryable = res.status === 429 || res.status >= 500 || /rate limit/i.test(msg);
-      return { ok: false, error: msg, retryable };
+    const texto = await res.text();
+    let body: any = {};
+    try { body = JSON.parse(texto); } catch { /* resposta não-JSON */ }
+    // HTTP 200 com {ok:false} = a Meta recusou: é falha, não "enviado".
+    const falha = erroDoEnvio(res.status, texto);
+    if (falha) {
+      const retryable = falha === "WHATSAPP_DISCONNECTED" || res.status === 429 || res.status >= 500 ||
+        /rate limit/i.test(falha) || !falhaDefinitiva(falha);
+      return { ok: false, error: falha, retryable };
     }
     return { ok: true, wamid: body?.wamid ?? body?.whatsapp_message_id, messageId: body?.message_id };
   } catch (e: any) {

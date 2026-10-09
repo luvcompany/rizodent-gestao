@@ -23,6 +23,9 @@ Each rule below fixed a production incident. Read them before touching WhatsApp 
 - A lead may only be stamped with / moved to a number of its own world (`valida_troca_numero_do_lead`, `stamp_crm_lead_whatsapp_number`, `closer_paciente_carimba_numero`).
 - Automations, bots, follow-ups, rodízio, transfers and broadcasts decide eligibility by WORLD (`mundo_numero_whatsapp` / `_shared/mundoNumero.ts`), never by comparing number ids.
 
+## Sending results
+- Any function that calls `send-whatsapp-message` must read the result with `_shared/envioWhatsapp.ts` (`erroDoEnvio`/`conferirEnvio`/`linhaDaFila`): it answers HTTP 200 with `{ok:false}` when Meta refuses, so `resp.ok` alone records refusals as "sent". Definitive Meta refusals (`falhaDefinitiva`) are never retried in a loop.
+
 ## One phone = one lead per world
 - Phone comparisons always use `telefone_canonico()` (the exact normalization of `trg_normalize_lead_phone`); never compare the raw WhatsApp `from` (Meta sends DDD 11–28 with the 9th digit and the lead is stored without it).
 - Inbound lookup (messages, echoes, calls) goes through `lead_whatsapp_existente` (world-scoped, includes legacy and inactive numbers); a duplicate created in a world that already has that phone is merged by `mesclar_lead_duplicado_mesmo_mundo` (webhook + periodic sweep).

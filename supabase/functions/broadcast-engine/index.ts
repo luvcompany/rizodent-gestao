@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { mesmoMundo, mundoDoFunil } from "../_shared/mundoNumero.ts";
+import { erroDoEnvio } from "../_shared/envioWhatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,19 +165,19 @@ Deno.serve(async (req) => {
             await new Promise(res => setTimeout(res, 2000));
             continue;
           }
-          const corpo = resp.ok ? await resp.clone().text() : "";
-          if (corpo.includes("whatsapp_disconnected")) {
+          // HTTP 200 com {ok:false} = a Meta recusou: é falha, não "enviado".
+          const falha = erroDoEnvio(resp.status, await resp.text());
+          if (falha === "WHATSAPP_DISCONNECTED") {
             // Número desconectado da Meta: pausa o disparo; destinatários
             // continuam pendentes para a próxima rodada.
             console.warn("[broadcast] WhatsApp desconectado — disparo pausado");
             break;
           }
-          if (resp.ok) {
+          if (!falha) {
             await supabase.from("crm_broadcast_recipients").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", r.id);
             sentCount++;
           } else {
-            const err = await resp.text();
-            await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: err.slice(0, 200) }).eq("id", r.id);
+            await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: falha.slice(0, 200) }).eq("id", r.id);
             failedCount++;
           }
         } catch (e: any) {

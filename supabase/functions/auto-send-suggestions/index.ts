@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { hmInTz, resolveTz } from "../_shared/tz.ts";
+import { erroDoEnvio } from "../_shared/envioWhatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -161,9 +162,10 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({ lead_id: lead.id, to: lead.phone, message: s.suggested_text, type: "text" }),
         });
-        const sendText = await sendResp.text();
-        if (!sendResp.ok) {
-          processed.push({ id: s.id, send_error: `${sendResp.status}: ${sendText.slice(0, 200)}` });
+        // HTTP 200 com {ok:false} = a Meta recusou: a sugestão NÃO foi enviada.
+        const falha = erroDoEnvio(sendResp.status, await sendResp.text());
+        if (falha) {
+          processed.push({ id: s.id, send_error: falha.slice(0, 200) });
           continue;
         }
 

@@ -77,6 +77,7 @@ function nextCommercialFireAt(now: Date = new Date()): string | null {
 
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { filtrarMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
+import { erroDoEnvio, falhaDefinitiva, linhaDaFila } from "../_shared/envioWhatsapp.ts";
 
 
 Deno.serve(async (req) => {
@@ -214,7 +215,9 @@ Deno.serve(async (req) => {
           .eq("automation_id", auto.id)
           .eq("lead_id", lead.id)
           .eq("action_type", auto.action_type)
-          .in("status", ["sent"])
+          // 'failed' conta como já tentado neste ciclo (antes a recusa era
+          // gravada como 'sent'); sem isso a recusa repetiria a cada minuto.
+          .in("status", ["sent", "failed"])
           .order("created_at", { ascending: false })
           .limit(1);
 
@@ -254,15 +257,19 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+        const envio = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
+        // Grava o que aconteceu de verdade: recusa da Meta é 'failed' (antes
+        // virava 'sent'); número desconectado fica 'pending' para o worker.
+        const linha = linhaDaFila(envio);
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
           lead_id: lead.id,
           action_type: auto.action_type,
           action_config: config,
-          scheduled_at: new Date().toISOString(),
-          status: "sent",
+          scheduled_at: linha.scheduled_at ?? new Date().toISOString(),
+          status: linha.status,
+          error_message: linha.error_message,
           layer_index: 0,
         });
 
@@ -710,12 +717,12 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("automation_id", auto.id)
           .eq("lead_id", lead.id)
-          .in("status", ["pending", "sent"])
+          .in("status", ["pending", "sent", "failed"])
           .limit(1);
 
         if (existing && existing.length > 0) continue;
 
-        await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+        const envioStale = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
 
         if (config.target_stage_id) {
           const tenantLead = await tenantDoLead(supabase, lead.id);
@@ -729,13 +736,15 @@ Deno.serve(async (req) => {
         }
 
 
+        const linhaStale = linhaDaFila(envioStale);
         await supabase.from("crm_automation_queue").insert({
           automation_id: auto.id,
           lead_id: lead.id,
           action_type: auto.action_type,
           action_config: config,
-          scheduled_at: new Date().toISOString(),
-          status: "sent",
+          scheduled_at: linhaStale.scheduled_at ?? new Date().toISOString(),
+          status: linhaStale.status,
+          error_message: linhaStale.error_message,
           layer_index: 0,
         });
         results.lead_stale++;
@@ -791,7 +800,7 @@ Deno.serve(async (req) => {
           .select("id")
           .eq("automation_id", auto.id)
           .eq("lead_id", lead.id)
-          .in("status", ["pending", "sent"])
+          .in("status", ["pending", "sent", "failed"])
           .limit(1);
 
         if (existing && existing.length > 0) continue;
@@ -815,14 +824,16 @@ Deno.serve(async (req) => {
             });
           }
         } else {
-          await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          const envioNoShow = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
+          const linhaNoShow = linhaDaFila(envioNoShow);
           await supabase.from("crm_automation_queue").insert({
             automation_id: auto.id,
             lead_id: lead.id,
             action_type: auto.action_type,
             action_config: config,
-            scheduled_at: new Date().toISOString(),
-            status: "sent",
+            scheduled_at: linhaNoShow.scheduled_at ?? new Date().toISOString(),
+            status: linhaNoShow.status,
+            error_message: linhaNoShow.error_message,
             layer_index: 0,
           });
         }
@@ -960,11 +971,14 @@ Deno.serve(async (req) => {
           // primeira falha e ninguém ficou sabendo — o claim dizia "sent".
           const { data: claimFalho } = await supabase
             .from("crm_automation_queue")
-            .select("id")
+            .select("id, error_message")
             .eq("automation_id", auto.id)
             .eq("appointment_id", appt.id)
             .eq("status", "failed")
             .maybeSingle();
+          // Recusa definitiva da Meta (janela, opt-out, modelo inválido) não se
+          // repete a cada minuto: fica registrada e pronto.
+          if (claimFalho && falhaDefinitiva((claimFalho as any).error_message)) continue;
           if (claimFalho) {
             const tentativa = await sendAction(supabase, supabaseUrl, serviceKey, auto.action_type, config, lead.id, lead.phone, auto.id);
             await supabase
@@ -1224,8 +1238,9 @@ async function sendAction(
                 template_language: tpl.language,
               }),
             });
-            const respText = await resp.text();
-            if (!resp.ok) throw new Error(`send_template failed (${resp.status}): ${respText.substring(0, 500)}`);
+            // HTTP 200 com {ok:false} = a Meta recusou: é falha, não "enviado".
+            const falha = erroDoEnvio(resp.status, await resp.text());
+            if (falha) return { ok: false, erro: `send_template: ${falha}` };
           }
         }
         break;
@@ -1245,11 +1260,13 @@ async function sendAction(
 
       case "send_audio":
         if (config.audio_url && phone) {
-          await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+          const respAudio = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
-          }).then((r) => r.text());
+          });
+          const falhaAudio = erroDoEnvio(respAudio.status, await respAudio.text());
+          if (falhaAudio) return { ok: false, erro: `send_audio: ${falhaAudio}` };
         }
         break;
 
@@ -1257,7 +1274,7 @@ async function sendAction(
         if (config.file_url && phone) {
           // Envia pelo TIPO real da mídia (vídeo toca no chat, não vira documento).
           const fileMediaType = detectMediaType(config.file_url as string, config.file_mime as string);
-          await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+          const falhaArquivo = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
             body: JSON.stringify({
@@ -1269,7 +1286,8 @@ async function sendAction(
                 ? { filename: config.filename || config.file_name || "arquivo" }
                 : {}),
             }),
-          }).then((r) => r.text());
+          }).then(async (r) => erroDoEnvio(r.status, await r.text()));
+          if (falhaArquivo) return { ok: false, erro: `send_file: ${falhaArquivo}` };
         }
         break;
 

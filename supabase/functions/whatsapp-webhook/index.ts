@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCidade } from "../_shared/resolveCidade.ts";
 import { mesmoMundo, mundoDaEtapa } from "../_shared/mundoNumero.ts";
+import { erroDoEnvio } from "../_shared/envioWhatsapp.ts";
 import { detectarOrigemPorTexto } from "../_shared/detectarOrigem.ts";
 import { avisarLidaEDigitando } from "../_shared/digitando.ts";
 import { aplicarRespostaDoFormulario, lerRespostaDoFormulario, rotuloDoQuando } from "../_shared/acoesDoFormulario.ts";
@@ -547,8 +548,8 @@ async function executeWebhookAction(
               method: "POST", headers,
               body: JSON.stringify({ lead_id: leadId, to: phone, type: "template", template_name: tpl.name, template_language: tpl.language }),
             });
-            await r.text();
-            console.log(`[WEBHOOK-ACTION] send_template ${tpl.name} to ${phone} => ${r.status}`);
+            const falha = erroDoEnvio(r.status, await r.text());
+            console.log(`[WEBHOOK-ACTION] send_template ${tpl.name} to ${phone} => ${falha ? `FALHOU: ${falha}` : "enviado"}`);
           }
         }
         break;

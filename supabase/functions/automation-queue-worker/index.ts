@@ -4,6 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { conferirEnvio } from "../_shared/envioWhatsapp.ts";
 import { mesmoMundo, mundoDaEtapa, type MundoDaEtapa } from "../_shared/mundoNumero.ts";
 import { etapaDestinoRespeitandoFunil } from "../_shared/etapaDoFunilDoLead.ts";
 
@@ -381,9 +382,7 @@ async function sendAction(
           template_language: tpl.language,
         }),
       });
-      const txt = await resp.text();
-      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
-      if (!resp.ok) throw new Error(`send-whatsapp-message ${resp.status}: ${txt.substring(0, 400)}`);
+      await conferirEnvio(resp, "send-whatsapp-message");
       return;
     }
     case "send_bot": {
@@ -414,9 +413,7 @@ async function sendAction(
         },
         body: JSON.stringify({ lead_id: leadId, to: phone, type: "audio", media_url: config.audio_url }),
       });
-      const txt = await resp.text();
-      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
-      if (!resp.ok) throw new Error(`send_audio ${resp.status}: ${txt.substring(0, 400)}`);
+      await conferirEnvio(resp, "send_audio");
       return;
     }
     case "send_file": {
@@ -441,9 +438,7 @@ async function sendAction(
             : {}),
         }),
       });
-      const txt = await resp.text();
-      if (txt.includes("whatsapp_disconnected")) throw new Error("WHATSAPP_DISCONNECTED");
-      if (!resp.ok) throw new Error(`send_file ${resp.status}: ${txt.substring(0, 400)}`);
+      await conferirEnvio(resp, "send_file");
       return;
     }
     case "add_tag": {
