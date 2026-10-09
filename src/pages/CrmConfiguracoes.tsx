@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { normalizePhone, phoneKey } from "@/lib/phoneUtils";
+import { normalizePhone, telefoneCanonico } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/crm-ui";
 import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
@@ -95,9 +95,9 @@ function ImportTab() {
       if (!name || !rawPhone) { skipped++; continue; }
       const phone = normalizePhone(rawPhone);
 
-      // Duplicado conta dentro do mesmo (tenant, MUNDO do número) e pela chave
-      // de telefone (com ou sem o 9), como o resto do sistema.
-      let dupQuery = (supabase as any).from("crm_leads").select("id").eq("phone_key", phoneKey(phone) ?? phone);
+      // Duplicado conta dentro do mesmo (tenant, MUNDO do número) e pelo
+      // telefone como o banco grava (com ou sem o 9), como o resto do sistema.
+      let dupQuery = supabase.from("crm_leads").select("id").eq("phone", telefoneCanonico(phone) ?? phone);
       if (tenantId) dupQuery = dupQuery.eq("tenant_id", tenantId);
       dupQuery = dupQuery.or(filtroMundo);
       const { data: existing } = await dupQuery.limit(1);

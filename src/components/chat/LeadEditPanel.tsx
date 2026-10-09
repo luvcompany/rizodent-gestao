@@ -26,7 +26,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { bloquearContatoNaMeta, papelBloqueiaNaMeta, temTelefoneParaMeta } from "@/lib/bloqueioMeta";
 import { mensagemDeErro } from "@/lib/mensagemDeErro";
 import { envioFalhou, motivoDoEnvio } from "@/lib/erroDoEnvio";
-import { formatPhoneDisplayBR, lerTelefoneDigitado as lerTelefone, normalizePhoneParaGravar, phoneKey } from "@/lib/phoneUtils";
+import { formatPhoneDisplayBR, lerTelefoneDigitado as lerTelefone, normalizePhoneParaGravar, telefoneCanonico } from "@/lib/phoneUtils";
 import { carregarModelosDoLead, type ModeloDoLead } from "@/hooks/useChatConversation";
 import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
 import EnviarModeloDialog, { type ComponentesDoModelo, type ModeloParaEnviar } from "@/components/chat/EnviarModeloDialog";
@@ -406,24 +406,17 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
     setAdAccountName("");
   };
 
-  /** Outro lead (que quem edita enxerga) com a mesma chave de telefone (phone_key, P07). */
+  /** Outro lead (que quem edita enxerga) com o mesmo telefone, como o banco grava (sem o 9). */
   const leadComMesmoTelefone = async (gravar: string): Promise<{ id: string; name: string } | null> => {
-    const chave = phoneKey(gravar);
+    const chave = telefoneCanonico(gravar);
     if (!chave) return null;
-    // Cast: phone_key é coluna nova (G2 — types.ts não é editado aqui).
-    const { data, error } = await (supabase as unknown as {
-      from: (t: string) => {
-        select: (c: string) => {
-          eq: (c: string, v: string) => { neq: (c: string, v: string) => { limit: (n: number) => Promise<{ data: unknown; error: unknown }> } };
-        };
-      };
-    })
+    const { data, error } = await supabase
       .from("crm_leads")
       .select("id, name")
-      .eq("phone_key", chave)
+      .eq("phone", chave)
       .neq("id", lead.id)
       .limit(1);
-    // Coluna ausente (banco sem a migration do P07) ou erro de rede: não trava a edição.
+    // Erro de rede: não trava a edição.
     if (error) return null;
     return ((data as { id: string; name: string }[] | null) ?? [])[0] ?? null;
   };

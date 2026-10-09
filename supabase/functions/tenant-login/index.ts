@@ -152,6 +152,15 @@ Deno.serve(async (req) => {
       return json({ error: GENERIC }, 401);
     }
 
+    // Conta sem papel não pertence a nenhum cliente (current_tenant_id exige
+    // papel): entraria numa tela vazia. Checado DEPOIS da senha, para a
+    // mensagem clara não revelar a quem não sabe a senha que a conta existe.
+    const { data: papeis } = await admin.from("user_roles").select("role").eq("user_id", prof.id).limit(1);
+    if (!papeis || papeis.length === 0) {
+      await logAttempt("login_blocked", prof.id, { reason: "sem_papel" });
+      return json({ error: "Sua conta está sem perfil de acesso. Fale com o administrador da clínica." }, 403);
+    }
+
     await logAttempt("login", prof.id);
     try { await admin.from("profiles").update({ last_login_at: new Date().toISOString() }).eq("id", prof.id); } catch (_e) {}
 

@@ -38,6 +38,24 @@ export function normalizePhone(raw: string): string {
 }
 
 /**
+ * Telefone como o banco GRAVA em crm_leads.phone (espelho exato de
+ * public.telefone_canonico e do gatilho trg_normalize_lead_phone): 55 + DDD +
+ * 8 dígitos, sem o 9 do celular; número que não é brasileiro reconhecível fica
+ * só com os dígitos. É a chave para achar um lead pelo telefone — compare
+ * sempre `phone = telefoneCanonico(x)`. (crm_leads.phone_key NÃO existe neste
+ * banco.)
+ */
+export function telefoneCanonico(raw: string | null | undefined): string | null {
+  let v = String(raw ?? "").replace(/\D/g, "");
+  if (!v) return null;
+  if ((v.length === 11 || v.length === 12) && v.startsWith("0")) v = v.slice(1);
+  if ((v.length === 12 || v.length === 13) && v.startsWith("55")) v = v.slice(2);
+  else if (v.length !== 10 && v.length !== 11) return v;
+  if (v.length === 11 && v[2] === "9") v = v.slice(0, 2) + v.slice(3);
+  return "55" + v;
+}
+
+/**
  * Chave de casamento (igual à SQL normaliza_telefone_br e a crm_leads.phone_key):
  * número brasileiro reconhecível — 10/11 dígitos, ou 12/13 começando com 55 —
  * vira 55 + DDD + 8 últimos dígitos; o resto fica só com os dígitos. null sem dígitos.
