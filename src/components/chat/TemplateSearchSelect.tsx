@@ -1,3 +1,4 @@
+import { normalizarBusca } from "@/lib/templateUtils";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,11 +36,11 @@ export default function TemplateSearchSelect({
 
   const filtered = useMemo(() => {
     if (!search.trim()) return templates;
-    const q = search.toLowerCase();
+    const q = normalizarBusca(search);
     return templates.filter(
       (t) =>
-        t.name.toLowerCase().includes(q) ||
-        (t.body_text || "").toLowerCase().includes(q)
+        normalizarBusca(t.name).includes(q) ||
+        normalizarBusca(t.body_text).includes(q)
     );
   }, [templates, search]);
 

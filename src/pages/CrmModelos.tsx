@@ -1,3 +1,4 @@
+import { normalizarBusca } from "@/lib/templateUtils";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -371,13 +372,12 @@ export default function CrmModelos() {
   const filtered = templates.filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
-    const clean = cleanTemplateName(t.name).toLowerCase();
-    const rawName = (t.name || "").toLowerCase();
+    const q = normalizarBusca(search);
     if (
-      search &&
-      !clean.includes(search.toLowerCase()) &&
-      !rawName.includes(search.toLowerCase()) &&
-      !(t.body_text || "").toLowerCase().includes(search.toLowerCase())
+      q &&
+      !normalizarBusca(cleanTemplateName(t.name)).includes(q) &&
+      !normalizarBusca(t.name).includes(q) &&
+      !normalizarBusca(t.body_text).includes(q)
     ) return false;
     if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
     return true;

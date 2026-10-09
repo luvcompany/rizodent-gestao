@@ -64,3 +64,8 @@ export function indicesDasVariaveis(texto: string | null | undefined): number[] 
   }
   return [...vistos].sort((a, b) => a - b);
 }
+
+/** Busca sem acento e sem diferenciar maiúsculas: "endereço" acha "endereco_vca". */
+export function normalizarBusca(texto: string | null | undefined): string {
+  return (texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[_\s]+/g, " ").toLowerCase().trim();
+}
