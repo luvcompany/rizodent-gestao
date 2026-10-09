@@ -2338,7 +2338,8 @@ async function leadsDistintosSdr(tenantId: string, sdrs: Set<string>, gteIso: st
   const atribuicoes = atrib.map((a: any) => ({ lead_id: a.lead_id, de_user_id: a.de_user_id, para_user_id: a.para_user_id, fase: a.fase, em: Date.parse(a.criado_em) }));
   const leadIds = new Set<string>(dist.map((d: any) => d.id));
   for (const a of atribuicoes) {
-    if (a.para_user_id && sdrs.has(a.para_user_id) && a.em >= ini && a.em < fim) leadIds.add(a.lead_id);
+    // linha do livro sem lead (lead apagado) não entra: a RPC exige o JOIN com crm_leads
+    if (a.lead_id && a.para_user_id && sdrs.has(a.para_user_id) && a.em >= ini && a.em < fim) leadIds.add(a.lead_id);
   }
   const criadoEm = new Map<string, number>();
   const mensagens = new Map<string, { ts: number; k: 1 | 2 }[]>();
