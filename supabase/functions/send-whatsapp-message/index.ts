@@ -5,7 +5,8 @@ import { assertAllowedMediaUrl } from "../_shared/mediaUrl.ts";
 // Teto de mídia aceito pela Meta (16 MB no maior tipo).
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
-import { escopoDoLead, escopoDoNumero } from "../_shared/wabaEscopo.ts";
+import { escopoDoLead } from "../_shared/wabaEscopo.ts";
+import { numeroDeSaida } from "../_shared/numeroDeSaida.ts";
 import { formatarDataDoModelo, registroDoModeloEnviado, textoAntesDoMarcador } from "../_shared/modeloEnviado.ts";
 import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 import { dadosDaTelaInicial } from "../_shared/flowTelas.ts";
@@ -395,167 +396,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ===== REGRA ESTRUTURAL: o número de saída vem do CARIMBO DO LEAD =====
-    // "Cada número é um mundo": o lead carimbado pertence àquele número e a
-    // resposta TEM de sair por ele. Sem fallback para "qualquer integração do
-    // tenant" — era isso que fazia mover o lead de funil trocar o número de
-    // saída e a resposta de bot sair pelo número errado.
+    // ===== NÚMERO DE SAÍDA =====
+    // Regra única em _shared/numeroDeSaida.ts (com testes): a resposta sai pelo
+    // número em que o paciente escreveu (a janela de 24h da Meta é por número),
+    // depois o número do lead, o padrão da equipe, o canal do funil e o número
+    // principal — sempre dentro da EQUIPE (mundo) do lead, nunca de outra.
+    // Número desativado ou trocado não trava a conversa: o próximo assume.
     let resolvedCredentials = false;
     let numeroUsadoId: string | null = null;
     const leadWaNumberId: string | null = (leadData as any)?.whatsapp_number_id ?? null;
-
-    if (leadWaNumberId) {
-      // (a) Lead carimbado: whatsapp_numbers -> integração whatsapp_<phone_number_id>.
-      const { data: waNum } = await supabase
-        .from("whatsapp_numbers")
-        .select("phone_number_id, token")
-        .eq("id", leadWaNumberId)
-        .eq("tenant_id", leadTenantId)
-        .eq("is_active", true)   // is_active existe para desligar um número: respeitar
-        .maybeSingle();
-
-      if (!waNum?.phone_number_id) {
-        console.warn(`[send-whatsapp-message] lead ${lead_id} carimbado com número ${leadWaNumberId} sem cadastro ativo`);
-        return new Response(JSON.stringify({ error: "Número do lead sem credenciais" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: intgNumero } = await supabase
-        .from("integrations")
-        .select("config, status")
-        .eq("tenant_id", leadTenantId)
-        .eq("key", `whatsapp_${waNum.phone_number_id}`)
-        .maybeSingle();
-
-      if ((intgNumero as any)?.status === "disabled") {
-        console.warn(`[send-whatsapp-message] integração whatsapp_${waNum.phone_number_id} desativada (lead ${lead_id})`);
-        return new Response(JSON.stringify({ error: "Integração desativada" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const cfgNumero = ((intgNumero as any)?.config ?? {}) as any;
-      const tokenNumero = cfgNumero.access_token || cfgNumero.token || waNum.token;
-      if (!tokenNumero) {
-        console.warn(`[send-whatsapp-message] número ${leadWaNumberId} sem token (lead ${lead_id})`);
-        return new Response(JSON.stringify({ error: "Número do lead sem credenciais" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      phoneNumberId = cfgNumero.phone_number_id || waNum.phone_number_id;
-      whatsappToken = tokenNumero;
-      mmLiteLigado = cfgNumero.mm_lite === true;
-      resolvedCredentials = true;
-      console.log(`[send-whatsapp-message] credenciais do número carimbado no lead (${phoneNumberId})`);
-    } else {
-      // (b0) Número padrão de envio escolhido em Integrações: vale para todo
-      // lead sem número escolhido (ex.: contingência enquanto o principal cai).
-      const { data: padrao } = await supabase
-        .from("whatsapp_numbers")
-        .select("id")
-        .eq("tenant_id", leadTenantId)
-        .eq("is_active", true)
-        .eq("is_default", true)
-        .limit(1);
-      const padraoId = (padrao as any[] | null)?.[0]?.id;
-      if (padraoId) {
-        const esc = await escopoDoNumero(supabase, padraoId, leadTenantId);
-        if (esc?.token && esc.phoneNumberId) {
-          whatsappToken = esc.token;
-          phoneNumberId = esc.phoneNumberId;
-          numeroUsadoId = padraoId;
-          resolvedCredentials = true;
-          console.log(`[send-whatsapp] usando número padrão de envio ${esc.phoneNumberId}`);
-        }
-      }
-      // (b) Lead do mundo legado: canal do funil e, na falta dele, whatsapp_config.
-      if (!resolvedCredentials && leadData?.pipeline_id) {
-        const { data: funnelChannel } = await supabase
-          .from("funnel_channels")
-          .select("channel_config")
-          .eq("channel_type", "whatsapp")
-          .eq("pipeline_id", leadData.pipeline_id)
-          .eq("tenant_id", leadTenantId)
-          .maybeSingle();
-
-        const integrationKey = (funnelChannel?.channel_config as any)?.integration_key;
-        if (integrationKey) {
-          const { data: integration } = await supabase
-            .from("integrations")
-            .select("config, status, tenant_id")
-            .eq("key", integrationKey)
-            .eq("tenant_id", leadTenantId)
-            .maybeSingle();
-
-          if (integration?.status === "disabled") {
-            return new Response(JSON.stringify({ error: "Integração desativada" }), {
-              status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-
-          if (integration?.config) {
-            const cfg = integration.config as any;
-            const resolvedToken = cfg.access_token || cfg.token;
-            if (resolvedToken && cfg.phone_number_id) {
-              whatsappToken = resolvedToken;
-              phoneNumberId = cfg.phone_number_id;
-              mmLiteLigado = cfg.mm_lite === true;
-              resolvedCredentials = true;
-            }
-          }
-        }
-      }
-
-      if (!resolvedCredentials) {
-        const { data: legacy } = await supabase
-          .from("integrations")
-          .select("config, status")
-          .eq("tenant_id", leadTenantId)
-          .eq("key", "whatsapp_config")
-          .maybeSingle();
-
-        if ((legacy as any)?.status === "disabled") {
-          return new Response(JSON.stringify({ error: "Integração desativada" }), {
-            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        const cfg = ((legacy as any)?.config ?? {}) as any;
-        const legacyToken = cfg.access_token || cfg.token;
-        if (legacyToken && cfg.phone_number_id) {
-          whatsappToken = legacyToken;
-          phoneNumberId = cfg.phone_number_id;
-          mmLiteLigado = cfg.mm_lite === true;
-          resolvedCredentials = true;
-        }
-      }
-
-      // Cliente sem a chave herdada `whatsapp_config` (todo cliente novo é
-      // assim): o lead sem carimbo — criado à mão pelo crc, por exemplo — sai
-      // pelo número ativo padrão do cliente. Sem isto, num cliente novo esse
-      // lead simplesmente não receberia mensagem.
-      if (!resolvedCredentials) {
-        const { data: numeroPadrao } = await supabase
-          .from("whatsapp_numbers")
-          .select("id")
-          .eq("tenant_id", leadTenantId)
-          .eq("is_active", true)
-          .order("is_default", { ascending: false })
-          .order("created_at", { ascending: true })
-          .limit(1);
-        const alvoId = (numeroPadrao as any[] | null)?.[0]?.id;
-        if (alvoId) {
-          const esc = await escopoDoNumero(supabase, alvoId, leadTenantId);
-          if (esc?.token && esc.phoneNumberId) {
-            whatsappToken = esc.token;
-            phoneNumberId = esc.phoneNumberId;
-            resolvedCredentials = true;
-            console.log(`[send-whatsapp] cliente sem whatsapp_config — usando número padrão ${esc.phoneNumberId}`);
-          }
-        }
-      }
+    const saida = await numeroDeSaida(supabase, {
+      leadId: lead_id,
+      tenantId: leadTenantId,
+      leadNumberId: leadWaNumberId,
+      pipelineId: (leadData as any)?.pipeline_id ?? null,
+      mensagemReferenciaId: reaction_to_message_id || reply_to_message_id || null,
+    });
+    if (!saida.ok) {
+      console.warn(`[send-whatsapp-message] sem número de saída (lead ${lead_id}): ${saida.error}`);
+      return new Response(JSON.stringify({ error: saida.error }), {
+        status: saida.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    whatsappToken = saida.token;
+    phoneNumberId = saida.phoneNumberId;
+    mmLiteLigado = saida.mmLite;
+    numeroUsadoId = saida.numberId;
+    resolvedCredentials = true;
+    console.log(`[send-whatsapp-message] saída ${phoneNumberId} — ${saida.motivo} (lead ${lead_id})`);
 
     // WABA efetiva deste envio (para casar o template no mundo certo).
     const escopoEnvio = await escopoDoLead(supabase, {

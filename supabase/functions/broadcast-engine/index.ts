@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
-import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
+import { mesmoMundo, mundoDoFunil } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,10 +88,10 @@ Deno.serve(async (req) => {
     const template = (bc as any).crm_whatsapp_templates;
     if (!template) return new Response(JSON.stringify({ error: "Template not found" }), { status: 404, headers: corsHeaders });
 
-    // Mundo (número de WhatsApp) do funil da transmissão: destinatários de outro
-    // mundo não podem receber — sairiam pelo número errado.
-    const numeroDoMundo = (bc as any).filter_pipeline_id
-      ? await numeroDoFunil(supabase, (bc as any).filter_pipeline_id, (bc as any).tenant_id ?? null)
+    // Mundo (equipe dona dos números) do funil da transmissão: destinatários de
+    // outra equipe não podem receber — sairiam pelo número errado.
+    const mundoDaTransmissao = (bc as any).filter_pipeline_id
+      ? await mundoDoFunil(supabase, (bc as any).filter_pipeline_id, (bc as any).tenant_id ?? null)
       : null;
     const checarMundo = !!(bc as any).filter_pipeline_id;
 
@@ -136,8 +136,8 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        if (checarMundo && !mesmoMundo(lead.whatsapp_number_id, numeroDoMundo)) {
-          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "lead de outro número de WhatsApp" }).eq("id", r.id);
+        if (checarMundo && mundoDaTransmissao && !mesmoMundo(lead.whatsapp_number_id, mundoDaTransmissao)) {
+          await supabase.from("crm_broadcast_recipients").update({ status: "failed", error: "lead de outra equipe (número de WhatsApp de outro mundo)" }).eq("id", r.id);
           failedCount++;
           processed++;
           continue;

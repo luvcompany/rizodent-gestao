@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { normalizePhone } from "@/lib/phoneUtils";
+import { normalizePhone, phoneKey } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PageHeader } from "@/components/crm-ui";
 import { bloquearContatoNaMeta, papelBloqueiaNaMeta } from "@/lib/bloqueioMeta";
-import { getMyWhatsappNumberId } from "@/lib/mundoNumero";
+import { getMyWhatsappNumberId, numerosComMundo, orMesmoMundo } from "@/lib/mundoNumero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +81,7 @@ function ImportTab() {
     // de quem importa (crc/gerente: NULL = mundo legado).
     const myNumberId = await getMyWhatsappNumberId(userRole);
     const tenantId = profile?.tenant_id ?? null;
+    const filtroMundo = orMesmoMundo(await numerosComMundo(tenantId), myNumberId);
     let imported = 0, skipped = 0, failed = 0;
     let insertErrorMsg = "";
     const nameIdx = headers.indexOf(mapping.name);
@@ -94,12 +95,11 @@ function ImportTab() {
       if (!name || !rawPhone) { skipped++; continue; }
       const phone = normalizePhone(rawPhone);
 
-      // Duplicado só conta dentro do mesmo (tenant, número).
-      let dupQuery = supabase.from("crm_leads").select("id").eq("phone", phone);
+      // Duplicado conta dentro do mesmo (tenant, MUNDO do número) e pela chave
+      // de telefone (com ou sem o 9), como o resto do sistema.
+      let dupQuery = (supabase as any).from("crm_leads").select("id").eq("phone_key", phoneKey(phone) ?? phone);
       if (tenantId) dupQuery = dupQuery.eq("tenant_id", tenantId);
-      dupQuery = myNumberId
-        ? dupQuery.eq("whatsapp_number_id", myNumberId)
-        : dupQuery.is("whatsapp_number_id", null);
+      dupQuery = dupQuery.or(filtroMundo);
       const { data: existing } = await dupQuery.limit(1);
       if (existing && existing.length > 0) { skipped++; continue; }
 

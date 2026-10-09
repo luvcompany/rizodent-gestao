@@ -12,6 +12,8 @@
  * outro conteúdo).
  */
 
+import { integracaoDoPnid } from "./numeroDeSaida.ts";
+
 export const NUMERO_LEGADO_UUID = "00000000-0000-0000-0000-000000000000";
 
 export type EscopoWaba = {
@@ -105,12 +107,14 @@ export async function escopoDoNumero(
   const { data: num } = await q.maybeSingle();
   if (!num?.phone_number_id) return null;
 
-  const { data: intg } = await supabase
+  // A integração é achada pelo phone_number_id, não só pela chave
+  // `whatsapp_<id>`: o número oficial vive na chave herdada `whatsapp_config`.
+  const { data: ints } = await supabase
     .from("integrations")
-    .select("config, status")
+    .select("key, status, owner_role, config")
     .eq("tenant_id", (num as any).tenant_id)
-    .eq("key", `whatsapp_${(num as any).phone_number_id}`)
-    .maybeSingle();
+    .like("key", "whatsapp%");
+  const intg = integracaoDoPnid((ints || []) as any[], (num as any).phone_number_id);
   if ((intg as any)?.status === "disabled") return null;
 
   const cfg = ((intg as any)?.config ?? {}) as any;
@@ -122,7 +126,7 @@ export async function escopoDoNumero(
     phoneNumberId: token && phoneNumberId ? phoneNumberId : null,
     token: token && phoneNumberId ? token : null,
     appId: cfg.app_id || (num as any).app_id || null,
-    integrationKey: `whatsapp_${(num as any).phone_number_id}`,
+    integrationKey: (intg as any)?.key ?? `whatsapp_${(num as any).phone_number_id}`,
   };
 }
 
@@ -155,34 +159,22 @@ export async function escopoDoLead(
 }
 
 /**
- * Papel "dono" de um número: se existe exatamente UM papel entre os usuários
- * com override explícito (granted) para o número, o template pertence a ele.
- * Caso contrário devolve null (visível a todos os papéis do tenant).
+ * Papel "dono" de um número, para o owner_role dos modelos (templates):
+ * vem do MUNDO do número (whatsapp_numbers.mundo), nunca de quem tem acesso
+ * individual. Número central (CRC/SDR/pós-venda) → null (visível a toda a
+ * equipe central e à gestão); número de closer/recepção → o papel do mundo.
+ * Antes isto contava os overrides por usuário — e o dono mudava sozinho cada
+ * vez que alguém ganhava ou perdia acesso ao número.
  */
 export async function papelDonoDoNumero(supabase: any, numberId: string | null): Promise<string | null> {
   if (!numberId) return null;
-  const { data: overrides } = await supabase
-    .from("user_permission_overrides")
-    .select("user_id")
-    .eq("scope", "whatsapp_number")
-    .eq("resource_id", numberId)
-    .eq("granted", true);
-  const userIds = (overrides || []).map((o: any) => o.user_id);
-  if (userIds.length === 0) return null;
-
-  const { data: roles } = await supabase
-    .from("user_roles")
-    .select("role")
-    .in("user_id", userIds);
-  // SDR vive no mundo do CRC: um número usado pelas duas tem dono "crc".
-  const distintos = Array.from(
-    new Set(
-      ((roles || []) as any[])
-        .map((r) => (r.role === "sdr" ? "crc" : r.role))
-        .filter((r) => r && r !== "superadmin" && r !== "gerente" && r !== "crc_legacy"),
-    ),
-  );
-  return distintos.length === 1 ? String(distintos[0]) : null;
+  const { data } = await supabase
+    .from("whatsapp_numbers")
+    .select("mundo")
+    .eq("id", numberId)
+    .maybeSingle();
+  const mundo = (data as any)?.mundo ?? null;
+  return mundo === "closer" || mundo === "recepcao" ? mundo : null;
 }
 
 /** Filtro canônico de WABA em consultas a crm_whatsapp_templates. */

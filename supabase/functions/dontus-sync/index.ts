@@ -12,6 +12,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { mcpToolCall as mcpToolCallTenant, resolveTeamToken } from "../_shared/dontusClient.ts";
+import { mundoCentral, orDoMundo } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -868,7 +869,7 @@ async function reconcileStuckNaoContratado(admin: any): Promise<{ reconciliados:
       // Promove só lead do mundo legado — nunca lead carimbado de um número.
       const { data: leads } = await admin.from("crm_leads")
         .select("id, name, pipeline_id, stage_id, assigned_to")
-        .eq("tenant_id", TENANT).is("whatsapp_number_id", null)
+        .eq("tenant_id", TENANT).or(orDoMundo(await mundoCentral(admin, TENANT)))
         .in("id", leadArr.slice(i, i + CH)).in("stage_id", naoContratadoIds);
       for (const l of leads || []) stuck.push(l);
     }
@@ -984,7 +985,7 @@ async function reconcileRemovidosNoDontus(
           const leadIds = Array.from(new Set((links || []).map((r: any) => r.lead_id).filter(Boolean)));
           const { data: leads } = leadIds.length
             // Nunca apagar lead carimbado de outro número (mundo do closer/recepção).
-            ? await admin.from("crm_leads").select("id").eq("tenant_id", RIZODENT_TENANT_ID).is("whatsapp_number_id", null).in("id", leadIds)
+            ? await admin.from("crm_leads").select("id").eq("tenant_id", RIZODENT_TENANT_ID).or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID))).in("id", leadIds)
             : { data: [] as any[] };
 
           for (const l of (leads || [])) {
@@ -1235,7 +1236,7 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
               const { data } = await admin.from("crm_leads")
                 .select("id, name, phone, pipeline_id, stage_id")
                 .eq("tenant_id", RIZODENT_TENANT_ID)
-                .is("whatsapp_number_id", null)
+                .or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID)))
                 .ilike("phone", `%${tail}`)
                 .order("created_at", { ascending: false }).limit(10);
               existing = (data || []).find((l: any) => namesCompatible(l.name, item.paciente_nome)) || null;
@@ -1681,7 +1682,8 @@ async function syncClinica(
         // Mundo legado apenas (ver comentário acima).
         const { data: leads } = await admin.from("crm_leads")
           .select("id, name, phone, stage_id, pipeline_id, created_at")
-          .is("whatsapp_number_id", null)
+          .eq("tenant_id", RIZODENT_TENANT_ID)
+          .or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID)))
           .ilike("phone", `%${tail}`)
           .order("created_at", { ascending: false }).limit(10);
         if (leads?.length) {
@@ -2452,7 +2454,7 @@ async function syncComparecimento(
       const { data } = await admin.from("crm_leads")
         .select("id, name, phone, cidade, stage_id")
         .eq("tenant_id", RIZODENT_TENANT_ID)
-        .is("whatsapp_number_id", null)
+        .or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID)))
         .in("id", bloco);
       for (const l of (data || [])) {
         leadsById.set(l.id, { name: String(l.name || ""), phone: l.phone ?? null, cidade: l.cidade ?? null, stage_id: l.stage_id ?? null });
@@ -2727,7 +2729,7 @@ async function syncComparecimento(
         const { data, error } = await admin.from("crm_leads")
           .select("id, pipeline_id, tenant_id, assigned_to")
           .eq("tenant_id", RIZODENT_TENANT_ID)
-          .is("whatsapp_number_id", null)
+          .or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID)))
           .in("id", bloco);
         if (error) { errors.push({ passo: "promocao_leads", error: error.message }); continue; }
         for (const l of (data || [])) leadsPromo.set(l.id, l);
@@ -3008,7 +3010,7 @@ async function sweepReagendarExpirado(admin: any, dryRun: boolean): Promise<any>
   const { data: leads } = await admin.from("crm_leads")
     .select("id, name, pipeline_id, tenant_id, stage_id")
     .eq("tenant_id", RIZODENT_TENANT_ID)
-    .is("whatsapp_number_id", null)
+    .or(orDoMundo(await mundoCentral(admin, RIZODENT_TENANT_ID)))
     .in("stage_id", waitingIds);
   resumo.analisados = (leads || []).length;
 

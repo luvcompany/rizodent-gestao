@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { safeEqual } from "../_shared/authz.ts";
+import { mundoCentral, orDoMundo } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,14 +107,13 @@ Deno.serve(async (req) => {
 
 
     // Per-tenant duplicate check (avoids cross-tenant collisions on the same phone).
-    // Cada número é um mundo: lead de origem externa (formulário/anúncio) pertence
-    // ao MUNDO LEGADO (whatsapp_number_id NULL), então a dedup só olha esse mundo —
-    // nunca reaproveita/atualiza lead carimbado de outro número.
-    // Ponto de extensão: se o payload passar a aceitar um identificador de número,
-    // resolver o whatsapp_number_id aqui e trocar o `.is(...)` por `.eq(...)`.
+    // Lead de origem externa (formulário/anúncio) pertence ao MUNDO CENTRAL
+    // (número legado + todos os números centrais), então a dedup olha esse
+    // mundo inteiro — nunca reaproveita lead do closer/recepção.
+    const central = await mundoCentral(supabase, tenantId);
     const { data: existing } = await supabase
       .from("crm_leads").select("id").eq("phone", normalizedPhone).eq("tenant_id", tenantId)
-      .is("whatsapp_number_id", null).limit(1);
+      .or(orDoMundo(central)).limit(1);
     if (existing && existing.length > 0) {
       return new Response(JSON.stringify({ status: "duplicate", lead_id: existing[0].id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("tenant_id", tenantId)
         .eq("phone", normalizedPhone)
-        .is("whatsapp_number_id", null)
+        .or(orDoMundo(central))
         .limit(1)
         .maybeSingle();
       if (existing?.id) {

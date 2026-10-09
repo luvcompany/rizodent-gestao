@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
           }
 
           const mundo = await mundoDaEtapa(supabase, (auto as any).stage_id ?? null, mundoCache);
-          if ((auto as any).stage_id && !mesmoMundo(lead.whatsapp_number_id, mundo.numberId)) {
+          if ((auto as any).stage_id && !mesmoMundo(lead.whatsapp_number_id, mundo)) {
             await cancelar("lead pertence a outro número de WhatsApp");
             return;
           }

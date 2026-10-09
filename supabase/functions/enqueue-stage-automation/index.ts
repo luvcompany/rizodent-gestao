@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions, type ConditionsConfig } from "../_shared/automationConditions.ts";
-import { filtrarMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
+import { filtrarMundo, mundoDoFunil, type MundoRef } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,14 +150,15 @@ Deno.serve(async (req) => {
     }
 
     const tenantParaLeads = pipelineTenantId || userTenantId || null;
-    // Mundo do funil: o disparo em massa só alcança leads do número daquele funil
-    // (leads do mundo legado ficam de fora quando o funil é de um número próprio).
-    const numeroDoMundo = await numeroDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
+    // Mundo do funil: o disparo em massa só alcança leads da equipe daquele
+    // funil (central: legado + todos os números centrais; closer/recepção: os
+    // números do dono) — nunca de outra equipe.
+    const mundoDoDisparo = await mundoDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
     // Recorte por dono: a busca roda com service_role (ignora RLS), então o
     // filtro TEM de ir dentro da consulta paginada — filtrar depois já teria
     // lido (e paginado sobre) os leads das colegas.
     const somenteDoResponsavel = carregaPapelSdr ? userData.user.id : null;
-    const leads = await fetchAllLeads(admin, automation.stage_id, tenantParaLeads, numeroDoMundo, somenteDoResponsavel);
+    const leads = await fetchAllLeads(admin, automation.stage_id, tenantParaLeads, mundoDoDisparo, somenteDoResponsavel);
     const conditions = (actionConfig.conditions as ConditionsConfig | undefined) || undefined;
     const hasConditions = !!(conditions && Array.isArray(conditions.rules) && conditions.rules.length > 0);
     const eligibleLeads = leads.filter((lead) => {
@@ -214,7 +215,7 @@ async function fetchAllLeads(
   admin: any,
   stageId: string,
   tenantId: string | null,
-  numberId: string | null,
+  mundo: MundoRef,
   /** Quando preenchido, só leads deste responsável entram (recorte da SDR). */
   assignedTo: string | null = null,
 ) {
@@ -229,7 +230,7 @@ async function fetchAllLeads(
       .eq("is_blocked", false)
       .not("automation_paused", "is", true)
       .range(from, from + pageSize - 1);
-    query = filtrarMundo(query, numberId);
+    query = filtrarMundo(query, mundo);
     if (tenantId) query = query.eq("tenant_id", tenantId);
     // Recorte por dono do lead: aplicado NA consulta (e em toda página), não
     // depois — é o que impede o disparo da SDR de sair para lead de colega.

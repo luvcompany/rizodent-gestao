@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .not("automation_paused", "is", true)
             .eq("is_blocked", false),
-          mundo.numberId,
+          mundo,
         ).order("id"),
       );
 
@@ -582,7 +582,7 @@ Deno.serve(async (req) => {
             .eq("stage_id", auto.stage_id)
             .not("automation_paused", "is", true)
             .eq("is_blocked", false),
-          mundoReeng.numberId,
+          mundoReeng,
         ).order("id"),
       );
 
@@ -698,7 +698,7 @@ Deno.serve(async (req) => {
             .not("automation_paused", "is", true)
             .eq("is_blocked", false)
             .lt("updated_at", cutoff),
-          mundoStale.numberId,
+          mundoStale,
         ).order("id"),
       );
 
@@ -779,7 +779,7 @@ Deno.serve(async (req) => {
             .eq("id", appt.lead_id)
             .eq("stage_id", auto.stage_id)
             .eq("is_blocked", false),
-          mundoNoShow.numberId,
+          mundoNoShow,
         ).maybeSingle();
 
 
@@ -919,7 +919,7 @@ Deno.serve(async (req) => {
               .eq("id", appt.lead_id)
               .eq("stage_id", auto.stage_id)
               .eq("is_blocked", false),
-            mundoBefore.numberId,
+            mundoBefore,
           ).maybeSingle();
 
           if (!lead) continue;
@@ -1044,7 +1044,7 @@ Deno.serve(async (req) => {
               .eq("id", task.lead_id)
               .eq("stage_id", auto.stage_id)
               .eq("is_blocked", false),
-            mundoBefore.numberId,
+            mundoBefore,
           ).maybeSingle();
 
           if (!lead) continue;

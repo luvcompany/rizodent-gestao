@@ -99,6 +99,27 @@
       "when": 1791575908517,
       "tag": "0013_preserva_conversas_ao_trocar_numero",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791579605701,
+      "tag": "0014_numero_por_mundo",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791585698876,
+      "tag": "0015_seguranca_funcoes_internas",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791587134828,
+      "tag": "0016_regras_por_mundo",
+      "breakpoints": true
     }
   ]
 }

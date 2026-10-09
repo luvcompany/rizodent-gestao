@@ -1,7 +1,7 @@
 // bot-engine v2 - skipMarkAsRead scope fix
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
-import { mesmoMundo, numeroDoFunil } from "../_shared/mundoNumero.ts";
+import { mesmoMundo, mundoDoFunil } from "../_shared/mundoNumero.ts";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
 import { botDeveParar, CHAVE_ETAPA_DO_BOT } from "../_shared/etapaDoBot.ts";
 
@@ -1384,6 +1384,11 @@ async function executeNode(
     }
 
     case "move_stage": {
+      // Declarada FORA do if: o return do fim do case lê esta variável. Desde
+      // 30/09 ela vivia dentro do if e todo move_stage terminava em
+      // ReferenceError — o lead mudava de etapa, mas a execução do bot virava
+      // "error" e os nós seguintes nunca rodavam.
+      let destinoStageId: string | null = data.stageId || lead.stage_id || null;
       if (data.stageId && data.stageId !== lead.stage_id) {
         // A etapa destino tem de ser do MESMO cliente e do MESMO mundo (número de
         // WhatsApp) do lead. Sem isso, um bot podia mover o lead para o funil de
@@ -1403,9 +1408,9 @@ async function executeNode(
           return {};
         }
 
-        const numeroDestino = await numeroDoFunil(supabase, (destStage as any).pipeline_id ?? null, (destStage as any).tenant_id ?? lead.tenant_id ?? null);
-        if (!mesmoMundo(lead.whatsapp_number_id, numeroDestino)) {
-          console.warn(`[bot-engine] move_stage abortado — etapa ${data.stageId} pertence a outro número de WhatsApp (lead ${lead.id})`);
+        const mundoDestino = await mundoDoFunil(supabase, (destStage as any).pipeline_id ?? null, (destStage as any).tenant_id ?? lead.tenant_id ?? null);
+        if (!mesmoMundo(lead.whatsapp_number_id, mundoDestino)) {
+          console.warn(`[bot-engine] move_stage abortado — etapa ${data.stageId} pertence a outra equipe/número (lead ${lead.id})`);
           return {};
         }
 
@@ -1443,7 +1448,7 @@ async function executeNode(
         // A troca de funil INTENCIONAL continua: quando não há etapa equivalente,
         // o bot move entre funis como sempre. É o caso do Follow-UP mandando lead
         // frio para "Nutrição", que só existe no funil Nutrição.
-        let destinoStageId: string = data.stageId;
+        destinoStageId = data.stageId;
         let destinoPipelineId: string | null = (destStage as any).pipeline_id ?? lead.pipeline_id ?? null;
         let toName = (destStage as any).name || "?";
 

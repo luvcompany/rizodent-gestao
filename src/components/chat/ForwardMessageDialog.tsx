@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { envioFalhou, motivoDoEnvio } from "@/lib/erroDoEnvio";
 import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
 import AvisoDeEnvio from "./AvisoDeEnvio";
+import { numerosComMundo, orMesmoMundo } from "@/lib/mundoNumero";
 
 /**
  * Encaminhar uma mensagem do chat para outro lead do mesmo número — CONV-6.
@@ -83,8 +84,8 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
     status: mensagem?.status,
   });
 
-  // Cada número é um mundo: só é possível encaminhar para leads do MESMO
-  // tenant e da MESMA conexão (whatsapp_number_id) do lead de origem.
+  // Só é possível encaminhar para leads do MESMO tenant e da MESMA equipe
+  // (mundo do número: central, ou o closer/recepção dono) do lead de origem.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -104,7 +105,9 @@ export default function ForwardMessageDialog({ open, onOpenChange, messageConten
         .select("id, name, phone")
         .eq("tenant_id", tenantId)
         .neq("id", fromLeadId);
-      q = numberId ? q.eq("whatsapp_number_id", numberId) : q.is("whatsapp_number_id", null);
+      // Mesmo MUNDO (equipe) do lead de origem — não o mesmo id de número.
+      q = q.or(orMesmoMundo(await numerosComMundo(tenantId), numberId));
+      if (cancelled) return;
 
       // Busca server-side (nome ou telefone) em vez de 50 primeiros alfabéticos.
       const term = search.trim();

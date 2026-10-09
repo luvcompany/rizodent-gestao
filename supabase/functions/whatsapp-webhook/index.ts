@@ -87,19 +87,20 @@ function tenantSignatureAllowed(check: SignatureCheck, tenantId: string | null |
 // Grava como mensagem OUTBOUND na conversa do lead, marcada com from_device,
 // só para leads que JÁ existem — o app do celular fala com contatos que podem
 // não ser leads do CRM, e criar lead a partir de echo poluiria o funil.
-// Mesma regra do trigger normalize_lead_phone (migração 20260525160000):
-// crm_leads.phone é canônico "55<DDD><8 dígitos>" (9º dígito REMOVIDO). O echo
-// traz o número cru da Meta (com o 9) — sem normalizar, nenhum lead casa.
+// Cópia FIEL do trigger normalize_lead_phone (migrações 20260525160000 e
+// 20261005130212) e da função SQL telefone_canonico: crm_leads.phone é canônico
+// "55<DDD><8 dígitos>" (9º dígito REMOVIDO). A Meta manda o número cru — para
+// DDD 11–28 (e em números novos) ele vem COM o 9 — então toda busca de lead por
+// telefone passa por aqui. Sem isso, a 2ª mensagem de um contato desses dava
+// 23505 no insert, o "race" não achava o lead e a mensagem era descartada.
 function normalizeLeadPhone(raw: string): string | null {
-  let digits = (raw || "").replace(/\D/g, "");
-  if (!digits) return null;
-  if (digits.length >= 12 && digits.startsWith("55")) digits = digits.slice(2);
-  if (digits.length === 11) {
-    const ddd = digits.slice(0, 2);
-    const rest = digits.slice(2);
-    if (rest.startsWith("9")) digits = ddd + rest.slice(1);
-  }
-  return "55" + digits;
+  let v = String(raw ?? "").replace(/\D/g, "");
+  if (!v) return null;
+  if ((v.length === 11 || v.length === 12) && v.startsWith("0")) v = v.slice(1);
+  if ((v.length === 12 || v.length === 13) && v.startsWith("55")) v = v.slice(2);
+  else if (v.length !== 10 && v.length !== 11) return v;
+  if (v.length === 11 && v[2] === "9") v = v.slice(0, 2) + v.slice(3);
+  return "55" + v;
 }
 
 async function handleMessageEchoes(supabase: any, value: any, signatureCheck: SignatureCheck) {
@@ -298,7 +299,8 @@ async function handleCallsChange(supabase: any, value: any, signatureCheck: Sign
     let leadId: string | null = null;
     let normalizedRemote: string | null = null;
     if (remotePhone) {
-      normalizedRemote = String(remotePhone).replace(/\D/g, "");
+      // Telefone no formato canônico do CRM (sem o 9) — o cru da Meta não casa.
+      normalizedRemote = normalizeLeadPhone(String(remotePhone)) ?? String(remotePhone).replace(/\D/g, "");
       // Um telefone = um lead por mundo (SDR/CRC compartilham todos os números).
       const { data: callLeadId } = await supabase.rpc("lead_whatsapp_existente", {
         p_tenant: tenantId, p_phone: normalizedRemote, p_mundo: String((matched as any).owner_role ?? "crc"),
@@ -666,7 +668,7 @@ async function executeStageAutomationsForTriggers(
     for (const auto of automations || []) {
       const config = (auto.action_config || {}) as Record<string, any>;
       const mundo = await mundoDaEtapa(supabase, auto.stage_id ?? stageId);
-      if (!mesmoMundo((leadScope as any)?.whatsapp_number_id ?? null, mundo.numberId)) {
+      if (!mesmoMundo((leadScope as any)?.whatsapp_number_id ?? null, mundo)) {
         console.log(`[WEBHOOK] Skipping ${auto.id}: lead pertence a outro número de WhatsApp`);
         continue;
       }
@@ -944,6 +946,9 @@ Deno.serve(async (req) => {
 
           for (const msg of messages) {
             const from = msg.from;
+            // Busca de lead SEMPRE pelo canônico do banco (sem o 9); `from` cru
+            // continua sendo o destinatário dos envios.
+            const fromCanonico = normalizeLeadPhone(from) ?? from;
             const msgType = msg.type || "text";
             let content = "";
             let replyOptionId: string | null = null;
@@ -1338,7 +1343,7 @@ Deno.serve(async (req) => {
             const mundoDoNumero = String((matchedIntegration as any)?.owner_role ?? "crc");
             {
               const { data: existenteId } = await supabase.rpc("lead_whatsapp_existente", {
-                p_tenant: tenantId, p_phone: from, p_mundo: mundoDoNumero,
+                p_tenant: tenantId, p_phone: fromCanonico, p_mundo: mundoDoNumero,
               });
               if (existenteId) {
                 const { data: existente } = await supabase
@@ -1454,7 +1459,7 @@ Deno.serve(async (req) => {
                   if (insertLeadErr && (insertLeadErr as any).code === "23505") {
                     // Race: another webhook just created this lead. Reuse it (same world).
                     const { data: existenteId } = await supabase.rpc("lead_whatsapp_existente", {
-                      p_tenant: tenantId, p_phone: from, p_mundo: mundoDoNumero,
+                      p_tenant: tenantId, p_phone: fromCanonico, p_mundo: mundoDoNumero,
                     });
                     const { data: existing } = existenteId
                       ? await supabase.from("crm_leads").select(LEAD_COLS).eq("id", existenteId).maybeSingle()
@@ -1792,7 +1797,7 @@ Deno.serve(async (req) => {
                   for (const ra of reactiveAutos || []) {
                     const raCfg = (ra.action_config || {}) as Record<string, any>;
                     const mundo = await mundoDaEtapa(supabase, ra.stage_id ?? currentLeadData.stage_id);
-                    if (!mesmoMundo((currentLeadData as any)?.whatsapp_number_id ?? null, mundo.numberId)) {
+                    if (!mesmoMundo((currentLeadData as any)?.whatsapp_number_id ?? null, mundo)) {
                       console.log(`[WEBHOOK] Reactive auto ${ra.id} skipped: lead pertence a outro número de WhatsApp`);
                       continue;
                     }

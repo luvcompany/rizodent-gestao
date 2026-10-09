@@ -5,6 +5,8 @@ import type { WhatsappCallRow } from "@/contexts/WhatsappCallContext";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { numerosComMundo, orMesmoMundo } from "@/lib/mundoNumero";
+import { phoneKey } from "@/lib/phoneUtils";
 
 interface Props {
   call: WhatsappCallRow;
@@ -57,13 +59,19 @@ export const IncomingWhatsappCallModal: React.FC<Props> = ({ call, onAccept, onR
           .limit(1);
         numberId = (num as any[])?.[0]?.id ?? null;
       }
-      let q = supabase
+      // Chave de telefone (55 + DDD + 8 últimos): a Meta manda o 9 nos DDDs
+      // 11–28 e o lead é gravado sem ele — casar pelo telefone cru errava.
+      const chave = phoneKey(digits);
+      if (!chave) return;
+      const numeros = await numerosComMundo(call.tenant_id);
+      if (cancelled) return;
+      const { data } = await (supabase as any)
         .from("crm_leads")
         .select("id, name")
         .eq("tenant_id", call.tenant_id)
-        .eq("phone", digits);
-      q = numberId ? q.eq("whatsapp_number_id", numberId) : q.is("whatsapp_number_id", null);
-      const { data } = await q.limit(2);
+        .eq("phone_key", chave)
+        .or(orMesmoMundo(numeros, numberId))
+        .limit(2);
       if (cancelled) return;
       const rows = (data as any[]) || [];
       // Ambíguo (2+): não resolve lead — mostra só o telefone.
