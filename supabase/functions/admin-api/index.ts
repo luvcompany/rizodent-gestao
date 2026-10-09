@@ -340,8 +340,9 @@ async function conversationsUnreadCount(tenantId: string) {
 // tela Conversas — get_crm_unread_leads_count_by_channel): a última mensagem é
 // do lead (crm_leads.last_inbound_at > last_outbound_at), entrada nos últimos
 // 60 dias, conversa NÃO fechada e lead não bloqueado. Visão do gestor (todos
-// os números e funis). Mesmo formato de /conversations/unread-count, que segue
-// com a regra antiga (contava conversa fechada como aberta).
+// os números e funis), sem comentário do Instagram: o lead precisa ter mensagem
+// esperando depois da nossa última. Mesmo formato de /conversations/unread-count,
+// que segue com a regra antiga (contava conversa fechada como aberta).
 async function conversationsEmAberto(tenantId: string) {
   const desde = new Date(Date.now() - 60 * 86400000).toISOString();
   const rows = await fetchAllPaged<any>(
@@ -382,8 +383,11 @@ async function conversationsEmAberto(tenantId: string) {
       if (t !== undefined) l.aguardando_desde = new Date(t).toISOString();
     }
   }
-  for (const l of abertas) l.aguardando_desde ??= l.last_inbound_at;
-  return json(await resumoConversas(tenantId, abertas, "aguardando_desde"));
+  // Só conta quem tem MENSAGEM (não comentário do Instagram) esperando depois da
+  // nossa última: comentário não é conversa em aberto (regra do dono), e a coluna
+  // last_inbound_at também sobe com comentário.
+  const esperando = abertas.filter((l) => l.aguardando_desde);
+  return json(await resumoConversas(tenantId, esperando, "aguardando_desde"));
 }
 
 /** Separa comercial × pós-venda (pelo nome do funil), canal e cidade. */
