@@ -534,7 +534,7 @@ Deno.serve(async (req) => {
       await admin.from("funnel_channels").delete().eq("tenant_id", tenantId)
         .eq("channel_config->>integration_key", chave);
       await admin.from("integrations").delete().eq("tenant_id", tenantId).eq("key", chave);
-      await admin.from("user_permission_overrides").delete().eq("id", override.id);
+      // Nunca remover o acesso do usuário: mensagens e leads antigos dependem dele para continuar visíveis.
 
       await admin
         .from("whatsapp_numbers")
