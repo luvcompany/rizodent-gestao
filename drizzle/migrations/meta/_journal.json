@@ -190,6 +190,13 @@
       "when": 1791591060033,
       "tag": "0026_modelos_por_conta",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791596353303,
+      "tag": "0027_ligacoes_api4com_por_sdr",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,40 @@ const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, h
 const onlyDigits = (s: string) => String(s || "").replace(/\D/g, "");
 const last8 = (s: string) => { const d = onlyDigits(s); return d.length >= 8 ? d.slice(-8) : d; };
 
+// A Api4Com manda o horário LOCAL (Bahia) com sufixo "Z": o instante real é esse
+// relógio em -03:00 (started_at gravado fica 3 h antes — ver migration 0027).
+const instanteApi4com = (s: unknown): string | null => {
+  if (!s) return null;
+  const t = Date.parse(String(s).replace(/Z$/i, "-03:00"));
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+};
+
+// Quem fez a ligação (migration 0027). A extensão do Chrome disca sem metadata e
+// do mesmo ramal para todas as SDRs, então a ordem é: userId do botão do CRM
+// (/dialer) → dono do ramal (api4com_extensions) → SDR dona do lead na hora
+// (estimativa). Nunca bloqueia a importação.
+async function quemLigou(admin: any, tenantId: string, c: any, leadId: string | null): Promise<{ uid: string | null; origem: string | null }> {
+  try {
+    const meta = c?.metadata?.userId;
+    if (meta) {
+      const { data } = await admin.from("profiles").select("id").eq("id", meta).eq("tenant_id", tenantId).maybeSingle();
+      if (data?.id) return { uid: data.id, origem: "metadata" };
+    }
+    const ramal = onlyDigits(c?.from ?? c?.caller ?? "");
+    if (ramal && ramal.length <= 6) {
+      const { data } = await admin.from("api4com_extensions").select("user_id")
+        .eq("tenant_id", tenantId).eq("ramal", ramal).maybeSingle();
+      if (data?.user_id) return { uid: data.user_id, origem: "ramal" };
+    }
+    const quando = instanteApi4com(c?.started_at ?? c?.startedAt);
+    if (leadId && quando) {
+      const { data } = await admin.rpc("api4com_dona_sdr_no_momento", { p_lead: leadId, p_quando: quando });
+      if (data) return { uid: data as string, origem: "dona_do_lead" };
+    }
+  } catch (_) { /* nunca bloqueia a importação */ }
+  return { uid: null, origem: null };
+}
+
 function isSafePublicHttpsUrl(raw: string): boolean {
   try {
     const u = new URL(String(raw));
@@ -108,6 +142,7 @@ Deno.serve(async (req) => {
             : (c.recordUrl && isSafePublicHttpsUrl(c.recordUrl) ? c.recordUrl : null);
           const dur = Number(c.duration ?? c.billsec ?? 0) || null;
           const status = dur && dur > 0 ? "answered" : "no-answer";
+          const quem = await quemLigou(admin, cfg.tenant_id, c, leadId);
 
           const { data: inserted, error: insErr } = await admin.from("api4com_calls").insert({
             tenant_id: cfg.tenant_id,
@@ -123,6 +158,8 @@ Deno.serve(async (req) => {
             started_at: c.started_at ?? c.startedAt ?? null,
             ended_at: c.ended_at ?? c.endedAt ?? null,
             answered_at: c.answered_at ?? c.answeredAt ?? null,
+            user_id: quem.uid,
+            user_origem: quem.origem,
             raw_payload: c,
           }).select("id").single();
           if (insErr) {

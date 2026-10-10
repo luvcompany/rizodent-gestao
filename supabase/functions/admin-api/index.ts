@@ -2607,7 +2607,7 @@ async function reportSdr(tenantId: string, p: URLSearchParams) {
   const [tel, wa] = await Promise.all([
     fetchAllPaged<any>(
       () => admin.from("api4com_calls")
-        .select("id, status, duration_seconds, started_at, created_at, uid:raw_payload->metadata->>userId")
+        .select("id, status, duration_seconds, started_at, created_at, user_id, uid:raw_payload->metadata->>userId")
         .eq("tenant_id", tenantId).eq("direction", "outbound")
         .gte("created_at", folgaIni).lte("created_at", folgaFim),
       "id",
@@ -2629,7 +2629,9 @@ async function reportSdr(tenantId: string, p: URLSearchParams) {
     ligacoes.set(uid, l);
   };
   const dentro = (r: any) => { const t = Date.parse(r.started_at ?? r.created_at); return t >= iniMs && t <= fimMs; };
-  for (const r of tel) if (r.uid && dentro(r)) somaLig(r.uid, r.status === "answered", r.duration_seconds, "telefonia");
+  // Quem ligou: api4com_calls.user_id (migration 0027: botão, ramal ou a SDR dona do
+  // lead na hora — estimativa), com o userId do metadata como reserva.
+  for (const r of tel) { const uid = r.user_id ?? r.uid; if (uid && dentro(r)) somaLig(uid, r.status === "answered", r.duration_seconds, "telefonia"); }
   for (const r of wa) if (dentro(r)) somaLig(r.initiated_by, r.connected_at != null || ["accepted", "completed"].includes(r.status), r.duration_seconds, "whatsapp");
   const ligOut = (l?: { feitas: number; atendidas: number; telefonia: number; whatsapp: number; dur: number[] }) => ({
     feitas: l?.feitas ?? 0, atendidas: l?.atendidas ?? 0, telefonia: l?.telefonia ?? 0, whatsapp: l?.whatsapp ?? 0,
