@@ -80,10 +80,13 @@ async function integracoesDoTenant(admin: any, tenantId: string): Promise<any[]>
 }
 
 /**
- * Lista os números da EQUIPE do usuário (closer/recepção: os de que ele é
- * dono; demais papéis: os da central). Inativos vêm marcados como histórico.
- * Nunca devolve token. Antes listava pelos user_permission_overrides do
- * usuário — que a conexão deixou de gravar.
+ * Lista os números ATIVOS da EQUIPE do usuário (closer/recepção: os de que ele
+ * é dono; demais papéis: os da central). Nunca devolve token. Antes listava
+ * pelos user_permission_overrides do usuário — que a conexão deixou de gravar.
+ *
+ * Número excluído/desativado não aparece mais (como no Kommo: excluiu, some).
+ * A linha continua em whatsapp_numbers só como histórico das conversas e dos
+ * leads; conectar de novo o mesmo número reativa essa linha.
  */
 async function listarMeusNumeros(
   admin: any,
@@ -98,7 +101,7 @@ async function listarMeusNumeros(
   falhou("ler números", error);
 
   const numeros = ((todos ?? []) as any[])
-    .filter((n) => numeroEhDaEquipe(n, userId, papeis))
+    .filter((n) => n.is_active === true && numeroEhDaEquipe(n, userId, papeis))
     .sort(ordemDeNumeros);
   if (numeros.length === 0) return [];
 
