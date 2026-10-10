@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { filtrarLeadsNovos } from "@/lib/leadNovo";
+import { contaComoLeadNovo } from "@/lib/leadNovo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -131,11 +131,15 @@ async function loadDashboardData(
   // Leads de hoje: dia inteiro no fuso do tenant, inclusivo até 23:59:59.999
   const leadsBounds = rangeNoFuso(hoje, hoje);
 
-  const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
+  const [tasksAll, appointmentsAll, leadsHoje, pagamentosAll] = await Promise.all([
     fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
     fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
-    // Lead novo pela regra única do banco (eh_lead_novo, ver leadNovo.ts).
-    filtrarLeadsNovos(supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso)),
+    // Lead novo pela regra única do banco: a coluna calculada eh_lead_novo vem no
+    // select e a contagem é feita aqui (ver leadNovo.ts).
+    fetchAllPaged<{ id: string; eh_lead_novo?: boolean | null }>(
+      () => supabase.from("crm_leads").select("id, eh_lead_novo" as "*").gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso) as never,
+      "id",
+    ),
     // As duas marcas vêm junto com o valor porque é o que separa faturamento de
     // MARKETING do caixa bruto (ver contaComoFaturamento). Sem elas o card
     // mostrava R$ 92.742 onde o Dashboard principal mostrava R$ 79.212 — o
@@ -147,9 +151,8 @@ async function loadDashboardData(
       "id",
     ),
   ]);
-  if (leadsCountRes.error || leadsCountRes.count === null) {
-    throw new Error(`contagem de leads de hoje falhou: ${leadsCountRes.error?.message ?? "count nulo"}`);
-  }
+  // fetchAllPaged lança erro em qualquer falha (nunca vira zero silencioso).
+  const leadsTodayCount = leadsHoje.filter(contaComoLeadNovo).length;
 
   // Buscar só os nomes dos leads referenciados (em vez de TODOS os leads)
   const refIds = Array.from(new Set([
@@ -188,7 +191,7 @@ async function loadDashboardData(
     .filter(contaComoFaturamento)
     .reduce((s, p) => s + Number(p.valor || 0), 0);
 
-  return { tasks, appointments, leadsToday: leadsCountRes.count, faturamentoMes };
+  return { tasks, appointments, leadsToday: leadsTodayCount, faturamentoMes };
 }
 
 /** Pré-carrega os dados do dashboard.

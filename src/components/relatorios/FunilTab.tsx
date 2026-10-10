@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { filtrarLeadsNovos } from "@/lib/leadNovo";
+import { contaComoLeadNovo } from "@/lib/leadNovo";
 import { fetchAllPaged, motivoDaFalhaDeLeitura, rangeNoFuso } from "@/lib/reportKit";
 import { RpcErrorCard } from "@/components/RpcErrorCard";
 import { Card } from "@/components/ui/card";
@@ -62,13 +62,14 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
         // Coorte de leads novos pela regra única do banco (eh_lead_novo, ver
         // leadNovo.ts). Período no fuso da clínica.
         const janela = range ? rangeNoFuso(range.start, range.end) : null;
-        const ld = await fetchAllPaged<Lead>(() => {
-          let q = filtrarLeadsNovos(
-            supabase.from("crm_leads").select("id,stage_id,value,created_at").eq("pipeline_id", pid)
-          );
+        // A coluna calculada vem no select e o corte é feito aqui (filtro por
+        // coluna calculada não é usado: contagem HEAD com ele falhou no PostgREST).
+        const todos = await fetchAllPaged<Lead & { eh_lead_novo?: boolean | null }>(() => {
+          let q = supabase.from("crm_leads").select("id,stage_id,value,created_at,eh_lead_novo" as "*").eq("pipeline_id", pid);
           if (janela) q = q.gte("created_at", janela.gteIso).lte("created_at", janela.lteIso);
           return q as never;
         }, "id");
+        const ld = todos.filter(contaComoLeadNovo);
         const leadIds = ld.map((l) => l.id);
         const hrows: Hist[] = [];
         for (let i = 0; i < leadIds.length; i += 200) {

@@ -9,7 +9,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: vi.fn() } }));
 
-import { contaComoLeadNovo, filtrarLeadsNovos } from "@/lib/leadNovo";
+import { contaComoLeadNovo } from "@/lib/leadNovo";
 import { ehEtapaDesqualificado } from "@/lib/desqualificacao";
 import { avisarQueLeadMudou, cacheDoKanbanVale } from "@/lib/kanbanFresco";
 import MotivoDesqualificacaoDialog from "@/components/crm/MotivoDesqualificacaoDialog";
@@ -23,12 +23,6 @@ describe("lead novo", () => {
     expect(contaComoLeadNovo({ source: "kommo" })).toBe(false);
     expect(contaComoLeadNovo({ source: null })).toBe(true);
     expect(contaComoLeadNovo({ source: "facebook_ad" })).toBe(true);
-  });
-  it("filtro do banco usa a coluna calculada eh_lead_novo", () => {
-    const chamadas: unknown[][] = [];
-    const q = { filter(...args: unknown[]) { chamadas.push(args); return q; } };
-    expect(filtrarLeadsNovos(q)).toBe(q);
-    expect(chamadas).toEqual([["eh_lead_novo", "eq", true]]);
   });
 });
 

@@ -15,7 +15,9 @@
  *
  * Como o recontato precisa olhar a base inteira da clínica (que a SDR não
  * enxerga), a regra mora no banco: as telas pedem a coluna calculada
- * `eh_lead_novo` no select ou filtram por ela. Antes cada tela tinha a sua régua
+ * `eh_lead_novo` no select e contam com contaComoLeadNovo (não filtre pela
+ * coluna calculada na consulta: a contagem HEAD com esse filtro falhou no
+ * PostgREST). Antes cada tela tinha a sua régua
  * (Relatórios 345, Dashboard/Kanban 343, API 331 e painel de TV 329 em out/26).
  */
 export const ORIGEM_CRIADA_PELA_CONCILIACAO = "kommo";
@@ -31,13 +33,4 @@ export const COLUNA_LEAD_NOVO = "eh_lead_novo";
 export function contaComoLeadNovo(lead: { eh_lead_novo?: boolean | null; source?: string | null }): boolean {
   if (typeof lead.eh_lead_novo === "boolean") return lead.eh_lead_novo;
   return lead.source !== ORIGEM_CRIADA_PELA_CONCILIACAO;
-}
-
-/**
- * Filtro equivalente para consultas no banco: só os leads novos (coluna
- * calculada). `.filter` e não `.eq` porque a coluna calculada não está nos tipos
- * gerados da tabela.
- */
-export function filtrarLeadsNovos<Q extends { filter: (coluna: string, operador: string, valor: unknown) => Q }>(consulta: Q): Q {
-  return consulta.filter(COLUNA_LEAD_NOVO, "eq", true);
 }
