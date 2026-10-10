@@ -1027,8 +1027,13 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
     // não contam no funil — decisão do dono. Continuam visíveis no inbox/leads.
     // Desde 09/10/2026: regra única de lead novo do banco (eh_lead_novo, migration
     // 0023) — também tira recontato da base e lead recriado em menos de 7 dias.
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).filter("eh_lead_novo", "eq", true).gte("created_at", gteIso).lte("created_at", lteIso),
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).in("lead_novo_motivo", ["retroativo", "sintetico"]).gte("created_at", gteIso).lte("created_at", lteIso),
+    // (contagem HEAD com filtro em coluna calculada falha no PostgREST: lê o motivo
+    // de cada lead do período e conta aqui.)
+    fetchAllPaged<{ motivo: string | null }>(
+      () => admin.from("crm_leads").select("id, motivo:lead_novo_motivo")
+        .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
+      "id",
+    ).then((data) => ({ data, error: null }), (e) => ({ data: null, error: { message: String(e?.message ?? e) } })),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "inbound").gte("created_at", gteIso).lte("created_at", lteIso),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "outbound").gte("created_at", gteIso).lte("created_at", lteIso),
     // crm_appointments usa scheduled_date (DATE) — scheduled_at não existe.
@@ -1040,7 +1045,8 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
   // Nenhum erro pode virar zero silencioso.
   const failed = results.find((r: any) => r.error);
   if (failed) return json({ error: (failed as any).error.message }, 500);
-  const [leadsRes, leadsRetroRes, inRes, outRes, schedRes, contrApptRes, clinRes] = results as any[];
+  const [leadsRes, inRes, outRes, schedRes, contrApptRes, clinRes] = results as any[];
+  const motivos = (leadsRes.data || []) as { motivo: string | null }[];
 
   // CONTRATADOS canônicos: pacientes cujo primeiro pagamento cai no período.
   const clinicaIds = ((clinRes.data || []) as any[]).map((c) => c.id as string);
@@ -1048,10 +1054,10 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
 
   return json({
     period: { from: fromDay, to: toDay, timezone: BAHIA_TZ },
-    leads_created: leadsRes.count ?? 0,
+    leads_created: motivos.filter((r) => !r.motivo).length,
     // Leads sintéticos do trigger ensure_lead_for_pagamento, segregados para
     // não inflar leads_created (não são leads que chegaram no período).
-    leads_retroativos: leadsRetroRes.count ?? 0,
+    leads_retroativos: motivos.filter((r) => r.motivo === "retroativo" || r.motivo === "sintetico").length,
     messages_inbound: inRes.count ?? 0,
     messages_outbound: outRes.count ?? 0,
     appointments_scheduled: schedRes.count ?? 0,
