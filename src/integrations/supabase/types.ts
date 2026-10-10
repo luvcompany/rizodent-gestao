@@ -1045,6 +1045,8 @@ export type Database = {
           tenant_id: string
           to_phone: string | null
           transcription: string | null
+          user_id: string | null
+          user_origem: string | null
         }
         Insert: {
           answered_at?: string | null
@@ -1064,6 +1066,8 @@ export type Database = {
           tenant_id: string
           to_phone?: string | null
           transcription?: string | null
+          user_id?: string | null
+          user_origem?: string | null
         }
         Update: {
           answered_at?: string | null
@@ -1083,6 +1087,8 @@ export type Database = {
           tenant_id?: string
           to_phone?: string | null
           transcription?: string | null
+          user_id?: string | null
+          user_origem?: string | null
         }
         Relationships: [
           {
@@ -6155,6 +6161,10 @@ export type Database = {
         Returns: string
       }
       api4com_dial_enabled: { Args: never; Returns: boolean }
+      api4com_dona_sdr_no_momento: {
+        Args: { p_lead: string; p_quando: string }
+        Returns: string
+      }
       assert_tenant_do_chamador: {
         Args: { _tenant: string }
         Returns: undefined
