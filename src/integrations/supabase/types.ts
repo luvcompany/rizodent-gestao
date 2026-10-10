@@ -6502,9 +6502,14 @@ export type Database = {
           minutes_ago: number
         }[]
       }
+      definir_numero_padrao: { Args: { p_numero: string }; Returns: string }
       dono_restrito_do_numero: {
         Args: { _number_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      eh_lead_novo: {
+        Args: { l: Database["public"]["Tables"]["crm_leads"]["Row"] }
+        Returns: boolean
       }
       ensure_instagram_pipeline: {
         Args: { _tenant_id: string }
@@ -6763,6 +6768,10 @@ export type Database = {
       lead_da_caixa_do_instagram: {
         Args: { _lead_id: string }
         Returns: boolean
+      }
+      lead_novo_motivo: {
+        Args: { l: Database["public"]["Tables"]["crm_leads"]["Row"] }
+        Returns: string
       }
       lead_tem_pagamento_de_contrato: {
         Args: { p_ate?: string; p_desde: string; p_lead_id: string }
@@ -7126,6 +7135,10 @@ export type Database = {
           id: string
           nome: string
         }[]
+      }
+      promover_numero_padrao: {
+        Args: { p_motivo: string; p_tenant: string }
+        Returns: string
       }
       recalculate_all_lead_scores:
         | { Args: never; Returns: undefined }
