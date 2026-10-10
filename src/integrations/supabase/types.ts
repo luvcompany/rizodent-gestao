@@ -6800,6 +6800,10 @@ export type Database = {
         Returns: string
       }
       lead_whatsapp_number: { Args: { _lead_id: string }; Returns: string }
+      ligacao_numero_visivel: {
+        Args: { _number_id: string; _pnid: string; _tenant: string }
+        Returns: boolean
+      }
       map_source_to_origem: { Args: { src: string }; Returns: string }
       match_good_examples: {
         Args: {
