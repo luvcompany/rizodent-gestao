@@ -1,34 +1,43 @@
 /**
- * O que conta como "lead novo".
+ * O que conta como "lead novo" — regra única do dono (09/10/2026), calculada no
+ * banco por public.eh_lead_novo(crm_leads) (migration 0023).
  *
- * A conciliação com o Dontus (edge function dontus-sync) cria um lead quando
- * entra uma venda de origem KOMMO e o paciente não existe no CRM. Esse lead
- * nasce já em Contratado, com source = 'kommo', no dia do pagamento — e
- * aparecia como "Novo lead" do dia (relato da gestão, 21/09/2026: "os
- * contratados do dia estão contando como novo lead"). Ele não é um contato
- * novo: é um paciente que já fechou e só faltava no CRM.
+ * Lead novo = quem ENTRA no sistema no período. Não conta:
+ *  - quem só comentou no Instagram (comment_only);
+ *  - o lead que a conciliação com o Dontus cria já em Contratado (source
+ *    'kommo' — relato da gestão, 21/09/2026: "os contratados do dia estão
+ *    contando como novo lead");
+ *  - o lead sintético criado a partir de pagamento (Retroativo / tag
+ *    sintetico_pagamento);
+ *  - o RECONTATO de quem já está na base (outro lead com o mesmo telefone ou
+ *    Instagram criado antes);
+ *  - o lead apagado e criado de novo em menos de 7 dias.
  *
- * A marca é o source 'kommo': só a conciliação grava esse valor (a tela não
- * oferece essa origem), e todos os 32 leads com ele, até 22/09/2026, foram
- * criados por ela.
+ * Como o recontato precisa olhar a base inteira da clínica (que a SDR não
+ * enxerga), a regra mora no banco: as telas pedem a coluna calculada
+ * `eh_lead_novo` no select ou filtram por ela. Antes cada tela tinha a sua régua
+ * (Relatórios 345, Dashboard/Kanban 343, API 331 e painel de TV 329 em out/26).
  */
 export const ORIGEM_CRIADA_PELA_CONCILIACAO = "kommo";
 
-export function contaComoLeadNovo(lead: { source?: string | null }): boolean {
+/** Coluna calculada (public.eh_lead_novo) — inclua no select de crm_leads. */
+export const COLUNA_LEAD_NOVO = "eh_lead_novo";
+
+/**
+ * Lead carregado COM a coluna calculada `eh_lead_novo` usa a régua do banco.
+ * Sem ela (select antigo), cai na régua antiga — só a conciliação fica de fora —
+ * para nunca contar a mais por falta da coluna.
+ */
+export function contaComoLeadNovo(lead: { eh_lead_novo?: boolean | null; source?: string | null }): boolean {
+  if (typeof lead.eh_lead_novo === "boolean") return lead.eh_lead_novo;
   return lead.source !== ORIGEM_CRIADA_PELA_CONCILIACAO;
 }
 
 /**
- * Filtro equivalente para consultas no banco: `.or(FILTRO_LEAD_NOVO)`.
- * Não use `.neq("source", "kommo")` — no SQL, `source <> 'kommo'` também
- * descarta os leads SEM origem (NULL), que são leads novos de verdade.
+ * Filtro equivalente para consultas no banco: só os leads novos (coluna
+ * calculada). `.filter` e não `.eq` porque a coluna calculada não está nos tipos
+ * gerados da tabela.
  */
-export const FILTRO_LEAD_NOVO = `source.is.null,source.neq.${ORIGEM_CRIADA_PELA_CONCILIACAO}`;
-
-// ─── Adaptador para as telas do redesign (01/10/2026) ───
-// O Dashboard do v2 aplica o filtro de "lead novo" por esta função. A régua é
-// a do CRClin (pedido da Julia, 22/09): lead criado pela conciliação (source
-// 'kommo') não é lead novo.
-export function filtrarLeadsNovos<Q extends { or: (filtro: string) => Q }>(consulta: Q): Q {
-  return consulta.or(FILTRO_LEAD_NOVO);
+export function filtrarLeadsNovos<Q extends { filter: (coluna: string, operador: string, valor: unknown) => Q }>(consulta: Q): Q {
+  return consulta.filter(COLUNA_LEAD_NOVO, "eq", true);
 }

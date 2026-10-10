@@ -134,7 +134,7 @@ async function loadDashboardData(
   const [tasksAll, appointmentsAll, leadsCountRes, pagamentosAll] = await Promise.all([
     fetchAllPaged<Task>(() => supabase.from("crm_tasks").select("*").neq("status", "done").gte("due_date", taskWindowStart), "id"),
     fetchAllPaged<Appointment>(() => supabase.from("crm_appointments").select("*").gte("scheduled_date", apptWindowStart).lte("scheduled_date", apptWindowEnd), "id"),
-    // Lead criado pela conciliação do Dontus não é lead novo (leadNovo.ts).
+    // Lead novo pela regra única do banco (eh_lead_novo, ver leadNovo.ts).
     filtrarLeadsNovos(supabase.from("crm_leads").select("id", { count: "exact", head: true }).gte("created_at", leadsBounds.gteIso).lte("created_at", leadsBounds.lteIso)),
     // As duas marcas vêm junto com o valor porque é o que separa faturamento de
     // MARKETING do caixa bruto (ver contaComoFaturamento). Sem elas o card

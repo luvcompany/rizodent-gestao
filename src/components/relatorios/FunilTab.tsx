@@ -59,8 +59,8 @@ export default function FunilTab({ pipelines, pipelineId }: Props) {
         const { data: st, error: stErr } = await supabase.from("crm_stages")
           .select("id,name,position,color,is_won,is_lost").eq("pipeline_id", pid).order("position");
         if (stErr) { const e = new Error(stErr.message); (e as { cause?: unknown }).cause = stErr; throw e; }
-        // Coorte de leads novos: fora os criados pela conciliação do Dontus e os
-        // sintéticos de pagamento (leadNovo.ts). Período no fuso da clínica.
+        // Coorte de leads novos pela regra única do banco (eh_lead_novo, ver
+        // leadNovo.ts). Período no fuso da clínica.
         const janela = range ? rangeNoFuso(range.start, range.end) : null;
         const ld = await fetchAllPaged<Lead>(() => {
           let q = filtrarLeadsNovos(

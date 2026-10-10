@@ -1025,8 +1025,10 @@ async function reportOverview(tenantId: string, p: URLSearchParams) {
     // `.or` em vez de `.neq` para não descartar source NULL (lógica ternária SQL).
     // comment_only=true (leads nascidos de COMENTÁRIO no Instagram, sem Direct)
     // não contam no funil — decisão do dono. Continuam visíveis no inbox/leads.
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("comment_only", false).or("source.is.null,source.neq.Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
-    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("comment_only", false).eq("source", "Retroativo").gte("created_at", gteIso).lte("created_at", lteIso),
+    // Desde 09/10/2026: regra única de lead novo do banco (eh_lead_novo, migration
+    // 0023) — também tira recontato da base e lead recriado em menos de 7 dias.
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).filter("eh_lead_novo", "eq", true).gte("created_at", gteIso).lte("created_at", lteIso),
+    admin.from("crm_leads").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).in("lead_novo_motivo", ["retroativo", "sintetico"]).gte("created_at", gteIso).lte("created_at", lteIso),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "inbound").gte("created_at", gteIso).lte("created_at", lteIso),
     admin.from("messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("direction", "outbound").gte("created_at", gteIso).lte("created_at", lteIso),
     // crm_appointments usa scheduled_date (DATE) — scheduled_at não existe.
@@ -1095,17 +1097,21 @@ async function reportFunnel(tenantId: string, p: URLSearchParams) {
 async function reportBySource(tenantId: string, p: URLSearchParams) {
   const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
   // Paginado — o PostgREST corta em 1000 linhas e truncaria a contagem.
-  const rows = await fetchAllPaged<{ source: string | null }>(
-    () => admin.from("crm_leads").select("id, source")
-      .eq("tenant_id", tenantId).eq("comment_only", false).gte("created_at", gteIso).lte("created_at", lteIso),
+  // motivo = public.lead_novo_motivo (regra única de lead novo do banco, migration
+  // 0023): NULL é lead novo. Fica de fora quem só comentou no Instagram, a
+  // conciliação kommo, o recontato de quem já está na base e o lead recriado em
+  // menos de 7 dias.
+  const rows = await fetchAllPaged<{ source: string | null; motivo: string | null }>(
+    () => admin.from("crm_leads").select("id, source, motivo:lead_novo_motivo")
+      .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
     "id",
   );
-  // Leads sintéticos do trigger ensure_lead_for_pagamento (source='Retroativo')
-  // ficam FORA de data/total (created_at deles é a data do lançamento do
-  // pagamento, não a chegada de um lead) — segregados em `retroativos` para a
-  // soma de `data` sempre bater com `total`.
-  const retroativos = rows.filter((r) => r.source === "Retroativo").length;
-  const reais = rows.filter((r) => r.source !== "Retroativo");
+  // Leads sintéticos do trigger ensure_lead_for_pagamento (source='Retroativo' ou
+  // tag sintetico_pagamento) ficam FORA de data/total (created_at deles é a data
+  // do lançamento do pagamento, não a chegada de um lead) — segregados em
+  // `retroativos` para a soma de `data` sempre bater com `total`.
+  const retroativos = rows.filter((r) => r.motivo === "retroativo" || r.motivo === "sintetico").length;
+  const reais = rows.filter((r) => !r.motivo);
   const counts: Record<string, number> = {};
   for (const r of reais) {
     const k = r.source || "Sem origem";
@@ -2370,76 +2376,36 @@ async function leadsDistintosSdr(tenantId: string, sdrs: Set<string>, gteIso: st
   });
 }
 
-/**
- * Regra do dono (09/10/2026) de lead novo = quem ENTRA no sistema no período:
- * - "recontato": já existe na base outro lead com o mesmo telefone (ou o mesmo
- *   Instagram) criado antes — é contato antigo voltando, não lead novo;
- * - "recriado": foi apagado e criado de novo em menos de 7 dias (cópia do lead
- *   apagado em deleted_leads_backup, guardada desde 09/09/2026). Recriado depois
- *   de 7 dias conta como novo.
- */
-async function leadsQueJaEstavamNaBase(tenantId: string, leads: any[]): Promise<Map<string, "recontato" | "recriado">> {
-  const SETE_DIAS = 7 * 86400000;
-  const motivo = new Map<string, "recontato" | "recriado">();
-  const chaves = (l: any) => [l.phone ? `f:${l.phone}` : null, l.instagram_user_id ? `i:${l.instagram_user_id}` : null].filter(Boolean) as string[];
-  const outros = new Map<string, { id: string; em: number }[]>(); // chave → leads existentes
-  const apagados = new Map<string, { id: string | null; em: number }[]>(); // chave → exclusões
-  const add = <T,>(m: Map<string, T[]>, k: string, v: T) => { const l = m.get(k); if (l) l.push(v); else m.set(k, [v]); };
-  const fones = [...new Set(leads.map((l) => l.phone).filter(Boolean))] as string[];
-  const igs = [...new Set(leads.map((l) => l.instagram_user_id).filter(Boolean))] as string[];
-  for (const bloco of chunk(fones, 150)) {
-    const [ex, del] = await Promise.all([
-      fetchAllPaged<any>(() => admin.from("crm_leads").select("id, phone, created_at").eq("tenant_id", tenantId).in("phone", bloco), "id"),
-      fetchAllPaged<any>(() => admin.from("deleted_leads_backup").select("id, original_lead_id, lead_phone, deleted_at").eq("tenant_id", tenantId).in("lead_phone", bloco), "id"),
-    ]);
-    for (const r of ex) add(outros, `f:${r.phone}`, { id: r.id, em: Date.parse(r.created_at) });
-    for (const r of del) add(apagados, `f:${r.lead_phone}`, { id: r.original_lead_id, em: Date.parse(r.deleted_at) });
-  }
-  for (const bloco of chunk(igs, 150)) {
-    const [ex, del] = await Promise.all([
-      fetchAllPaged<any>(() => admin.from("crm_leads").select("id, instagram_user_id, created_at").eq("tenant_id", tenantId).in("instagram_user_id", bloco), "id"),
-      fetchAllPaged<any>(() => admin.from("deleted_leads_backup").select("id, original_lead_id, deleted_at, ig:lead_snapshot->>instagram_user_id").eq("tenant_id", tenantId).in("lead_snapshot->>instagram_user_id", bloco), "id"),
-    ]);
-    for (const r of ex) add(outros, `i:${r.instagram_user_id}`, { id: r.id, em: Date.parse(r.created_at) });
-    for (const r of del) add(apagados, `i:${r.ig}`, { id: r.original_lead_id, em: Date.parse(r.deleted_at) });
-  }
-  for (const l of leads) {
-    const criado = Date.parse(l.created_at);
-    const ks = chaves(l);
-    if (ks.some((k) => (outros.get(k) ?? []).some((o) => o.id !== l.id && o.em < criado))) { motivo.set(l.id, "recontato"); continue; }
-    if (ks.some((k) => (apagados.get(k) ?? []).some((d) => d.id !== l.id && d.em <= criado && criado - d.em < SETE_DIAS))) motivo.set(l.id, "recriado");
-  }
-  return motivo;
-}
-
 // ===== /reports/leads-novos =====
 // Leads NOVOS do período pelas decisões já tomadas no CRM: fica de fora quem só
 // comentou no Instagram (comment_only), a conciliação com o Dontus (source kommo),
 // o lead sintético criado a partir de pagamento (source Retroativo ou tag
 // sintetico_pagamento), o recontato de quem já está na base e o lead apagado e
-// recriado em menos de 7 dias (leadsQueJaEstavamNaBase). Dia no fuso de Salvador. Devolve grupos cidade × source ×
+// recriado em menos de 7 dias — a regra única do banco (public.lead_novo_motivo,
+// migration 0023), a mesma das telas do CRM. Dia no fuso de Salvador. Devolve grupos cidade × source ×
 // clique de anúncio da Meta (ctwa_clid) para o painel classificar e separar por
 // unidade sem paginar /leads.
 async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
   const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
+  // motivo = public.lead_novo_motivo (coluna calculada): NULL é lead novo.
   const rows = await fetchAllPaged<any>(
-    () => admin.from("crm_leads").select("id, source, cidade, comment_only, tags, ctwa_clid, phone, instagram_user_id, created_at")
+    () => admin.from("crm_leads").select("id, source, cidade, ctwa_clid, motivo:lead_novo_motivo")
       .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
     "id",
   );
-  const naBase = await leadsQueJaEstavamNaBase(tenantId, rows);
   const excluidos = { comment_only: 0, kommo: 0, retroativo: 0, sintetico: 0, recontato: 0, recriado_em_7_dias: 0 };
+  const chaveExcluido: Record<string, keyof typeof excluidos> = {
+    comentario: "comment_only", kommo: "kommo", retroativo: "retroativo",
+    sintetico: "sintetico", recontato: "recontato", recriado: "recriado_em_7_dias",
+  };
   const grupos = new Map<string, { cidade: string; source: string | null; ctwa: boolean; n: number }>();
   let total = 0;
   for (const l of rows) {
-    const src = String(l.source ?? "").trim().toLowerCase();
-    if (l.comment_only) { excluidos.comment_only++; continue; }
-    if (src === "kommo") { excluidos.kommo++; continue; }
-    if (src === "retroativo") { excluidos.retroativo++; continue; }
-    if (Array.isArray(l.tags) && l.tags.includes("sintetico_pagamento")) { excluidos.sintetico++; continue; }
-    const motivo = naBase.get(l.id);
-    if (motivo === "recontato") { excluidos.recontato++; continue; }
-    if (motivo === "recriado") { excluidos.recriado_em_7_dias++; continue; }
+    if (l.motivo) {
+      const k = chaveExcluido[l.motivo];
+      if (k) excluidos[k]++;
+      continue;
+    }
     total++;
     const cidade = String(l.cidade ?? "").trim();
     const ctwa = !!l.ctwa_clid;

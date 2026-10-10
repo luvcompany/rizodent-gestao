@@ -55,6 +55,8 @@ type Stage = {
 
 type Lead = {
   criado_pela_conciliacao?: boolean | null;
+  /** Coluna calculada public.eh_lead_novo (regra única de lead novo, leadNovo.ts). */
+  eh_lead_novo?: boolean | null;
   whatsapp_number_id?: string | null;
   imagem_origem?: string | null;
   descricao_anuncio?: string | null;
@@ -170,7 +172,7 @@ const consultaDaEtapa = (stageId: string, cursor: { created_at: string; id: stri
 };
 // has_task/task_overdue saíram daqui: eram gravados por automação e ficavam
 // desatualizados — o selo do card usa as tarefas reais de crm_tasks.
-const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, servico_interesse, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio, whatsapp_number_id, imagem_origem, descricao_anuncio, link_anuncio";
+const KANBAN_LEAD_COLS = "id, pipeline_id, stage_id, name, phone, tags, source, value, notes, position, created_at, updated_at, last_message, last_message_at, assigned_to, cidade, servico_interesse, paciente_id, ad_id, ad_account_id, ad_account_name, nome_anuncio, titulo_anuncio, whatsapp_number_id, imagem_origem, descricao_anuncio, link_anuncio, eh_lead_novo";
 
 type NewLeadDialogProps = {
   open: boolean;
@@ -1205,7 +1207,8 @@ export default function CrmKanban() {
         .select(KANBAN_LEAD_COLS)
         .in("id", ids)
         .eq("is_blocked", false);
-      return (data as Lead[]) || [];
+      // eh_lead_novo é coluna calculada (função do banco): não está nos tipos gerados.
+      return (data as unknown as Lead[]) || [];
     },
     (novos) => {
       const doFunil = novos.filter(n => n.pipeline_id === pipelineIdRef.current);
@@ -1541,7 +1544,7 @@ export default function CrmKanban() {
   const yesterday = toLocalDateISO(new Date(Date.now() - 86400000));
   // Dia de criação no fuso local (created_at vem em UTC: comparar o texto
   // jogava quem entrou depois das 21h para o dia seguinte). Lead criado pela
-  // conciliação do Dontus não é lead novo (ver leadNovo.ts).
+  // regra única de lead novo do banco (coluna eh_lead_novo, ver leadNovo.ts).
   const novoNoDia = (l: Lead, dia: string) => contaComoLeadNovo(l) && toLocalDateISO(new Date(l.created_at)) === dia;
 
   // Todas as colunas já têm todos os cards na memória?
