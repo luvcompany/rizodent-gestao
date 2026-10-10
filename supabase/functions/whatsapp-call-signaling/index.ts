@@ -354,16 +354,26 @@ Deno.serve(async (req) => {
       // Registra/atualiza a solicitação (status 'pending' — valor aceito pelo CHECK
       // da coluna; 'requested' era inválido e a gravação falhava silenciosamente). A
       // resposta do cliente atualiza para 'approved'/'denied' via trigger em messages.
-      await supabase.from("whatsapp_call_permissions").upsert({
+      // A permissão é POR NÚMERO da empresa (é assim que a Meta guarda): uma
+      // linha por (phone_number_id, consumer_phone). Antes era uma por cliente
+      // e o pedido do closer apagava a autorização dada ao número oficial.
+      // Pedido novo não derruba uma autorização que ainda vale; se não vale,
+      // volta a "aguardando" sem levar a data de aprovação antiga.
+      const { data: permAtual } = await supabase
+        .from("whatsapp_call_permissions").select("status, expires_at")
+        .eq("phone_number_id", phoneNumberId).eq("consumer_phone", toPhone).maybeSingle();
+      const aindaVale = permAtual?.status === "approved" &&
+        (!permAtual.expires_at || new Date(permAtual.expires_at).getTime() > Date.now());
+      const { error: permErr } = await supabase.from("whatsapp_call_permissions").upsert({
         tenant_id: tenantId,
         whatsapp_number_id: waRowP?.id || null,
         phone_number_id: phoneNumberId,
         consumer_phone: toPhone,
         lead_id: body.lead_id ?? null,
-        status: "pending",
         requested_at: new Date().toISOString(),
-        raw_payload: permJson ?? null,
-      } as any, { onConflict: "tenant_id,consumer_phone" });
+        ...(aindaVale ? {} : { status: "pending", approved_at: null, expires_at: null, raw_payload: permJson ?? null }),
+      } as any, { onConflict: "phone_number_id,consumer_phone" });
+      if (permErr) console.error(`[wa-call-signaling] falha ao registrar pedido de permissão: ${permErr.message}`);
 
       // Registra na conversa (se houver lead)
       if (body.lead_id) {
@@ -440,6 +450,15 @@ Deno.serve(async (req) => {
         },
       };
       const mapped = typeof graphCode === "number" ? knownBusinessErrors[graphCode] : undefined;
+      // A Meta diz que este número não tem permissão: se o CRM ainda a dava
+      // como aprovada (paciente revogou no WhatsApp, prazo de 7 dias), marca
+      // como revogada — senão o painel segue mostrando "Ligar" para quem não
+      // atende mais.
+      if (graphCode === 138006 && action === "connect" && phoneNumberId && graphBody.to) {
+        await supabase.from("whatsapp_call_permissions")
+          .update({ status: "revoked", updated_at: new Date().toISOString() } as any)
+          .eq("phone_number_id", phoneNumberId).eq("consumer_phone", String(graphBody.to)).eq("status", "approved");
+      }
       if (mapped) {
         return new Response(
           JSON.stringify({ ok: false, code: mapped.code, user_message: mapped.user_message, graph_code: graphCode }),

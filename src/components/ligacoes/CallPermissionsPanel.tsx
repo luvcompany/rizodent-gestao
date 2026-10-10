@@ -31,6 +31,9 @@ type PermItem = {
   permanent: boolean;
   /** Número (whatsapp_numbers.id) do pedido; null em linha antiga. */
   whatsappNumberId: string | null;
+  /** phone_number_id da Meta a que a permissão pertence (a Meta guarda a
+   *  permissão por número da empresa); null nos pedidos sem linha na tabela. */
+  phoneNumberId: string | null;
 };
 
 const REQUEST_TEXT = "📞 Solicitação de permissão de ligação enviada";
@@ -56,7 +59,7 @@ const FILTERS: { key: "all" | PermStatus; label: string }[] = [
 
 export default function CallPermissionsPanel() {
   const navigate = useNavigate();
-  const { initiateCall, requestCallPermission, podeLigarPorWhatsapp, state: callState } = useWhatsappCall();
+  const { initiateCall, requestCallPermission, podeLigarPorWhatsapp, state: callState, numerosVisiveis } = useWhatsappCall();
   const [items, setItems] = useState<PermItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | PermStatus>("all");
@@ -69,7 +72,7 @@ export default function CallPermissionsPanel() {
     const { data: perms } = await supabase
       .from("whatsapp_call_permissions")
       .select(
-        "consumer_phone, status, approved_at, expires_at, requested_at, updated_at, lead_id, whatsapp_number_id, lead:crm_leads!whatsapp_call_permissions_lead_id_fkey ( id, name, phone, whatsapp_number_id )",
+        "consumer_phone, status, approved_at, expires_at, requested_at, updated_at, lead_id, whatsapp_number_id, phone_number_id, lead:crm_leads!whatsapp_call_permissions_lead_id_fkey ( id, name, phone, whatsapp_number_id )",
       );
 
     // 2) Pedidos enviados (para derivar quem ainda não respondeu).
@@ -91,7 +94,9 @@ export default function CallPermissionsPanel() {
       const permanent = status === "approved" && !expiresAt;
       if (status === "approved" && expiresAt && new Date(expiresAt).getTime() < now) status = "expired";
       list.push({
-        key: `perm-${phone || p.lead_id}`,
+        // Uma linha por número da empresa: o mesmo paciente pode ter
+        // autorizado o oficial e não o closer.
+        key: `perm-${p.phone_number_id || ""}-${phone || p.lead_id}`,
         leadId: p.lead_id ?? lead?.id ?? null,
         name: lead?.name || phone || "Desconhecido",
         phone: phone || (p.consumer_phone || ""),
@@ -100,6 +105,7 @@ export default function CallPermissionsPanel() {
         expiresAt,
         permanent,
         whatsappNumberId: p.whatsapp_number_id ?? lead?.whatsapp_number_id ?? null,
+        phoneNumberId: p.phone_number_id ?? null,
       });
       if (p.lead_id) coveredLeads.add(p.lead_id);
       if (phone) coveredPhones.add(phone);
@@ -133,6 +139,7 @@ export default function CallPermissionsPanel() {
           expiresAt: null,
           permanent: false,
           whatsappNumberId: reqNumero[l.id] ?? l.whatsapp_number_id ?? null,
+          phoneNumberId: null,
         });
       }
     }
@@ -165,6 +172,11 @@ export default function CallPermissionsPanel() {
     () => (filter === "all" ? items : items.filter((i) => i.status === filter)),
     [items, filter],
   );
+
+  // Quem vê mais de um número precisa saber por qual a permissão foi dada.
+  const numeroDoPnid = (pnid: string | null) =>
+    pnid ? (numerosVisiveis ?? []).find((n) => n.phone_number_id === pnid) : undefined;
+  const mostrarNumero = new Set(items.map((i) => i.phoneNumberId).filter(Boolean)).size > 1;
 
   function validity(it: PermItem): string {
     if (it.status === "approved") return it.permanent ? "Permanente" : it.expiresAt ? `Expira ${format(new Date(it.expiresAt), "dd/MM", { locale: ptBR })}` : "";
@@ -208,9 +220,13 @@ export default function CallPermissionsPanel() {
               const Icon = meta.icon;
               const val = validity(it);
               const canCall = it.status === "approved" && !!it.phone;
+              // A ação usa o número da permissão (ligar por outro número não
+              // tem a autorização do paciente).
+              const numero = numeroDoPnid(it.phoneNumberId);
+              const numeroDaAcao = numero?.id ?? it.whatsappNumberId ?? undefined;
+              const pnidDaAcao = it.phoneNumberId ?? undefined;
               // INTEG-14: coexistência/desconectado não liga nem pede permissão pela API.
-              const ligavel = podeLigarPorWhatsapp(it.whatsappNumberId);
-              const numeroDaAcao = it.whatsappNumberId ?? undefined;
+              const ligavel = podeLigarPorWhatsapp(numeroDaAcao);
               return (
                 <li key={it.key} className="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-surface-sunken/60 md:px-5">
                   <Avatar className="h-10 w-10 flex-shrink-0">
@@ -226,6 +242,7 @@ export default function CallPermissionsPanel() {
                     <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs tabular-nums text-tertiary">
                       {it.phone && <span className="text-muted-foreground">{it.phone}</span>}
                       {val && <span>· {val}</span>}
+                      {mostrarNumero && numero && <span>· {numero.display_name || numero.phone_e164}</span>}
                       {it.date && <span>· {formatDistanceToNow(new Date(it.date), { locale: ptBR, addSuffix: true })}</span>}
                     </div>
                   </div>
@@ -236,7 +253,7 @@ export default function CallPermissionsPanel() {
                         size="sm"
                         className="rounded-xl font-semibold text-success hover:bg-success-soft hover:text-success-soft-foreground"
                         disabled={callState.phase !== "idle"}
-                        onClick={() => initiateCall({ toPhone: it.phone, leadId: it.leadId, leadName: it.name, whatsappNumberId: numeroDaAcao })}
+                        onClick={() => initiateCall({ toPhone: it.phone, leadId: it.leadId, leadName: it.name, phoneNumberId: pnidDaAcao, whatsappNumberId: numeroDaAcao })}
                         title="Ligar via WhatsApp"
                       >
                         <Phone size={14} />
@@ -248,7 +265,7 @@ export default function CallPermissionsPanel() {
                         size="sm"
                         className="rounded-xl text-muted-foreground hover:text-foreground"
                         disabled={!it.phone}
-                        onClick={() => requestCallPermission({ toPhone: it.phone, leadId: it.leadId, whatsappNumberId: numeroDaAcao })}
+                        onClick={() => requestCallPermission({ toPhone: it.phone, leadId: it.leadId, phoneNumberId: pnidDaAcao, whatsappNumberId: numeroDaAcao })}
                         title="Reenviar pedido de permissão"
                       >
                         <BellRing size={14} />

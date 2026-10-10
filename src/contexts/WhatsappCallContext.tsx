@@ -120,11 +120,11 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const allowedPhoneNumberIdsRef = useRef<Set<string> | null>(null);
   // Números conectados em coexistência: a Cloud API não faz chamadas neles.
   const [numerosCoexistencia, setNumerosCoexistencia] = useState<Set<string>>(() => new Set());
-  // A SDR do rodízio NÃO atende nem faz chamadas de WhatsApp pelo CRM nesta
-  // fase (decisão fechada na revisão da Fase 1): whatsapp_calls e
-  // whatsapp_call_permissions estão bloqueadas para ela no banco (molde
-  // closer/recepção) e whatsapp-call-signaling devolve 403. Ligar a UI aqui
-  // deixaria o canal realtime mudo e o claim da chamada devolvendo 0 linhas.
+  // whatsapp_calls e whatsapp_call_permissions são vistas por quem usa o
+  // número da ligação (migration 0030, can_access_whatsapp_number) — a SDR só
+  // nos leads dela. Até 0030 o closer e a recepção eram barrados por papel:
+  // o realtime ficava mudo e a ligação dele nunca recebia o áudio da Meta.
+  // legacyVisible só decide a chamada de número sem cadastro (central).
   const legacyVisible = userRole === "crc" || userRole === "posvenda" || userRole === "gerente" || userRole === "superadmin" || userRole === "sdr";
   useEffect(() => {
     if (!user || !tenantId) return;
@@ -541,6 +541,7 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
         (payload) => {
           const row = payload.new as {
             id?: string; status?: string; lead_id?: string | null; consumer_phone?: string | null;
+            phone_number_id?: string | null;
           } | null;
           // Só a resposta do cliente interessa (approved/denied). Os demais status
           // (pending/expired/revoked) não geram notificação.
@@ -563,10 +564,13 @@ export const WhatsappCallProvider: React.FC<{ children: React.ReactNode }> = ({ 
                   ? {
                       label: "Ligar agora",
                       onClick: () => {
+                        // A autorização vale para o número que pediu (a Meta
+                        // guarda por número): liga por ele, não pela regra geral.
                         void initiateCallRef.current({
                           toPhone: row.consumer_phone!,
                           leadId: row.lead_id ?? null,
                           leadName: name,
+                          phoneNumberId: row.phone_number_id ?? undefined,
                         });
                       },
                     }
