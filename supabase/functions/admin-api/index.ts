@@ -2382,14 +2382,14 @@ async function leadsDistintosSdr(tenantId: string, sdrs: Set<string>, gteIso: st
 // o lead sintético criado a partir de pagamento (source Retroativo ou tag
 // sintetico_pagamento), o recontato de quem já está na base e o lead apagado e
 // recriado em menos de 7 dias — a regra única do banco (public.lead_novo_motivo,
-// migration 0023), a mesma das telas do CRM. Dia no fuso de Salvador. Devolve grupos cidade × source ×
-// clique de anúncio da Meta (ctwa_clid) para o painel classificar e separar por
-// unidade sem paginar /leads.
+// migration 0023), a mesma das telas do CRM. Dia no fuso de Salvador. Devolve
+// grupos cidade × source × marca de anúncio da Meta (ctwa = ctwa_clid ou ad_id)
+// para o painel classificar e separar por unidade sem paginar /leads.
 async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
   const { fromDay, toDay, gteIso, lteIso } = parseRange(p);
   // motivo = public.lead_novo_motivo (coluna calculada): NULL é lead novo.
   const rows = await fetchAllPaged<any>(
-    () => admin.from("crm_leads").select("id, source, cidade, ctwa_clid, motivo:lead_novo_motivo")
+    () => admin.from("crm_leads").select("id, source, cidade, ctwa_clid, ad_id, motivo:lead_novo_motivo")
       .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
     "id",
   );
@@ -2408,7 +2408,10 @@ async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
     }
     total++;
     const cidade = String(l.cidade ?? "").trim();
-    const ctwa = !!l.ctwa_clid;
+    // Marca de anúncio da Meta: clique de anúncio (ctwa_clid) ou anúncio de origem
+    // (ad_id) — o lead com ad_id é "Anúncio" no CRM (rpt_classify_origem), seja qual
+    // for o source.
+    const ctwa = !!(l.ctwa_clid || l.ad_id);
     const k = `${cidade}|${l.source ?? ""}|${ctwa}`;
     const g = grupos.get(k) ?? { cidade, source: l.source ?? null, ctwa, n: 0 };
     g.n++;
