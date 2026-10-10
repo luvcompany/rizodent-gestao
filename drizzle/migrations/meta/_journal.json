@@ -183,6 +183,13 @@
       "when": 1791590679060,
       "tag": "0025_origem_conversao_lead_novo",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791591060033,
+      "tag": "0026_modelos_por_conta",
+      "breakpoints": true
     }
   ]
 }
