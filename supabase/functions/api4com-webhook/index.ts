@@ -3,6 +3,7 @@
 // ligação no lead correspondente (casando pelo número de telefone). Guarda o
 // raw_payload para refinarmos com dados reais. Dispara a transcrição da gravação.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { instanteApi4com } from "../_shared/horarioApi4com.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,9 +81,10 @@ Deno.serve(async (req) => {
     const durationSeconds = Number(payload.duration ?? payload.billsec ?? payload.durationSeconds ?? 0) || null;
     const recordUrlRaw = payload.recordUrl ?? payload.recording_url ?? payload.record ?? null;
     const hangupCause = payload.hangupCause ?? payload.hangup_cause ?? null;
-    const startedAt = payload.startedAt ?? payload.started_at ?? null;
-    const answeredAt = payload.answeredAt ?? payload.answered_at ?? null;
-    const endedAt = payload.endedAt ?? payload.ended_at ?? null;
+    // Mesmo relógio da API de ligações: horário local com "Z" (_shared/horarioApi4com.ts).
+    const startedAt = instanteApi4com(payload.startedAt ?? payload.started_at);
+    const answeredAt = instanteApi4com(payload.answeredAt ?? payload.answered_at);
+    const endedAt = instanteApi4com(payload.endedAt ?? payload.ended_at);
     const metaLeadId = payload?.metadata?.leadId ?? payload?.metadata?.entityId ?? payload?.metadata?.lead_id ?? null;
     const callIdVal = payload.callId ?? payload.uniqueid ?? payload.id ?? null;
 

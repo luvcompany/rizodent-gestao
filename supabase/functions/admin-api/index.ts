@@ -2391,9 +2391,10 @@ async function leadsDistintosSdr(tenantId: string, sdrs: Set<string>, gteIso: st
 // Leads NOVOS do período pelas decisões já tomadas no CRM: fica de fora quem só
 // comentou no Instagram (comment_only), a conciliação com o Dontus (source kommo),
 // o lead sintético criado a partir de pagamento (source Retroativo ou tag
-// sintetico_pagamento), o recontato de quem já está na base e o lead apagado e
-// recriado em menos de 7 dias — a regra única do banco (public.lead_novo_motivo,
-// migration 0023), a mesma das telas do CRM. Dia no fuso de Salvador. Devolve
+// sintetico_pagamento), o lead que o dontus-sync cria a partir do pagamento (tag
+// criado_pelo_dontus, migration 0031), o recontato de quem já está na base e o
+// lead apagado e recriado em menos de 7 dias — a regra única do banco
+// (public.lead_novo_motivo, migration 0023), a mesma das telas do CRM. Dia no fuso de Salvador. Devolve
 // grupos cidade × source × marca de anúncio da Meta (ctwa = ctwa_clid ou ad_id)
 // para o painel classificar e separar por unidade sem paginar /leads.
 async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
@@ -2404,10 +2405,10 @@ async function reportLeadsNovos(tenantId: string, p: URLSearchParams) {
       .eq("tenant_id", tenantId).gte("created_at", gteIso).lte("created_at", lteIso),
     "id",
   );
-  const excluidos = { comment_only: 0, kommo: 0, retroativo: 0, sintetico: 0, recontato: 0, recriado_em_7_dias: 0 };
+  const excluidos = { comment_only: 0, kommo: 0, retroativo: 0, sintetico: 0, criado_pelo_dontus: 0, recontato: 0, recriado_em_7_dias: 0 };
   const chaveExcluido: Record<string, keyof typeof excluidos> = {
     comentario: "comment_only", kommo: "kommo", retroativo: "retroativo",
-    sintetico: "sintetico", recontato: "recontato", recriado: "recriado_em_7_dias",
+    sintetico: "sintetico", dontus: "criado_pelo_dontus", recontato: "recontato", recriado: "recriado_em_7_dias",
   };
   const grupos = new Map<string, { cidade: string; source: string | null; ctwa: boolean; n: number }>();
   let total = 0;

@@ -9,6 +9,8 @@
  *    contando como novo lead");
  *  - o lead sintético criado a partir de pagamento (Retroativo / tag
  *    sintetico_pagamento);
+ *  - o lead que o dontus-sync cria direto em Contratado a partir do pagamento
+ *    (tag criado_pelo_dontus, migration 0031);
  *  - o RECONTATO de quem já está na base (outro lead com o mesmo telefone ou
  *    Instagram criado antes);
  *  - o lead apagado e criado de novo em menos de 7 dias.

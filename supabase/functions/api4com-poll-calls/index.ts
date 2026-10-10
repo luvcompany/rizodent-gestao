@@ -6,6 +6,7 @@
 // reconcilia o resto. Auth interna (cron secret / service role).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
+import { instanteApi4com } from "../_shared/horarioApi4com.ts";
 
 const API4COM_BASE = "https://api.api4com.com/api/v1";
 const corsHeaders = {
@@ -17,14 +18,6 @@ const json = (b: any, s = 200) => new Response(JSON.stringify(b), { status: s, h
 
 const onlyDigits = (s: string) => String(s || "").replace(/\D/g, "");
 const last8 = (s: string) => { const d = onlyDigits(s); return d.length >= 8 ? d.slice(-8) : d; };
-
-// A Api4Com manda o horário LOCAL (Bahia) com sufixo "Z": o instante real é esse
-// relógio em -03:00 (started_at gravado fica 3 h antes — ver migration 0027).
-const instanteApi4com = (s: unknown): string | null => {
-  if (!s) return null;
-  const t = Date.parse(String(s).replace(/Z$/i, "-03:00"));
-  return Number.isFinite(t) ? new Date(t).toISOString() : null;
-};
 
 // Quem fez a ligação (migration 0027). A extensão do Chrome disca sem metadata e
 // do mesmo ramal para todas as SDRs, então a ordem é: userId do botão do CRM
@@ -155,9 +148,10 @@ Deno.serve(async (req) => {
             hangup_cause: c.hangup_cause ?? c.hangupCause ?? null,
             duration_seconds: dur,
             recording_url: rec,
-            started_at: c.started_at ?? c.startedAt ?? null,
-            ended_at: c.ended_at ?? c.endedAt ?? null,
-            answered_at: c.answered_at ?? c.answeredAt ?? null,
+            // Horário local da Api4Com convertido para o instante real (_shared/horarioApi4com.ts).
+            started_at: instanteApi4com(c.started_at ?? c.startedAt),
+            ended_at: instanteApi4com(c.ended_at ?? c.endedAt),
+            answered_at: instanteApi4com(c.answered_at ?? c.answeredAt),
             user_id: quem.uid,
             user_origem: quem.origem,
             raw_payload: c,

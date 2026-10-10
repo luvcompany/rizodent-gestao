@@ -1294,6 +1294,8 @@ async function executePlan(admin: any, plan: PlanItem[]): Promise<{
               pipeline_id: mainPipeline.pipeline_id,
               stage_id: mainPipeline.stage_id,
               cidade: cidadeDaClinica(item.clinica_nome),
+              // Lead que nasce do pagamento não é lead novo (migration 0031).
+              tags: ["criado_pelo_dontus"],
             }).select("id").single();
             if (ins.error) throw new Error(`criar lead falhou: ${ins.error.message}`);
             leadId = ins.data.id;
