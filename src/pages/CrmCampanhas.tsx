@@ -18,7 +18,7 @@ import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { Switch } from "@/components/ui/switch";
 import { SeloSaudeWhatsapp } from "@/components/whatsapp/WhatsappSaude";
 import { acaoDaTransmissao, envioAtivo, statusDaTransmissao } from "@/lib/transmissao";
-import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
+import { lerSituacaoDosNumeros, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
 
 /**
  * Transmissão (envio de um modelo aprovado para vários leads).
@@ -145,9 +145,9 @@ export default function CrmCampanhas() {
         .select("id, name, body_text, language, waba_id, whatsapp_number_id, created_at, updated_at")
         .eq("status", "APPROVED")
         .order("created_at", { ascending: false }),
-      listarIdsNumerosInativos(),
-    ]).then(([{ data }, inativos]) =>
-      setTemplates(deduplicateTemplates(somenteModelosDeNumerosAtivos((data as ModeloAprovado[]) || [], inativos)))
+      lerSituacaoDosNumeros(),
+    ]).then(([{ data }, situacao]) =>
+      setTemplates(deduplicateTemplates(somenteModelosDeNumerosAtivos((data as ModeloAprovado[]) || [], situacao)))
     );
     supabase.from("crm_pipelines").select("id, name").then(({ data }) => setPipelines(data || []));
   }, [load]);

@@ -1,8 +1,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
-import { escopoDoNumero, escopoLegado, filtrarWaba, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
+import { escopoDoNumero, escopoLegado, numeroPorPhoneNumberId, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
 import { lerTelasDoFlow } from "../_shared/flowTelas.ts";
 import { numerosDaEquipeDoUsuario } from "../_shared/mundoNumero.ts";
+import {
+  donoDoModelo,
+  gravarModeloCriado,
+  linhaDoModeloDaMeta,
+  listarModelosDaMeta,
+  type NumeroDoCliente,
+  sincronizarConta,
+} from "../_shared/modelosDaConta.ts";
+import { copiarModelosEntreNumeros, type NumeroParaCopia } from "../_shared/copiarModelos.ts";
 
 
 const corsHeaders = {
@@ -80,12 +89,11 @@ Deno.serve(async (req) => {
     // 'closer' faltava aqui: template criado por closer ficava com owner_role null
     // e (pela RLS de owner_role) invisível para o próprio closer.
     // 'sdr' (rodízio, Fase 1): sem ela o modelo da SDR nascia "geral" (owner_role
-    // NULL). A SDR vive no mundo do CRC — o item dela nasce com owner_role='crc',
-    // espelho de set_owner_role_from_user no banco (o insert aqui é service
-    // role e não passa pelo gatilho).
+    // NULL). Como o papel vira dono do modelo está em donoDoModelo
+    // (_shared/modelosDaConta.ts): o insert aqui é service role e não passa
+    // pelo gatilho set_owner_role_from_user.
     const rolePriority = ["superadmin", "crc", "gerente", "posvenda", "recepcao", "closer", "sdr"];
     const callerPrimaryRoleRaw = rolePriority.find((r) => rolesSet.has(r)) || null;
-    const callerPrimaryRole = callerPrimaryRoleRaw === "sdr" ? "crc" : callerPrimaryRoleRaw;
 
     // Any authenticated tenant user can list/create/delete their own templates.
     // Only admin/gerente/superadmin can hit destructive Meta actions like global delete.
@@ -237,13 +245,18 @@ Deno.serve(async (req) => {
     const WHATSAPP_TOKEN = escopo?.token || "";
     const WABA_ID = escopo?.wabaId || "";
     const META_APP_ID = escopo?.appId || Deno.env.get("META_APP_ID") || "";
-    const escopoNumberId = escopo?.whatsappNumberId ?? null;
-    // owner_role do template: no mundo legado fica com o papel do chamador; num
-    // número próprio, com o papel dono daquele número (quando houver um só).
+    // Número do escopo. A integração herdada (whatsapp_config) não traz o id do
+    // número, mas ele está espelhado em whatsapp_numbers: acha pelo
+    // phone_number_id — sem isso o modelo do oficial nascia sem número.
+    const escopoNumberId = escopo?.whatsappNumberId ??
+      (escopo?.phoneNumberId
+        ? (await numeroPorPhoneNumberId(supabase, escopo.phoneNumberId, callerTenantId))?.id ?? null
+        : null);
+    // owner_role do modelo: dono do número (closer/recepção, pelo mundo do
+    // número) ?? papel de quem chama — superadmin e gerente gravam NULL
+    // (modelo geral), SDR grava 'crc' (donoDoModelo).
     const donoDoNumero = escopoNumberId ? await papelDonoDoNumero(supabase, escopoNumberId) : null;
-    const ownerRoleTemplate = escopoNumberId
-      ? donoDoNumero || callerPrimaryRole
-      : callerPrimaryRole;
+    const ownerRoleTemplate = donoDoModelo(donoDoNumero, callerPrimaryRoleRaw);
 
     if (!WHATSAPP_TOKEN || !WABA_ID) {
       return new Response(
@@ -283,132 +296,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ACTION: LIST - Fetch all templates from Meta API
+    // ACTION: LIST — sincroniza a CONTA (WABA) do número com a Meta.
+    // Mesma regra do sync-whatsapp-templates-cron (_shared/modelosDaConta.ts):
+    // o modelo é da conta; número de modelo novo = o padrão ativo da conta,
+    // senão o ativo mais antigo (nunca "o número de quem clicou"); número que
+    // já aponta para um ativo da mesma conta não muda; só regrava o que mudou;
+    // a Meta falhou em qualquer página → nada é gravado nem removido; o que
+    // sumiu da Meta vira status DELETED (a linha e o id ficam).
     if (action === "list") {
-      // Fetch all templates from Meta with pagination
-      let allMetaTemplates: any[] = [];
-      let nextUrl: string | null = `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?limit=100`;
-
-      while (nextUrl) {
-        const metaRes = await fetch(nextUrl, {
-          headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
-        });
-        const metaData = await metaRes.json();
-
-        if (!metaRes.ok) {
-          return new Response(
-            JSON.stringify({ error: "Erro ao buscar templates da Meta", details: metaData }),
-            { status: metaRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        allMetaTemplates = allMetaTemplates.concat(metaData.data || []);
-        nextUrl = metaData.paging?.next || null;
+      if (!callerTenantId) {
+        return new Response(
+          JSON.stringify({ error: "Não foi possível identificar o cliente do seu usuário." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const listagem = await listarModelosDaMeta(WABA_ID, WHATSAPP_TOKEN);
+      if (!listagem.ok) {
+        return new Response(
+          JSON.stringify({ error: `Não foi possível ler os modelos da Meta (nada foi alterado aqui): ${listagem.erro}` }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      const templates = allMetaTemplates.map((t: any) => {
-        const headerComp = t.components?.find((c: any) => c.type === "HEADER");
-        const bodyComp = t.components?.find((c: any) => c.type === "BODY");
-        const footerComp = t.components?.find((c: any) => c.type === "FOOTER");
-        const buttonsComp = t.components?.find((c: any) => c.type === "BUTTONS");
+      const { data: numerosDoCliente } = await supabase
+        .from("whatsapp_numbers")
+        .select("id, tenant_id, waba_id, phone_number_id, is_active, is_default, created_at, mundo")
+        .eq("tenant_id", callerTenantId);
 
-        return {
-          meta_template_id: t.id,
-          name: t.name,
-          category: t.category,
-          language: t.language,
-          status: t.status,
-          header_type: headerComp?.format || null,
-          header_content: headerComp?.text || headerComp?.example?.header_handle?.[0] || null,
-          body_text: bodyComp?.text || null,
-          footer_text: footerComp?.text || null,
-          buttons: buttonsComp?.buttons || null,
-        };
+      const r = await sincronizarConta(supabase, {
+        tenantId: callerTenantId,
+        wabaId: WABA_ID,
+        modelosMeta: listagem.modelos,
+        numeros: (numerosDoCliente || []) as NumeroDoCliente[],
+        pnidsDaConta: [escopo?.phoneNumberId ?? null],
+        papelDoChamador: callerPrimaryRoleRaw,
       });
+      if (r.erros.length > 0) console.warn("[LIST] falhas ao gravar:", JSON.stringify(r.erros.slice(0, 20)));
 
-      // Sync to local database
-      const metaTemplateIds = templates.map((t: any) => t.meta_template_id).filter(Boolean);
-
-      for (const tmpl of templates) {
-        const { data: existingRows } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("id, owner_role, whatsapp_number_id, header_content")
-          .eq("meta_template_id", tmpl.meta_template_id)
-          .eq("tenant_id", callerTenantId)
-          .eq("waba_id", WABA_ID)
-          .limit(1);
-        const existing = existingRows && existingRows[0];
-
-        if (existing) {
-          const patch: Record<string, unknown> = {
-            name: tmpl.name,
-            status: tmpl.status,
-            category: tmpl.category,
-            header_type: tmpl.header_type,
-            header_content: tmpl.header_content,
-            body_text: tmpl.body_text,
-            footer_text: tmpl.footer_text,
-            buttons: tmpl.buttons,
-            updated_at: new Date().toISOString(),
-          };
-          // Mesma regra do sync-whatsapp-templates-cron: a mídia já guardada no
-          // nosso Storage NÃO é trocada pelo link da CDN da Meta. Esse link expira
-          // em dias (e às vezes vem cortado em 1 MB): o envio passava a falhar com
-          // 131053 — foi o que derrubou o endereco_rizodent_ipiau em 20/09/2026.
-          const midiaAtual = String(existing.header_content || "");
-          if (midiaAtual.includes("/storage/v1/object/public/") || midiaAtual.includes("/storage/v1/object/sign/")) {
-            delete patch.header_content;
-          }
-          // Repara o registro órfão: sem isto, um modelo gravado sem dono ficava
-          // invisível para o dono do número PARA SEMPRE — sincronizar de novo
-          // atualizava o texto e o status, e nunca o carimbo.
-          // Só vale para número próprio: no mundo legado, owner_role NULL
-          // significa "modelo geral" e carimbá-lo o esconderia dos demais papéis.
-          // Nunca carimba com o papel de quem clicou em sincronizar: sem dono
-          // claro do número, o modelo continua geral (visível a todos).
-          if (escopoNumberId) {
-            if (!existing.owner_role && donoDoNumero) patch.owner_role = donoDoNumero;
-            if (!existing.whatsapp_number_id) patch.whatsapp_number_id = escopoNumberId;
-          }
-          await supabase
-            .from("crm_whatsapp_templates")
-            .update(patch)
-            .eq("id", existing.id);
-        } else {
-          await supabase.from("crm_whatsapp_templates").insert({
-            ...tmpl,
-            tenant_id: callerTenantId,
-            waba_id: WABA_ID,
-            whatsapp_number_id: escopoNumberId,
-            owner_role: ownerRoleTemplate,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
-
-      // Remove local templates that no longer exist on Meta (só do tenant do chamador)
-      if (metaTemplateIds.length > 0) {
-        const { data: localTemplates } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("id, meta_template_id")
-          .eq("tenant_id", callerTenantId)
-          .eq("waba_id", WABA_ID)
-          .not("meta_template_id", "is", null);
-
-        if (localTemplates) {
-          const toDelete = localTemplates.filter(
-            (lt: any) => !metaTemplateIds.includes(lt.meta_template_id)
-          );
-          for (const d of toDelete) {
-            await supabase.from("crm_whatsapp_templates").delete().eq("id", d.id).eq("tenant_id", callerTenantId).eq("waba_id", WABA_ID);
-          }
-        }
-      }
-
-
+      const templates = listagem.modelos.map(linhaDoModeloDaMeta);
       return new Response(
-        JSON.stringify({ success: true, count: templates.length, templates }),
+        JSON.stringify({
+          success: true,
+          count: templates.length,
+          templates,
+          numero_da_conta: r.numeroEscolhido,
+          inseridos: r.inseridos,
+          atualizados: r.atualizados,
+          marcados_excluidos: r.marcadosExcluidos,
+          falhas_remocao: r.erros.length,
+          falhas: r.erros.slice(0, 20),
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -471,6 +408,37 @@ Deno.serve(async (req) => {
           JSON.stringify({ error: "Nome e corpo da mensagem são obrigatórios" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      // "Rascunho → Enviar para aprovação": a linha do rascunho é a que vira o
+      // modelo. Conferido ANTES de ir à Meta — depois não dá para desfazer.
+      const rascunhoId = typeof body.rascunho_id === "string" && body.rascunho_id ? body.rascunho_id : null;
+      if (rascunhoId) {
+        const { data: rasc } = await supabase
+          .from("crm_whatsapp_templates")
+          .select("id, tenant_id, meta_template_id, created_by_user_id")
+          .eq("id", rascunhoId)
+          .maybeSingle();
+        if (!rasc || (rasc as any).tenant_id !== callerTenantId) {
+          return new Response(
+            JSON.stringify({ error: "Rascunho não encontrado." }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if ((rasc as any).meta_template_id) {
+          return new Response(
+            JSON.stringify({ error: "Este rascunho já foi enviado à Meta." }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        // Espelho da RLS sdr_escopo_crm_whatsapp_templates_update: a SDR só
+        // mexe no que ela criou.
+        if (rolesSet.has("sdr") && !isPrivileged && (rasc as any).created_by_user_id !== user.id) {
+          return new Response(
+            JSON.stringify({ error: "Seu perfil só envia os rascunhos que você criou." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
 
       const components: any[] = [];
@@ -643,33 +611,55 @@ Deno.serve(async (req) => {
         );
       }
 
-      const { error: dbError } = await supabase.from("crm_whatsapp_templates").insert({
-        tenant_id: tenantId,
-        name,
-        language,
-        category,
-        header_type: header_type || null,
-        header_content: header_content || null,
-        body_text,
-        footer_text: footer_text || null,
-        buttons: buttons && buttons.length > 0 ? buttons : null,
-        meta_template_id: metaData.id,
+      // Antes: insert sem conferir o erro — com rascunho, o insert batia no
+      // índice único (mesmo número + nome) e o modelo ficava só na Meta, com o
+      // rascunho na tela como se nada tivesse sido enviado.
+      const gravado = await gravarModeloCriado(supabase, {
+        tenantId,
+        wabaId: WABA_ID,
+        numeroId: escopoNumberId,
+        rascunhoId,
+        conteudo: {
+          name,
+          language,
+          category,
+          header_type: header_type || null,
+          header_content: header_content || null,
+          body_text,
+          footer_text: footer_text || null,
+          buttons: Array.isArray(buttons) && buttons.length > 0 ? buttons : null,
+        },
+        metaTemplateId: String(metaData.id),
         status: metaData.status || "PENDING",
-        created_by_user_id: user.id,
-        owner_role: ownerRoleTemplate,
-        waba_id: WABA_ID,
-        whatsapp_number_id: escopoNumberId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        criadoPor: user.id,
+        ownerRole: ownerRoleTemplate,
+        papelDonoDoNumero: donoDoNumero,
       });
 
-      if (dbError) {
-        console.error("[CREATE] DB save error:", dbError);
+      if (!gravado.ok) {
+        console.error("[CREATE] DB save error:", gravado.motivo);
+        await supabase.from("whatsapp_template_logs").insert({
+          tenant_id: tenantId,
+          action: "create_db_error",
+          template_name: name,
+          waba_id: WABA_ID,
+          response_body: { error: gravado.motivo, meta_template_id: metaData.id },
+          user_id: user.id,
+        });
+        return new Response(
+          JSON.stringify({
+            error: `Criado na Meta, mas não gravado no CRM: ${gravado.motivo}`,
+            meta_template_id: metaData.id,
+            waba_id: WABA_ID,
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       return new Response(
         JSON.stringify({
           success: true,
+          id: gravado.id,
           meta_template_id: metaData.id,
           status: metaData.status || "PENDING",
           waba_id: WABA_ID,
@@ -689,16 +679,21 @@ Deno.serve(async (req) => {
       }
 
       // Only the template's creator OR admin/gerente/superadmin may delete (Meta is shared)
-      // Alvo local sempre dentro da WABA do chamador: por id, ou por (name, waba_id).
+      // Alvo local dentro da CONTA (WABA) do chamador: por id, ou por (name,
+      // waba_id). Sem filtro de número: o modelo é da conta, e a linha pode
+      // estar carimbada com outro número da mesma WABA (antes o filtro por
+      // número não achava o modelo e a exclusão era recusada ou parcial).
       let alvoQuery = supabase
         .from("crm_whatsapp_templates")
-        .select("id, name, created_by_user_id")
+        .select("id, name, language, meta_template_id, created_by_user_id")
         .eq("tenant_id", callerTenantId)
         .eq("waba_id", WABA_ID);
       alvoQuery = template_id ? alvoQuery.eq("id", template_id) : alvoQuery.eq("name", template_name);
-      const { data: alvoRows } = await filtrarWaba(alvoQuery, escopoNumberId).limit(1);
+      const { data: alvoRows } = await alvoQuery.limit(1);
       const alvo = (alvoRows || [])[0];
-      const nomeNaMeta = alvo?.name || template_name;
+      // Com template_id, o nome vem só da linha achada nesta conta: o nome
+      // solto do corpo apagaria na Meta um modelo que não é o da tela.
+      const nomeNaMeta = alvo?.name || (template_id ? null : template_name);
 
       if (!nomeNaMeta) {
         return new Response(
@@ -717,31 +712,48 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Com o id da Meta (hsm_id) sai só este idioma; só o nome apagaria o
+      // modelo em todos os idiomas da conta.
+      const hsm = alvo?.meta_template_id ? `&hsm_id=${encodeURIComponent(String(alvo.meta_template_id))}` : "";
       const metaRes = await fetch(
-        `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?name=${encodeURIComponent(nomeNaMeta)}`,
+        `https://graph.facebook.com/v25.0/${WABA_ID}/message_templates?name=${encodeURIComponent(nomeNaMeta)}${hsm}`,
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
         }
       );
-      const metaData = await metaRes.json();
+      const metaData = await metaRes.json().catch(() => ({}));
 
-      // Always delete locally, even if Meta API fails (e.g. permission issues)
-      if (alvo?.id) {
-        await supabase.from("crm_whatsapp_templates").delete().eq("id", alvo.id).eq("tenant_id", callerTenantId);
-      } else {
-        await filtrarWaba(
-          supabase.from("crm_whatsapp_templates").delete().eq("name", nomeNaMeta).eq("tenant_id", callerTenantId).eq("waba_id", WABA_ID),
-          escopoNumberId,
+      // A Meta recusou: nada sai daqui. Antes a linha era apagada mesmo assim,
+      // e a sincronização seguinte trazia o modelo de volta com OUTRO id — as
+      // automações que apontavam para o antigo quebravam. Se o modelo já não
+      // existe na Meta, a sincronização o marca como DELETED.
+      if (!metaRes.ok) {
+        console.warn("[DELETE] Meta API error, nada removido:", JSON.stringify(metaData));
+        const erroMeta = (metaData as any)?.error;
+        const motivo = erroMeta?.error_user_msg || erroMeta?.message || `HTTP ${metaRes.status}`;
+        return new Response(
+          JSON.stringify({ error: `A Meta não removeu o modelo: ${motivo}`, details: metaData }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      if (!metaRes.ok) {
-        console.warn("[DELETE] Meta API error, deleted locally only:", JSON.stringify(metaData));
-        return new Response(
-          JSON.stringify({ success: true, warning: "Template removido localmente. Não foi possível remover na Meta (verifique permissões do token).", details: metaData }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      // Removido na Meta: sai daqui a linha (por id) ou as do nome nesta conta.
+      const idsParaRemover: string[] = alvo?.id
+        ? [alvo.id]
+        : (((await supabase.from("crm_whatsapp_templates").select("id")
+            .eq("tenant_id", callerTenantId).eq("waba_id", WABA_ID).eq("name", nomeNaMeta)).data || []) as any[])
+            .map((r) => r.id);
+      for (const id of idsParaRemover) {
+        const { error: erroApagar } = await supabase.from("crm_whatsapp_templates").delete()
+          .eq("id", id).eq("tenant_id", callerTenantId);
+        // Linha presa por chave estrangeira (ex.: transmissão que usou o
+        // modelo): fica como DELETED, sai das listas e não volta da sincronização.
+        if (erroApagar) {
+          await supabase.from("crm_whatsapp_templates")
+            .update({ status: "DELETED", updated_at: new Date().toISOString() })
+            .eq("id", id).eq("tenant_id", callerTenantId);
+        }
       }
 
       return new Response(
@@ -750,8 +762,75 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ACTION: COPY_TO_NUMBER — recria na conta (WABA) do número de destino
+    // (whatsapp_number_id) os modelos aprovados de outro número do MESMO mundo
+    // e dono (origem_number_id), com o mesmo nome. Só o superadmin, e DESLIGADO:
+    // sem o segredo MODELOS_COPIA_ENTRE_NUMEROS=ligado e `executar: true` só
+    // simula (devolve os payloads e o que seria pulado, sem chamar a Meta).
+    // Regras e o que fica de fora (botão de formulário etc.): _shared/copiarModelos.ts.
+    if (action === "copy_to_number") {
+      if (!rolesSet.has("superadmin")) {
+        return new Response(
+          JSON.stringify({ error: "Copiar modelos entre números é só do superadmin." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const origemId = typeof body.origem_number_id === "string" ? body.origem_number_id : "";
+      if (!origemId || !escopoNumberId || !callerTenantId) {
+        return new Response(
+          JSON.stringify({ error: "Informe o número de origem (origem_number_id) e o de destino (whatsapp_number_id)." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: pares } = await supabase
+        .from("whatsapp_numbers")
+        .select("id, tenant_id, waba_id, mundo, dono_user_id, is_active")
+        .eq("tenant_id", callerTenantId)
+        .in("id", [origemId, escopoNumberId]);
+      const origem = ((pares || []) as NumeroParaCopia[]).find((n) => n.id === origemId);
+      const destino = ((pares || []) as NumeroParaCopia[]).find((n) => n.id === escopoNumberId);
+      if (!origem || !destino) {
+        return new Response(
+          JSON.stringify({ error: "Número não encontrado neste cliente." }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const ligada = Deno.env.get("MODELOS_COPIA_ENTRE_NUMEROS") === "ligado";
+      const r = await copiarModelosEntreNumeros(supabase, {
+        tenantId: callerTenantId,
+        origem,
+        destino,
+        wabaDestino: WABA_ID,
+        token: WHATSAPP_TOKEN,
+        nomes: Array.isArray(body.nomes) ? body.nomes.map(String) : null,
+        executar: ligada && body.executar === true,
+        criadoPor: user.id,
+        subirMidia: async (url: string, tipo: string) => {
+          const mres = await fetch(url);
+          if (!mres.ok) return { error: `não consegui baixar a mídia (HTTP ${mres.status})` };
+          const bytes = new Uint8Array(await mres.arrayBuffer());
+          const mime = mres.headers.get("content-type") ||
+            (tipo === "VIDEO" ? "video/mp4" : tipo === "IMAGE" ? "image/jpeg" : "application/pdf");
+          const motivo = motivoMidiaIncompleta(bytes, mime);
+          if (motivo) return { error: motivo };
+          const nomeArquivo = url.split("?")[0].split("/").pop() || "midia";
+          return await uploadMediaToMeta(META_APP_ID, WHATSAPP_TOKEN, bytes, nomeArquivo, mime);
+        },
+      });
+      if (!r.ok) {
+        return new Response(
+          JSON.stringify({ error: r.erro }),
+          { status: r.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, ligada, ...r.resultado }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ error: "Ação inválida. Use: list, create, delete" }),
+      JSON.stringify({ error: "Ação inválida. Use: list, list_flows, upload_media, create, delete, copy_to_number" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

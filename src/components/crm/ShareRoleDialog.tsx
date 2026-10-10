@@ -78,13 +78,22 @@ export default function ShareRoleDialog({ open, onOpenChange, table, rowId, curr
     setSaving(true);
     const roles = Array.from(selected);
     // owner_role: keep current if still selected, otherwise pick first selected, otherwise null (all)
+    // Modelo de WhatsApp: 'gerente' e 'sdr' não são donos (gerente já vê tudo
+    // e esconderia o modelo da central; a SDR vive no mundo 'crc') —
+    // update_whatsapp_template_sharing recusa os dois como dono.
+    const podeSerDono = (r: string) => table !== "crm_whatsapp_templates" || (r !== "gerente" && r !== "sdr");
     let newOwner: string | null = null;
     if (roles.length === 0) {
       newOwner = null;
-    } else if (currentOwnerRole && roles.includes(currentOwnerRole)) {
+    } else if (currentOwnerRole && roles.includes(currentOwnerRole) && podeSerDono(currentOwnerRole)) {
       newOwner = currentOwnerRole;
     } else {
-      newOwner = roles[0];
+      newOwner = roles.find(podeSerDono) ?? (roles.includes("sdr") ? "crc" : null);
+    }
+    if (roles.length > 0 && newOwner === null) {
+      setSaving(false);
+      toast.error("Gerente já vê todos os modelos. Marque também a equipe que vai usar este modelo.");
+      return;
     }
     const sharedRoles = roles.filter(r => r !== newOwner);
     if (table === "crm_whatsapp_templates") {

@@ -21,6 +21,9 @@ const ROTULO_STATUS_MODELO: Record<string, string> = {
   PAUSED: "Pausado pela Meta",
   DISABLED: "Desativado pela Meta",
   LIMIT_EXCEEDED: "Bloqueado por limite da Meta",
+  // A sincronização marca assim o modelo que sumiu da Meta (a linha fica: bots
+  // e automações guardam o id, e ele volta se for recriado com o mesmo nome).
+  DELETED: "Excluído na Meta",
 };
 
 export function rotuloStatusModelo(status: string | null | undefined): string {

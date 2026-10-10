@@ -2,8 +2,15 @@
  * sync-whatsapp-templates-cron
  *
  * Chamado pelo pg_cron a cada 5 minutos.
- * Itera todas as integrações WhatsApp conectadas e sincroniza os modelos
- * de mensagem com a Meta, atualizando o status (PENDING → APPROVED/REJECTED).
+ * Sincroniza os modelos de mensagem com a Meta, atualizando o status
+ * (PENDING → APPROVED/REJECTED).
+ *
+ * Uma passada por CONTA (cliente + WABA), não por integração: o modelo é da
+ * conta. Antes, com o oficial (whatsapp_config) e o "Comercial 2" na mesma
+ * WABA, cada passada regravava o whatsapp_number_id que a outra tinha gravado —
+ * os 154 modelos trocavam de número a cada 5 minutos (400 mil UPDATEs). A
+ * regra de qual número fica com o modelo, o que é regravado e o que acontece
+ * com o modelo que sumiu da Meta está em _shared/modelosDaConta.ts.
  *
  * Autenticação: aceita apikey (anon key) — a Supabase gateway valida.
  * Internamente usa service_role para acesso irrestrito.
@@ -11,7 +18,15 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
-import { numeroPorPhoneNumberId, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
+import {
+  contasDasIntegracoes,
+  type IntegracaoWhatsapp,
+  listarModelosDaMeta,
+  type NumeroDoCliente,
+  numeroDaConta,
+  sincronizarConta,
+  tokensDaConta,
+} from "../_shared/modelosDaConta.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,180 +47,118 @@ Deno.serve(async (req) => {
   const auth = await authorizeInternal(req, supabase, { cronSecretName: "sync_templates_cron_token" });
   if (!auth.ok) return unauthorizedResponse(corsHeaders);
 
-  // Busca todas as integrações WhatsApp conectadas (todos os tenants)
-  const { data: integrations, error: intgErr } = await supabase
-    .from("integrations")
-    .select("id, key, tenant_id, config")
-    .eq("status", "connected")
-    .like("key", "whatsapp_%");
+  // Integrações WhatsApp conectadas (todos os tenants) e os números de cada um.
+  const [{ data: integrations, error: intgErr }, { data: numerosRaw, error: numErr }] = await Promise.all([
+    supabase
+      .from("integrations")
+      .select("id, key, tenant_id, config")
+      .eq("status", "connected")
+      .like("key", "whatsapp%"),
+    supabase
+      .from("whatsapp_numbers")
+      .select("id, tenant_id, waba_id, phone_number_id, is_active, is_default, created_at, mundo"),
+  ]);
 
-  if (intgErr) {
-    return new Response(JSON.stringify({ error: intgErr.message }), {
+  if (intgErr || numErr) {
+    return new Response(JSON.stringify({ error: (intgErr || numErr)!.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  const numeros = (numerosRaw || []) as (NumeroDoCliente & { tenant_id: string })[];
 
-  const results: { integration: string; synced: number; errors: string[] }[] = [];
+  // Agrupa por conta. Integração sem token ou sem WABA não entra em conta nenhuma.
+  const { contas, semCredencial } = contasDasIntegracoes((integrations || []) as IntegracaoWhatsapp[]);
+  const results: {
+    conta: string;
+    integracoes: string[];
+    numero: string | null;
+    synced: number;
+    inseridos: number;
+    atualizados: number;
+    marcados_excluidos: number;
+    errors: string[];
+  }[] = [];
 
-  for (const intg of (integrations || [])) {
-    const cfg = intg.config as any;
-    const token: string = cfg?.access_token || cfg?.token || "";
-    const wabaId: string = cfg?.waba_id || "";
+  for (const intg of semCredencial) {
+    results.push({
+      conta: `${intg.tenant_id}|?`, integracoes: [intg.key], numero: null,
+      synced: 0, inseridos: 0, atualizados: 0, marcados_excluidos: 0, errors: ["token ou waba_id ausente"],
+    });
+  }
 
-    if (!token || !wabaId) {
-      results.push({ integration: intg.key, synced: 0, errors: ["token ou waba_id ausente"] });
+  for (const conta of contas) {
+    const numerosDoCliente = numeros.filter((n) => n.tenant_id === conta.tenantId);
+    const pnids = conta.integracoes.map((i) => String(i.config?.phone_number_id || "")).filter(Boolean);
+    const escolhido = numeroDaConta(numerosDoCliente, conta.wabaId, pnids);
+    const pnidEscolhido = numerosDoCliente.find((n) => n.id === escolhido)?.phone_number_id ?? null;
+    const errors: string[] = [];
+
+    // Token: o da integração do número escolhido primeiro; se a Meta recusar
+    // (token vencido de uma das integrações), tenta o das outras da mesma conta.
+    let modelosMeta: any[] | null = null;
+    for (const token of tokensDaConta(conta, pnidEscolhido)) {
+      const listagem = await listarModelosDaMeta(conta.wabaId, token);
+      if (listagem.ok) {
+        modelosMeta = listagem.modelos;
+        break;
+      }
+      errors.push(`Meta: ${listagem.erro}`);
+    }
+
+    const base = {
+      conta: conta.chave,
+      integracoes: conta.integracoes.map((i) => i.key),
+      numero: escolhido,
+    };
+
+    // Sem a lista COMPLETA da Meta não se grava nem se remove nada.
+    if (!modelosMeta) {
+      results.push({ ...base, synced: 0, inseridos: 0, atualizados: 0, marcados_excluidos: 0, errors });
       continue;
     }
 
-    const errors: string[] = [];
-    let synced = 0;
-
-    // Mundo desta integração: `whatsapp_config` = mundo legado (whatsapp_number_id
-    // NULL); qualquer outra chave = número próprio cadastrado em whatsapp_numbers.
-    // Sem isso, sincronizar a WABA A apagava/renomeava os templates da WABA B.
-    const phoneNumberIdIntg: string = cfg?.phone_number_id || "";
-    const numeroDaIntg = intg.key === "whatsapp_config"
-      ? null
-      : await numeroPorPhoneNumberId(supabase, phoneNumberIdIntg, intg.tenant_id);
-    const whatsappNumberId = numeroDaIntg?.id ?? null;
-    const ownerRole = whatsappNumberId ? await papelDonoDoNumero(supabase, whatsappNumberId) : null;
-
     try {
-      // Busca todos os templates da Meta (com paginação)
-      let allMetaTemplates: any[] = [];
-      let nextUrl: string | null =
-        `https://graph.facebook.com/v25.0/${wabaId}/message_templates?limit=100&fields=id,name,category,language,status,components`;
-
-      while (nextUrl) {
-        const metaRes = await fetch(nextUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const metaData = await metaRes.json();
-
-        if (!metaRes.ok) {
-          errors.push(`Meta API error: ${JSON.stringify(metaData)}`);
-          nextUrl = null;
-          continue;
-        }
-
-        allMetaTemplates = allMetaTemplates.concat(metaData.data || []);
-        nextUrl = metaData.paging?.next || null;
-      }
-
-      // Faz upsert de cada template — prioridade é ATUALIZAR o status
-      for (const t of allMetaTemplates) {
-        const headerComp = t.components?.find((c: any) => c.type === "HEADER");
-        const bodyComp = t.components?.find((c: any) => c.type === "BODY");
-        const footerComp = t.components?.find((c: any) => c.type === "FOOTER");
-        const buttonsComp = t.components?.find((c: any) => c.type === "BUTTONS");
-
-        const payload = {
-          meta_template_id: t.id,
-          name: t.name,
-          category: t.category,
-          language: t.language,
-          status: t.status,
-          header_type: headerComp?.format || null,
-          header_content: headerComp?.text || headerComp?.example?.header_handle?.[0] || null,
-          body_text: bodyComp?.text || null,
-          footer_text: footerComp?.text || null,
-          buttons: buttonsComp?.buttons || null,
-          waba_id: wabaId,
-          whatsapp_number_id: whatsappNumberId,
-          updated_at: new Date().toISOString(),
-        };
-
-        // Upsert por meta_template_id (unique constraint garante ausência de duplicatas)
-        const { data: existingRows } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("id, owner_role")
-          .eq("meta_template_id", t.id)
-          .eq("tenant_id", intg.tenant_id)
-          .eq("waba_id", wabaId)
-          .limit(1);
-        const existing = existingRows && existingRows[0];
-
-        if (existing) {
-          // NÃO sobrescrever header_content se já cacheamos a mídia num bucket
-          // público estável. As URLs do Meta (scontent.whatsapp.net) expiram
-          // rápido; se o sync sobrescreve o link estável, o próximo envio do
-          // template com header de mídia (IMAGE/VIDEO/DOCUMENT) falha em baixar
-          // a URL expirada e o gatilho "1 dia antes / 1 hora antes" some.
-          const { data: current } = await supabase
-            .from("crm_whatsapp_templates")
-            .select("header_content")
-            .eq("id", existing.id)
-            .maybeSingle();
-          const currentHeader = current?.header_content || "";
-          const finalPayload: Record<string, unknown> = { ...payload };
-          if (
-            currentHeader.includes("/storage/v1/object/public/") ||
-            currentHeader.includes("/storage/v1/object/sign/")
-          ) {
-            delete finalPayload.header_content;
-          }
-          // Repara o modelo que ficou sem dono (some da tela de quem é dono do
-          // número, e nenhuma sincronização posterior consertava). Só em número
-          // próprio: no legado, owner_role NULL quer dizer "modelo geral".
-          if (whatsappNumberId && ownerRole && !existing.owner_role) {
-            finalPayload.owner_role = ownerRole;
-          }
-          await supabase
-            .from("crm_whatsapp_templates")
-            .update(finalPayload)
-            .eq("id", existing.id);
-        } else {
-          await supabase.from("crm_whatsapp_templates").insert({
-            ...payload,
-            tenant_id: intg.tenant_id,
-            owner_role: ownerRole,
-            created_at: new Date().toISOString(),
-          });
-        }
-        synced++;
-      }
-
-      // Remove templates locais que não existem mais na Meta
-      // (só remove os que têm meta_template_id preenchido)
-      const metaIds = allMetaTemplates.map((t: any) => t.id).filter(Boolean);
-      if (metaIds.length > 0) {
-        // DELETE escopado à WABA da vez: antes era por tenant inteiro, então o
-        // sync da WABA A apagava todos os templates da WABA B (que obviamente
-        // não estão na lista da Meta da WABA A).
-        const { data: localWithMeta } = await supabase
-          .from("crm_whatsapp_templates")
-          .select("id, meta_template_id")
-          .eq("tenant_id", intg.tenant_id)
-          .eq("waba_id", wabaId);
-
-        for (const local of (localWithMeta || [])) {
-          if (local.meta_template_id && !metaIds.includes(local.meta_template_id)) {
-            await supabase
-              .from("crm_whatsapp_templates")
-              .delete()
-              .eq("id", local.id)
-              .eq("tenant_id", intg.tenant_id)
-              .eq("waba_id", wabaId);
-          }
-        }
-      }
-    } catch (err: any) {
-      errors.push(String(err));
+      const r = await sincronizarConta(supabase, {
+        tenantId: conta.tenantId,
+        wabaId: conta.wabaId,
+        modelosMeta,
+        numeros: numerosDoCliente,
+        pnidsDaConta: pnids,
+        papelDoChamador: null,
+      });
+      results.push({
+        ...base,
+        synced: modelosMeta.length,
+        inseridos: r.inseridos,
+        atualizados: r.atualizados,
+        marcados_excluidos: r.marcadosExcluidos,
+        errors: [...errors, ...r.erros],
+      });
+    } catch (err) {
+      results.push({
+        ...base, synced: 0, inseridos: 0, atualizados: 0, marcados_excluidos: 0,
+        errors: [...errors, String(err)],
+      });
     }
-
-    results.push({ integration: intg.key, synced, errors });
   }
 
   const totalSynced = results.reduce((s, r) => s + r.synced, 0);
+  const totalAtualizados = results.reduce((s, r) => s + r.atualizados, 0);
 
   console.log(
     `[sync-whatsapp-templates-cron] ${new Date().toISOString()} — ` +
-    `${results.length} integrações, ${totalSynced} templates sincronizados`
+    `${contas.length} contas, ${totalSynced} modelos lidos, ${totalAtualizados} linhas regravadas`
   );
 
   return new Response(
-    JSON.stringify({ success: true, integrations_processed: results.length, total_synced: totalSynced, results }),
+    JSON.stringify({
+      success: true,
+      contas_processadas: contas.length,
+      total_synced: totalSynced,
+      total_atualizados: totalAtualizados,
+      results,
+    }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 });

@@ -11,13 +11,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Copy, Pencil, Eye, Image, FileText, Search, ChevronLeft, ChevronRight, RefreshCw, Users } from "lucide-react";
-import { cleanTemplateName, indicesDasVariaveis } from "@/lib/templateUtils";
+import { cleanTemplateName, deduplicarNaConta, indicesDasVariaveis } from "@/lib/templateUtils";
 import { motivoDoServidor } from "@/lib/erroDeFuncao";
 import { useServicosDoTenant } from "@/hooks/useOpcoesDoTenant";
 import { useVocab } from "@/hooks/useVocab";
 import { uploadAutomationMedia } from "@/components/automation/automationMediaUpload";
 import { useAuth } from "@/contexts/AuthContext";
-import { listarIdsNumerosInativos, somenteModelosDeNumerosAtivos } from "@/lib/whatsappNumeros";
+import {
+  donoDoModeloNaTela,
+  filtroDeModelosDaConta,
+  lerSituacaoDosNumeros,
+  numeroAtivoDaConta,
+  somenteModelosDeNumerosAtivos,
+  type SituacaoDosNumeros,
+} from "@/lib/whatsappNumeros";
 import type { Database, Json } from "@/integrations/supabase/types";
 // Tipo local: no CRClin a lista de números vem de whatsapp_numbers direto
 // (colunas públicas); os campos de diagnóstico do v2 ficam opcionais.
@@ -32,6 +39,7 @@ type NumeroVisivel = {
   is_coexistence?: boolean | null;
   status?: string | null;
   verified_name?: string | null;
+  mundo?: string | null;
 };
 
 import ShareRoleDialog, { type OwnerRole } from "@/components/crm/ShareRoleDialog";
@@ -56,7 +64,7 @@ const rpcNumeros = async (
 ): Promise<{ data: NumeroVisivel[] | null; error: { message: string } | null }> => {
   const { data, error } = await supabase
     .from("whatsapp_numbers")
-    .select("id, display_name, phone_e164, is_active, is_default, waba_id")
+    .select("id, display_name, phone_e164, is_active, is_default, waba_id, mundo")
     .order("display_name");
   return { data: (data as unknown as NumeroVisivel[] | null) ?? null, error: error ? { message: error.message } : null };
 };
@@ -131,8 +139,10 @@ type WhatsAppTemplate = {
   shared_roles?: string[] | null;
   // Quem criou o modelo — é o que amarra editar/excluir da SDR ao item dela.
   created_by_user_id?: string | null;
-  // Cada número tem a sua cópia dos modelos da WABA; rascunho pode vir sem número.
+  // O modelo é da CONTA (WABA): vale para todos os números dela. O número
+  // gravado é só o que criou/recebe o modelo; rascunho pode vir sem número.
   whatsapp_number_id?: string | null;
+  waba_id?: string | null;
 };
 
 const ROLE_LABEL: Record<string, string> = {
@@ -230,12 +240,17 @@ export default function CrmModelos() {
   // aceita — é como ela parte de um modelo do acervo para fazer o dela.
   const podeEditarItem = (t: { created_by_user_id?: string | null }) =>
     userRole !== "sdr" || (!!user?.id && t.created_by_user_id === user.id);
-  // owner_role de item novo: o do usuário, EXCETO sdr e gerente (o dono) — o
-  // item deles nasce no mundo crc, o mesmo mapeamento que o gatilho
-  // set_owner_role_from_user e a function manage-whatsapp-templates fazem.
-  // Mandar 'sdr' explicitamente impedia o gatilho de agir e a policy de INSERT
-  // recusava a gravação; 'gerente' esconderia o modelo do dono de CRC e SDR.
-  const ownerRoleParaGravar = (papel: string | null) => (papel === "sdr" || papel === "gerente" ? "crc" : papel);
+  // owner_role de item novo: a mesma regra da function manage-whatsapp-templates
+  // (donoDoModeloNaTela): número de closer/recepção → o papel do número; senão
+  // o papel de quem cria, com SDR → 'crc' (mandar 'sdr' fazia a policy de
+  // INSERT recusar) e gerente/superadmin → NULL (modelo geral; 'gerente'
+  // esconderia o modelo da central inteira). Depende do gatilho
+  // set_owner_role_from_user não carimbar 'gerente' no NULL (SQL proposto).
+  const ownerRoleParaGravar = (papel: string | null, numeroId: string | null) =>
+    donoDoModeloNaTela(papel, numeros.find((n) => n.id === numeroId)?.mundo ?? null);
+  // Conta (WABA) de um número visível — o modelo é da conta, não do número.
+  const wabaDoNumero = (numeroId: string | null | undefined) =>
+    (numeroId ? numeros.find((n) => n.id === numeroId)?.waba_id?.trim() : null) || null;
 
   // Amostra de {{3}}: 1º serviço do cadastro do cliente, senão o vocabulário do
   // segmento, senão o neutro "Consulta" (AUTO-14 / REC-08 / CRC-16).
@@ -310,27 +325,46 @@ export default function CrmModelos() {
 
   const semNumero = numerosCarregados && numeros.length === 0;
 
-  // Com mais de um número, cada um tem a sua cópia dos modelos: a lista mostra
-  // a do número escolhido mais os rascunhos sem número. Com um só (ou nenhum),
-  // mostra tudo o que o perfil enxerga (inclusive modelos compartilhados).
-  const filtrarPorNumero = numeros.length > 1 && !!selectedNumero ? selectedNumero : null;
+  // A lista é a da CONTA (WABA) do número escolhido: o modelo vale para todos
+  // os números dela. Antes filtrava pelo número — e no número padrão aparecia 0
+  // dos 154 aprovados, que estavam carimbados com o outro número da mesma conta.
+  // Entram também os rascunhos sem conta gravados nele e os sem número. Modelo
+  // apagado na Meta (status DELETED, a linha fica por causa das automações)
+  // não aparece.
+  const numeroSelecionado = useMemo(
+    () => numeros.find((n) => n.id === selectedNumero) ?? null,
+    [numeros, selectedNumero],
+  );
+  const filtroDaConta = useMemo(() => filtroDeModelosDaConta(numeroSelecionado), [numeroSelecionado]);
+  const wabaPorNumero = useMemo(
+    () => new Map(numeros.map((n) => [n.id, n.waba_id?.trim() || null] as [string, string | null])),
+    [numeros],
+  );
 
   const lerModelos = useCallback(async () => {
     let q = supabase
       .from("crm_whatsapp_templates")
       .select("*")
+      .neq("status", "DELETED")
       .order("created_at", { ascending: false });
-    if (filtrarPorNumero) q = q.or(`whatsapp_number_id.eq.${filtrarPorNumero},whatsapp_number_id.is.null`);
+    if (filtroDaConta) q = q.or(filtroDaConta);
     return q;
-  }, [filtrarPorNumero]);
+  }, [filtroDaConta]);
+
+  /** Some o que é de conta morta e fica uma linha por (conta, nome, idioma). */
+  const prepararLista = useCallback(
+    (linhas: WhatsAppTemplate[], situacao: SituacaoDosNumeros) =>
+      deduplicarNaConta(somenteModelosDeNumerosAtivos(linhas, situacao), wabaPorNumero),
+    [wabaPorNumero],
+  );
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     // Só do banco local — a leitura na Meta é o botão "Sincronizar".
-    const [{ data, error }, inativos] = await Promise.all([lerModelos(), listarIdsNumerosInativos()]);
-    if (!error) setTemplates(somenteModelosDeNumerosAtivos((data as WhatsAppTemplate[]) || [], inativos));
+    const [{ data, error }, situacao] = await Promise.all([lerModelos(), lerSituacaoDosNumeros()]);
+    if (!error) setTemplates(prepararLista((data as WhatsAppTemplate[]) || [], situacao));
     setLoading(false);
-  }, [lerModelos]);
+  }, [lerModelos, prepararLista]);
 
   useEffect(() => {
     if (!numerosCarregados) return;
@@ -351,24 +385,25 @@ export default function CrmModelos() {
       if (error || (data as CorpoDeErro | null)?.error) {
         throw new Error(await motivoDoServidor(data, error, "Não foi possível sincronizar com a Meta."));
       }
-      const { data: refreshed } = await lerModelos();
-      if (refreshed) setTemplates(refreshed as WhatsAppTemplate[]);
+      // Mesma leitura da tela (conta, visibilidade e uma linha por nome+idioma).
+      await fetchTemplates();
       setLastSyncAt(new Date());
       const count = (data as { count?: number } | null)?.count ?? 0;
       const falhas = (data as { falhas_remocao?: number } | null)?.falhas_remocao ?? 0;
       if (!silent) toast.success(`Sincronizado! ${count} modelos encontrados na Meta.`);
       if (!silent && falhas > 0) {
-        toast.warning(`${falhas} modelo(s) apagado(s) na Meta não saíram daqui. Tente sincronizar de novo.`);
+        toast.warning(`${falhas} modelo(s) não puderam ser atualizados aqui. Tente sincronizar de novo.`);
       }
     } catch (e: unknown) {
       if (!silent) toast.error(`Erro ao sincronizar: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSyncing(false);
     }
-  }, [selectedNumero, syncing, lerModelos]);
+  }, [selectedNumero, syncing, fetchTemplates]);
 
-  // Não deduplicar nesta tela de gestão: o usuário precisa enxergar TODOS os
-  // modelos (mesmo com mesmo nome base) para conseguir compartilhar individualmente.
+  // Sem juntar por nome base (cleanTemplateName) nesta tela de gestão: o
+  // usuário precisa enxergar cada modelo para compartilhar individualmente. Só
+  // a mesma linha repetida na conta (mesmo nome e idioma) sai em prepararLista.
   const filtered = templates.filter(t => {
     if (tab === "aprovados" && t.status !== "APPROVED") return false;
     if (tab === "pendentes" && t.status !== "PENDING" && t.status !== "REJECTED") return false;
@@ -389,7 +424,9 @@ export default function CrmModelos() {
   const resetForm = () => setForm(formVazio);
 
   const openEdit = (t: WhatsAppTemplate) => {
-    setFormNumeroId(t.whatsapp_number_id ?? selectedNumero ?? "");
+    // Número ativo da conta do modelo (o dele, se ativo): o seletor do editor
+    // só tem números ativos.
+    setFormNumeroId(numeroAtivoDaConta(t, numeros, selectedNumero || null) ?? "");
     setForm({
       id: t.id, name: t.name, category: t.category, language: t.language,
       header_type: t.header_type || "", header_content: t.header_content || "",
@@ -405,9 +442,11 @@ export default function CrmModelos() {
 
   /**
    * Cópia do modelo como RASCUNHO (AUTO-12: antes nascia "Pendente — em
-   * análise pela Meta" para sempre, sem nunca ter ido à Meta). Fica no mesmo
-   * número do original. `comoNovaVersao` (AUTO-13): nome "_v2", "_v3"… e o
-   * editor abre na cópia para ajustar e enviar para aprovação.
+   * análise pela Meta" para sempre, sem nunca ter ido à Meta). Fica na mesma
+   * conta (WABA) do original, num número ATIVO dela — nunca num número
+   * desligado (o original pode estar carimbado com um). `comoNovaVersao`
+   * (AUTO-13): nome "_v2", "_v3"… e o editor abre na cópia para ajustar e
+   * enviar para aprovação.
    */
   const handleDuplicate = async (t: WhatsAppTemplate, comoNovaVersao = false) => {
     const { data: { user: atual } } = await supabase.auth.getUser();
@@ -416,10 +455,13 @@ export default function CrmModelos() {
       const { data: roleRow } = await supabase.rpc("get_user_primary_role", { _user_id: atual.id });
       ownerRole = (roleRow as string) || null;
     }
-    const numeroDaCopia = t.whatsapp_number_id ?? (selectedNumero || null);
+    const numeroDaCopia = numeroAtivoDaConta(t, numeros, selectedNumero || null);
+    const contaDaCopia = wabaDoNumero(numeroDaCopia) ?? t.waba_id ?? null;
+    const contaDe = (x: WhatsAppTemplate) => x.waba_id || wabaDoNumero(x.whatsapp_number_id) || x.whatsapp_number_id || null;
+    // Nome é único por conta + idioma (a Meta recusa repetido na mesma WABA).
     const usados = new Set(
       templates
-        .filter((x) => (x.whatsapp_number_id ?? null) === numeroDaCopia && x.language === t.language)
+        .filter((x) => contaDe(x) === (contaDaCopia ?? numeroDaCopia) && x.language === t.language)
         .map((x) => x.name),
     );
     // `usados` só tem os modelos que ESTA pessoa enxerga (RLS): o nome pode
@@ -436,9 +478,10 @@ export default function CrmModelos() {
         body_text: t.body_text, footer_text: t.footer_text, buttons: (t.buttons ?? null) as Json,
         status: "DRAFT",
         created_by_user_id: atual?.id || null,
-        owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
-        // A cópia fica no mesmo número do original.
+        owner_role: ownerRoleParaGravar(ownerRole, numeroDaCopia) as PapelApp | null,
+        // A cópia fica na conta do original, num número ativo dela.
         whatsapp_number_id: numeroDaCopia,
+        waba_id: contaDaCopia,
       }]).select("*").single();
       nova = (r.data as WhatsAppTemplate | null) ?? null;
       error = r.error;
@@ -448,7 +491,7 @@ export default function CrmModelos() {
     if (error || !nova) {
       toast.error(
         error?.code === "23505"
-          ? `Não achamos um nome livre para a cópia de "${t.name}" neste número. Crie um modelo novo com outro nome.`
+          ? `Não achamos um nome livre para a cópia de "${t.name}" nesta conta. Crie um modelo novo com outro nome.`
           : "Erro ao duplicar: " + (error?.message ?? "sem resposta"),
       );
       return;
@@ -468,30 +511,32 @@ export default function CrmModelos() {
     const template = templates.find(t => t.id === deleteId);
     if (!template) return;
 
-    // Primeiro na Meta, no escopo do número DONO da cópia (senão o do seletor).
-    // Quando a Meta aceita, a function já apaga a cópia de todos os números da
-    // WABA — aí a remoção local abaixo pode não achar mais nada, e está certo.
-    let removidoPelaFuncao = false;
+    // Modelo que está na Meta: quem exclui é a function (na Meta e aqui), no
+    // escopo de um número ATIVO da conta do modelo. Se ela recusar, nada sai
+    // daqui: antes a linha era apagada "só localmente", a sincronização a trazia
+    // de volta com OUTRO id e as automações que apontavam para ela quebravam.
     if (template.meta_template_id) {
       try {
         const body: Record<string, unknown> = { action: "delete", template_name: template.name, template_id: template.id };
-        const numeroDoModelo = template.whatsapp_number_id || selectedNumero;
+        const numeroDoModelo = numeroAtivoDaConta(template, numeros, selectedNumero || null);
         if (numeroDoModelo) body.whatsapp_number_id = numeroDoModelo;
         const { data, error } = await supabase.functions.invoke("manage-whatsapp-templates", { body });
         if (error || (data as CorpoDeErro | null)?.error) {
-          toast.error(`Não foi possível excluir na Meta: ${await motivoDoServidor(data, error, "erro desconhecido")}. Removendo apenas localmente.`);
-        } else {
-          removidoPelaFuncao = true;
-          const aviso = (data as { warning?: string } | null)?.warning;
-          if (aviso) toast.warning(aviso);
+          toast.error(`Não foi possível excluir: ${await motivoDoServidor(data, error, "erro desconhecido")}. Nada foi removido.`);
+          return;
         }
       } catch {
-        toast.warning("API Meta indisponível. Removendo apenas localmente.");
+        toast.error("Não foi possível falar com o servidor. Nada foi removido.");
+        return;
       }
+      toast.success("Modelo excluído");
+      setDeleteId(null);
+      void fetchTemplates();
+      return;
     }
 
-    // Aqui nem o erro era lido. Modelo de outro perfil (ou de outro número)
-    // sai da Meta e continua na lista, com "excluído" na tela.
+    // Rascunho (nunca foi à Meta): só existe aqui. Aqui nem o erro era lido —
+    // modelo de outro perfil continuava na lista, com "excluído" na tela.
     const { data: removidos, error: erroLocal } = await supabase
       .from("crm_whatsapp_templates")
       .delete()
@@ -501,7 +546,7 @@ export default function CrmModelos() {
       toast.error("Erro ao excluir o modelo: " + erroLocal.message);
       return;
     }
-    if ((!removidos || removidos.length === 0) && !removidoPelaFuncao) {
+    if (!removidos || removidos.length === 0) {
       toast.error("Seu perfil não tem permissão para excluir este modelo.");
       return;
     }
@@ -581,8 +626,22 @@ export default function CrmModelos() {
     };
     const erroDeGravacao = (e: { code?: string; message: string }) =>
       e.code === "23505"
-        ? "Já existe um modelo com este nome e idioma neste número. Troque o nome."
+        ? "Já existe um modelo com este nome e idioma nesta conta de WhatsApp. Troque o nome."
         : "Erro ao salvar: " + e.message;
+
+    // O nome é único por CONTA (WABA) + idioma: dois números da mesma conta
+    // não podem ter modelos diferentes com o mesmo nome (a Meta recusa, e o
+    // envio por nome pegaria o errado). Confere com a lista já carregada.
+    const contaDoForm = wabaDoNumero(formNumeroId);
+    const repetido = contaDoForm
+      ? templates.find((x) =>
+          x.id !== form.id && x.name === form.name && x.language === form.language &&
+          (x.waba_id || wabaDoNumero(x.whatsapp_number_id)) === contaDoForm)
+      : undefined;
+    if (repetido) {
+      toast.error("Já existe um modelo com este nome e idioma nesta conta de WhatsApp. Troque o nome.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -596,6 +655,7 @@ export default function CrmModelos() {
             ...conteudo,
             buttons: (conteudo.buttons ?? null) as Json,
             whatsapp_number_id: formNumeroId || null,
+            waba_id: contaDoForm,
             updated_at: new Date().toISOString(),
           })
           .eq("id", rascunhoId)
@@ -618,8 +678,9 @@ export default function CrmModelos() {
           buttons: (conteudo.buttons ?? null) as Json,
           status: "DRAFT",
           created_by_user_id: atual?.id || null,
-          owner_role: ownerRoleParaGravar(ownerRole) as PapelApp | null,
+          owner_role: ownerRoleParaGravar(ownerRole, formNumeroId || null) as PapelApp | null,
           whatsapp_number_id: formNumeroId || null,
+          waba_id: contaDoForm,
           updated_at: new Date().toISOString(),
         }]);
         if (error) { toast.error(erroDeGravacao(error)); return; }
@@ -632,19 +693,28 @@ export default function CrmModelos() {
       }
 
       // 2) Envio à Meta pelo número escolhido, com as amostras das variáveis.
+      // `rascunho_id`: a function grava o resultado NA linha do rascunho (antes
+      // criava na Meta e não gravava nada aqui).
       const { data, error: fnError } = await supabase.functions.invoke("manage-whatsapp-templates", {
         body: {
           action: "create",
           whatsapp_number_id: formNumeroId,
+          ...(rascunhoId ? { rascunho_id: rascunhoId } : {}),
           ...conteudo,
           body_examples: indicesNoCorpo.map(amostraDe),
         },
       });
       if (fnError || (data as CorpoDeErro | null)?.error) {
-        toast.error(
-          "Não foi possível enviar à Meta: " + (await motivoDoServidor(data, fnError, "erro desconhecido")),
-          { duration: 10000 },
-        );
+        const motivo = await motivoDoServidor(data, fnError, "erro desconhecido");
+        // Foi para a Meta, só não ficou gravado aqui: a sincronização traz o
+        // modelo (e adota o rascunho de mesmo nome e idioma).
+        if (motivo.startsWith("Criado na Meta")) {
+          toast.error(`${motivo}. A sincronização vai trazê-lo para a lista.`, { duration: 10000 });
+          setTimeout(() => { void handleSync(true); }, 5000);
+          fecharEditor();
+          return;
+        }
+        toast.error("Não foi possível enviar à Meta: " + motivo, { duration: 10000 });
         return;
       }
 
@@ -666,15 +736,17 @@ export default function CrmModelos() {
   };
 
   // Formulários da Meta só com número escolhido (sem número a chamada só
-  // devolvia 403 no console — POS-18).
+  // devolvia 403 no console — POS-18). Formulário é da conta: vale o número
+  // do editor (o modelo nasce na conta dele), não o filtro do topo.
+  const numeroDoEditor = formNumeroId || selectedNumero;
   useEffect(() => {
-    if (!modalOpen || !selectedNumero) {
+    if (!modalOpen || !numeroDoEditor) {
       setFormularios([]);
       return;
     }
     let cancelado = false;
     setCarregandoFormularios(true);
-    const body: Record<string, unknown> = { action: "list_flows", whatsapp_number_id: selectedNumero };
+    const body: Record<string, unknown> = { action: "list_flows", whatsapp_number_id: numeroDoEditor };
     supabase.functions
       .invoke("manage-whatsapp-templates", { body })
       .then(({ data, error }) => {
@@ -684,7 +756,7 @@ export default function CrmModelos() {
       })
       .finally(() => { if (!cancelado) setCarregandoFormularios(false); });
     return () => { cancelado = true; };
-  }, [modalOpen, selectedNumero]);
+  }, [modalOpen, numeroDoEditor]);
 
   const addButton = () => {
     if (form.buttons.length >= 3) return;
@@ -993,7 +1065,7 @@ export default function CrmModelos() {
                       headerType={form.header_type}
                       headerContent={form.header_content}
                       onChange={(handle) => setForm(p => ({ ...p, header_content: handle }))}
-                      numeroId={selectedNumero}
+                      numeroId={numeroDoEditor}
                     />
                   ) : null}
                 </div>
