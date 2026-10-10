@@ -1,6 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { executeStageAutomations } from "@/lib/automationUtils";
 import { moveLeadToStageCrossPipeline } from "@/lib/appointmentOutcome";
 import { mensagemDeErroRpc } from "@/lib/relatorioSdr";
 
@@ -299,17 +298,10 @@ export async function compareceuEAgendou(args: {
   const novo = `${newDate.split("-").reverse().join("/")} às ${newTime}`;
   await systemMessage(leadId, `📅 Compareceu e agendou — novo horário ${novo}`);
 
-  // Mesma regra da remarcação: sem troca de etapa, nada de automação de
-  // entrada — senão a mensagem de entrada da etapa atual ia de novo ao paciente.
-  if (movedStageId) {
-    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
-    executeStageAutomations({
-      leadId,
-      stageId: movedStageId,
-      leadPhone: lead?.phone ?? "",
-      triggerTypes: ["on_enter"],
-    }).catch((e) => console.error("[CompareceuEAgendou] Automation error:", e));
-  }
+  // As automações de entrada da etapa NOVA saem pelo banco: o UPDATE de
+  // stage_id aciona trg_enqueue_stage_entry_automations e a fila envia (com
+  // deduplicação, janela e saúde do número). Disparar daqui também mandava a
+  // mesma mensagem duas vezes ao paciente.
 
   if (falhaDeEtapa) {
     toast.warning(`Comparecimento registrado, mas o lead não foi movido de etapa: ${falhaDeEtapa}`);

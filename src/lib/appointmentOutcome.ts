@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { executeStageAutomations } from "@/lib/automationUtils";
 
 const norm = (s: string) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -220,18 +219,10 @@ export async function applyAppointmentOutcome(args: {
     status: "system",
   });
 
-  // Automações de entrada SÓ da etapa para a qual o lead acabou de ir. Sem
-  // troca de etapa, rodar as da etapa ATUAL reenviaria ao paciente as
-  // mensagens de entrada dela (achado da bateria de testes de 09/09).
-  if (movedStageId) {
-    const { data: lead } = await supabase.from("crm_leads").select("phone").eq("id", leadId).single();
-    executeStageAutomations({
-      leadId,
-      stageId: movedStageId,
-      leadPhone: lead?.phone ?? "",
-      triggerTypes: ["on_enter"],
-    }).catch((e) => console.error("[AppointmentOutcome] Automation error:", e));
-  }
+  // As automações de entrada da etapa NOVA saem pelo banco: o UPDATE de
+  // stage_id aciona trg_enqueue_stage_entry_automations e a fila envia (com
+  // deduplicação, janela e saúde do número). Disparar daqui também mandava a
+  // mesma mensagem duas vezes ao paciente.
 
   return true;
 }
