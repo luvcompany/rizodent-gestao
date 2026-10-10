@@ -1,13 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { evaluateConditions, type ConditionsConfig } from "../_shared/automationConditions.ts";
-import { filtrarMundo, mundoDoFunil, type MundoRef } from "../_shared/mundoNumero.ts";
+import { filtrarMundo, mundoDaPessoa, mundoDoFunil, type MundoRef } from "../_shared/mundoNumero.ts";
+import { conferirModeloDaAutomacao } from "../_shared/modeloDaAutomacao.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type AppRole = "crc" | "gerente" | "posvenda" | "superadmin" | "crc_legacy" | "sdr";
+type AppRole = "crc" | "gerente" | "posvenda" | "superadmin" | "crc_legacy" | "sdr" | "closer" | "recepcao";
 
 const allowedManagerRoles = new Set<AppRole>(["crc", "gerente", "posvenda", "superadmin"]);
 // Pedido do dono (10/09/2026): "o sdr também deve poder criar etapas, gatilhos,
@@ -17,10 +18,14 @@ const allowedManagerRoles = new Set<AppRole>(["crc", "gerente", "posvenda", "sup
 // etapa visível para a SDR. Sem essas duas travas o botão dela mandaria template
 // para os leads das colegas — o acidente das 46 pessoas — e o total devolvido
 // contaria leads na etapa "Contratado", que ela nunca pode ler.
-const allowedDispatchRoles = new Set<AppRole>([...allowedManagerRoles, "sdr"]);
-// Ordem = alcance. 'sdr' é a ÚLTIMA: quem acumula sdr + papel de gestão continua
-// disparando como gestão (sem recorte), igual ao comportamento de hoje.
-const rolePriority: AppRole[] = ["superadmin", "gerente", "crc", "posvenda", "sdr"];
+// Closer e recepção (09/10/2026): eram recusados com 403 — cada um tem os
+// próprios funis e automações, e o "enviar para todos" não funcionava para
+// eles. Agora disparam, mas só em funil da equipe deles e só para os leads
+// dos números deles (o mesmo recorte que a RLS mostra na tela).
+const allowedDispatchRoles = new Set<AppRole>([...allowedManagerRoles, "closer", "recepcao", "sdr"]);
+// Ordem = alcance. Papel de gestão vence (quem acumula gestão continua
+// disparando como gestão, sem recorte); 'sdr' é a ÚLTIMA, igual a antes.
+const rolePriority: AppRole[] = ["superadmin", "gerente", "crc", "posvenda", "closer", "recepcao", "sdr"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -153,7 +158,20 @@ Deno.serve(async (req) => {
     // Mundo do funil: o disparo em massa só alcança leads da equipe daquele
     // funil (central: legado + todos os números centrais; closer/recepção: os
     // números do dono) — nunca de outra equipe.
-    const mundoDoDisparo = await mundoDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
+    let mundoDoDisparo = await mundoDoFunil(admin, (stage as any).pipeline_id ?? null, tenantParaLeads);
+    // Closer/recepção (sem papel de gestão): só funil da equipe deles e, dentro
+    // dele, só os leads dos números de que são donos. Funil central com
+    // allowed_roles vazio (aberto a todos) não vira porta para o closer
+    // disparar para a central.
+    const disparoDeDono = role === "closer" || role === "recepcao";
+    if (disparoDeDono) {
+      const doutroDono = mundoDoDisparo.dono && mundoDoDisparo.dono !== userData.user.id;
+      if (mundoDoDisparo.mundo !== role || doutroDono) {
+        console.warn(`[enqueue-stage-automation] BLOQUEADO ${role}=${userData.user.id} funil de outra equipe (${mundoDoDisparo.mundo}) pipeline=${stage.pipeline_id}`);
+        return json({ error: "Este funil não é da sua equipe" }, 403);
+      }
+      mundoDoDisparo = await mundoDaPessoa(admin, tenantParaLeads, (stage as any).pipeline_id ?? null, userData.user.id, roles);
+    }
     // Recorte por dono: a busca roda com service_role (ignora RLS), então o
     // filtro TEM de ir dentro da consulta paginada — filtrar depois já teria
     // lido (e paginado sobre) os leads das colegas.
@@ -168,8 +186,34 @@ Deno.serve(async (req) => {
       return true;
     });
 
-    const escopoLog = somenteDoResponsavel ? `apenas_meus(${somenteDoResponsavel})` : "toda_a_etapa";
+    const escopoLog = somenteDoResponsavel
+      ? `apenas_meus(${somenteDoResponsavel})`
+      : disparoDeDono
+      ? `numeros_de(${userData.user.id})`
+      : "toda_a_etapa";
     console.log(`[enqueue-stage-automation] role=${role} papeis=${roles.join(",") || "-"} escopo=${escopoLog} total=${leads.length} eligible=${eligibleLeads.length} hasConditions=${hasConditions}`);
+
+    // Modelo (template): tem de existir, estar APPROVED e ser da WABA do número
+    // de saída — conferido ANTES de enfileirar. Sem isto o disparo dizia "N
+    // leads enfileirados" e cada envio morria depois com "Template não existe
+    // na WABA deste número".
+    if (actionType === "send_template" && tenantParaLeads) {
+      const amostra = eligibleLeads[0]
+        ? { leadId: String(eligibleLeads[0].id), leadNumberId: (eligibleLeads[0].whatsapp_number_id as string | null) ?? null }
+        : null;
+      const modelo = await conferirModeloDaAutomacao(admin, {
+        templateId: String(actionConfig.template_id),
+        tenantId: tenantParaLeads,
+        pipelineId: (stage as any).pipeline_id ?? null,
+        mundo: mundoDoDisparo,
+        amostra,
+      });
+      if (!modelo.ok) {
+        console.warn(`[enqueue-stage-automation] BLOQUEADO automation=${automationId} modelo=${actionConfig.template_id}: ${modelo.detalhe}`);
+        return json({ error: modelo.error }, modelo.status);
+      }
+      console.log(`[enqueue-stage-automation] modelo ok automation=${automationId} saída=${modelo.numero} waba=${modelo.wabaId ?? "-"} (${modelo.motivo})`);
+    }
 
     if (eligibleLeads.length === 0) {
       const semLead = somenteDoResponsavel
@@ -224,7 +268,7 @@ async function fetchAllLeads(
   for (let from = 0; ; from += pageSize) {
     let query = admin
       .from("crm_leads")
-      .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value")
+      .select("id, phone, tags, source, cidade, ad_id, ad_account_id, ad_account_name, nome_anuncio, servico_interesse, assigned_to, value, whatsapp_number_id")
       .eq("stage_id", stageId)
       // Leads bloqueados ou com automações pausadas nunca entram na fila.
       .eq("is_blocked", false)

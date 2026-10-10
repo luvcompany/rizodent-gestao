@@ -93,6 +93,153 @@ export function mundoCentral(admin: any, tenantId: string | null): Promise<Mundo
   return montarMundo(admin, tenantId, null, MUNDO_CENTRAL, null);
 }
 
+/**
+ * Mundo de uma PESSOA (closer/recepção: só os números dela; demais: central).
+ * Usado para recortar o que um closer ou uma recepcionista alcança dentro de
+ * um funil (disparo em massa), igual ao que a RLS deixa ela ver.
+ */
+export function mundoDaPessoa(
+  admin: any,
+  tenantId: string | null,
+  pipelineId: string | null,
+  userId: string,
+  papeis: string[],
+): Promise<MundoRef> {
+  const mundo = mundoDoUsuario(papeis);
+  return montarMundo(admin, tenantId, pipelineId, mundo, mundo === MUNDO_CENTRAL ? null : userId);
+}
+
+// ---------------------------------------------------------------------------
+// Equipe de uma PESSOA. Antes (até 09/10/2026) as functions descobriam "os
+// números do closer" contando user_permission_overrides — que eram gravados na
+// conexão do número. Agora o número guarda o próprio mundo e dono
+// (whatsapp_numbers.mundo / dono_user_id) e a permissão por usuário virou só
+// exceção do superadmin; contar overrides deixava o closer sem número (ninguém
+// grava mais) ou, pior, dava a ele um número de outra equipe.
+
+/** Linha de whatsapp_numbers com o que decide a equipe. */
+export type NumeroDaEquipe = { mundo: string | null; dono_user_id: string | null };
+
+/**
+ * Equipe (mundo) em que a pessoa trabalha e CONECTA números: closer e recepção
+ * são donos do próprio mundo; CRC, SDR, legado, gerência, superadmin e
+ * pós-venda são a central. Mesma régua de public.normaliza_mundo para o papel
+ * de quem conectou (integrations.owner_role).
+ */
+export function mundoDoUsuario(papeis: string[]): string {
+  if (papeis.includes("closer")) return "closer";
+  if (papeis.includes("recepcao")) return "recepcao";
+  return MUNDO_CENTRAL;
+}
+
+/**
+ * O número é da equipe desta pessoa? Closer/recepção: números do mundo dela
+ * com dono = ela (ou sem dono, que vale para o grupo inteiro). Demais papéis:
+ * números do mundo central. Não considera exceções por usuário — quem precisa
+ * da regra completa de ACESSO (com exceção e gerência vendo tudo) chama a RPC
+ * can_access_whatsapp_number com o JWT da pessoa.
+ */
+export function numeroEhDaEquipe(n: NumeroDaEquipe, userId: string, papeis: string[]): boolean {
+  const meu = mundoDoUsuario(papeis);
+  if ((n.mundo || MUNDO_CENTRAL) !== meu) return false;
+  if (meu === "closer" || meu === "recepcao") return !n.dono_user_id || n.dono_user_id === userId;
+  return true;
+}
+
+/**
+ * Espelho de public.usuario_do_mundo_do_numero (0014), para quando não há JWT
+ * à mão (ex.: o DESTINO de uma transferência). Sem gerência/superadmin (eles
+ * enxergam tudo pela can_access) e sem exceções por usuário.
+ */
+export function usuarioDoMundoDoNumero(n: NumeroDaEquipe, userId: string, papeis: string[]): boolean {
+  const mundo = n.mundo || MUNDO_CENTRAL;
+  if (mundo === "closer" || mundo === "recepcao") {
+    return n.dono_user_id ? n.dono_user_id === userId : papeis.includes(mundo);
+  }
+  if (mundo === "posvenda") return papeis.includes("posvenda");
+  return papeis.some((p) => ["crc", "sdr", "crc_legacy", "posvenda"].includes(p));
+}
+
+export type DonoDaConexao = {
+  /** Quem conecta pode mexer neste número (é da equipe dele, ou é gestão, ou o número é novo)? */
+  podeMexer: boolean;
+  /** owner_role a gravar na integração (o gatilho copia para whatsapp_numbers.mundo). */
+  ownerRole: string | null;
+  /** Mundo resultante do número. */
+  mundo: string;
+  /** config.owner_user_id a gravar ("" = número da equipe inteira). */
+  ownerUserId: string;
+};
+
+/**
+ * De quem fica um número ao ser conectado/reconectado (minha-conexao-whatsapp
+ * e whatsapp-oauth-callback).
+ *  - Número NOVO no cliente: da equipe de quem conecta — crc, sdr, crc_legacy,
+ *    gerente e superadmin → central; closer/recepção → o próprio papel, com a
+ *    pessoa como dona.
+ *  - Número que JÁ existe (cadastro ou integração): não muda de equipe. O
+ *    owner_role da integração é mantido (NULL fica NULL = central, salvo se o
+ *    número já for de outra equipe) — o gatilho trg_integracao_whatsapp_numero
+ *    copia o owner_role para whatsapp_numbers.mundo, então gravar o papel de
+ *    quem reconectou mudaria o número de mundo e as conversas sumiriam.
+ *  - Só a equipe do número (ou gerência/superadmin) mexe nele.
+ */
+export function donoDaConexao(p: {
+  papeis: string[];
+  userId: string;
+  numero: { mundo: string | null; dono_user_id: string | null } | null;
+  integracao: { owner_role: string | null; config?: Record<string, any> | null } | null;
+}): DonoDaConexao {
+  const { papeis, userId, numero, integracao } = p;
+  const gestao = papeis.includes("gerente") || papeis.includes("superadmin");
+  const donoDaIntegracao = String(integracao?.config?.owner_user_id || "") || null;
+  const equipeExistente: NumeroDaEquipe | null = numero
+    ? { mundo: numero.mundo, dono_user_id: numero.dono_user_id }
+    : integracao
+    ? { mundo: normalizaMundo(integracao.owner_role), dono_user_id: donoDaIntegracao }
+    : null;
+  const podeMexer = !equipeExistente || gestao || numeroEhDaEquipe(equipeExistente, userId, papeis);
+
+  const ownerRole: string | null = integracao
+    ? (integracao.owner_role ?? (numero?.mundo && numero.mundo !== MUNDO_CENTRAL ? numero.mundo : null))
+    : numero
+    ? (numero.mundo || MUNDO_CENTRAL)
+    : mundoDoUsuario(papeis);
+  const mundo = normalizaMundo(ownerRole);
+  const ownerUserId = mundo === MUNDO_CENTRAL
+    ? ""
+    : String(donoDaIntegracao || numero?.dono_user_id || (equipeExistente ? "" : userId));
+  return { podeMexer, ownerRole, mundo, ownerUserId };
+}
+
+/** Ordem de preferência entre números da mesma equipe: ativo, padrão, mais antigo (a mesma do numeroDeSaida). */
+export function ordemDeNumeros<T extends { is_active?: boolean | null; is_default?: boolean | null; created_at?: string | null }>(
+  a: T,
+  b: T,
+): number {
+  return Number(!!b.is_active) - Number(!!a.is_active) ||
+    Number(!!b.is_default) - Number(!!a.is_default) ||
+    String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+}
+
+/**
+ * Números (ativos e inativos) da equipe da pessoa no tenant, na ordem de
+ * preferência. `select` escolhe as colunas extras (id, mundo, dono_user_id,
+ * is_active, is_default e created_at vêm sempre).
+ */
+export async function numerosDaEquipeDoUsuario(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  papeis: string[],
+  select = "phone_number_id",
+): Promise<any[]> {
+  const colunas = `id, mundo, dono_user_id, is_active, is_default, created_at${select ? `, ${select}` : ""}`;
+  const { data, error } = await admin.from("whatsapp_numbers").select(colunas).eq("tenant_id", tenantId);
+  if (error) throw new Error(`whatsapp_numbers: ${error.message}`);
+  return ((data || []) as any[]).filter((n) => numeroEhDaEquipe(n, userId, papeis)).sort(ordemDeNumeros);
+}
+
 /** Mundo do número (whatsapp_numbers.id) de um lead; NULL = número legado. */
 export async function mundoDoNumero(admin: any, tenantId: string | null, numberId: string | null): Promise<MundoRef> {
   if (!tenantId) return montarMundo(admin, tenantId, null, MUNDO_CENTRAL, null);

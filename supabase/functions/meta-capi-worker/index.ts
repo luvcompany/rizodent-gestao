@@ -25,6 +25,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeInternal, unauthorizedResponse } from "../_shared/internalAuth.ts";
 import { resolveCaller } from "../_shared/authz.ts";
 import { escopoLegado } from "../_shared/wabaEscopo.ts";
+import { integracaoDoPnid, numeroDeSaida } from "../_shared/numeroDeSaida.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,21 +161,56 @@ function erroDaMeta(resp: RespostaGraph): { mensagem: string; transiente: boolea
 
 // ----------------------------------------------------------- credenciais/WABA
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** WABA de um número do cliente: a do cadastro ou a da integração (achada pelo phone_number_id). */
+async function wabaDoNumero(admin: any, tenantId: string, numero: { id?: string | null; phoneNumberId?: string | null }): Promise<string | null> {
+  let q = admin.from("whatsapp_numbers").select("waba_id, phone_number_id").eq("tenant_id", tenantId);
+  q = numero.id ? q.eq("id", numero.id) : q.eq("phone_number_id", String(numero.phoneNumberId || ""));
+  const { data } = await q.maybeSingle();
+  if (data?.waba_id) return String(data.waba_id);
+  const pnid = String(data?.phone_number_id || numero.phoneNumberId || "");
+  if (!pnid) return null;
+  const { data: ints } = await admin
+    .from("integrations").select("key, status, owner_role, config").eq("tenant_id", tenantId).like("key", "whatsapp%");
+  const waba = (integracaoDoPnid((ints || []) as any[], pnid)?.config as any)?.waba_id;
+  return waba ? String(waba) : null;
+}
+
+/**
+ * WABA do lead para o modo business_messaging (o ctwa_clid é da conta do
+ * número em que o anúncio entregou a conversa):
+ *  1. o número do lead (mesmo desativado — o clique foi para ele);
+ *  2. o número de saída da EQUIPE do lead (regra única do numeroDeSaida);
+ *  3. a WABA configurada na tela da API de Conversões;
+ *  4. só para lead SEM número (mundo legado), a integração whatsapp_config.
+ * Antes, lead com número sem WABA cadastrada caía na whatsapp_config — a conta
+ * de OUTRA equipe quando o lead era do closer.
+ */
 async function wabaDoLead(admin: any, lead: Lead, cfg: Config): Promise<string | null> {
   if (lead.whatsapp_number_id) {
-    const { data } = await admin
-      .from("whatsapp_numbers")
-      .select("waba_id")
-      .eq("id", lead.whatsapp_number_id)
-      .eq("tenant_id", lead.tenant_id)
-      .maybeSingle();
-    if (data?.waba_id) return String(data.waba_id);
+    const doNumero = await wabaDoNumero(admin, lead.tenant_id, { id: lead.whatsapp_number_id });
+    if (doNumero) return doNumero;
   }
-  if (cfg.waba_id) return cfg.waba_id;
   try {
-    const escopo = await escopoLegado(admin, lead.tenant_id);
-    if (escopo?.wabaId) return escopo.wabaId;
-  } catch (_) { /* segue para a env */ }
+    const saida = await numeroDeSaida(admin, {
+      leadId: UUID.test(lead.id) ? lead.id : "00000000-0000-0000-0000-000000000000",
+      tenantId: lead.tenant_id,
+      leadNumberId: lead.whatsapp_number_id,
+      pipelineId: null,
+    });
+    if (saida.ok) {
+      const daEquipe = await wabaDoNumero(admin, lead.tenant_id, { id: saida.numberId, phoneNumberId: saida.phoneNumberId });
+      if (daEquipe) return daEquipe;
+    }
+  } catch (_) { /* segue para a configuração */ }
+  if (cfg.waba_id) return cfg.waba_id;
+  if (!lead.whatsapp_number_id) {
+    try {
+      const escopo = await escopoLegado(admin, lead.tenant_id);
+      if (escopo?.wabaId) return escopo.wabaId;
+    } catch (_) { /* segue para a env */ }
+  }
   return Deno.env.get("WABA_ID") || null;
 }
 

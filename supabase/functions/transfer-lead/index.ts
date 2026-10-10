@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
+import { MUNDO_CENTRAL, usuarioDoMundoDoNumero } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -116,25 +117,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Alvo SDR: o mundo dela é o número principal — whatsapp_number_id NULL
-    // (mundo legado, caso Rizodent hoje) ou a linha is_default do cliente, o
-    // mesmo critério de concede_numeros_ao_novo_usuario. Lead carimbado com o
-    // número de um closer/recepção ficaria atribuído a ela e INVISÍVEL (a RLS
-    // por número negaria a leitura): recusa clara em vez de sumiço silencioso.
+    // Alvo SDR: o mundo dela é a CENTRAL — o número legado (lead sem carimbo)
+    // e QUALQUER número central (oficial, Comercial 2, contingência, ativo ou
+    // não; a resposta sai por um número ativo da central pelo numeroDeSaida).
+    // Antes só valia o número is_default: lead do "Comercial 2" era recusado
+    // para a SDR, mesmo sendo da equipe dela. Lead carimbado com o número de um
+    // closer/recepção ficaria atribuído a ela e INVISÍVEL (a RLS por número
+    // nega a leitura): recusa clara em vez de sumiço silencioso.
+    // Mundo lido do banco na hora (mesma função da busca/mescla de leads), sem
+    // cache: número conectado há segundos também conta.
     if (targetIsSdr) {
-      const numeroDoLead = (lead as any).whatsapp_number_id ?? null;
-      if (numeroDoLead) {
-        const { data: numero } = await supabase
-          .from("whatsapp_numbers")
-          .select("id, is_default, is_active")
-          .eq("id", numeroDoLead)
-          .eq("tenant_id", (lead as any).tenant_id)
-          .maybeSingle();
-        if (!(numero as any)?.is_default || !(numero as any)?.is_active) {
-          return json({
-            error: "Este lead é de outro número de WhatsApp; a SDR só atende o número principal da clínica.",
-          }, 400);
-        }
+      const { data: mundoDoLead, error: mundoErr } = await supabase.rpc("mundo_numero_whatsapp", {
+        p_tenant: (lead as any).tenant_id,
+        p_number_id: (lead as any).whatsapp_number_id ?? null,
+      });
+      if (mundoErr) return json({ error: "Não foi possível conferir a equipe do lead: " + mundoErr.message }, 500);
+      if ((mundoDoLead || MUNDO_CENTRAL) !== MUNDO_CENTRAL) {
+        return json({
+          error: "Este lead é de outra equipe (número de closer/recepção); a SDR só atende os números da central.",
+        }, 400);
       }
     }
 
@@ -145,11 +146,18 @@ Deno.serve(async (req) => {
 
     // Destino closer que já tem este telefone no mundo dele: mescla no lead do
     // closer (o lead de origem some; as mensagens viram "histórico anterior").
+    // Os números do closer vêm do próprio número (mundo 'closer' e dono = ele,
+    // ativos ou não — o lead antigo dele pode estar no número trocado), não de
+    // user_permission_overrides: a conexão de número não grava mais permissão
+    // por usuário, e um closer com número novo nunca teria o lead mesclado.
     if (targetRoles.includes("closer") && lead.phone) {
-      const { data: numerosCloser } = await supabase
-        .from("user_permission_overrides").select("resource_id")
-        .eq("user_id", newUserId).eq("scope", "whatsapp_number").eq("granted", true);
-      const ids = ((numerosCloser || []) as any[]).map((r) => r.resource_id).filter(Boolean);
+      const { data: numerosDoTenant, error: numErr } = await supabase
+        .from("whatsapp_numbers").select("id, mundo, dono_user_id")
+        .eq("tenant_id", lead.tenant_id);
+      if (numErr) return json({ error: "Não foi possível ler os números do closer: " + numErr.message }, 500);
+      const ids = ((numerosDoTenant || []) as any[])
+        .filter((n) => n.mundo === "closer" && usuarioDoMundoDoNumero(n, newUserId, targetRoles))
+        .map((n) => n.id as string);
       const origemNoMundoDoCloser = ids.includes((lead as any).whatsapp_number_id);
       if (ids.length && !origemNoMundoDoCloser) {
         const { data: alvo } = await supabase

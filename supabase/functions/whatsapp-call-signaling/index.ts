@@ -3,6 +3,8 @@
 // via Graph API. O SDP answer é gerado pelo navegador (RTCPeerConnection) e
 // enviado aqui para forward.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { integracaoDoPnid, numeroDeSaida, numerosAtivosDaEquipe } from "../_shared/numeroDeSaida.ts";
+import { mundoDoUsuario } from "../_shared/mundoNumero.ts";
 
 const API_VERSION = "v25.0";
 
@@ -23,49 +25,27 @@ interface Body {
   permission_text?: string; // texto opcional do pedido de permissão
 }
 
-type ResolutionRule = "body" | "lead_carimbado" | "lead_legado" | "papel" | "fallback";
+type ResolutionRule = "body" | "lead" | "equipe";
 
-async function resolveLegacyPhoneNumberId(supabase: any, tenantId: string): Promise<string | null> {
-  const { data: legacy } = await supabase
-    .from("integrations")
-    .select("config, status")
-    .eq("tenant_id", tenantId)
-    .eq("key", "whatsapp_config")
-    .neq("status", "disabled")
-    .maybeSingle();
-  const cfg = (legacy?.config as any) || {};
-  return cfg.phone_number_id || null;
-}
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
-async function resolveGrantedPhoneNumberId(supabase: any, userId: string, tenantId: string): Promise<string | null> {
-  const { data: overrides } = await supabase
-    .from("user_permission_overrides")
-    .select("resource_id, created_at")
-    .eq("user_id", userId)
-    .eq("scope", "whatsapp_number")
-    .eq("granted", true)
-    .order("created_at", { ascending: true })
-    .limit(10);
-
-  const ids = ((overrides || []) as any[])
-    .map((row) => String(row.resource_id || ""))
-    .filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
-  if (ids.length === 0) return null;
-
-  const { data: numbers } = await supabase
-    .from("whatsapp_numbers")
-    .select("id, phone_number_id, created_at")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .in("id", ids)
-    .order("created_at", { ascending: true });
-
-  const byId = new Map(((numbers || []) as any[]).map((n) => [String(n.id), n.phone_number_id]));
-  for (const id of ids) {
-    const phoneNumberId = byId.get(id);
-    if (phoneNumberId) return String(phoneNumberId);
-  }
-  return null;
+/**
+ * Token de um número já escolhido (chamada existente: aceitar, recusar,
+ * encerrar). A integração é achada pelo phone_number_id — o número oficial
+ * vive na chave herdada `whatsapp_config`, não em `whatsapp_<id>`.
+ */
+async function tokenDoPnid(supabase: any, tenantId: string, phoneNumberId: string): Promise<string> {
+  const [{ data: num }, { data: ints }] = await Promise.all([
+    supabase.from("whatsapp_numbers").select("token").eq("tenant_id", tenantId).eq("phone_number_id", phoneNumberId).maybeSingle(),
+    supabase.from("integrations").select("key, status, owner_role, config").eq("tenant_id", tenantId).like("key", "whatsapp%"),
+  ]);
+  const intg = integracaoDoPnid((ints || []) as any[], phoneNumberId);
+  const cfg = (intg && intg.status !== "disabled" ? intg.config : null) ?? {};
+  return String(cfg.access_token || cfg.token || (num as any)?.token || "");
 }
 
 Deno.serve(async (req) => {
@@ -136,10 +116,11 @@ Deno.serve(async (req) => {
     }
 
     // Resolve tenant/phone_number_id/wa_call_id conforme o modo
-    let tenantId: string | null = null;
     let phoneNumberId: string | null = null;
     let waCallId: string | null = null;
     let dbCallId: string | null = null;
+    // Token do número escolhido para ligar (connect/request_permission).
+    let waTokenEscolhido = "";
 
     // Perfil do usuário
     const { data: profile } = await supabase
@@ -153,15 +134,15 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    tenantId = profile.tenant_id;
+    const tenantId: string = String(profile.tenant_id);
 
     // Rodízio de SDRs — decisão do dono (09/09/2026): a SDR faz e atende
     // chamada de WhatsApp, mas só de lead que é dela. Esta function roda com
     // service role, então a posse é conferida aqui (mesma régua da RLS).
     let chamadorSdr = false;
+    const { data: callerRoles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+    const roles: string[] = (callerRoles || []).map((r: any) => String(r.role));
     {
-      const { data: callerRoles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-      const roles = (callerRoles || []).map((r: any) => String(r.role));
       chamadorSdr = roles.includes("sdr") && !roles.includes("superadmin");
       if (chamadorSdr && (action === "connect" || action === "request_permission")) {
         if (!body.lead_id) {
@@ -180,10 +161,10 @@ Deno.serve(async (req) => {
     }
 
     // lead_id vinha do corpo sem validação: confirma que o lead é do mesmo cliente.
-    let bodyLead: { tenant_id?: string | null; whatsapp_number_id?: string | null } | null = null;
+    let bodyLead: { tenant_id?: string | null; whatsapp_number_id?: string | null; pipeline_id?: string | null } | null = null;
     if ((action === "connect" || action === "request_permission") && body.lead_id) {
       const { data: leadRow } = await supabase
-        .from("crm_leads").select("tenant_id, whatsapp_number_id").eq("id", body.lead_id).maybeSingle();
+        .from("crm_leads").select("tenant_id, whatsapp_number_id, pipeline_id").eq("id", body.lead_id).maybeSingle();
       if (!leadRow || leadRow.tenant_id !== tenantId) {
         return new Response(JSON.stringify({ error: "lead de outro cliente" }), {
           status: 403,
@@ -204,65 +185,73 @@ Deno.serve(async (req) => {
         });
       }
       let resolutionRule: ResolutionRule | null = null;
+      const pedido = body.phone_number_id ? String(body.phone_number_id) : null;
 
-      // phone_number_id: resolve pelo MUNDO. Nunca usar "primeiro whatsapp_numbers ativo"
-      // como default, pois o número principal legado vive em integrations/whatsapp_config.
-      phoneNumberId = body.phone_number_id || null;
-      if (phoneNumberId) {
-        resolutionRule = "body";
-      }
-
-      if (!phoneNumberId && bodyLead) {
-        if (bodyLead.whatsapp_number_id) {
-          const { data: leadNumber } = await supabase
-            .from("whatsapp_numbers")
-            .select("phone_number_id")
-            .eq("tenant_id", tenantId)
-            .eq("id", bodyLead.whatsapp_number_id)
-            .eq("is_active", true)
-            .maybeSingle();
-          phoneNumberId = leadNumber?.phone_number_id || null;
-          resolutionRule = "lead_carimbado";
-        } else {
-          phoneNumberId = await resolveLegacyPhoneNumberId(supabase, tenantId);
-          resolutionRule = "lead_legado";
-        }
-      }
-
-      if (!phoneNumberId) {
-        const { data: role } = await supabase.rpc("get_user_primary_role", { _user_id: userId });
-        const primaryRole = String(role || "");
-        if (primaryRole === "closer" || primaryRole === "recepcao") {
-          phoneNumberId = await resolveGrantedPhoneNumberId(supabase, userId, tenantId);
-        } else if (["crc", "gerente", "posvenda", "superadmin", "crc_legacy"].includes(primaryRole)) {
-          phoneNumberId = await resolveLegacyPhoneNumberId(supabase, tenantId);
-        }
-        if (phoneNumberId) resolutionRule = "papel";
-      }
-
-      // Fallback: procura em integrations (mantido). Não varre whatsapp_numbers ativo.
-      if (!phoneNumberId) {
-        const { data: integrations } = await supabase
-          .from("integrations")
-          .select("config, status")
-          .eq("tenant_id", tenantId)
-          .like("key", "whatsapp_%")
-          .neq("status", "disabled");
-        for (const i of integrations || []) {
-          const c = (i.config as any) || {};
-          if (c.phone_number_id && (c.access_token || c.token)) {
-            phoneNumberId = c.phone_number_id;
-            break;
+      // Por qual número ligar — sempre um número ATIVO da equipe certa, nunca
+      // o whatsapp_config fixo (antes: lead sem carimbo ligava pelo número
+      // legado e closer/recepção pelo número achado nos overrides, que a
+      // conexão de número não grava mais).
+      //  • com lead: a regra única de saída (_shared/numeroDeSaida.ts) — o
+      //    número em que o paciente escreveu nas últimas 24h, o do lead, o
+      //    padrão da equipe… sempre na EQUIPE do lead. O número pedido pela
+      //    tela só vale se for ativo e da equipe do lead.
+      //  • sem lead: os números ativos da equipe de quem liga (closer/recepção:
+      //    os números de que a pessoa é dona; demais: os da central).
+      if (bodyLead) {
+        const leadNumberId = bodyLead.whatsapp_number_id ?? null;
+        if (pedido) {
+          const daEquipeDoLead = await numerosAtivosDaEquipe(supabase, { tenantId, leadNumberId });
+          const doPedido = daEquipeDoLead.find((c) => c.phoneNumberId === pedido);
+          if (doPedido) {
+            phoneNumberId = doPedido.phoneNumberId;
+            waTokenEscolhido = doPedido.token;
+            resolutionRule = "body";
+          } else {
+            console.warn(`[wa-call-signaling] número pedido ${pedido} não é ativo da equipe do lead ${body.lead_id}; usando a regra de saída`);
           }
         }
-        if (phoneNumberId) resolutionRule = "fallback";
+        if (!phoneNumberId) {
+          const saida = await numeroDeSaida(supabase, {
+            leadId: String(body.lead_id),
+            tenantId,
+            leadNumberId,
+            pipelineId: bodyLead.pipeline_id ?? null,
+          });
+          if (!saida.ok) return json({ error: saida.error }, saida.status);
+          phoneNumberId = saida.phoneNumberId;
+          waTokenEscolhido = saida.token;
+          resolutionRule = "lead";
+          console.log(`[wa-call-signaling] número do lead: ${saida.motivo}`);
+        }
+      } else {
+        const meuMundo = mundoDoUsuario(roles);
+        const minhaEquipe = { mundo: meuMundo, dono: meuMundo === "crc" ? null : userId };
+        let candidatos = await numerosAtivosDaEquipe(supabase, { tenantId, equipe: minhaEquipe });
+        if (pedido && !candidatos.some((c) => c.phoneNumberId === pedido)) {
+          // Número de outra equipe pedido pela tela (gerência vê todos; exceção
+          // do superadmin): credencial pela equipe DO NÚMERO; o acesso é
+          // conferido logo abaixo pela can_access_whatsapp_number.
+          const { data: numPedido } = await supabase
+            .from("whatsapp_numbers").select("mundo, dono_user_id")
+            .eq("tenant_id", tenantId).eq("phone_number_id", pedido).eq("is_active", true).maybeSingle();
+          candidatos = numPedido
+            ? await numerosAtivosDaEquipe(supabase, {
+              tenantId,
+              equipe: { mundo: (numPedido as any).mundo || "crc", dono: (numPedido as any).dono_user_id ?? null },
+            })
+            : [];
+        }
+        const escolhido = pedido ? candidatos.find((c) => c.phoneNumberId === pedido) : candidatos[0];
+        if (escolhido) {
+          phoneNumberId = escolhido.phoneNumberId;
+          waTokenEscolhido = escolhido.token;
+          resolutionRule = pedido ? "body" : "equipe";
+        }
       }
+
       if (!phoneNumberId) {
-        console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId}`);
-        return new Response(JSON.stringify({ error: "no phone_number_id available" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        console.error(`[wa-call-signaling] no phone_number_id for tenant=${tenantId} user=${userId}`);
+        return json({ error: pedido ? "Este número não está ativo nesta clínica." : "Nenhum número de WhatsApp ativo da sua equipe." }, 400);
       }
       console.log(`[wa-call-signaling] ${action} resolved phone_number_id=${phoneNumberId} tenant=${tenantId} rule=${resolutionRule ?? "none"}`);
 
@@ -308,29 +297,9 @@ Deno.serve(async (req) => {
       dbCallId = call.id;
     }
 
-    // Resolve token WhatsApp do tenant pelo phone_number_id
-    const { data: waNum } = await supabase
-      .from("whatsapp_numbers")
-      .select("token")
-      .eq("tenant_id", tenantId)
-      .eq("phone_number_id", phoneNumberId)
-      .maybeSingle();
-    let waToken: string = waNum?.token || "";
-    if (!waToken) {
-      // fallback: integrations legado
-      const { data: integrations } = await supabase
-        .from("integrations")
-        .select("config, status")
-        .eq("tenant_id", tenantId)
-        .like("key", "whatsapp_%")
-        .neq("status", "disabled");
-      const intg = (integrations || []).find((i: any) => {
-        const c = (i.config as any) || {};
-        return c.phone_number_id === phoneNumberId && (c.access_token || c.token);
-      });
-      const cfg = (intg?.config as any) || {};
-      waToken = cfg.access_token || cfg.token || "";
-    }
+    // Token: o do número escolhido acima ou, numa chamada existente, o do
+    // número que a recebeu/fez (achado pelo phone_number_id).
+    const waToken: string = waTokenEscolhido || (phoneNumberId ? await tokenDoPnid(supabase, tenantId, phoneNumberId) : "");
     if (!waToken) {
       console.error(`[wa-call-signaling] no token for tenant=${tenantId} phone_number_id=${phoneNumberId}`);
       return new Response(JSON.stringify({ error: "no WhatsApp token for this phone_number_id" }), {

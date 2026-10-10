@@ -16,7 +16,7 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { resolveCaller, callerHasRole } from "../_shared/authz.ts";
-import { escopoDoLead } from "../_shared/wabaEscopo.ts";
+import { numerosAtivosDaEquipe } from "../_shared/numeroDeSaida.ts";
 import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 
 const corsHeaders = {
@@ -100,71 +100,105 @@ Deno.serve(async (req) => {
     const telefone = String((lead as any).phone || "").replace(/\D/g, "");
     if (!telefone) return json({ error: "Lead sem telefone", ok: false }, 400);
 
-    // Credenciais do MUNDO do lead (o número que o trouxe), a mesma regra do envio.
-    const escopo = await escopoDoLead(admin, {
-      whatsapp_number_id: (lead as any).whatsapp_number_id ?? null,
-      tenant_id: (lead as any).tenant_id ?? null,
+    // Todos os números ATIVOS da equipe (mundo) do lead — a mesma regra de
+    // equipe do envio (_shared/numeroDeSaida.ts). A lista de bloqueados da Meta
+    // é POR NÚMERO: antes bloqueava só no número do lead (e, lead sem carimbo,
+    // só no whatsapp_config), e a pessoa continuava escrevendo para o Comercial
+    // 2 / número novo da mesma equipe. Número de outra equipe nunca entra.
+    const numeros = await numerosAtivosDaEquipe(admin, {
+      tenantId: String((lead as any).tenant_id),
+      leadNumberId: (lead as any).whatsapp_number_id ?? null,
     });
-    if (!escopo.phoneNumberId || !escopo.token) {
-      return json({ ok: false, motivo: "Número do lead sem credenciais de WhatsApp." }, 200);
+    if (numeros.length === 0) {
+      return json({ ok: false, motivo: "Nenhum número de WhatsApp ativo da equipe deste lead." }, 200);
     }
 
-    const url = `${BASE_GRAPH_META}/${encodeURIComponent(escopo.phoneNumberId)}/block_users`;
-    const payload = { messaging_product: "whatsapp", block_users: [{ user: telefone }] };
+    type Resultado = {
+      phone_number_id: string;
+      sucesso: boolean;
+      codigo: number | null;
+      motivo: string | null;
+      wa_id: string | null;
+    };
+    const resultados: Resultado[] = [];
 
-    let resposta: any = null;
-    let httpStatus = 0;
-    for (let tentativa = 1; tentativa <= 2; tentativa++) {
-      const res = await fetch(url, {
-        method: acao === "bloquear" ? "POST" : "DELETE",
-        headers: { Authorization: `Bearer ${escopo.token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    for (const numero of numeros) {
+      const url = `${BASE_GRAPH_META}/${encodeURIComponent(numero.phoneNumberId)}/block_users`;
+      const payload = { messaging_product: "whatsapp", block_users: [{ user: telefone }] };
+
+      let resposta: any = null;
+      let httpStatus = 0;
+      for (let tentativa = 1; tentativa <= 2; tentativa++) {
+        const res = await fetch(url, {
+          method: acao === "bloquear" ? "POST" : "DELETE",
+          headers: { Authorization: `Bearer ${numero.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        httpStatus = res.status;
+        resposta = await res.json().catch(() => ({}));
+
+        const codigoTopo = Number(resposta?.error?.code) || null;
+        const codigoItem = Number(resposta?.block_users?.failed_users?.[0]?.errors?.[0]?.code) || null;
+        const codigo = codigoItem ?? codigoTopo;
+        if (!codigo || !RETENTAR.has(codigo) || tentativa === 2) break;
+        await espera(700);
+      }
+
+      const bloco = resposta?.block_users ?? {};
+      const listaOk = acao === "bloquear" ? bloco.added_users : bloco.removed_users;
+      const sucesso = Array.isArray(listaOk) && listaOk.length > 0;
+      const falha = Array.isArray(bloco.failed_users) ? bloco.failed_users[0] : null;
+      const codigo =
+        Number(falha?.errors?.[0]?.code) || Number(resposta?.error?.code) || null;
+      const textoErro =
+        falha?.errors?.[0]?.message || resposta?.error?.message || (httpStatus >= 400 ? `HTTP ${httpStatus}` : "");
+      const waId = listaOk?.[0]?.wa_id ?? falha?.wa_id ?? null;
+
+      const { error: erroLog } = await admin.from("whatsapp_bloqueios").insert({
+        tenant_id: (lead as any).tenant_id,
+        lead_id: leadId,
+        telefone,
+        wa_id: waId,
+        phone_number_id: numero.phoneNumberId,
+        acao,
+        sucesso,
+        erro_codigo: sucesso ? null : codigo,
+        erro_texto: sucesso ? null : String(textoErro || "").slice(0, 400),
+        feito_por: caller.userId,
       });
-      httpStatus = res.status;
-      resposta = await res.json().catch(() => ({}));
+      if (erroLog) console.warn(`[whatsapp-bloquear-contato] registro não gravado (${numero.phoneNumberId}): ${erroLog.message}`);
 
-      const codigoTopo = Number(resposta?.error?.code) || null;
-      const codigoItem = Number(resposta?.block_users?.failed_users?.[0]?.errors?.[0]?.code) || null;
-      const codigo = codigoItem ?? codigoTopo;
-      if (!codigo || !RETENTAR.has(codigo) || tentativa === 2) break;
-      await espera(700);
+      if (!sucesso) {
+        console.warn(
+          `[whatsapp-bloquear-contato] ${acao} falhou lead=${leadId} numero=${numero.phoneNumberId} code=${codigo ?? "-"} http=${httpStatus}`,
+        );
+      }
+      resultados.push({
+        phone_number_id: numero.phoneNumberId,
+        sucesso,
+        codigo: sucesso ? null : codigo,
+        motivo: sucesso ? null : motivoDaFalha(codigo, String(textoErro || "")),
+        wa_id: waId,
+      });
     }
 
-    const bloco = resposta?.block_users ?? {};
-    const listaOk = acao === "bloquear" ? bloco.added_users : bloco.removed_users;
-    const sucesso = Array.isArray(listaOk) && listaOk.length > 0;
-    const falha = Array.isArray(bloco.failed_users) ? bloco.failed_users[0] : null;
-    const codigo =
-      Number(falha?.errors?.[0]?.code) || Number(resposta?.error?.code) || null;
-    const textoErro =
-      falha?.errors?.[0]?.message || resposta?.error?.message || (httpStatus >= 400 ? `HTTP ${httpStatus}` : "");
-
-    await admin.from("whatsapp_bloqueios").insert({
-      tenant_id: (lead as any).tenant_id,
-      lead_id: leadId,
-      telefone,
-      wa_id: (listaOk?.[0]?.wa_id ?? falha?.wa_id ?? null),
-      phone_number_id: escopo.phoneNumberId,
-      acao,
-      sucesso,
-      erro_codigo: sucesso ? null : codigo,
-      erro_texto: sucesso ? null : String(textoErro || "").slice(0, 400),
-      feito_por: caller.userId,
-    });
-
-    if (sucesso) {
+    const certos = resultados.filter((r) => r.sucesso);
+    if (certos.length > 0) {
+      const verbo = acao === "bloquear" ? "bloqueado" : "desbloqueado";
+      const parcial = certos.length < resultados.length
+        ? ` em ${certos.length} de ${resultados.length} números da equipe (nos outros: ${resultados.find((r) => !r.sucesso)?.motivo})`
+        : resultados.length > 1 ? ` nos ${resultados.length} números da equipe` : "";
       return json({
         ok: true,
         acao,
-        wa_id: listaOk[0]?.wa_id ?? null,
-        mensagem: acao === "bloquear" ? "Contato bloqueado na Meta." : "Contato desbloqueado na Meta.",
+        wa_id: certos[0].wa_id,
+        mensagem: `Contato ${verbo} na Meta${parcial}.`,
+        numeros: resultados,
       });
     }
 
-    console.warn(
-      `[whatsapp-bloquear-contato] ${acao} falhou lead=${leadId} code=${codigo ?? "-"} http=${httpStatus}`,
-    );
-    return json({ ok: false, acao, codigo, motivo: motivoDaFalha(codigo, String(textoErro || "")) });
+    const primeira = resultados[0];
+    return json({ ok: false, acao, codigo: primeira?.codigo ?? null, motivo: primeira?.motivo, numeros: resultados });
   } catch (e) {
     // Nunca derruba o fluxo do front: o bloqueio local já aconteceu.
     console.error("[whatsapp-bloquear-contato] erro inesperado:", e);

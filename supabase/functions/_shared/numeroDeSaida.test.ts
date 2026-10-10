@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { numeroDeSaida } from "./numeroDeSaida.ts";
+import { numeroDeSaida, numerosAtivosDaEquipe } from "./numeroDeSaida.ts";
 
 // Retrato do tenant Rizodent em 09/10/2026 (ids encurtados).
 const T = "rizodent";
@@ -125,4 +125,32 @@ Deno.test("lead do closer nunca sai por número central, mesmo sem número ativo
   };
   const r = await numeroDeSaida(semCloserAtivo, { leadId: "L8", tenantId: T, leadNumberId: CLOSER_ANTIGO, pipelineId: null });
   assertEquals(r.ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// numerosAtivosDaEquipe: o que vale para a equipe inteira (bloquear contato,
+// ligar sem lead). Sempre só números ATIVOS da MESMA equipe.
+
+Deno.test("equipe central (lead sem carimbo): oficial e Comercial 2; nunca contingência desligada nem closer", async () => {
+  const r = await numerosAtivosDaEquipe(cenario(), { tenantId: T, leadNumberId: null });
+  assertEquals(r.map((c) => c.numberId), [OFICIAL, COMERCIAL2]);
+  assertEquals(r[0].token, "tk-oficial"); // a integração do oficial é a whatsapp_config
+});
+
+Deno.test("lead do closer (mesmo carimbado com o número antigo): só o número ativo do closer", async () => {
+  const r = await numerosAtivosDaEquipe(cenario(), { tenantId: T, leadNumberId: CLOSER_ANTIGO });
+  assertEquals(r.map((c) => c.numberId), [CLOSER_ATIVO]);
+  assertEquals(r[0].token, "tk-closer");
+});
+
+Deno.test("equipe pela pessoa (ligar sem lead): o closer dono só alcança os números dele", async () => {
+  const r = await numerosAtivosDaEquipe(cenario(), { tenantId: T, equipe: { mundo: "closer", dono: CLOSER } });
+  assertEquals(r.map((c) => c.numberId), [CLOSER_ATIVO]);
+  const outro = await numerosAtivosDaEquipe(cenario(), { tenantId: T, equipe: { mundo: "closer", dono: "outro-closer" } });
+  assertEquals(outro.length, 0);
+});
+
+Deno.test("integração desativada fica de fora da lista da equipe", async () => {
+  const r = await numerosAtivosDaEquipe(cenario({ comercial2Desativado: true }), { tenantId: T, leadNumberId: OFICIAL });
+  assertEquals(r.map((c) => c.numberId), [OFICIAL]);
 });

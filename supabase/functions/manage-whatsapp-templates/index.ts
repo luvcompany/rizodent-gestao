@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoNumero, escopoLegado, filtrarWaba, papelDonoDoNumero } from "../_shared/wabaEscopo.ts";
 import { lerTelasDoFlow } from "../_shared/flowTelas.ts";
+import { numerosDaEquipeDoUsuario } from "../_shared/mundoNumero.ts";
 
 
 const corsHeaders = {
@@ -145,39 +146,63 @@ Deno.serve(async (req) => {
     // ===== WABA do CHAMADOR (cada número é um mundo) =====
     // Antes: qualquer integração whatsapp_% do tenant (arbitrária) — o closer
     // listava/criava templates na WABA do número principal e vice-versa.
-    // Agora: closer/recepcao operam na WABA do número concedido a eles;
-    // crc/gerente/superadmin/posvenda operam na WABA legada (whatsapp_config),
-    // podendo apontar outro número via `phone_number_id` (validado por acesso).
+    // Agora: closer/recepcao operam na WABA de um número da EQUIPE deles
+    // (whatsapp_numbers.mundo/dono_user_id); crc/gerente/superadmin/posvenda
+    // operam na WABA legada (whatsapp_config), podendo apontar outro número via
+    // `phone_number_id` (validado por acesso).
     const escopoRestrito = (rolesSet.has("closer") || rolesSet.has("recepcao")) && !isPrivileged;
     let escopo = null as Awaited<ReturnType<typeof escopoLegado>> | null;
 
     if (escopoRestrito) {
-      const { data: ovr } = await supabase
-        .from("user_permission_overrides")
-        .select("resource_id")
-        .eq("user_id", user.id)
-        .eq("scope", "whatsapp_number")
-        .eq("granted", true);
-      const numeros = (ovr || []).map((o: any) => o.resource_id);
-      if (numeros.length === 0) {
+      if (!callerTenantId) {
         return new Response(
-          JSON.stringify({ error: "Seu usuário não tem número de WhatsApp vinculado." }),
+          JSON.stringify({ error: "Usuário sem cliente associado." }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // Só número ATIVO: o closer pode ter override de um número morto (o ID
-      // antigo, de antes da coexistência), e cair nele devolve 400 da Meta.
-      const alvo = typeof body.phone_number_id === "string" && body.phone_number_id
-        ? (await supabase.from("whatsapp_numbers").select("id").eq("phone_number_id", body.phone_number_id)
-            .eq("tenant_id", callerTenantId).eq("is_active", true).in("id", numeros).limit(1)).data?.[0]?.id
-        : (await supabase.from("whatsapp_numbers").select("id")
-            .eq("tenant_id", callerTenantId).eq("is_active", true).in("id", numeros)
-            .order("created_at", { ascending: true }).limit(1)).data?.[0]?.id;
-      if (!alvo) {
-        return new Response(
-          JSON.stringify({ error: "Número informado não pertence ao seu usuário." }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      // Antes contava user_permission_overrides — gravados na conexão do
+      // número. Desde 09/10/2026 a conexão não grava mais (o número é da
+      // equipe), e o closer que conectasse um número novo ficaria "sem número
+      // vinculado". Só número ATIVO: o número antigo do closer (de antes da
+      // coexistência) continua da equipe dele, mas cair nele devolve 400 da Meta.
+      const papeis = [...rolesSet] as string[];
+      const daEquipe = (await numerosDaEquipeDoUsuario(supabase, callerTenantId, user.id, papeis))
+        .filter((n: any) => n.is_active);
+      let alvo: string | null = null;
+      if (typeof body.phone_number_id === "string" && body.phone_number_id) {
+        alvo = daEquipe.find((n: any) => String(n.phone_number_id) === body.phone_number_id)?.id ?? null;
+        if (!alvo) {
+          // Exceção configurada pelo superadmin (permissão por usuário) só a
+          // RPC conhece: pergunta a ela com o JWT da pessoa.
+          const { data: numRow } = await supabase
+            .from("whatsapp_numbers")
+            .select("id")
+            .eq("phone_number_id", body.phone_number_id)
+            .eq("tenant_id", callerTenantId)
+            .eq("is_active", true)
+            .maybeSingle();
+          if ((numRow as any)?.id) {
+            const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+              global: { headers: { Authorization: authHeader } },
+            });
+            const { data: podeVer } = await userClient.rpc("can_access_whatsapp_number", { _number_id: (numRow as any).id });
+            if (podeVer === true) alvo = (numRow as any).id;
+          }
+        }
+        if (!alvo) {
+          return new Response(
+            JSON.stringify({ error: "Número informado não é da sua equipe." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        alvo = daEquipe[0]?.id ?? null;
+        if (!alvo) {
+          return new Response(
+            JSON.stringify({ error: "Nenhum número de WhatsApp ativo da sua equipe. Conecte o seu em Conexões." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
       }
       escopo = await escopoDoNumero(supabase, alvo, callerTenantId);
     } else if (typeof body.phone_number_id === "string" && body.phone_number_id) {

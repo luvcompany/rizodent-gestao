@@ -53,10 +53,107 @@ function mundoDoPapel(papel: string | null | undefined): string {
 }
 
 /** Integração de um número pelo phone_number_id (a do oficial é `whatsapp_config`). */
-export function integracaoDoPnid(integracoes: Integracao[], pnid: string | null): Integracao | null {
+export function integracaoDoPnid<T extends Integracao>(integracoes: T[], pnid: string | null): T | null {
   if (!pnid) return null;
   const doPnid = integracoes.filter((i) => String(i.config?.phone_number_id ?? "") === String(pnid));
   return doPnid.find((i) => i.key === `whatsapp_${pnid}`) ?? doPnid.find((i) => i.key === "whatsapp_config") ?? doPnid[0] ?? null;
+}
+
+/** Equipe de um lead: a do número carimbado; sem carimbo, a do número legado (whatsapp_config). */
+function equipeDoLead(
+  numeros: Numero[],
+  integracoes: Integracao[],
+  leadNumberId: string | null,
+): { mundo: string; dono: string | null } {
+  const carimbo = leadNumberId ? numeros.find((n) => n.id === leadNumberId) ?? null : null;
+  if (carimbo) return { mundo: carimbo.mundo || "crc", dono: carimbo.dono_user_id ?? null };
+  const legado = integracoes.find((i) => i.key === "whatsapp_config") ?? null;
+  return { mundo: mundoDoPapel(legado?.owner_role ?? null), dono: null };
+}
+
+function ehDaEquipe(n: Numero, equipe: { mundo: string; dono: string | null }): boolean {
+  return (n.mundo || "crc") === equipe.mundo &&
+    (!equipe.dono || !n.dono_user_id || n.dono_user_id === equipe.dono);
+}
+
+/**
+ * Credencial de envio de um número ATIVO (null = desligado, integração
+ * desativada ou sem token). A integração é achada pelo phone_number_id — a do
+ * número oficial é a chave herdada `whatsapp_config`.
+ */
+function credencialDoNumero(
+  n: Numero,
+  integracoes: Integracao[],
+  motivo: string,
+): SaidaOk | "desativada" | null {
+  if (!n.is_active || !n.phone_number_id) return null;
+  const intg = integracaoDoPnid(integracoes, n.phone_number_id);
+  if (intg?.status === "disabled") return "desativada";
+  const cfg = (intg?.config ?? {}) as Record<string, any>;
+  const token = cfg.access_token || cfg.token || n.token || "";
+  const pnid = String(cfg.phone_number_id || n.phone_number_id || "");
+  if (!token || !pnid) return null;
+  return { ok: true, numberId: n.id, phoneNumberId: pnid, token, mmLite: cfg.mm_lite === true, integrationKey: intg?.key ?? null, motivo };
+}
+
+/**
+ * TODOS os números ativos (com credencial) de uma equipe — para o que tem de
+ * valer na equipe inteira, como bloquear um contato na Meta (a lista de
+ * bloqueados é por número: bloquear só no número do lead deixava a pessoa
+ * escrevendo para os outros números da mesma equipe).
+ *
+ * A equipe vem de `equipe` (mundo/dono) ou, sem ela, do número do lead
+ * (`leadNumberId`; null = número legado), pela mesma regra do numeroDeSaida.
+ * Ordem: padrão primeiro, depois o mais antigo.
+ */
+export async function numerosAtivosDaEquipe(
+  supabase: any,
+  p: { tenantId: string; leadNumberId?: string | null; equipe?: { mundo: string; dono: string | null } },
+): Promise<SaidaOk[]> {
+  const [{ data: nums }, { data: ints }] = await Promise.all([
+    supabase
+      .from("whatsapp_numbers")
+      .select("id, phone_number_id, mundo, dono_user_id, is_active, is_default, token, created_at")
+      .eq("tenant_id", p.tenantId),
+    supabase
+      .from("integrations")
+      .select("key, status, owner_role, config")
+      .eq("tenant_id", p.tenantId)
+      .like("key", "whatsapp%"),
+  ]);
+  const numeros = (nums || []) as Numero[];
+  const integracoes = (ints || []) as Integracao[];
+  const equipe = p.equipe ?? equipeDoLead(numeros, integracoes, p.leadNumberId ?? null);
+
+  const saida: SaidaOk[] = [];
+  const vistos = new Set<string>();
+  const candidatos = numeros
+    .filter((n) => n.is_active && ehDaEquipe(n, equipe))
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default) || String(a.created_at).localeCompare(String(b.created_at)));
+  for (const n of candidatos) {
+    const c = credencialDoNumero(n, integracoes, "número ativo da equipe");
+    if (!c || c === "desativada" || vistos.has(c.phoneNumberId)) continue;
+    vistos.add(c.phoneNumberId);
+    saida.push(c);
+  }
+
+  // Integração herdada sem espelho em whatsapp_numbers (cliente antigo): vale
+  // se for da mesma equipe pelo papel de quem a conectou.
+  const legado = integracoes.find((i) => i.key === "whatsapp_config") ?? null;
+  const cfgLegado = (legado?.config ?? {}) as Record<string, any>;
+  const pnidLegado = String(cfgLegado.phone_number_id || "");
+  const tokenLegado = cfgLegado.access_token || cfgLegado.token || "";
+  if (
+    legado && legado.status !== "disabled" && pnidLegado && tokenLegado && !vistos.has(pnidLegado) &&
+    !numeros.some((n) => n.phone_number_id === pnidLegado) &&
+    mundoDoPapel(legado.owner_role) === equipe.mundo && !equipe.dono
+  ) {
+    saida.push({
+      ok: true, numberId: null, phoneNumberId: pnidLegado, token: tokenLegado,
+      mmLite: cfgLegado.mm_lite === true, integrationKey: legado.key, motivo: "número principal (whatsapp_config)",
+    });
+  }
+  return saida;
 }
 
 export async function numeroDeSaida(
@@ -95,25 +192,18 @@ export async function numeroDeSaida(
   const porId = new Map(numeros.map((n) => [n.id, n]));
 
   // Equipe (mundo) do lead: a do número carimbado; sem carimbo, a do número legado.
-  const carimbo = p.leadNumberId ? porId.get(p.leadNumberId) ?? null : null;
-  const mundoLead = carimbo ? (carimbo.mundo || "crc") : mundoDoPapel(legado?.owner_role ?? null);
-  const donoLead = carimbo?.dono_user_id ?? null;
-  const mesmaEquipe = (n: Numero) =>
-    (n.mundo || "crc") === mundoLead &&
-    (!donoLead || !n.dono_user_id || n.dono_user_id === donoLead);
+  const equipe = equipeDoLead(numeros, integracoes, p.leadNumberId);
+  const mundoLead = equipe.mundo;
+  const mesmaEquipe = (n: Numero): boolean => ehDaEquipe(n, equipe);
 
   let viuDesativada = false;
   const tentarNumero = (id: string | null | undefined, motivo: string): SaidaOk | null => {
     if (!id) return null;
     const n = porId.get(id);
-    if (!n || !n.is_active || !n.phone_number_id || !mesmaEquipe(n)) return null;
-    const intg = integracaoDoPnid(integracoes, n.phone_number_id);
-    if (intg?.status === "disabled") { viuDesativada = true; return null; }
-    const cfg = (intg?.config ?? {}) as Record<string, any>;
-    const token = cfg.access_token || cfg.token || n.token || "";
-    const pnid = String(cfg.phone_number_id || n.phone_number_id || "");
-    if (!token || !pnid) return null;
-    return { ok: true, numberId: n.id, phoneNumberId: pnid, token, mmLite: cfg.mm_lite === true, integrationKey: intg?.key ?? null, motivo };
+    if (!n || !mesmaEquipe(n)) return null;
+    const c = credencialDoNumero(n, integracoes, motivo);
+    if (c === "desativada") { viuDesativada = true; return null; }
+    return c;
   };
   const tentarIntegracao = (intg: Integracao | null, motivo: string): SaidaOk | null => {
     if (!intg) return null;

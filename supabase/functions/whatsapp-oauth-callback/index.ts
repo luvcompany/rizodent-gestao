@@ -1,11 +1,15 @@
 // WhatsApp OAuth callback (redirect-based, sem FB JS SDK).
 // Espelha instagram-oauth-callback: valida state, troca code por token,
 // descobre WABAs via debug_token, para cada número: subscribed_apps + register (best-effort)
-// e upsert em `integrations` com key `whatsapp_es_{phone_number_id}`.
+// e upsert em `integrations` — na integração que já existe para aquele
+// phone_number_id (inclusive a herdada `whatsapp_config`) ou, número novo, em
+// `whatsapp_es_{phone_number_id}`, com owner_role = equipe de quem conectou.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { resolveWhatsAppCreds } from "../_shared/tenantCredentials.ts";
 import { META_GRAPH_VERSION } from "../_shared/metaVersao.ts";
+import { integracaoDoPnid } from "../_shared/numeroDeSaida.ts";
+import { donoDaConexao } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,49 +46,42 @@ function popupResponse(
   return Response.redirect(`${base}/oauth-close?${qs.toString()}`, 302);
 }
 
-async function ensureRoleChannelForConnectedNumber(
-  tenantId: string,
-  userId: string,
-  roles: string[],
-  integrationKey: string,
-  numberId: string,
-) {
-  const roleForPipeline = roles.find((role) => role === "closer" || role === "recepcao");
-  if (roleForPipeline) {
-    const { data: pipelineId, error: pipeErr } = await supabase.rpc("ensure_role_default_pipeline", {
-      _tenant_id: tenantId,
-      _role: roleForPipeline,
-    });
-    if (pipeErr || !pipelineId) {
-      console.warn(`[wa-oauth-callback] funil padrão ${roleForPipeline} indisponível: ${pipeErr?.message ?? "sem id"}`);
-    } else {
-      await supabase
-        .from("funnel_channels")
-        .delete()
-        .eq("tenant_id", tenantId)
-        .eq("channel_type", "whatsapp")
-        .eq("channel_config->>integration_key", integrationKey);
-      const { error: channelErr } = await supabase.from("funnel_channels").insert({
-        pipeline_id: pipelineId,
-        channel_type: "whatsapp",
-        channel_config: { integration_key: integrationKey },
-        tenant_id: tenantId,
-      });
-      if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
-    }
+/**
+ * Número de closer/recepção sem funil: liga ao funil PADRÃO do papel (criado
+ * pela RPC se faltar). Só quando a integração ainda não tem canal — nunca
+ * troca um funil escolhido antes. Não grava mais permissão por usuário
+ * (user_permission_overrides): o número vale para a equipe dele pelo mundo.
+ */
+async function garantirFunilDoNumero(tenantId: string, mundo: string, integrationKey: string) {
+  if (mundo !== "closer" && mundo !== "recepcao") return;
+  const { data: canais, error: canaisErr } = await supabase
+    .from("funnel_channels")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("channel_type", "whatsapp")
+    .eq("channel_config->>integration_key", integrationKey)
+    .limit(1);
+  if (canaisErr) {
+    console.warn(`[wa-oauth-callback] funnel_channels (leitura) falhou: ${canaisErr.message}`);
+    return;
   }
+  if ((canais ?? []).length > 0) return;
 
-  const { error: overrideErr } = await supabase.from("user_permission_overrides").upsert(
-    {
-      user_id: userId,
-      scope: "whatsapp_number",
-      resource_id: numberId,
-      granted: true,
-      created_by: userId,
-    },
-    { onConflict: "user_id,scope,resource_id" },
-  );
-  if (overrideErr) console.warn(`[wa-oauth-callback] override failed: ${overrideErr.message}`);
+  const { data: pipelineId, error: pipeErr } = await supabase.rpc("ensure_role_default_pipeline", {
+    _tenant_id: tenantId,
+    _role: mundo,
+  });
+  if (pipeErr || !pipelineId) {
+    console.warn(`[wa-oauth-callback] funil padrão ${mundo} indisponível: ${pipeErr?.message ?? "sem id"}`);
+    return;
+  }
+  const { error: channelErr } = await supabase.from("funnel_channels").insert({
+    pipeline_id: pipelineId,
+    channel_type: "whatsapp",
+    channel_config: { integration_key: integrationKey },
+    tenant_id: tenantId,
+  });
+  if (channelErr) console.warn(`[wa-oauth-callback] funnel_channels failed: ${channelErr.message}`);
 }
 
 Deno.serve(async (req: Request) => {
@@ -147,6 +144,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const tenantId: string = stateRow.tenant_id;
+  const userId: string = stateRow.user_id;
   const isCoexistence: boolean = (stateRow as any)?.coexistence === true;
 
   // APP META POR TENANT: cada cliente pode ter o seu app. Envs continuam como
@@ -288,6 +286,48 @@ Deno.serve(async (req: Request) => {
         const phone_number_id = num.id;
         const display_name = num.verified_name || num.display_phone_number || `WhatsApp ${phone_number_id.slice(-4)}`;
 
+        // Número de OUTRO cliente (phone_number_id é único no banco inteiro):
+        // não cria integração apontando para ele nem mexe no cadastro alheio.
+        const [{ data: numOutro, error: numOutroErr }, { data: intgOutra, error: intgOutraErr }] = await Promise.all([
+          supabase.from("whatsapp_numbers").select("id").eq("phone_number_id", phone_number_id).neq("tenant_id", tenantId).limit(1),
+          supabase.from("integrations").select("id").eq("config->>phone_number_id", phone_number_id).neq("tenant_id", tenantId).limit(1),
+        ]);
+        if (numOutroErr || intgOutraErr) {
+          console.error(`[wa-oauth-callback] conferência de outro cliente falhou para ${phone_number_id}:`, numOutroErr ?? intgOutraErr);
+          continue;
+        }
+        if ((numOutro ?? []).length > 0 || (intgOutra ?? []).length > 0) {
+          console.warn(`[wa-oauth-callback] ${phone_number_id} já conectado em outra conta; ignorado.`);
+          continue;
+        }
+
+        // O que já existe NESTE cliente para este phone_number_id: o número
+        // (whatsapp_numbers) e a integração — inclusive a herdada
+        // whatsapp_config do número oficial. Antes a chave era sempre
+        // whatsapp_es_<id> e o mesmo número ganhava uma 2ª integração.
+        const [{ data: numAqui, error: numAquiErr }, { data: intsAqui, error: intsAquiErr }] = await Promise.all([
+          supabase.from("whatsapp_numbers").select("id, mundo, dono_user_id")
+            .eq("tenant_id", tenantId).eq("phone_number_id", phone_number_id).maybeSingle(),
+          supabase.from("integrations").select("id, key, status, owner_role, config")
+            .eq("tenant_id", tenantId).like("key", "whatsapp%"),
+        ]);
+        if (numAquiErr || intsAquiErr) {
+          console.error(`[wa-oauth-callback] leitura do cadastro falhou para ${phone_number_id}:`, numAquiErr ?? intsAquiErr);
+          continue;
+        }
+        const numeroExistente = (numAqui as any) ?? null;
+        const intgExistente = integracaoDoPnid((intsAqui ?? []) as any[], phone_number_id) as any;
+
+        // Número de OUTRA equipe deste cliente (a WABA autorizada pode ter
+        // números da central e do closer juntos): só a própria equipe ou a
+        // gerência/superadmin mexem nele — e nem chega ao /register abaixo
+        // (registrar de novo derruba o número do celular de quem o usa).
+        const dono = donoDaConexao({ papeis: roleList, userId, numero: numeroExistente, integracao: intgExistente });
+        if (!dono.podeMexer) {
+          console.warn(`[wa-oauth-callback] ${phone_number_id} é de outra equipe (${dono.mundo}); ignorado.`);
+          continue;
+        }
+
         // A INTENÇÃO do usuário (botão de coexistência) não é garantia: o fluxo
         // aqui é redirect puro e a Meta documenta `extras` no FB.login(). Se o
         // parâmetro for ignorado, o onboarding sai CLÁSSICO e o número seria
@@ -342,94 +382,101 @@ Deno.serve(async (req: Request) => {
           console.warn(`[wa-oauth-callback] register error for ${phone_number_id}:`, e);
         }
 
-        // Upsert em integrations (não sobrescreve entradas manuais — key distinta)
-        const key = `whatsapp_es_${phone_number_id}`;
-        const config = {
+        // Equipe do número (integrations.owner_role → whatsapp_numbers.mundo
+        // pelo gatilho trg_integracao_whatsapp_numero). Número novo: a equipe
+        // de quem conectou (crc/sdr/crc_legacy/gerente/superadmin → central;
+        // closer/recepção → o próprio papel, com ele como dono). Número que já
+        // existe NÃO muda de equipe. Antes owner_role ficava NULL e todo número
+        // conectado pelo closer caía no mundo central.
+        const { ownerRole, ownerUserId } = dono;
+        const mundoDoNumero = dono.mundo;
+        const anterior = (intgExistente?.config ?? {}) as Record<string, any>;
+
+        const key: string = intgExistente?.key ?? `whatsapp_es_${phone_number_id}`;
+        const config: Record<string, any> = {
+          // Mescla com o que já estava gravado (mm_lite, app_secret, funil…).
+          ...anterior,
           access_token,
           token: access_token,
           phone_number_id,
           waba_id,
           app_id: appId,
           api_version: API_VERSION,
-          display_name,
+          // Nome escolhido na clínica vence o nome verificado da Meta.
+          display_name: anterior.display_name || display_name,
           ...(tenantVerifyToken ? { webhook_verify_token: tenantVerifyToken } : {}),
           // A Meta não confirmou is_on_biz_app: o /register foi pulado por
           // segurança e a coexistência precisa ser verificada manualmente.
           ...(pendenteVerificacao ? { coexistence_pending_verification: true } : {}),
           source: "embedded_signup",
+          owner_user_id: ownerUserId,
         };
+        if (!pendenteVerificacao) delete config.coexistence_pending_verification;
 
-        const { data: existing } = await supabase
-          .from("integrations")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("key", key)
-          .maybeSingle();
-
-        if (existing?.id) {
+        let integracaoOk = false;
+        if (intgExistente?.id) {
           const { error: updErr } = await supabase
             .from("integrations")
-            .update({ config, status: "connected", updated_at: new Date().toISOString() })
-            .eq("id", existing.id);
+            .update({ config, owner_role: ownerRole, status: "connected", updated_at: new Date().toISOString() })
+            .eq("id", intgExistente.id)
+            .eq("tenant_id", tenantId);
           if (updErr) console.error("[wa-oauth-callback] update failed", updErr);
-          else connected += 1;
+          else integracaoOk = true;
         } else {
           const { error: insErr } = await supabase
             .from("integrations")
-            .insert({ tenant_id: tenantId, key, config, status: "connected" });
+            .insert({ tenant_id: tenantId, key, config, owner_role: ownerRole, status: "connected" });
           if (insErr) console.error("[wa-oauth-callback] insert failed", insErr);
-          else connected += 1;
+          else integracaoOk = true;
         }
+        if (!integracaoOk) continue;
+        connected += 1;
 
-        // Cadastra o número em whatsapp_numbers — chave da visibilidade por
-        // unidade (permissão por número). SÓ no fluxo de coexistência: no fluxo
-        // clássico, popular essa tabela ativaria o resolvedor de "número padrão"
-        // do whatsapp-call-signaling (que hoje cai em integrations) e poderia
-        // trocar o número de origem das ligações dos tenants existentes.
+        // Cadastro do número: o gatilho da integração já criou/atualizou a
+        // linha em whatsapp_numbers (com equipe e dono). Aqui só completa o
+        // que a integração não tem (telefone, coexistência) — relendo DEPOIS
+        // da integração, para nunca inserir em duplicidade (23505).
         // Best-effort: falha aqui não invalida a conexão já gravada.
-        if (numberOnBizApp) {
-          try {
-            let connectedNumberId: string | null = null;
-            const { data: existingNum } = await supabase
-              .from("whatsapp_numbers")
-              .select("id, tenant_id")
-              .eq("phone_number_id", phone_number_id)
-              .maybeSingle();
-            const numRow = {
+        try {
+          const { data: numAgora, error: numAgoraErr } = await supabase
+            .from("whatsapp_numbers").select("id, tenant_id")
+            .eq("phone_number_id", phone_number_id).maybeSingle();
+          if (numAgoraErr) throw numAgoraErr;
+          // A Meta devolve "+55 77 8129-4026"; o cadastro guarda E.164 puro.
+          const digitos = String(num.display_phone_number ?? "").replace(/\D/g, "");
+          const extras: Record<string, unknown> = {
+            ...(digitos ? { phone_e164: `+${digitos}` } : {}),
+            ...(numberOnBizApp ? { is_coexistence: true } : {}),
+          };
+          if (numAgora && (numAgora as any).tenant_id === tenantId) {
+            const { error: updNumErr } = await supabase
+              .from("whatsapp_numbers").update(extras).eq("id", (numAgora as any).id).eq("tenant_id", tenantId);
+            if (updNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers update failed for ${phone_number_id}:`, updNumErr.message);
+          } else if (!numAgora) {
+            const { error: insNumErr } = await supabase.from("whatsapp_numbers").insert({
               tenant_id: tenantId,
               phone_number_id,
-              display_name,
-              phone_e164: num.display_phone_number ?? null,
+              display_name: config.display_name,
               waba_id,
               token: access_token,
               app_id: appId,
               ...(tenantVerifyToken ? { verify_token: tenantVerifyToken } : {}),
               is_active: true,
-              is_coexistence: true,
-            };
-            if (existingNum?.id) {
-              // phone_number_id é UNIQUE GLOBAL: se a linha pertence a outro
-              // tenant, não sequestrar — só logar.
-              if (existingNum.tenant_id && existingNum.tenant_id !== tenantId) {
-                console.warn(`[wa-oauth-callback] ${phone_number_id} já cadastrado no tenant ${existingNum.tenant_id}; não sobrescrito.`);
-              } else {
-                const { error: updNumErr } = await supabase
-                  .from("whatsapp_numbers").update(numRow).eq("id", existingNum.id);
-                if (updNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers update failed for ${phone_number_id}:`, updNumErr.message);
-                else connectedNumberId = existingNum.id;
-              }
-            } else {
-              const { data: insertedNum, error: insNumErr } = await supabase.from("whatsapp_numbers").insert(numRow).select("id").single();
-              if (insNumErr) console.error(`[wa-oauth-callback] whatsapp_numbers insert failed for ${phone_number_id}:`, insNumErr.message);
-              else connectedNumberId = insertedNum?.id ?? null;
+              mundo: mundoDoNumero,
+              dono_user_id: ownerUserId || null,
+              ...extras,
+            });
+            if (insNumErr && insNumErr.code !== "23505") {
+              console.error(`[wa-oauth-callback] whatsapp_numbers insert failed for ${phone_number_id}:`, insNumErr.message);
             }
-            if (connectedNumberId) {
-              await ensureRoleChannelForConnectedNumber(tenantId, stateRow.user_id, roleList, key, connectedNumberId);
-            }
-          } catch (e) {
-            console.warn(`[wa-oauth-callback] whatsapp_numbers upsert error for ${phone_number_id}:`, e);
+          } else {
+            console.warn(`[wa-oauth-callback] ${phone_number_id} cadastrado em outro tenant; não sobrescrito.`);
           }
+        } catch (e) {
+          console.warn(`[wa-oauth-callback] whatsapp_numbers upsert error for ${phone_number_id}:`, e);
         }
+
+        await garantirFunilDoNumero(tenantId, mundoDoNumero, key);
       }
     }
 
