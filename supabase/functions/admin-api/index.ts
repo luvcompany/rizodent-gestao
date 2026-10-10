@@ -357,9 +357,11 @@ async function conversationsEmAberto(tenantId: string) {
   );
   const abertas = rows.filter((l) =>
     !l.last_outbound_at || Date.parse(l.last_inbound_at) > Date.parse(l.last_outbound_at));
-  // Desde quando o lead espera: 1ª mensagem dele DEPOIS da nossa última (pelas
-  // mensagens; a coluna last_outbound_at às vezes fica para trás). Sem isso o
-  // "mais antigo aguardando" contava da última mensagem e escondia quem insiste há dias.
+  // Desde quando o lead espera: 1ª mensagem dele DEPOIS da nossa última. A nossa
+  // última é a mais recente entre as mensagens e a coluna last_outbound_at (a
+  // coluna às vezes fica para trás; e há resposta sem mensagem gravada, como a do
+  // Instagram feita fora do CRM, que contava a espera desde 14/09 em out/26). Sem
+  // isso o "mais antigo aguardando" contava da última mensagem e escondia quem insiste há dias.
   for (const bloco of chunk(abertas.map((l) => l.id), 100)) {
     const msgs = await fetchAllPaged<any>(
       () => admin.from("messages").select("id, lead_id, direction, created_at, deleted_at, instagram_comment_id")
@@ -367,6 +369,9 @@ async function conversationsEmAberto(tenantId: string) {
       "id",
     );
     const ultSaida = new Map<string, number>();
+    for (const l of abertas) {
+      if (l.last_outbound_at) ultSaida.set(l.id, Date.parse(l.last_outbound_at));
+    }
     for (const m of msgs) {
       if (m.direction !== "outbound" || m.deleted_at) continue;
       const t = Date.parse(m.created_at);
