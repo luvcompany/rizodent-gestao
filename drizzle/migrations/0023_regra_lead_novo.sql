@@ -1,0 +1,257 @@
+-- Regra ÚNICA de "lead novo" (decisão do dono, 09/10/2026).
+--
+-- Lead novo = quem ENTRA no sistema no período. Não conta:
+--   • quem só comentou no Instagram (comment_only) — decisão anterior mantida;
+--   • a conciliação com o Dontus (source 'kommo') — decisão de 22/09;
+--   • o lead sintético criado a partir de pagamento (source 'Retroativo' ou tag
+--     'sintetico_pagamento');
+--   • o RECONTATO: já existe na base da clínica outro lead com o mesmo telefone
+--     (ou o mesmo Instagram) criado antes — é contato antigo voltando (ex.: o
+--     mesmo paciente escrevendo para o número de outra equipe);
+--   • o lead APAGADO e criado de novo em menos de 7 dias (cópia do apagado em
+--     deleted_leads_backup, guardada desde 09/09/2026). Depois de 7 dias conta.
+-- Antes havia 4 réguas: Relatórios › Agendamentos "chegaram" (nada excluído, 345
+-- em out/26), Dashboard/Kanban/relatório de funis (só kommo, 343), admin-api
+-- (comment_only + Retroativo, 331) e o painel de TV (329). Agora todos leem
+-- estas funções; o painel de TV e a admin-api também.
+--
+-- lead_novo_motivo(lead) devolve NULL quando é lead novo, ou o motivo:
+-- 'comentario' | 'kommo' | 'retroativo' | 'sintetico' | 'recontato' | 'recriado'.
+-- eh_lead_novo(lead) = motivo IS NULL. As duas recebem a linha de crm_leads e
+-- funcionam como coluna calculada no PostgREST (select=...,eh_lead_novo e filtro
+-- eh_lead_novo=eq.true). SECURITY DEFINER porque a SDR não enxerga os leads das
+-- outras (o recontato precisa olhar a base toda da clínica); a guarda de cliente
+-- devolve 'sem_acesso' para linha de outra clínica, então não serve para sondar
+-- telefone alheio. Telefone: compara o phone GRAVADO dos dois lados (já é
+-- telefone_canonico, pelo trg_normalize_lead_phone; o backup copia o gravado).
+
+CREATE INDEX IF NOT EXISTS deleted_leads_backup_tenant_phone_idx
+  ON public.deleted_leads_backup (tenant_id, lead_phone);
+
+CREATE OR REPLACE FUNCTION public.lead_novo_motivo(l public.crm_leads)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $fn$
+  SELECT CASE
+    WHEN NOT COALESCE(l.tenant_id = public.current_tenant_id() OR auth.role() = 'service_role', false)
+      THEN 'sem_acesso'
+    WHEN COALESCE(l.comment_only, false) THEN 'comentario'
+    WHEN lower(btrim(COALESCE(l.source, ''))) = 'kommo' THEN 'kommo'
+    WHEN lower(btrim(COALESCE(l.source, ''))) = 'retroativo' THEN 'retroativo'
+    WHEN 'sintetico_pagamento' = ANY (COALESCE(l.tags, '{}'::text[])) THEN 'sintetico'
+    WHEN EXISTS (
+      SELECT 1 FROM public.crm_leads o
+       WHERE o.tenant_id = l.tenant_id
+         AND o.id <> l.id
+         AND o.created_at < l.created_at
+         AND ((NULLIF(l.phone, '') IS NOT NULL AND o.phone = l.phone)
+           OR (l.instagram_user_id IS NOT NULL AND o.instagram_user_id = l.instagram_user_id))
+    ) THEN 'recontato'
+    WHEN EXISTS (
+      SELECT 1 FROM public.deleted_leads_backup d
+       WHERE d.tenant_id = l.tenant_id
+         AND d.original_lead_id IS DISTINCT FROM l.id
+         AND d.deleted_at <= l.created_at
+         AND l.created_at - d.deleted_at < interval '7 days'
+         AND ((NULLIF(l.phone, '') IS NOT NULL AND d.lead_phone = l.phone)
+           OR (l.instagram_user_id IS NOT NULL AND d.lead_snapshot->>'instagram_user_id' = l.instagram_user_id))
+    ) THEN 'recriado'
+  END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.eh_lead_novo(l public.crm_leads)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $fn$
+  SELECT public.lead_novo_motivo(l) IS NULL;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.lead_novo_motivo(public.crm_leads) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.eh_lead_novo(public.crm_leads) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.lead_novo_motivo(public.crm_leads) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.eh_lead_novo(public.crm_leads) TO authenticated, service_role;
+
+-- Relatórios › Agendamentos: "Leads que chegaram" passa a usar a regra. O resto é
+-- a função da 0021 sem mudança (escopo de quem vê mantido).
+CREATE OR REPLACE FUNCTION public.relatorio_agendamentos(_inicio date, _fim date)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+WITH escopo AS (
+  -- Gestão (superadmin, gerente, CRC) vê o cliente inteiro; os demais papéis
+  -- só os leads do seu recorte, a mesma régua da RLS em versão barata (a RLS
+  -- linha a linha levava segundos): SDR = os leads dela; pós-venda = funis de
+  -- pós-venda; closer/recepção = leads dos números da equipe dela.
+  SELECT auth.uid() AS uid,
+         public.has_role(auth.uid(), 'superadmin'::app_role)
+      OR public.has_role(auth.uid(), 'gerente'::app_role)
+      OR public.has_role(auth.uid(), 'crc'::app_role)
+      OR public.has_role(auth.uid(), 'crc_legacy'::app_role) AS tudo,
+         public.has_role(auth.uid(), 'sdr'::app_role) AS sdr,
+         public.has_role(auth.uid(), 'posvenda'::app_role) AS posvenda,
+         (public.has_role(auth.uid(), 'closer'::app_role) OR public.has_role(auth.uid(), 'recepcao'::app_role)) AS do_numero,
+         ARRAY(SELECT w.id FROM public.whatsapp_numbers w
+                WHERE w.tenant_id = public.current_tenant_id() AND public.can_access_whatsapp_number(w.id)) AS numeros
+),
+lv AS (
+  SELECT l.id
+    FROM crm_leads l, escopo e
+   WHERE l.tenant_id = current_tenant_id()
+     AND NOT e.tudo
+     AND ((e.sdr AND l.assigned_to = e.uid)
+       OR (e.posvenda AND l.pipeline_id IN (SELECT p.id FROM crm_pipelines p
+                                             WHERE p.tenant_id = current_tenant_id() AND p.is_posvenda))
+       OR (e.do_numero AND l.whatsapp_number_id = ANY (e.numeros)))
+),
+base AS (
+  SELECT a.* FROM crm_appointments a
+  WHERE a.tenant_id = current_tenant_id() AND a.lead_id IS NOT NULL
+    AND ((SELECT tudo FROM escopo) OR a.lead_id IN (SELECT id FROM lv))
+),
+todas AS (
+  SELECT b.id, b.lead_id, b.scheduled_date, b.scheduled_time, b.created_at, b.is_rescheduled,
+    CASE WHEN b.status = 'cancelled' AND EXISTS (
+      SELECT 1 FROM base x WHERE x.lead_id = b.lead_id AND x.id <> b.id AND x.status <> 'rescheduled'
+        AND (x.scheduled_date, coalesce(x.scheduled_time,'00:00'::time), x.created_at)
+          > (b.scheduled_date, coalesce(b.scheduled_time,'00:00'::time), b.created_at))
+    THEN 'rescheduled' ELSE b.status END AS status
+  FROM base b
+),
+primeiro AS (
+  SELECT DISTINCT ON (lead_id) lead_id, id, status, scheduled_date
+  FROM todas
+  ORDER BY lead_id, scheduled_date, scheduled_time NULLS LAST, created_at
+),
+agd AS (
+  SELECT lead_id, CASE
+      WHEN status IN ('contracted','not_contracted') THEN 'compareceu'
+      WHEN status = 'no_show' THEN 'falta'
+      WHEN status = 'cancelled' THEN 'cancelou'
+      WHEN status = 'rescheduled' THEN 'remarcou'
+      ELSE 'pendente' END AS res
+  FROM primeiro WHERE scheduled_date BETWEEN _inicio AND _fim AND status <> 'rescheduled'
+),
+ap AS (SELECT * FROM todas WHERE scheduled_date BETWEEN _inicio AND _fim AND status <> 'rescheduled'),
+outros AS (SELECT DISTINCT a.lead_id FROM ap a JOIN primeiro p ON p.lead_id = a.lead_id
+           WHERE a.id <> p.id AND NOT a.is_rescheduled),
+res_geral AS (
+  SELECT j.lead_id,
+    CASE WHEN bool_or(j.status IN ('contracted','not_contracted')) THEN 'compareceu'
+      ELSE CASE (array_agg(j.status ORDER BY j.scheduled_date DESC, j.scheduled_time DESC NULLS LAST, j.created_at DESC))[1]
+        WHEN 'no_show' THEN 'falta' WHEN 'cancelled' THEN 'cancelou' ELSE 'pendente' END
+    END AS res,
+    (array_agg(j.scheduled_date ORDER BY j.scheduled_date DESC, j.scheduled_time DESC NULLS LAST, j.created_at DESC))[1] AS ult_data,
+    (array_agg(j.id <> p.id ORDER BY j.scheduled_date DESC, j.scheduled_time DESC NULLS LAST, j.created_at DESC))[1] AS ult_rem
+  FROM ap j JOIN primeiro p ON p.lead_id = j.lead_id
+  GROUP BY j.lead_id
+),
+res_rem AS (
+  SELECT j.lead_id,
+    CASE WHEN bool_or(j.status IN ('contracted','not_contracted')) THEN 'compareceu'
+      ELSE CASE (array_agg(j.status ORDER BY j.scheduled_date DESC, j.scheduled_time DESC NULLS LAST, j.created_at DESC))[1]
+        WHEN 'no_show' THEN 'falta' WHEN 'cancelled' THEN 'cancelou' ELSE 'pendente' END
+    END AS res
+  FROM ap j JOIN primeiro p ON p.lead_id = j.lead_id WHERE j.id <> p.id
+  GROUP BY j.lead_id
+),
+faltas_det AS (
+  SELECT g.lead_id, CASE
+      WHEN NOT EXISTS (SELECT 1 FROM ap t WHERE t.lead_id = g.lead_id AND t.id <> p.id) THEN 'sem_remarcacao'
+      WHEN p.scheduled_date < _inicio THEN 'periodo_anterior'
+      ELSE 'faltou_novamente' END AS cat
+  FROM res_geral g LEFT JOIN primeiro p ON p.lead_id = g.lead_id
+  WHERE g.res = 'falta'
+),
+pend_det AS (
+  SELECT lead_id, CASE
+      WHEN ult_data > (now() AT TIME ZONE 'America/Sao_Paulo')::date AND ult_rem THEN 'remarcacao_futura'
+      WHEN ult_data > (now() AT TIME ZONE 'America/Sao_Paulo')::date THEN 'agendamento_futuro'
+      WHEN ult_data = (now() AT TIME ZONE 'America/Sao_Paulo')::date THEN 'hoje'
+      ELSE 'sem_resultado' END AS cat
+  FROM res_geral WHERE res = 'pendente'
+)
+SELECT jsonb_build_object(
+  'chegaram', (SELECT count(*) FROM crm_leads l WHERE l.tenant_id = current_tenant_id()
+                 AND (l.created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN _inicio AND _fim
+                 AND ((SELECT tudo FROM escopo) OR l.id IN (SELECT id FROM lv))
+                 AND public.eh_lead_novo(l)),
+  'agendados',          (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd),
+  'compareceram',       (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd WHERE res = 'compareceu'),
+  'faltas',             (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd WHERE res = 'falta'),
+  'agd_cancelados',     (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd WHERE res = 'cancelou'),
+  'agd_remarcados',     (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd WHERE res = 'remarcou'),
+  'agd_pendentes',      (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM agd WHERE res = 'pendente'),
+  'remarcados',         (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_rem),
+  'rem_compareceram',   (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_rem WHERE res = 'compareceu'),
+  'rem_faltas',         (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_rem WHERE res = 'falta'),
+  'rem_cancelados',     (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_rem WHERE res = 'cancelou'),
+  'rem_pendentes',      (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_rem WHERE res = 'pendente'),
+  'geral_agendados',    (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_geral),
+  'geral_compareceram', (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_geral WHERE res = 'compareceu'),
+  'geral_faltas',       (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_geral WHERE res = 'falta'),
+  'cancelados',         (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_geral WHERE res = 'cancelou'),
+  'geral_pendentes',    (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM res_geral WHERE res = 'pendente'),
+  'falta_sem_remarcacao',   (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM faltas_det WHERE cat = 'sem_remarcacao'),
+  'falta_novamente',        (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM faltas_det WHERE cat = 'faltou_novamente'),
+  'falta_periodo_anterior', (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM faltas_det WHERE cat = 'periodo_anterior'),
+  'pend_agendamento_futuro', (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM pend_det WHERE cat = 'agendamento_futuro'),
+  'pend_remarcacao_futura',  (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM pend_det WHERE cat = 'remarcacao_futura'),
+  'pend_hoje',               (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM pend_det WHERE cat = 'hoje'),
+  'outros_agendamentos', (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM outros),
+  'pend_sem_resultado',      (SELECT coalesce(jsonb_agg(lead_id), '[]') FROM pend_det WHERE cat = 'sem_resultado')
+);
+$function$;
+
+-- Relatórios › Funis: leads_novos de cada funil pela mesma regra (antes: só kommo).
+DO $migracao$
+DECLARE
+  d text := pg_get_functiondef('public.relatorio_funis(date, date)'::regprocedure);
+  antes constant text := 'AND l.source IS DISTINCT FROM ''kommo'') AS leads_novos,';
+  depois constant text := 'AND public.eh_lead_novo(l)) AS leads_novos,';
+BEGIN
+  IF position(depois IN d) > 0 THEN
+    RETURN; -- já aplicada
+  END IF;
+  IF position(antes IN d) = 0 THEN
+    RAISE EXCEPTION 'relatorio_funis mudou: trecho de leads_novos não encontrado';
+  END IF;
+  EXECUTE replace(d, antes, depois);
+END
+$migracao$;
+
+-- Kanban › "Novos hoje/ontem": mesma regra, avaliada só nos leads do dia.
+DO $migracao$
+DECLARE
+  d text := pg_get_functiondef('public.kanban_contadores(uuid)'::regprocedure);
+  hoje_antes constant text := $q$'novos_hoje',      (SELECT count(*) FROM l, limites lim
+                         WHERE l.created_at >= lim.ini_hoje AND l.created_at < lim.ini_amanha
+                           AND (l.source IS NULL OR l.source <> 'kommo')),$q$;
+  hoje_depois constant text := $q$'novos_hoje',      (SELECT count(*) FROM public.crm_leads x, limites lim
+                         WHERE x.pipeline_id = p_pipeline
+                           AND x.created_at >= lim.ini_hoje AND x.created_at < lim.ini_amanha
+                           AND public.eh_lead_novo(x)),$q$;
+  ontem_antes constant text := $q$'novos_ontem',     (SELECT count(*) FROM l, limites lim
+                         WHERE l.created_at >= lim.ini_ontem AND l.created_at < lim.ini_hoje
+                           AND (l.source IS NULL OR l.source <> 'kommo'))$q$;
+  ontem_depois constant text := $q$'novos_ontem',     (SELECT count(*) FROM public.crm_leads x, limites lim
+                         WHERE x.pipeline_id = p_pipeline
+                           AND x.created_at >= lim.ini_ontem AND x.created_at < lim.ini_hoje
+                           AND public.eh_lead_novo(x))$q$;
+BEGIN
+  IF position('public.eh_lead_novo(x)' IN d) > 0 THEN
+    RETURN; -- já aplicada
+  END IF;
+  IF position(hoje_antes IN d) = 0 OR position(ontem_antes IN d) = 0 THEN
+    RAISE EXCEPTION 'kanban_contadores mudou: trecho de novos_hoje/novos_ontem não encontrado';
+  END IF;
+  EXECUTE replace(replace(d, hoje_antes, hoje_depois), ontem_antes, ontem_depois);
+END
+$migracao$;
