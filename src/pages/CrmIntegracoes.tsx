@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { mensagemDeErro } from "@/lib/mensagemDeErro";
 import { useAuth } from "@/contexts/AuthContext";
@@ -152,6 +153,7 @@ function WebhookSection() {
 export default function CrmIntegracoes() {
   const { tenant } = useTenant();
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const [whatsappEntries, setWhatsappEntries] = useState<WhatsAppEntry[]>([]);
   const [editEntry, setEditEntry] = useState<WhatsAppEntry | null>(null);
   const [showToken, setShowToken] = useState(false);
@@ -195,7 +197,11 @@ export default function CrmIntegracoes() {
   }, [carregarAvisoPadrao]);
   // Salvar, excluir ou desativar uma integração pode mudar o número padrão (o
   // banco promove outro número da central): recarrega o aviso e os selos.
-  const avisarNumerosMudaram = () => window.dispatchEvent(new Event(EVENTO_PADRAO_ALTERADO));
+  const avisarNumerosMudaram = () => {
+    window.dispatchEvent(new Event(EVENTO_PADRAO_ALTERADO));
+    void queryClient.invalidateQueries({ queryKey: ["numeros-whatsapp-visiveis-crclin"] });
+    void queryClient.invalidateQueries({ queryKey: ["numeros-liberados-crclin"] });
+  };
 
   useEffect(() => {
     loadEntries();

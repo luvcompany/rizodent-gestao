@@ -232,6 +232,13 @@
       "when": 1791598300100,
       "tag": "0032_horario_api4com",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791628235150,
+      "tag": "0033_sincroniza_nome_canal_whatsapp",
+      "breakpoints": true
     }
   ]
 }
