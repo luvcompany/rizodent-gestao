@@ -2185,7 +2185,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                 <SeletorNumeroEnvio
                   leadId={selectedLeadId}
                   atual={(selectedLead as any).whatsapp_number_id ?? null}
-                  numeros={(numerosVisiveis ?? []).filter((n) => n.is_active).map((n) => ({ id: n.id, nome: nomeDoNumero(n) }))}
+                  numeros={numerosVisiveis ?? []}
                   onChange={(id) => { (selectedLead as any).whatsapp_number_id = id; }}
                 />
               )}

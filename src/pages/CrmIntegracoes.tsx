@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import WhatsAppAccountsSection from "@/components/integrations/WhatsAppAccountsS
 import Api4ComSection from "@/components/integrations/Api4ComSection";
 import { PageHeader, StatusPill } from "@/components/crm-ui";
 import { SeloSaudeWhatsapp, PadraoEnvioWhatsapp, PadraoEnvioSwitch } from "@/components/whatsapp/WhatsappSaude";
+import { EVENTO_PADRAO_ALTERADO } from "@/lib/numeroWhatsapp";
 
 
 import { useTenant } from "@/contexts/TenantContext";
@@ -167,6 +169,34 @@ export default function CrmIntegracoes() {
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
   const [editingPipelineName, setEditingPipelineName] = useState("");
 
+  // Aviso de cliente sem número padrão de envio (automações, bots, follow-up e
+  // leads sem número saem por ele). null = sem resposta do banco: não avisa.
+  const [avisoPadrao, setAvisoPadrao] = useState<"sem_padrao" | "sem_numero_central" | null>(null);
+  const tenantDoPerfil = profile?.tenant_id ?? null;
+  const carregarAvisoPadrao = useCallback(async () => {
+    // Superadmin sem clínica enxerga números de todos os clientes: não dá para avisar por cliente.
+    if (!tenantDoPerfil) { setAvisoPadrao(null); return; }
+    const { data, error } = await supabase
+      .from("whatsapp_numbers")
+      .select("id, is_default, mundo")
+      .eq("tenant_id", tenantDoPerfil)
+      .eq("is_active", true);
+    if (error) { setAvisoPadrao(null); return; }
+    const daCentral = (data ?? []).filter((n) => (n.mundo ?? "crc") === "crc");
+    if (daCentral.length === 0) setAvisoPadrao("sem_numero_central");
+    else setAvisoPadrao(daCentral.some((n) => n.is_default) ? null : "sem_padrao");
+  }, [tenantDoPerfil]);
+
+  useEffect(() => {
+    carregarAvisoPadrao();
+    const onChange = () => carregarAvisoPadrao();
+    window.addEventListener(EVENTO_PADRAO_ALTERADO, onChange);
+    return () => window.removeEventListener(EVENTO_PADRAO_ALTERADO, onChange);
+  }, [carregarAvisoPadrao]);
+  // Salvar, excluir ou desativar uma integração pode mudar o número padrão (o
+  // banco promove outro número da central): recarrega o aviso e os selos.
+  const avisarNumerosMudaram = () => window.dispatchEvent(new Event(EVENTO_PADRAO_ALTERADO));
+
   useEffect(() => {
     loadEntries();
     loadPipelines();
@@ -227,39 +257,71 @@ export default function CrmIntegracoes() {
     if (!editEntry) return;
     setSaving(true);
     const payload = { config: editEntry.config as unknown as import("@/integrations/supabase/types").Json, updated_at: new Date().toISOString() };
+    // Chave e id como o BANCO devolveu: o funil abaixo é ligado com eles já no
+    // 1º "Salvar" (antes a chave só existia no 2º, e o funil ficava sem canal).
+    let salva: { id: string; key: string } | null = null;
     if (editEntry.id) {
-      await supabase.from("integrations").update(payload).eq("id", editEntry.id);
+      const { data, error } = await supabase.from("integrations").update(payload).eq("id", editEntry.id).select("id,key");
+      if (error) { setSaving(false); toast.error("Não foi possível salvar: " + mensagemDeErro(error)); return; }
+      salva = data?.[0] ?? null;
+      if (!salva) {
+        setSaving(false);
+        toast.error("Nada foi salvo: a integração não existe mais ou seu perfil não pode alterá-la.");
+        loadEntries();
+        return;
+      }
     } else {
       // Chave pelo identificador do próprio número (o banco cria o cadastro do número a partir dela).
       const pnid = String(editEntry.config.phone_number_id || "").trim();
       const chave = pnid ? `whatsapp_${pnid}` : editEntry.key;
-      editEntry.key = chave;
-      const { data } = await supabase.from("integrations").insert({ key: chave, ...payload, status: "disconnected", owner_role: "crc" }).select().single();
-      if (data) {
-        setEditEntry(prev => prev ? { ...prev, id: data.id } : prev);
+      const { data, error } = await supabase
+        .from("integrations")
+        .insert({ key: chave, ...payload, status: "disconnected", owner_role: "crc" })
+        .select("id,key");
+      if (error) { setSaving(false); toast.error("Não foi possível salvar: " + mensagemDeErro(error)); return; }
+      salva = data?.[0] ?? null;
+      if (!salva) {
+        setSaving(false);
+        toast.error("Nada foi salvo: seu perfil não pode cadastrar integrações.");
+        return;
+      }
+      const criada = salva;
+      setEditEntry(prev => prev ? { ...prev, id: criada.id, key: criada.key } : prev);
+    }
+
+    // Liga o funil ao canal (funnel_channels) pela chave devolvida.
+    let funilLigado = true;
+    if (editEntry.config.pipeline_id) {
+      const { error: errDesliga } = await supabase
+        .from("funnel_channels").delete().eq("channel_type", "whatsapp").eq("pipeline_id", editEntry.config.pipeline_id);
+      const { data: canal, error: errLiga } = errDesliga
+        ? { data: null, error: errDesliga }
+        : await supabase
+          .from("funnel_channels")
+          .insert({
+            pipeline_id: editEntry.config.pipeline_id,
+            channel_type: "whatsapp",
+            channel_config: { integration_key: salva.key } as import("@/integrations/supabase/types").Json,
+          })
+          .select("id");
+      if (errLiga || !canal?.length) {
+        funilLigado = false;
+        toast.error("Configurações salvas, mas o funil não foi ligado a este número: " + mensagemDeErro(errLiga, "seu perfil não pode alterar o funil."));
       }
     }
 
-    // Link pipeline via funnel_channels
-    if (editEntry.config.pipeline_id && editEntry.id) {
-      await supabase.from("funnel_channels").delete().eq("channel_type", "whatsapp").eq("pipeline_id", editEntry.config.pipeline_id);
-      await supabase.from("funnel_channels").upsert({
-        pipeline_id: editEntry.config.pipeline_id,
-        channel_type: "whatsapp",
-        channel_config: { integration_key: editEntry.key } as import("@/integrations/supabase/types").Json,
-      }, { onConflict: "id" });
-    }
-
-    toast.success("Configurações salvas");
+    if (funilLigado) toast.success("Configurações salvas");
+    avisarNumerosMudaram();
     // Ativa recebimento de mensagens e status do número na hora, sem esperar a checagem automática.
-    supabase.functions.invoke("whatsapp-health-check", { body: {} }).catch(() => {});
+    const pnidSalvo = String(editEntry.config.phone_number_id || "").trim();
+    supabase.functions.invoke("whatsapp-health-check", { body: /^[0-9]+$/.test(pnidSalvo) ? { phone_number_id: pnidSalvo } : {} }).catch(() => {});
 
     // Auto-sync templates from Meta when WABA is configured
     if (editEntry.config.waba_id && editEntry.config.token) {
       try {
         toast.info("Sincronizando modelos do WhatsApp...");
         const { data: syncResult, error: syncError } = await supabase.functions.invoke("manage-whatsapp-templates", {
-          body: { action: "list", integration_key: editEntry.key },
+          body: { action: "list", integration_key: salva.key },
         });
         if (syncError) {
           console.error("[Sync] Erro:", syncError);
@@ -279,18 +341,41 @@ export default function CrmIntegracoes() {
   const handleDelete = async (entry: WhatsAppEntry) => {
     if (!entry.id) return;
     if (!confirm("Excluir este canal WhatsApp?")) return;
-    await supabase.from("integrations").delete().eq("id", entry.id);
+    const { data, error } = await supabase.from("integrations").delete().eq("id", entry.id).select("id,key");
+    if (error) { toast.error("Não foi possível excluir o canal: " + mensagemDeErro(error)); return; }
+    if (!data?.length) {
+      toast.error("O canal não foi excluído: ele não existe mais ou seu perfil não pode excluí-lo.");
+      loadEntries();
+      return;
+    }
     toast.success("Canal removido");
     setEditEntry(null);
+    avisarNumerosMudaram();
     loadEntries();
   };
 
   const handleToggleIntegration = async (entry: WhatsAppEntry, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!entry.id) return;
-    const newStatus = entry.status === "disabled" ? "connected" : "disabled";
-    await supabase.from("integrations").update({ status: newStatus }).eq("id", entry.id);
-    toast.success(newStatus === "disabled" ? "Integração desativada" : "Integração ativada");
+    const desativar = entry.status !== "disabled";
+    if (desativar && !confirm("Desativar esta integração?\n\nEnquanto estiver desativado, as mensagens recebidas neste número serão descartadas.")) return;
+    const newStatus = desativar ? "disabled" : "connected";
+    const { data, error } = await supabase.from("integrations").update({ status: newStatus }).eq("id", entry.id).select("id,key");
+    if (error) {
+      toast.error(`Não foi possível ${desativar ? "desativar" : "ativar"} a integração: ${mensagemDeErro(error)}`);
+      return;
+    }
+    if (!data?.length) {
+      toast.error("Nada mudou: a integração não existe mais ou seu perfil não pode alterá-la.");
+      loadEntries();
+      return;
+    }
+    toast.success(desativar ? "Integração desativada" : "Integração ativada");
+    avisarNumerosMudaram();
+    // Reativada: confere o número na Meta na hora (selo e pausa dos envios).
+    if (!desativar && entry.config.phone_number_id) {
+      supabase.functions.invoke("whatsapp-health-check", { body: { phone_number_id: String(entry.config.phone_number_id) } }).catch(() => {});
+    }
     loadEntries();
   };
 
@@ -368,23 +453,41 @@ export default function CrmIntegracoes() {
 
   const handleEditPipeline = async (id: string) => {
     if (!editingPipelineName.trim()) return;
-    await supabase.from("crm_pipelines").update({ name: editingPipelineName.trim() }).eq("id", id);
+    const { data, error } = await supabase.from("crm_pipelines").update({ name: editingPipelineName.trim() }).eq("id", id).select("id");
+    if (error) { toast.error("Não foi possível renomear o funil: " + mensagemDeErro(error)); return; }
+    if (!data?.length) {
+      toast.error("O funil não foi renomeado: ele não existe mais ou seu perfil não pode alterá-lo.");
+      loadPipelines();
+      return;
+    }
     toast.success("Funil renomeado");
     setEditingPipelineId(null);
     loadPipelines();
   };
 
   const handleDeletePipeline = async (id: string) => {
-    // Check if pipeline has leads
-    const { count } = await supabase.from("crm_leads").select("id", { count: "exact", head: true }).eq("pipeline_id", id);
-    if (count && count > 0) {
-      toast.error(`Não é possível excluir: existem ${count} leads neste funil`);
+    // Leads do funil contados no banco (funil_tem_lead ignora a visibilidade de
+    // quem pede): a contagem pela tela só via os leads que o perfil enxerga e
+    // podia dar 0 num funil cheio.
+    const { data: temLead, error: errLead } = await supabase.rpc("funil_tem_lead", { _pipeline_id: id });
+    if (errLead) { toast.error("Não foi possível conferir os leads do funil: " + mensagemDeErro(errLead)); return; }
+    if (temLead) {
+      const { count } = await supabase.from("crm_leads").select("id", { count: "exact", head: true }).eq("pipeline_id", id);
+      toast.error(count && count > 0
+        ? `Não é possível excluir: existem ${count} leads neste funil`
+        : "Não é possível excluir: este funil tem leads.");
       return;
     }
     if (!confirm("Excluir este funil e todas as suas etapas?")) return;
-    await supabase.from("crm_stages").delete().eq("pipeline_id", id);
-    await supabase.from("funnel_channels").delete().eq("pipeline_id", id);
-    await supabase.from("crm_pipelines").delete().eq("id", id);
+    // Um DELETE só: etapas e canais do funil saem junto (ON DELETE CASCADE).
+    // Antes eram 3 DELETEs soltos — se o do funil falhasse, ele ficava sem etapas.
+    const { data, error } = await supabase.from("crm_pipelines").delete().eq("id", id).select("id");
+    if (error) { toast.error("Não foi possível excluir o funil: " + mensagemDeErro(error)); return; }
+    if (!data?.length) {
+      toast.error("O funil não foi excluído: ele não existe mais ou seu perfil não pode excluí-lo.");
+      loadPipelines();
+      return;
+    }
     toast.success("Funil excluído");
 
     // Unselect if was selected
@@ -414,6 +517,30 @@ export default function CrmIntegracoes() {
           const liteEntries = whatsappEntries.filter(e => !e.key.startsWith("whatsapp_es_"));
           return (
             <>
+              {avisoPadrao && (
+                <div role="alert" className="mb-5 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft p-4 text-sm text-foreground">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+                  <div className="min-w-0">
+                    {avisoPadrao === "sem_padrao" ? (
+                      <>
+                        <p className="font-medium">Nenhum número padrão de envio</p>
+                        <p className="text-xs text-muted-foreground">
+                          Automações, bots, follow-up e leads sem número escolhido saem pelo número padrão. Marque um número da
+                          central como padrão de envio (no cartão do número ou em Configurar).
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium">Nenhum número de WhatsApp ativo da equipe central</p>
+                        <p className="text-xs text-muted-foreground">
+                          Sem ele não há número padrão de envio: automações, bots e follow-up da central ficam sem envio. Conecte
+                          ou reative um número.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* WhatsApp (oficial - Embedded Signup) */}
               <WhatsAppAccountsSection

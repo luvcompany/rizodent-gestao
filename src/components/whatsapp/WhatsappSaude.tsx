@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { StatusPill } from "@/components/crm-ui";
 import { useToast } from "@/hooks/use-toast";
+import { CHAVE_ENVIO_DO_LEAD } from "@/hooks/useEnvioDoLead";
+import { mensagemDeErro } from "@/lib/mensagemDeErro";
+import { motivoDoServidor } from "@/lib/erroDeFuncao";
+import { EVENTO_PADRAO_ALTERADO, definirNumeroPadrao } from "@/lib/numeroWhatsapp";
 
 type Saude = {
   key: string;
@@ -43,10 +48,17 @@ export function SeloSaudeWhatsapp({ phoneNumberId }: { phoneNumberId?: string | 
 
   const verificar = async () => {
     setVerificando(true);
-    const { error } = await supabase.functions.invoke("whatsapp-health-check", { body: {} });
+    // Checa só este número (antes checava todos os números do cliente a cada clique).
+    const { data, error } = await supabase.functions.invoke("whatsapp-health-check", { body: { phone_number_id: String(phoneNumberId) } });
     await carregar();
     setVerificando(false);
-    if (error) toast({ title: "Não foi possível verificar agora", variant: "destructive" });
+    if (error) {
+      toast({
+        title: "Não foi possível verificar agora",
+        description: await motivoDoServidor(data, error, "Tente de novo em instantes."),
+        variant: "destructive",
+      });
+    }
   };
 
   const tone = s.health_status === "error" ? "destructive" : s.health_status === "warning" ? "warning" : s.health_status === "ok" ? "success" : "muted";
@@ -70,57 +82,86 @@ export function SeloSaudeWhatsapp({ phoneNumberId }: { phoneNumberId?: string | 
   );
 }
 
+/** Avisa as telas abertas e o chat (selo "Vai sair por") que o padrão mudou. */
+function useAvisarPadraoAlterado() {
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    window.dispatchEvent(new Event(EVENTO_PADRAO_ALTERADO));
+    void queryClient.invalidateQueries({ queryKey: [CHAVE_ENVIO_DO_LEAD] });
+    void queryClient.invalidateQueries({ queryKey: ["numeros-whatsapp-visiveis-crclin"] });
+  }, [queryClient]);
+}
 
-/**
- * Chave "Número padrão de envio": tudo o que não tem número escolhido
- * (automações, bots, follow-up, leads sem número) sai por este número.
- */
-export function PadraoEnvioWhatsapp({ phoneNumberId }: { phoneNumberId?: string | null }) {
-  const { toast } = useToast();
-  const [num, setNum] = useState<{ id: string; is_default: boolean | null } | null>(null);
-  const [salvando, setSalvando] = useState(false);
+type NumeroPadrao = { id: string; is_default: boolean | null; mundo: string | null };
 
+/** O número ativo de um phone_number_id, recarregado quando o padrão muda. */
+function useNumeroDoPnid(phoneNumberId?: string | null) {
+  const [num, setNum] = useState<NumeroPadrao | null>(null);
   const carregar = useCallback(async () => {
     if (!phoneNumberId) return;
     const { data } = await supabase
       .from("whatsapp_numbers")
-      .select("id, is_default")
+      .select("id, is_default, mundo")
       .eq("phone_number_id", phoneNumberId)
       .eq("is_active", true)
       .maybeSingle();
-    setNum(data as any);
+    setNum((data as NumeroPadrao | null) ?? null);
   }, [phoneNumberId]);
+  useEffect(() => {
+    carregar();
+    const onChange = () => carregar();
+    window.addEventListener(EVENTO_PADRAO_ALTERADO, onChange);
+    return () => window.removeEventListener(EVENTO_PADRAO_ALTERADO, onChange);
+  }, [carregar]);
+  return num;
+}
 
-  useEffect(() => { carregar(); }, [carregar]);
-  if (!num) return null;
+/** Só número da equipe central (mundo crc) pode ser o padrão. */
+const ehDaCentral = (n: { mundo: string | null } | null) => !!n && (n.mundo ?? "crc") === "crc";
 
-  const alternar = async (e: React.MouseEvent) => {
+/**
+ * Selo "Número padrão de envio" no cartão do número: tudo o que não tem número
+ * escolhido (automações, bots, follow-up, leads sem número) sai por ele. O
+ * padrão não é "desligado": troca-se marcando outro número.
+ */
+export function PadraoEnvioWhatsapp({ phoneNumberId }: { phoneNumberId?: string | null }) {
+  const { toast } = useToast();
+  const num = useNumeroDoPnid(phoneNumberId);
+  const avisar = useAvisarPadraoAlterado();
+  const [salvando, setSalvando] = useState(false);
+  if (!num || !ehDaCentral(num)) return null;
+
+  if (num.is_default) {
+    return (
+      <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
+        <span className="h-2 w-2 rounded-full bg-primary" />
+        Número padrão de envio
+      </span>
+    );
+  }
+
+  const tornarPadrao = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setSalvando(true);
-    const novo = !num.is_default;
-    if (novo) await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", num.id);
-    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: novo }).eq("id", num.id);
+    const { error } = await definirNumeroPadrao(num.id);
     setSalvando(false);
     if (error) {
-      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      toast({ title: "Não foi possível alterar o número padrão", description: mensagemDeErro(error), variant: "destructive" });
       return;
     }
-    toast({ title: novo ? "Número padrão de envio definido" : "Número padrão removido — envios voltam ao número principal" });
-    setNum({ ...num, is_default: novo });
-    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+    toast({ title: "Número padrão de envio definido" });
+    avisar();
   };
 
   return (
     <button
       type="button"
-      onClick={alternar}
+      onClick={tornarPadrao}
       disabled={salvando}
-      className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-        num.is_default ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
-      }`}
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
     >
-      <span className={`h-2 w-2 rounded-full ${num.is_default ? "bg-primary" : "bg-muted-foreground/40"}`} />
-      {num.is_default ? "Número padrão de envio" : "Usar como padrão de envio"}
+      <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+      Usar como padrão de envio
     </button>
   );
 }
@@ -131,56 +172,40 @@ export function PadraoEnvioWhatsapp({ phoneNumberId }: { phoneNumberId?: string 
  */
 export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | null }) {
   const { toast } = useToast();
-  const [num, setNum] = useState<{ id: string; is_default: boolean | null } | null>(null);
+  const num = useNumeroDoPnid(phoneNumberId);
+  const avisar = useAvisarPadraoAlterado();
   const [salvando, setSalvando] = useState(false);
+  if (!num || !ehDaCentral(num)) return null;
 
-  const carregar = useCallback(async () => {
-    if (!phoneNumberId) return;
-    const { data } = await supabase
-      .from("whatsapp_numbers")
-      .select("id, is_default")
-      .eq("phone_number_id", phoneNumberId)
-      .eq("is_active", true)
-      .maybeSingle();
-    setNum(data as any);
-  }, [phoneNumberId]);
-
-  useEffect(() => {
-    carregar();
-    const onChange = () => carregar();
-    window.addEventListener("whatsapp-padrao-alterado", onChange);
-    return () => window.removeEventListener("whatsapp-padrao-alterado", onChange);
-  }, [carregar]);
-  if (!num) return null;
-
-  const alternar = async () => {
+  const tornarPadrao = async () => {
+    if (num.is_default) return;
     setSalvando(true);
-    const novo = !num.is_default;
-    if (novo) await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", num.id);
-    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: novo }).eq("id", num.id);
+    const { error } = await definirNumeroPadrao(num.id);
     setSalvando(false);
     if (error) {
-      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      toast({ title: "Não foi possível alterar o número padrão", description: mensagemDeErro(error), variant: "destructive" });
       return;
     }
-    toast({ title: novo ? "Número padrão de envio definido" : "Número padrão removido — envios voltam ao número principal" });
-    setNum({ ...num, is_default: novo });
-    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+    toast({ title: "Número padrão de envio definido" });
+    avisar();
   };
 
   return (
-    <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${num.is_default ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+    <label className={`flex items-start gap-3 rounded-xl border p-3 ${num.is_default ? "border-primary/40 bg-primary/5" : "cursor-pointer border-border"}`}>
       <input
         type="checkbox"
         checked={!!num.is_default}
-        onChange={alternar}
-        disabled={salvando}
-        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:opacity-50"
+        onChange={tornarPadrao}
+        disabled={salvando || !!num.is_default}
+        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:cursor-default disabled:opacity-50"
       />
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">Número padrão de envio</p>
         <p className="text-[11px] text-muted-foreground">
-          Automações, bots, follow-up e leads sem número escolhido saem por este número. Marcar aqui desmarca os outros números.
+          Automações, bots, follow-up e leads sem número escolhido saem por este número.{" "}
+          {num.is_default
+            ? "Para trocar, marque outro número da central como padrão."
+            : "Marcar aqui desmarca o número padrão atual."}
         </p>
       </div>
     </label>
@@ -188,29 +213,30 @@ export function PadraoEnvioSwitch({ phoneNumberId }: { phoneNumberId?: string | 
 }
 
 /**
- * Seletor do número padrão de envio: lista todos os números ativos do grupo
- * e permite escolher por qual saem automações, bots, follow-up e leads sem
- * número escolhido.
+ * Seletor do número padrão de envio: lista os números ativos da equipe
+ * central e permite escolher por qual saem automações, bots, follow-up e leads
+ * sem número escolhido.
  */
 export function PadraoEnvioSelect() {
   const { toast } = useToast();
+  const avisar = useAvisarPadraoAlterado();
   const [numeros, setNumeros] = useState<{ id: string; display_name: string | null; phone_number_id: string; is_default: boolean | null }[]>([]);
   const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
     const { data } = await supabase
       .from("whatsapp_numbers")
-      .select("id, display_name, phone_number_id, is_default")
+      .select("id, display_name, phone_number_id, is_default, mundo")
       .eq("is_active", true)
       .order("display_name");
-    setNumeros((data as any) ?? []);
+    setNumeros(((data as (NumeroPadrao & { display_name: string | null; phone_number_id: string })[] | null) ?? []).filter(ehDaCentral));
   }, []);
 
   useEffect(() => {
     carregar();
     const onChange = () => carregar();
-    window.addEventListener("whatsapp-padrao-alterado", onChange);
-    return () => window.removeEventListener("whatsapp-padrao-alterado", onChange);
+    window.addEventListener(EVENTO_PADRAO_ALTERADO, onChange);
+    return () => window.removeEventListener(EVENTO_PADRAO_ALTERADO, onChange);
   }, [carregar]);
 
   if (numeros.length === 0) return null;
@@ -219,16 +245,15 @@ export function PadraoEnvioSelect() {
   const escolher = async (id: string) => {
     if (!id || id === atual?.id) return;
     setSalvando(true);
-    await supabase.from("whatsapp_numbers").update({ is_default: false }).neq("id", id);
-    const { error } = await supabase.from("whatsapp_numbers").update({ is_default: true }).eq("id", id);
+    const { error } = await definirNumeroPadrao(id);
     setSalvando(false);
     if (error) {
-      toast({ title: "Não foi possível alterar o número padrão", description: error.message, variant: "destructive" });
+      toast({ title: "Não foi possível alterar o número padrão", description: mensagemDeErro(error), variant: "destructive" });
       return;
     }
     toast({ title: "Número padrão de envio definido" });
     await carregar();
-    window.dispatchEvent(new Event("whatsapp-padrao-alterado"));
+    avisar();
   };
 
   return (
