@@ -427,6 +427,13 @@ type PlanItem = {
 
 // Helpers de data (yyyy-mm-dd)
 function ymd(d: Date): string { return d.toISOString().slice(0, 10); }
+// Origem que a recepção declarou no Dontus como NÃO sendo marketing. Telefone
+// igual ao de um lead não vence essa declaração (nem por família, nem pela
+// base antiga do Kommo).
+function origemNaoMarketingDeclarada(origem: string): boolean {
+  const o = String(origem || "").toUpperCase();
+  return o.startsWith("INDICA") || o.startsWith("FACHADA") || o.startsWith("PANFLET");
+}
 function inicioDoMes(iso: string): string { return iso.slice(0, 8) + "01"; }
 
 // ── Novo × recorrente (regra do dono, 02/10/2026) ───────────────────────────
@@ -1743,10 +1750,12 @@ async function syncClinica(
             const candidate = leads[0];
             const dddLead = phoneDDD(candidate?.phone);
             const dddOk = (!dddPag || !dddLead) ? true : (dddPag === dddLead);
-            // Guardrail INDICAÇÃO: origem declarada como indicação NÃO vira
-            // vínculo de família — respeita a origem não-marketing informada
-            // no Dontus. Cai no fluxo antigo (conferência manual por conflito).
-            const isIndicaDeclarada = origem.startsWith("INDICA");
+            // Guardrail de origem declarada: INDICAÇÃO, FACHADA ou
+            // PANFLETISTA no Dontus NÃO viram vínculo de família — o telefone
+            // repetido pode ser de outra pessoa (caso Adeilton, 09/10/2026:
+            // FACHADA com o número do lead Jocelia, sem relação; o dono mandou
+            // não contar). Cai no fluxo antigo (conferência manual por conflito).
+            const isIndicaDeclarada = origemNaoMarketingDeclarada(origem);
             if (dddOk && !isIndicaDeclarada) {
               leadRow = candidate;
               matched_by = "phone_familia";
@@ -1808,7 +1817,7 @@ async function syncClinica(
         //  (b) NÃO ativa se o paciente não tem NENHUM pagamento que CONTA no
         //      dia (todos recorrencia_orto=true) — evita atribuir manutenção
         //      isolada de orto a marketing.
-        const isIndicaDeclarada = origem.startsWith("INDICA");
+        const isIndicaDeclarada = origemNaoMarketingDeclarada(origem);
         const temPagamentoQueConta = pacienteHasCountingOnDay.has(`${idPaciente}|${dataPag}`);
         const kommoBaseAtiva =
           KOMMO_BASE_ENABLED && tailKB && kommoBaseTails.has(tailKB) &&
