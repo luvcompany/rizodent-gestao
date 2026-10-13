@@ -1692,8 +1692,8 @@ export type Database = {
           outcome_at: string | null
           outcome_by: string | null
           outcome_source: string | null
-          paciente_nome: string | null
           owner_role: Database["public"]["Enums"]["app_role"] | null
+          paciente_nome: string | null
           rescheduled_from_id: string | null
           responsavel_credito_id: string | null
           scheduled_date: string
@@ -1718,8 +1718,8 @@ export type Database = {
           outcome_at?: string | null
           outcome_by?: string | null
           outcome_source?: string | null
-          paciente_nome?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          paciente_nome?: string | null
           rescheduled_from_id?: string | null
           responsavel_credito_id?: string | null
           scheduled_date: string
@@ -1744,8 +1744,8 @@ export type Database = {
           outcome_at?: string | null
           outcome_by?: string | null
           outcome_source?: string | null
-          paciente_nome?: string | null
           owner_role?: Database["public"]["Enums"]["app_role"] | null
+          paciente_nome?: string | null
           rescheduled_from_id?: string | null
           responsavel_credito_id?: string | null
           scheduled_date?: string
