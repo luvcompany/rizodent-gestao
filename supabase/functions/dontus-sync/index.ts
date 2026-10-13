@@ -459,6 +459,28 @@ async function primeiraDataDontusPorPaciente(admin: any, ids: number[]): Promise
 }
 
 // Fichas do CRClin que já têm pagamento antes de `antesDe` (yyyy-mm-dd).
+// Menor primeira_data_orto do Dontus por paciente (todas as clínicas). Paciente
+// sem nenhuma linha no cache não entra no mapa (= começando agora).
+async function primeiraOrtoDontusPorPaciente(admin: any, ids: number[]): Promise<Map<number, string | null>> {
+  const out = new Map<number, string | null>();
+  const LOTE = 200;
+  for (let i = 0; i < ids.length; i += LOTE) {
+    const lote = ids.slice(i, i + LOTE);
+    const { data, error } = await admin.from("dontus_paciente_seen")
+      .select("id_paciente_dontus, primeira_data_orto")
+      .in("id_paciente_dontus", lote);
+    if (error) throw error;
+    for (const r of data || []) {
+      const id = Number(r.id_paciente_dontus);
+      const d = r.primeira_data_orto ? String(r.primeira_data_orto) : null;
+      const prev = out.get(id);
+      if (d && (!prev || d < prev)) out.set(id, d);
+      else if (!out.has(id)) out.set(id, null);
+    }
+  }
+  return out;
+}
+
 async function fichasComPagamentoAntes(admin: any, pacienteIds: string[], antesDe: string): Promise<Set<string>> {
   const out = new Set<string>();
   const LOTE = 100;
@@ -1542,24 +1564,25 @@ async function syncClinica(
   }
 
 
-  // Paciente NOVO também conta a orto (dono, 13/10/2026): manutenção, braquete
-  // ou contenção de quem está no primeiro mês pagando é venda nova, não
-  // mensalidade de paciente antigo (casos Mizael e Evelly, 08–09/10). Novo =
-  // nenhum pagamento no Dontus em mês anterior (mesma régua do tipo
-  // primeiro/recorrente). Se o histórico não puder ser lido, vale só a regra
-  // do dia — nunca conta orto de quem não se sabe se é novo.
-  let primeiraNoDontus: Map<number, string> | null = null;
+  // Primeira orto do paciente também conta (dono + equipe, 13/10/2026): no mês
+  // em que o paciente COMEÇA a ortodontia (primeiro pagamento de orto no
+  // Dontus, qualquer serviço — manutenção, braquete, contenção), a orto é venda
+  // nova; nos meses seguintes é mensalidade e só conta com panorâmica/aparelho
+  // no dia. Casos: Mizael, Evelly (pacientes novos) e Jorgina (paciente antiga,
+  // primeira orto em 07/10). Se o histórico não puder ser lido, vale só a regra
+  // do dia — nunca conta orto de quem não se sabe se está começando.
+  let primeiraOrtoNoDontus: Map<number, string | null> | null = null;
   try {
-    primeiraNoDontus = await primeiraDataDontusPorPaciente(
+    primeiraOrtoNoDontus = await primeiraOrtoDontusPorPaciente(
       admin, [...new Set(recebidos.map((it: any) => Number(it.idPaciente)).filter(Boolean))],
     );
   } catch (e) {
-    console.warn("[dontus-sync] histórico para orto de paciente novo falhou:", (e as any)?.message || e);
+    console.warn("[dontus-sync] histórico de orto falhou:", (e as any)?.message || e);
   }
   const ortoConta = (idPac: number, dataPag: string): boolean => {
     if (ortoDayHasStart.get(`${idPac}|${dataPag}`)) return true;
-    if (!primeiraNoDontus) return false;
-    const prim = primeiraNoDontus.get(idPac);
+    if (!primeiraOrtoNoDontus) return false;
+    const prim = primeiraOrtoNoDontus.get(idPac);
     return !(prim && prim < inicioDoMes(dataPag));
   };
 
