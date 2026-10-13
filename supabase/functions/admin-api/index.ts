@@ -364,7 +364,7 @@ async function conversationsEmAberto(tenantId: string) {
   // isso o "mais antigo aguardando" contava da última mensagem e escondia quem insiste há dias.
   for (const bloco of chunk(abertas.map((l) => l.id), 100)) {
     const msgs = await fetchAllPaged<any>(
-      () => admin.from("messages").select("id, lead_id, direction, created_at, deleted_at, instagram_comment_id")
+      () => admin.from("messages").select("id, lead_id, direction, type, status, created_at, deleted_at, instagram_comment_id")
         .in("lead_id", bloco).gte("created_at", desde),
       "id",
     );
@@ -373,7 +373,10 @@ async function conversationsEmAberto(tenantId: string) {
       if (l.last_outbound_at) ultSaida.set(l.id, Date.parse(l.last_outbound_at));
     }
     for (const m of msgs) {
-      if (m.direction !== "outbound" || m.deleted_at) continue;
+      // Registro do sistema (etapa alterada, agendamento, rodízio) e envio que
+      // falhou não são resposta ao lead: contar como saída escondia ~20 conversas
+      // em aberto em 13/10 (o rodízio grava "system" em todos os leads de manhã).
+      if (m.direction !== "outbound" || m.deleted_at || m.type === "system" || m.status === "failed") continue;
       const t = Date.parse(m.created_at);
       if (t > (ultSaida.get(m.lead_id) ?? -Infinity)) ultSaida.set(m.lead_id, t);
     }
