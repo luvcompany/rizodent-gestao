@@ -239,6 +239,13 @@
       "when": 1791628235150,
       "tag": "0033_sincroniza_nome_canal_whatsapp",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791896866130,
+      "tag": "0034_pagamento_sem_telefone_nao_some",
+      "breakpoints": true
     }
   ]
 }
