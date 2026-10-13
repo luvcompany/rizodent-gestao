@@ -143,6 +143,20 @@ const COLUNAS: Coluna[] = [
     dica: "Tempo em pausa (café, almoço, outro) no período.",
     render: (l) => fmtMinutos(l.minutos_pausa),
   },
+  {
+    chave: "falou",
+    titulo: "Leads com quem falou",
+    dica: "Leads dela que receberam ao menos uma mensagem humana no período.",
+    render: (l) => fmtInt(l.leads_respondidos),
+    apoio: (l) => (l.leads_recebidos > 0 ? `de ${fmtInt(l.leads_recebidos)} recebidos` : null),
+  },
+  {
+    chave: "taxa_agend",
+    titulo: "% de agendamento",
+    dica: "Agendamentos feitos no período sobre os leads com quem ela falou.",
+    render: (l) => fmtPct(l.agendamentos, l.leads_respondidos),
+    apoio: (l) => `${fmtInt(l.agendamentos)} de ${fmtInt(l.leads_respondidos)} leads`,
+  },
 ];
 
 type Tom = "primary" | "success" | "destructive" | "info" | "warning" | "muted" | "purple";
@@ -370,7 +384,7 @@ export default function CrmRelatorioSdr() {
               <p className="rounded-2xl border border-border/60 bg-card px-6 py-8 text-sm text-destructive shadow-card">{diario.message}</p>
             ) : (
               <SdrDiario modo="feitos" linhas={diario.data} de={de ?? ""} ate={ate ?? ""}
-                extraPorSdr={Object.fromEntries(sdrs.filter((l) => l.user_id).map((l) => [l.user_id as string, <GrupoMetricas key="j" titulo="Jornada" chaves={["expediente", "pausa"]} linha={l} />]))} />
+                extraPorSdr={Object.fromEntries(sdrs.filter((l) => l.user_id).map((l) => [l.user_id as string, <div key="j" className="space-y-4"><GrupoMetricas titulo="Conversas" chaves={["falou", "taxa_agend"]} linha={l} /><GrupoMetricas titulo="Jornada" chaves={["expediente", "pausa"]} linha={l} /></div>]))} />
             )}
           </TabsContent>
           <TabsContent value="multi" className="mt-6">
@@ -417,6 +431,8 @@ const TOM_METRICA: Record<string, Tom> = {
   pesquisa: "warning",
   expediente: "muted",
   pausa: "muted",
+  falou: "info",
+  taxa_agend: "success",
 };
 
 const COLUNA_POR_CHAVE = Object.fromEntries(COLUNAS.map((c) => [c.chave, c]));
