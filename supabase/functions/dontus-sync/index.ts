@@ -1525,8 +1525,7 @@ async function syncClinica(
     console.error(`[dontus-sync] leitura do cache de telefones falhou:`, e?.message || e);
   }
 
-  // Regra de orto (30/07/2026): baseada SÓ nos serviços do próprio dia, sem
-  // depender de histórico (primeira_data_orto / dontus_paciente_seen).
+  // Regra de orto (30/07/2026; 13/10/2026 + paciente novo, ver ortoConta).
   // Início de tratamento no dia = existe algum serviço do paciente naquele dia
   // contendo "PANOR" (panorâmica) ou "APARELHO". Se há início, toda ORTODONTIA
   // do dia conta; caso contrário, toda ORTODONTIA do dia é recorrência.
@@ -1543,6 +1542,27 @@ async function syncClinica(
   }
 
 
+  // Paciente NOVO também conta a orto (dono, 13/10/2026): manutenção, braquete
+  // ou contenção de quem está no primeiro mês pagando é venda nova, não
+  // mensalidade de paciente antigo (casos Mizael e Evelly, 08–09/10). Novo =
+  // nenhum pagamento no Dontus em mês anterior (mesma régua do tipo
+  // primeiro/recorrente). Se o histórico não puder ser lido, vale só a regra
+  // do dia — nunca conta orto de quem não se sabe se é novo.
+  let primeiraNoDontus: Map<number, string> | null = null;
+  try {
+    primeiraNoDontus = await primeiraDataDontusPorPaciente(
+      admin, [...new Set(recebidos.map((it: any) => Number(it.idPaciente)).filter(Boolean))],
+    );
+  } catch (e) {
+    console.warn("[dontus-sync] histórico para orto de paciente novo falhou:", (e as any)?.message || e);
+  }
+  const ortoConta = (idPac: number, dataPag: string): boolean => {
+    if (ortoDayHasStart.get(`${idPac}|${dataPag}`)) return true;
+    if (!primeiraNoDontus) return false;
+    const prim = primeiraNoDontus.get(idPac);
+    return !(prim && prim < inicioDoMes(dataPag));
+  };
+
   // Set com pacientes que têm AO MENOS UM pagamento que CONTA no dia
   // (recorrencia_orto=false). Usado como guardrail do kommo_base: só reconhecer
   // paciente pela base do Kommo se há venda de marketing "real" no dia — evita
@@ -1554,9 +1574,7 @@ async function syncClinica(
     const dataPag = String(it.dataRecebimento || "").slice(0, 10);
     if (!idPac || !dataPag) continue;
     const isOrto = String(it.especialidade || "").toUpperCase().includes("ORTO");
-    const counts = isOrto
-      ? !!ortoDayHasStart.get(`${idPac}|${dataPag}`)
-      : true;
+    const counts = isOrto ? ortoConta(idPac, dataPag) : true;
     if (counts) pacienteHasCountingOnDay.add(`${idPac}|${dataPag}`);
   }
 
@@ -1616,7 +1634,7 @@ async function syncClinica(
 
     // Regra de orto do DIA (única fonte da verdade para recorrencia_orto).
     const isOrtoItem = especialidade === "ORTODONTIA";
-    const recEsperado = isOrtoItem ? !ortoDayHasStart.get(`${idPaciente}|${dataPag}`) : false;
+    const recEsperado = isOrtoItem ? !ortoConta(idPaciente, dataPag) : false;
 
     // 1) Já importado?
     const { data: existing } = await admin.from("pagamentos")
