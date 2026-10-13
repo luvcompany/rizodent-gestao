@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X, Handshake, XCircle, Repeat, Ban } from "lucide-react";
+import { CalendarIcon, CalendarCheck, CheckCircle2, Plus, Pencil, Trash2, X, Handshake, XCircle, Repeat, Ban, UserPlus } from "lucide-react";
 import { format, isPast, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,8 @@ type Appointment = {
   status: string;
   notes: string | null;
   task_id: string | null;
+  /** Outra pessoa do mesmo contato (ex.: a mãe do lead). NULL = o próprio lead. */
+  paciente_nome?: string | null;
 };
 
 type PickerMode = "reschedule" | "agendou";
@@ -158,6 +160,10 @@ export default function AppointmentConfirmBar({
   const [manualDate, setManualDate] = useState<Date | undefined>(undefined);
   const [manualTime, setManualTime] = useState("09:00");
   const [manualNotes, setManualNotes] = useState("");
+  // Consulta de OUTRA pessoa com o mesmo telefone (mãe, filho, cônjuge). Um
+  // telefone é um lead só; a consulta guarda o nome de quem vai ser atendido.
+  const [manualOutra, setManualOutra] = useState(false);
+  const [manualPaciente, setManualPaciente] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
 
   // Edit appointment state
@@ -207,7 +213,7 @@ export default function AppointmentConfirmBar({
   const fetchAppointments = useCallback(async () => {
     const { data } = await supabase
       .from("crm_appointments")
-      .select("id, scheduled_date, scheduled_time, status, notes, task_id")
+      .select("id, scheduled_date, scheduled_time, status, notes, task_id, paciente_nome")
       .eq("lead_id", leadId)
       .in("status", ["confirmed", "pending"])
       .order("scheduled_date", { ascending: true });
@@ -750,7 +756,41 @@ export default function AppointmentConfirmBar({
     await Promise.all([fetchAppointments(), fetchTasks(), checkRescheduleMode()]);
   };
 
+  const fecharManual = () => {
+    setManualOpen(false); setManualDate(undefined); setManualTime("09:00"); setManualNotes("");
+    setManualOutra(false); setManualPaciente("");
+  };
+
+  /** Consulta para outra pessoa do mesmo contato: nunca remarca a do lead. */
+  const handleScheduleOutraPessoa = async () => {
+    const paciente = manualPaciente.trim().toLocaleUpperCase("pt-BR");
+    if (!paciente) { toast.error("Informe o nome de quem vai consultar."); return; }
+    if (!manualDate) { toast.error("Selecione a data do agendamento"); return; }
+    setManualSaving(true);
+    const dataTxt = format(manualDate, "dd/MM/yyyy");
+    const { error: apptError } = await supabase.from("crm_appointments").insert({
+      lead_id: leadId,
+      scheduled_date: format(manualDate, "yyyy-MM-dd"), scheduled_time: manualTime,
+      status: "confirmed", notes: manualNotes || null, paciente_nome: paciente,
+    } as any);
+    if (apptError) { toastDbError(apptError, "Erro ao criar agendamento"); setManualSaving(false); return; }
+    // O lead só vai para "Agendado" se ainda não tem consulta própria ativa.
+    if (confirmedAppointments.length === 0 && !isRescheduleMode) await moveLeadToScheduledStage();
+    await supabase.from("messages").insert({
+      lead_id: leadId, direction: "outbound", type: "system",
+      content: `✅ Agendamento confirmado para ${paciente}: ${dataTxt} às ${manualTime}`, status: "system",
+    });
+    // A confirmação automática fala com o nome do lead — para outra pessoa,
+    // quem agenda manda a mensagem certa.
+    toast.success(`Agendamento de ${paciente} confirmado!`, {
+      description: "A mensagem automática de confirmação não é enviada para outra pessoa — envie pela conversa.",
+    });
+    fecharManual(); setManualSaving(false);
+    await Promise.all([fetchAppointments(), checkRescheduleMode()]);
+  };
+
   const handleManualSchedule = async () => {
+    if (manualOutra) return handleScheduleOutraPessoa();
     if (!manualDate) { toast.error("Selecione a data do agendamento"); return; }
 
     // Em modo reagendamento com consulta ainda pendente, remarcar de verdade
@@ -1047,6 +1087,9 @@ export default function AppointmentConfirmBar({
                 </div>
                 {daysAgo > 0 && (
                   <p className="text-xs text-muted-foreground">há {daysAgo} dia{daysAgo > 1 ? "s" : ""}</p>
+                )}
+                {appt.paciente_nome && (
+                  <p className="text-xs font-medium text-foreground mt-0.5 truncate">Paciente: {appt.paciente_nome}</p>
                 )}
                 {appt.notes && <p className="text-xs text-muted-foreground mt-0.5 truncate">{appt.notes}</p>}
               </div>
@@ -1367,11 +1410,22 @@ export default function AppointmentConfirmBar({
 
       {/* Manual scheduling button */}
       {!manualOpen ? (
-        <Button variant="outline" size="sm" className="mb-2 h-10 w-full rounded-xl gap-1.5 text-sm" onClick={() => setManualOpen(true)}>
-          <Plus size={14} /> {isRescheduleMode ? "Reagendar" : "Agendar manualmente"}
-        </Button>
+        <div className="mb-2 space-y-1.5">
+          <Button variant="outline" size="sm" className="h-10 w-full rounded-xl gap-1.5 text-sm" onClick={() => { setManualOutra(false); setManualOpen(true); }}>
+            <Plus size={14} /> {isRescheduleMode ? "Reagendar" : "Agendar manualmente"}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 w-full rounded-xl gap-1.5 text-xs text-muted-foreground" onClick={() => { setManualOutra(true); setManualOpen(true); }}>
+            <UserPlus size={13} /> Agendar outra pessoa deste contato
+          </Button>
+        </div>
       ) : (
         <div className="mb-3 space-y-2 rounded-xl border border-primary/20 bg-primary-soft p-3">
+          {manualOutra && (
+            <div>
+              <label className="text-[10px] text-muted-foreground mb-1 block">Quem vai consultar (mesmo telefone deste contato)</label>
+              <Input value={manualPaciente} onChange={e => setManualPaciente(e.target.value)} placeholder="Nome completo do paciente" className="h-10 rounded-xl text-xs" autoFocus />
+            </div>
+          )}
           <div>
             <label className="text-[10px] text-muted-foreground mb-1 block">Data</label>
             <Popover>
@@ -1395,9 +1449,9 @@ export default function AppointmentConfirmBar({
             <Input value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Opcional..." className="h-10 rounded-xl text-xs" />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={() => { setManualOpen(false); setManualDate(undefined); }}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={fecharManual}>Cancelar</Button>
             <Button size="sm" className="h-10 flex-1 rounded-xl bg-success text-xs text-success-foreground hover:bg-success/90" onClick={handleManualSchedule} disabled={manualSaving}>
-              {manualSaving ? "Salvando..." : isRescheduleMode ? "Reagendar" : "Agendar"}
+              {manualSaving ? "Salvando..." : isRescheduleMode && !manualOutra ? "Reagendar" : "Agendar"}
             </Button>
           </div>
         </div>
