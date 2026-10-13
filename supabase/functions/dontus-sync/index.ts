@@ -1797,6 +1797,30 @@ async function syncClinica(
       }
     }
 
+    // Origem declarada como não-marketing (indicação, fachada, panfletista) só
+    // conta pelo lead se o paciente CONVERSOU com a equipe no CRM. Lead criado
+    // à mão depois da venda, sem nenhuma mensagem do paciente, não é venda de
+    // marketing (casos Mikael Ribeiro, INDICAÇÃO, e Celina Figueiro,
+    // PANFLETISTA, out/2026: leads do closer sem conversa, achados por nome).
+    if (leadRow && origemNaoMarketingDeclarada(origem)) {
+      const { count: falas } = await admin.from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("lead_id", leadRow.id).eq("direction", "inbound");
+      if ((falas ?? 0) === 0) {
+        plan.push({
+          action: "skip",
+          reason: `origem ${origem} no Dontus e lead ${leadRow.name} sem conversa no CRM — não é marketing`,
+          clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+          paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+          especialidade, especialidade_raw: espRaw, servico,
+          forma_pagamento: it.formaPagamento || null, recorrencia_orto: recEsperado, dontus_key,
+          origem_paciente: origem, matched_by: null, matched_lead_id: null, matched_lead_name: null,
+          matched_paciente_id: null, move_to_contratado: false, notification: null,
+        });
+        continue;
+      }
+    }
+
     // KOMMO, Instagram, Facebook e Google: sempre importa. Se não achou lead,
     // gera notificação e segue sem vincular/mover.
     if (origemMarketingSemLead(origem)) {
