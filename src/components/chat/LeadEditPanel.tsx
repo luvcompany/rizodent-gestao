@@ -505,6 +505,16 @@ export default function LeadEditPanel({ lead, onLeadUpdated, onLeadDeleted }: Pr
       return;
     }
     if (!data || data.length === 0) {
+      // Zero linhas também acontece quando o lead JÁ foi excluído (a lista
+      // ainda mostrava o cartão antigo e o segundo clique dizia "sem
+      // permissão" — 13/10/2026). Só é falta de permissão se ele ainda existe.
+      const { data: aindaExiste } = await supabase
+        .from("crm_leads").select("id").eq("id", lead.id).maybeSingle();
+      if (!aindaExiste) {
+        toast.success("Este lead já tinha sido excluído.");
+        onLeadDeleted();
+        return;
+      }
       toast.error("Seu perfil não tem permissão para excluir este lead.");
       return;
     }

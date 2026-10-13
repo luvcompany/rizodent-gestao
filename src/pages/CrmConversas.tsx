@@ -2280,7 +2280,13 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       setSelectedLead(updated as any);
                       setLeads((prev) => prev.map((l) => l.id === updated.id ? { ...l, ...updated } as any : l));
                     }}
-                    onLeadDeleted={() => { setSelectedLeadId(null); setSelectedLead(null); }}
+                    onLeadDeleted={() => {
+                      // Tira da lista também: o cartão do lead excluído ficava
+                      // na coluna e, aberto de novo, a exclusão "falhava".
+                      const excluido = selectedLead.id;
+                      setLeads((prev) => prev.filter((l) => l.id !== excluido));
+                      setSelectedLeadId(null); setSelectedLead(null);
+                    }}
                   />
 
                   <SetorDoLead
