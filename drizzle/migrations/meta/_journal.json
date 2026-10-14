@@ -281,6 +281,13 @@
       "when": 1791999354270,
       "tag": "0039_rodizio_reabre_ciclo",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791999565972,
+      "tag": "0040_closer_contrato_pelo_dontus",
+      "breakpoints": true
     }
   ]
 }

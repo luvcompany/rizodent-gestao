@@ -1610,6 +1610,27 @@ async function syncClinica(
 
   const clinicaId = clinicaInfo.id;
 
+  // Leads da base do CLOSER (dono, 14/10/2026): pagamento de paciente que é
+  // lead do closer espera 1 dia — se o closer registrar como dele, a venda é
+  // dele; se não, o lead vai para o Contratado da central e o pagamento entra
+  // aqui (decidirContratosDoCloser). Por telefone (últimos 8 dígitos).
+  const leadsDoCloserPorTail = new Map<string, string>();
+  try {
+    const { data: numsCloser } = await admin.from("whatsapp_numbers")
+      .select("id").eq("tenant_id", RIZODENT_TENANT_ID).eq("mundo", "closer");
+    const idsCloser = ((numsCloser || []) as any[]).map((n) => n.id);
+    if (idsCloser.length) {
+      const { data: lc } = await admin.from("crm_leads")
+        .select("id, phone").eq("tenant_id", RIZODENT_TENANT_ID).in("whatsapp_number_id", idsCloser);
+      for (const l of (lc || []) as any[]) {
+        const t = tailPhone(l.phone);
+        if (t && !leadsDoCloserPorTail.has(t)) leadsDoCloserPorTail.set(t, l.id);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[dontus-sync] leitura dos leads do closer falhou:", e?.message || e);
+  }
+
   // Set de idPaciente vistos em data ANTERIOR a hoje no Dontus (fonte da verdade
   // para 'primeiro' vs 'recorrente'). Best-effort: se falhar, todo mundo cai como 'primeiro'.
   let seenBefore: Set<number> = new Set();
@@ -1704,6 +1725,31 @@ async function syncClinica(
     }
 
 
+
+    // 1b) Paciente da base do closer: espera 1 dia pela decisão (ver acima).
+    {
+      const tailCloser = telefone ? tailPhone(telefone) : null;
+      const leadCloser = tailCloser ? leadsDoCloserPorTail.get(tailCloser) : undefined;
+      if (leadCloser) {
+        if (!dryRun) {
+          await admin.from("crm_closer_contrato_pendente").insert({
+            tenant_id: RIZODENT_TENANT_ID, lead_id: leadCloser, dontus_key,
+            id_clinica_dontus: idClinica, paciente_nome: nome, valor, data_pagamento: dataPag,
+            decidir_em: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+          }).then(() => {}, () => {}); // dontus_key único: segunda rodada não duplica
+        }
+        plan.push({
+          action: "skip", reason: "lead do closer — aguarda 1 dia o registro do closer",
+          clinica_id: clinicaId, clinica_nome: clinicaInfo.nome, paciente_nome: nome,
+          paciente_id_dontus: idPaciente, telefone, valor, data: dataPag,
+          especialidade, especialidade_raw: espRaw, servico,
+          forma_pagamento: it.formaPagamento || null, recorrencia_orto: recEsperado, dontus_key,
+          origem_paciente: origem, matched_by: null, matched_lead_id: leadCloser, matched_lead_name: null,
+          matched_paciente_id: null, move_to_contratado: false, notification: null,
+        });
+        continue;
+      }
+    }
 
     // 2) Elegibilidade + match
     // Regras:
@@ -3202,6 +3248,45 @@ function recusaComparecimentoManual(corsHeaders: Record<string, string>, modo: s
   }, null, 2), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Decide as esperas de pagamento de paciente do closer (crm_closer_contrato_pendente).
+// Closer registrou → a venda é dele. Senão → lead para o Contratado da central
+// e o dia do pagamento é sincronizado de novo para o pagamento entrar.
+async function decidirContratosDoCloser(admin: any, teamToken: string): Promise<any> {
+  const out = { decididos: 0, do_closer: 0, para_central: 0, resincronizados: [] as string[], erros: [] as string[] };
+  const { data: vencidos } = await admin.from("crm_closer_contrato_pendente")
+    .select("id, lead_id, id_clinica_dontus, data_pagamento, dontus_key")
+    .eq("status", "aguardando").lte("decidir_em", new Date().toISOString()).limit(200);
+  const resync = new Set<string>();
+  for (const p of (vencidos || []) as any[]) {
+    try {
+      const { data: registrou } = await admin.rpc("closer_registrou_pagamento", { p_lead: p.lead_id, p_desde: p.data_pagamento });
+      if (registrou === true) {
+        await admin.from("crm_closer_contrato_pendente").update({ status: "closer", decidido_em: new Date().toISOString() }).eq("id", p.id);
+        out.do_closer++;
+      } else {
+        const { error } = await admin.rpc("closer_contrato_vai_para_central", { p_lead: p.lead_id });
+        if (error) throw new Error(error.message);
+        await admin.from("crm_closer_contrato_pendente").update({ status: "central", decidido_em: new Date().toISOString() }).eq("id", p.id);
+        resync.add(`${p.id_clinica_dontus}|${p.data_pagamento}`);
+        out.para_central++;
+      }
+      out.decididos++;
+    } catch (e: any) {
+      out.erros.push(`${p.dontus_key}: ${e?.message || e}`);
+    }
+  }
+  for (const chave of resync) {
+    const [idC, data] = chave.split("|");
+    try {
+      await syncClinica(admin, teamToken, Number(idC), data, false);
+      out.resincronizados.push(chave);
+    } catch (e: any) {
+      out.erros.push(`resync ${chave}: ${e?.message || e}`);
+    }
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -3305,8 +3390,14 @@ Deno.serve(async (req) => {
   }
 
   let reconciliacao: any = null;
+  let contratosDoCloser: any = null;
   if (!dryRun) {
     reconciliacao = await reconcileStuckNaoContratado(admin);
+    try {
+      contratosDoCloser = await decidirContratosDoCloser(admin, teamToken);
+    } catch (e: any) {
+      contratosDoCloser = { erro: e?.message ?? String(e) };
+    }
   }
 
   // Varredura de pagamentos apagados no Dontus: sob demanda ({sweep_deleted:true})
@@ -3324,7 +3415,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(JSON.stringify({
-    date, dry_run: dryRun, clinicas: results, errors, reconciliacao, sweep_deleted: sweep,
+    date, dry_run: dryRun, clinicas: results, errors, reconciliacao, contratos_do_closer: contratosDoCloser, sweep_deleted: sweep,
   }, null, 2), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 });
