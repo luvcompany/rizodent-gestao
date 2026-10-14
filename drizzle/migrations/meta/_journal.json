@@ -274,6 +274,13 @@
       "when": 1791990913053,
       "tag": "0038_sdr_transfere_para_closer",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791999354270,
+      "tag": "0039_rodizio_reabre_ciclo",
+      "breakpoints": true
     }
   ]
 }
