@@ -6782,6 +6782,7 @@ export type Database = {
         Args: { _lead_id: string }
         Returns: boolean
       }
+      lead_da_minha_equipe: { Args: { _lead_id: string }; Returns: boolean }
       lead_novo_motivo: {
         Args: { l: Database["public"]["Tables"]["crm_leads"]["Row"] }
         Returns: string
