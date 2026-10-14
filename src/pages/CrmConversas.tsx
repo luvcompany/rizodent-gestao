@@ -2332,8 +2332,8 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                       Responsável
                     </label>
                     {userRole === "sdr" ? (
-                      // SDR transfere só o lead DELA e só para SDR / administrador / pós-venda
-                      // (RPC sdr_destinos_transferencia; a função transfer-lead revalida).
+                      // SDR transfere só o lead DELA e só para SDR / administrador / pós-venda /
+                      // closer / recepção (RPC sdr_destinos_transferencia; a transfer-lead revalida).
                       <Select
                         value={selectedLead.assigned_to || "unassigned"}
                         onValueChange={(val) => handleTransferLead(val)}
@@ -2349,7 +2349,7 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
                           )}
                           {destinosSdr.map((d) => (
                             <SelectItem key={d.user_id} value={d.user_id}>
-                              {d.nome}{d.papel === "gestor" ? " · Administrador" : d.papel === "posvenda" ? " · Pós-venda" : ""}
+                              {d.nome}{d.papel === "gestor" ? " · Administrador" : d.papel === "posvenda" ? " · Pós-venda" : d.papel === "closer" ? " · Closer" : d.papel === "recepcao" ? " · Recepção" : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>

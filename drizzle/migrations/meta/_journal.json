@@ -267,6 +267,13 @@
       "when": 1791988217025,
       "tag": "0037_conversa_segue_paciente",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791990913053,
+      "tag": "0038_sdr_transfere_para_closer",
+      "breakpoints": true
     }
   ]
 }
