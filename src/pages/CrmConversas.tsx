@@ -1148,11 +1148,14 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     // por dona) e qualquer pessoa quando o lead muda de equipe (14/10/2026 —
     // closer, recepção, central). A gestão continua vendo tudo.
     if (userRole === "sdr" || (outraEquipe && !gestaoVeTudo)) {
+      // Mudou de equipe: sai na hora — o painel já não tem como mexer no
+      // lead (funil e etapas são da outra equipe). SDR na mesma equipe: 10 s.
       window.setTimeout(() => {
         setLeads(prev => prev.filter(l => l.id !== capturedLeadId));
         setSelectedLeadId(prev => prev === capturedLeadId ? null : prev);
         setSelectedLead(prev => prev?.id === capturedLeadId ? null : prev);
-      }, 10000);
+      }, outraEquipe ? 0 : 10000);
+      if (outraEquipe) return;
     }
 
     // If the function moved the lead to another pipeline/stage, update local state
