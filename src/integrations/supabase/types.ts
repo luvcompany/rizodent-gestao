@@ -2091,6 +2091,59 @@ export type Database = {
           },
         ]
       }
+      crm_closer_contrato_pendente: {
+        Row: {
+          criado_em: string
+          data_pagamento: string
+          decidido_em: string | null
+          decidir_em: string
+          dontus_key: string
+          id: string
+          id_clinica_dontus: number
+          lead_id: string
+          paciente_nome: string | null
+          status: string
+          tenant_id: string
+          valor: number | null
+        }
+        Insert: {
+          criado_em?: string
+          data_pagamento: string
+          decidido_em?: string | null
+          decidir_em: string
+          dontus_key: string
+          id?: string
+          id_clinica_dontus: number
+          lead_id: string
+          paciente_nome?: string | null
+          status?: string
+          tenant_id: string
+          valor?: number | null
+        }
+        Update: {
+          criado_em?: string
+          data_pagamento?: string
+          decidido_em?: string | null
+          decidir_em?: string
+          dontus_key?: string
+          id?: string
+          id_clinica_dontus?: number
+          lead_id?: string
+          paciente_nome?: string | null
+          status?: string
+          tenant_id?: string
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_closer_contrato_pendente_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "crm_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crm_contratado_pendente: {
         Row: {
           criado_em: string
@@ -6271,6 +6324,10 @@ export type Database = {
           nome: string
         }[]
       }
+      closer_contrato_vai_para_central: {
+        Args: { p_lead: string }
+        Returns: string
+      }
       closer_dashboard_metrics: { Args: { p_mes?: string }; Returns: Json }
       closer_especialidades_do_tenant: {
         Args: never
@@ -6279,6 +6336,10 @@ export type Database = {
         }[]
       }
       closer_pode_ver_lead: { Args: { _lead_id: string }; Returns: boolean }
+      closer_registrou_pagamento: {
+        Args: { p_desde: string; p_lead: string }
+        Returns: boolean
+      }
       closer_vincular_paciente: {
         Args: {
           p_cidade?: string
@@ -7462,6 +7523,14 @@ export type Database = {
           p_admin: string
           p_etapas: string[]
           p_funil: string
+          p_lead: Database["public"]["Tables"]["crm_leads"]["Row"]
+          p_numero: string
+        }
+        Returns: boolean
+      }
+      rodizio_lead_reabre_ciclo: {
+        Args: {
+          p_admin: string
           p_lead: Database["public"]["Tables"]["crm_leads"]["Row"]
           p_numero: string
         }
