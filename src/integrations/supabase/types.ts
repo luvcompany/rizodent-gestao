@@ -2936,6 +2936,7 @@ export type Database = {
           name: string
           nome_anuncio: string | null
           notes: string | null
+          numero_resposta_id: string | null
           paciente_id: string | null
           phone: string | null
           pipeline_id: string
@@ -2950,8 +2951,10 @@ export type Database = {
           task_overdue: boolean
           tenant_id: string | null
           titulo_anuncio: string | null
+          transferido_de_equipe_em: string | null
           updated_at: string
           value: number | null
+          veio_da_equipe: string | null
           whatsapp_number_id: string | null
         }
         Insert: {
@@ -2995,6 +2998,7 @@ export type Database = {
           name: string
           nome_anuncio?: string | null
           notes?: string | null
+          numero_resposta_id?: string | null
           paciente_id?: string | null
           phone?: string | null
           pipeline_id: string
@@ -3009,8 +3013,10 @@ export type Database = {
           task_overdue?: boolean
           tenant_id?: string | null
           titulo_anuncio?: string | null
+          transferido_de_equipe_em?: string | null
           updated_at?: string
           value?: number | null
+          veio_da_equipe?: string | null
           whatsapp_number_id?: string | null
         }
         Update: {
@@ -3054,6 +3060,7 @@ export type Database = {
           name?: string
           nome_anuncio?: string | null
           notes?: string | null
+          numero_resposta_id?: string | null
           paciente_id?: string | null
           phone?: string | null
           pipeline_id?: string
@@ -3068,8 +3075,10 @@ export type Database = {
           task_overdue?: boolean
           tenant_id?: string | null
           titulo_anuncio?: string | null
+          transferido_de_equipe_em?: string | null
           updated_at?: string
           value?: number | null
+          veio_da_equipe?: string | null
           whatsapp_number_id?: string | null
         }
         Relationships: [
@@ -3078,6 +3087,13 @@ export type Database = {
             columns: ["ig_account_uuid"]
             isOneToOne: false
             referencedRelation: "ig_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_leads_numero_resposta_id_fkey"
+            columns: ["numero_resposta_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_numbers"
             referencedColumns: ["id"]
           },
           {
@@ -6340,6 +6356,7 @@ export type Database = {
           name: string
           nome_anuncio: string | null
           notes: string | null
+          numero_resposta_id: string | null
           paciente_id: string | null
           phone: string | null
           pipeline_id: string
@@ -6354,8 +6371,10 @@ export type Database = {
           task_overdue: boolean
           tenant_id: string | null
           titulo_anuncio: string | null
+          transferido_de_equipe_em: string | null
           updated_at: string
           value: number | null
+          veio_da_equipe: string | null
           whatsapp_number_id: string | null
         }
         SetofOptions: {
@@ -6516,6 +6535,10 @@ export type Database = {
         }[]
       }
       definir_numero_padrao: { Args: { p_numero: string }; Returns: string }
+      definir_numero_resposta: {
+        Args: { p_lead: string; p_numero: string }
+        Returns: undefined
+      }
       dono_restrito_do_numero: {
         Args: { _number_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -6681,6 +6704,7 @@ export type Database = {
           name: string
           nome_anuncio: string | null
           notes: string | null
+          numero_resposta_id: string | null
           paciente_id: string | null
           phone: string | null
           pipeline_id: string
@@ -6695,8 +6719,10 @@ export type Database = {
           task_overdue: boolean
           tenant_id: string | null
           titulo_anuncio: string | null
+          transferido_de_equipe_em: string | null
           updated_at: string
           value: number | null
+          veio_da_equipe: string | null
           whatsapp_number_id: string | null
         }[]
         SetofOptions: {
@@ -6790,6 +6816,10 @@ export type Database = {
       lead_tem_pagamento_de_contrato: {
         Args: { p_ate?: string; p_desde: string; p_lead_id: string }
         Returns: boolean
+      }
+      lead_transferido_de_equipe: {
+        Args: { p_mundo: string; p_phone: string; p_tenant: string }
+        Returns: string
       }
       lead_transferir_autorizado: {
         Args: { p_lead_id: string; p_payload: Json }
@@ -6965,6 +6995,17 @@ export type Database = {
         Returns: {
           numero_id: string
           origem: string
+        }[]
+      }
+      opcoes_numero_resposta: {
+        Args: { p_lead: string }
+        Returns: {
+          display_name: string
+          escolhido: boolean
+          janela_ate: string
+          motivo: string
+          numero_id: string
+          phone_e164: string
         }[]
       }
       pacientes_whatsapp_direto: {
@@ -7146,6 +7187,7 @@ export type Database = {
         }[]
       }
       ponto_vigia: { Args: never; Returns: Json }
+      posso_ver_lead: { Args: { p_lead: string }; Returns: boolean }
       posvenda_dashboard_metrics: { Args: never; Returns: Json }
       posvenda_padrao_do_tenant: {
         Args: never
