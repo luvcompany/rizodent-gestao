@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.99.1";
 import { resolveCaller, assertLeadInTenant, assertNumberAccess } from "../_shared/authz.ts";
-import { MUNDO_CENTRAL, usuarioDoMundoDoNumero } from "../_shared/mundoNumero.ts";
+import { MUNDO_CENTRAL, mundoDoUsuario, usuarioDoMundoDoNumero } from "../_shared/mundoNumero.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -94,8 +94,11 @@ Deno.serve(async (req) => {
         .from("crm_rodizio_config").select("gestor_user_id").eq("tenant_id", (lead as any).tenant_id).maybeSingle();
       const alvoGestor = !!(cfg as any)?.gestor_user_id && (cfg as any).gestor_user_id === newUserId;
       const alvoSdrExclusiva = targetIsSdr && targetRoles.every((r) => r === "sdr");
-      if (!alvoGestor && !alvoSdrExclusiva && !targetIsPosvenda) {
-        return json({ error: "Destino inválido: transfira para outra SDR, para o administrador ou para a pós-venda." }, 400);
+      // Closer/recepção (14/10/2026): o lead passa para a equipe deles (número
+      // e funil), então não some mais — antes ficava atribuído e invisível.
+      const alvoOutraEquipe = targetRoles.includes("closer") || targetRoles.includes("recepcao");
+      if (!alvoGestor && !alvoSdrExclusiva && !targetIsPosvenda && !alvoOutraEquipe) {
+        return json({ error: "Destino inválido: transfira para outra SDR, para o closer, para a recepção, para o administrador ou para a pós-venda." }, 400);
       }
       const { data: alvoPerfil } = await supabase
         .from("profiles").select("is_blocked").eq("id", newUserId).maybeSingle();
@@ -117,60 +120,130 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Alvo SDR: o mundo dela é a CENTRAL — o número legado (lead sem carimbo)
-    // e QUALQUER número central (oficial, Comercial 2, contingência, ativo ou
-    // não; a resposta sai por um número ativo da central pelo numeroDeSaida).
-    // Antes só valia o número is_default: lead do "Comercial 2" era recusado
-    // para a SDR, mesmo sendo da equipe dela. Lead carimbado com o número de um
-    // closer/recepção ficaria atribuído a ela e INVISÍVEL (a RLS por número
-    // nega a leitura): recusa clara em vez de sumiço silencioso.
-    // Mundo lido do banco na hora (mesma função da busca/mescla de leads), sem
-    // cache: número conectado há segundos também conta.
-    if (targetIsSdr) {
-      const { data: mundoDoLead, error: mundoErr } = await supabase.rpc("mundo_numero_whatsapp", {
-        p_tenant: (lead as any).tenant_id,
-        p_number_id: (lead as any).whatsapp_number_id ?? null,
-      });
-      if (mundoErr) return json({ error: "Não foi possível conferir a equipe do lead: " + mundoErr.message }, 500);
-      if ((mundoDoLead || MUNDO_CENTRAL) !== MUNDO_CENTRAL) {
-        return json({
-          error: "Este lead é de outra equipe (número de closer/recepção); a SDR só atende os números da central.",
-        }, 400);
-      }
-    }
-
     // Demais papéis (closer/recepção): comportamento de sempre — o próprio lead
     // ou lead sem dona no mundo deles.
     const canTransfer = isPrivileged || lead.assigned_to === user.id || lead.assigned_to === null;
     if (!canTransfer) return json({ error: "Forbidden" }, 403);
 
-    // Destino closer que já tem este telefone no mundo dele: mescla no lead do
-    // closer (o lead de origem some; as mensagens viram "histórico anterior").
-    // Os números do closer vêm do próprio número (mundo 'closer' e dono = ele,
-    // ativos ou não — o lead antigo dele pode estar no número trocado), não de
-    // user_permission_overrides: a conexão de número não grava mais permissão
-    // por usuário, e um closer com número novo nunca teria o lead mesclado.
-    if (targetRoles.includes("closer") && lead.phone) {
-      const { data: numerosDoTenant, error: numErr } = await supabase
-        .from("whatsapp_numbers").select("id, mundo, dono_user_id")
-        .eq("tenant_id", lead.tenant_id);
-      if (numErr) return json({ error: "Não foi possível ler os números do closer: " + numErr.message }, 500);
-      const ids = ((numerosDoTenant || []) as any[])
-        .filter((n) => n.mundo === "closer" && usuarioDoMundoDoNumero(n, newUserId, targetRoles))
-        .map((n) => n.id as string);
-      const origemNoMundoDoCloser = ids.includes((lead as any).whatsapp_number_id);
-      if (ids.length && !origemNoMundoDoCloser) {
-        const { data: alvo } = await supabase
-          .from("crm_leads").select("id")
-          .eq("tenant_id", lead.tenant_id).eq("phone", lead.phone).neq("id", lead.id)
-          .in("whatsapp_number_id", ids).limit(1).maybeSingle();
-        if (alvo) {
-          const { error: mErr } = await supabase.rpc("mesclar_lead_no_closer", {
-            _origem: lead.id, _destino: (alvo as any).id, _por: user.id,
-          });
-          if (mErr) return json({ error: "Não foi possível mesclar com o lead do closer: " + mErr.message }, 500);
-          return json({ success: true, merged: true, leadId: (alvo as any).id });
+    // ── Transferência entre EQUIPES (14/10/2026) ─────────────────────────────
+    // Cada número é de uma equipe (central, closer, recepção) e cada pessoa só
+    // enxerga os leads da equipe dela. Trocar só o responsável deixava o lead
+    // na equipe de origem — atribuído ao closer e invisível para ele (casos
+    // Tatiana, Juliana e Renilton). Agora o lead MUDA DE EQUIPE, como no Kommo
+    // quando vai para outro funil: número e funil da equipe de destino, etapa
+    // com o mesmo nome (senão a primeira). Se a equipe de destino já tem esse
+    // telefone, junta no lead dela (um telefone = um lead por equipe) e o
+    // histórico vai junto. Gerência/superadmin veem todas as equipes: para
+    // eles só troca o responsável.
+    const equipeDestino = mundoDoUsuario(targetRoles);
+    const destinoVeTudo = targetRoles.some((r) => r === "gerente" || r === "superadmin")
+      && !targetRoles.includes("closer") && !targetRoles.includes("recepcao");
+    let mudouDeEquipe = false;
+    let numeroDestinoId: string | null = null;
+    let funilDestino: { id: string; name: string } | null = null;
+    let etapaDestino: { id: string; name: string } | null = null;
+    if (!destinoVeTudo) {
+      const { data: mundoDoLead, error: mundoErr } = await supabase.rpc("mundo_numero_whatsapp", {
+        p_tenant: (lead as any).tenant_id,
+        p_number_id: (lead as any).whatsapp_number_id ?? null,
+      });
+      if (mundoErr) return json({ error: "Não foi possível conferir a equipe do lead: " + mundoErr.message }, 500);
+      const equipeOrigem = String(mundoDoLead || MUNDO_CENTRAL);
+      if (equipeOrigem !== equipeDestino) {
+        mudouDeEquipe = true;
+        const { data: numerosDoTenant, error: numErr } = await supabase
+          .from("whatsapp_numbers").select("id, mundo, dono_user_id, is_active, is_default, created_at")
+          .eq("tenant_id", lead.tenant_id);
+        if (numErr) return json({ error: "Não foi possível ler os números da equipe: " + numErr.message }, 500);
+        const daEquipe = ((numerosDoTenant || []) as any[])
+          .filter((n) => (n.mundo || MUNDO_CENTRAL) === equipeDestino && usuarioDoMundoDoNumero(n, newUserId, targetRoles));
+        const idsDaEquipe = daEquipe.map((n) => n.id as string);
+
+        // A equipe de destino já tem este telefone? Junta no lead dela.
+        if (lead.phone) {
+          let q = supabase.from("crm_leads").select("id")
+            .eq("tenant_id", lead.tenant_id).eq("phone", lead.phone).neq("id", lead.id);
+          q = equipeDestino === MUNDO_CENTRAL && idsDaEquipe.length
+            ? q.or(`whatsapp_number_id.is.null,whatsapp_number_id.in.(${idsDaEquipe.join(",")})`)
+            : equipeDestino === MUNDO_CENTRAL ? q.is("whatsapp_number_id", null)
+            : q.in("whatsapp_number_id", idsDaEquipe.length ? idsDaEquipe : ["00000000-0000-0000-0000-000000000000"]);
+          const { data: alvo } = await q.order("created_at", { ascending: true }).limit(1).maybeSingle();
+          if (alvo) {
+            const { error: mErr } = await supabase.rpc("mesclar_lead_no_closer", {
+              _origem: lead.id, _destino: (alvo as any).id, _por: user.id,
+            });
+            if (mErr) return json({ error: "Não foi possível juntar com o lead da outra equipe: " + mErr.message }, 500);
+            await supabase.rpc("lead_transferir_autorizado", {
+              p_lead_id: (alvo as any).id, p_payload: { assigned_to: newUserId },
+            });
+            await supabase.from("crm_lead_atribuicoes").insert({
+              tenant_id: (lead as any).tenant_id, lead_id: (alvo as any).id,
+              lead_nome: (lead as any).name ?? null, lead_telefone: (lead as any).phone ?? null,
+              de_user_id: lead.assigned_to ?? null, para_user_id: newUserId,
+              fase: "manual", motivo: `transferência para a equipe ${equipeDestino} (juntou no lead que a equipe já tinha)`,
+              criado_por: user.id,
+            });
+            await supabase.from("crm_notifications").insert({
+              user_id: newUserId, type: "transfer", title: "Lead transferido para você",
+              body: `${(lead as any).name || "Lead"} foi transferido e juntado à conversa que você já tinha com este telefone.`,
+              lead_id: (alvo as any).id,
+            });
+            return json({ success: true, merged: true, leadId: (alvo as any).id, mudou_de_equipe: true, equipe_destino: equipeDestino });
+          }
         }
+
+        // Número da equipe de destino (ativo; o padrão primeiro).
+        const ativos = daEquipe
+          .filter((n) => n.is_active)
+          .sort((x, y) => Number(y.is_default) - Number(x.is_default) || String(y.created_at).localeCompare(String(x.created_at)));
+        numeroDestinoId = ativos[0]?.id ?? null;
+        if (!numeroDestinoId && equipeDestino !== MUNDO_CENTRAL) {
+          return json({ error: "Esta pessoa ainda não tem número de WhatsApp conectado. Conecte o número dela em Conexões antes de transferir." }, 400);
+        }
+
+        // Funil da equipe de destino: o de mesmo nome do atual; senão o do
+        // canal do número; senão o primeiro que a pessoa enxerga.
+        const norm = (t: string | null | undefined) =>
+          String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+        const { data: funis } = await supabase
+          .from("crm_pipelines").select("id, name, allowed_roles, is_instagram, is_posvenda, created_at")
+          .eq("tenant_id", lead.tenant_id).order("created_at", { ascending: true });
+        const papeisAlvo = new Set(targetRoles);
+        const enxerga = (f: any) => {
+          if (f.is_instagram) return false;
+          if (f.is_posvenda) return papeisAlvo.has("posvenda") && Array.isArray(f.allowed_roles) && f.allowed_roles.includes("posvenda");
+          const ar: string[] | null = f.allowed_roles;
+          if (equipeDestino !== MUNDO_CENTRAL) return Array.isArray(ar) && ar.some((r) => papeisAlvo.has(r));
+          return !ar || ar.length === 0 || ar.some((r) => papeisAlvo.has(r) || r === "crc");
+        };
+        const possiveis = ((funis || []) as any[]).filter(enxerga);
+        const { data: funilAtual } = await supabase
+          .from("crm_pipelines").select("name").eq("id", (lead as any).pipeline_id).maybeSingle();
+        funilDestino = possiveis.find((f) => norm(f.name) === norm((funilAtual as any)?.name)) ?? null;
+        if (!funilDestino && numeroDestinoId) {
+          const { data: num } = await supabase.from("whatsapp_numbers").select("phone_number_id").eq("id", numeroDestinoId).maybeSingle();
+          const { data: canais } = await supabase.from("funnel_channels").select("pipeline_id")
+            .eq("tenant_id", lead.tenant_id).eq("channel_type", "whatsapp")
+            .eq("channel_config->>integration_key", `whatsapp_${(num as any)?.phone_number_id ?? ""}`)
+            .order("created_at", { ascending: false }).limit(1);
+          const pid = (canais as any[])?.[0]?.pipeline_id;
+          funilDestino = possiveis.find((f) => f.id === pid) ?? null;
+        }
+        if (!funilDestino && equipeDestino === MUNDO_CENTRAL) {
+          funilDestino = possiveis.find((f) => /funil principal/i.test(f.name)) ?? null;
+        }
+        if (!funilDestino && papeisAlvo.has("posvenda")) funilDestino = possiveis.find((f) => f.is_posvenda) ?? null;
+        funilDestino = funilDestino ?? possiveis[0] ?? null;
+        if (!funilDestino) {
+          return json({ error: "A equipe de destino não tem nenhum funil que esta pessoa enxergue." }, 400);
+        }
+        const [{ data: etapaAtual }, { data: etapas }] = await Promise.all([
+          supabase.from("crm_stages").select("name").eq("id", (lead as any).stage_id).maybeSingle(),
+          supabase.from("crm_stages").select("id, name, position").eq("pipeline_id", funilDestino.id).order("position", { ascending: true }),
+        ]);
+        etapaDestino = ((etapas || []) as any[]).find((e) => norm(e.name) === norm((etapaAtual as any)?.name))
+          ?? ((etapas || []) as any[])[0] ?? null;
+        if (!etapaDestino) return json({ error: `O funil ${funilDestino.name} não tem etapas.` }, 400);
       }
     }
 
@@ -196,8 +269,18 @@ Deno.serve(async (req) => {
     };
     let movedPipelineName: string | null = null;
     let movedStageName: string | null = null;
+    if (mudouDeEquipe && funilDestino && etapaDestino) {
+      updatePayload.pipeline_id = funilDestino.id;
+      updatePayload.stage_id = etapaDestino.id;
+      // Central sem número cadastrado (cliente antigo) = número legado (NULL).
+      updatePayload.whatsapp_number_id = numeroDestinoId;
+      movedPipelineName = funilDestino.name;
+      movedStageName = etapaDestino.name;
+    }
 
-    if (targetRoleRow?.role === "posvenda") {
+    if (mudouDeEquipe) {
+      // Funil/etapa/número já decididos acima.
+    } else if (targetRoleRow?.role === "posvenda") {
       // Hard rule: only leads in a "Contratado" stage can be sent to Pós-venda.
       const { data: currentStage } = await supabase
         .from("crm_stages").select("name").eq("id", (lead as any).stage_id).maybeSingle();
@@ -395,6 +478,8 @@ Deno.serve(async (req) => {
       stage_id: (updatePayload.stage_id as string) ?? null,
       moved_pipeline: movedPipelineName,
       moved_stage: movedStageName,
+      mudou_de_equipe: mudouDeEquipe,
+      equipe_destino: mudouDeEquipe ? equipeDestino : null,
     });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);

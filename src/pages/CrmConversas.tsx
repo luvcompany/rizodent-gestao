@@ -1138,11 +1138,16 @@ function WhatsAppConversations({ pipelineFilter, excludePipelines, channel = "wh
     }
 
     chat.showActivityToast(`🔄 Lead transferido para ${newUserName}`);
-    toast.success(`Lead transferido para ${newUserName}`);
+    const outraEquipe = !!(data?.mudou_de_equipe || data?.merged);
+    const gestaoVeTudo = userRole === "gerente" || userRole === "superadmin";
+    toast.success(`Lead transferido para ${newUserName}`, outraEquipe && !gestaoVeTudo
+      ? { description: "Ele passou para a equipe dessa pessoa (número e funil dela) e sai da sua lista." }
+      : undefined);
 
-    // Só a SDR perde o lead de vista ao transferir (a visibilidade dela é por
-    // dona). Gestor/CRC continuam vendo tudo: a conversa fica na lista.
-    if (userRole === "sdr") {
+    // Quem perde o lead de vista ao transferir: a SDR (a visibilidade dela é
+    // por dona) e qualquer pessoa quando o lead muda de equipe (14/10/2026 —
+    // closer, recepção, central). A gestão continua vendo tudo.
+    if (userRole === "sdr" || (outraEquipe && !gestaoVeTudo)) {
       window.setTimeout(() => {
         setLeads(prev => prev.filter(l => l.id !== capturedLeadId));
         setSelectedLeadId(prev => prev === capturedLeadId ? null : prev);

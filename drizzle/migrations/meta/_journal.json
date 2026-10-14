@@ -253,6 +253,13 @@
       "when": 1791915527359,
       "tag": "0035_agendamento_outra_pessoa",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791984595596,
+      "tag": "0036_transferencia_entre_equipes",
+      "breakpoints": true
     }
   ]
 }
