@@ -595,6 +595,26 @@ export default function CrmModelos() {
       toast.error("O corpo da mensagem é obrigatório");
       return;
     }
+    // Regra da Meta (erro 2388299): a mensagem não pode COMEÇAR nem TERMINAR
+    // com variável. Avisar aqui, antes de mandar, com o jeito de corrigir —
+    // o closer tentou "{{1}}, queria te deixar…" 3 vezes em 14/10/2026.
+    {
+      const corpo = form.body_text.trim();
+      if (/^\{\{\s*\w+\s*\}\}/.test(form.body_text.trim())) {
+        toast.error("A mensagem não pode começar com uma variável.", {
+          description: "A Meta recusa. Coloque uma palavra antes, por exemplo: \"Olá, {{1}}, …\"",
+          duration: 10000,
+        });
+        return;
+      }
+      if (/\{\{\s*\w+\s*\}\}$/.test(corpo)) {
+        toast.error("A mensagem não pode terminar com uma variável.", {
+          description: "A Meta recusa. Coloque um texto depois dela, por exemplo: \"… {{2}}. Até lá!\"",
+          duration: 10000,
+        });
+        return;
+      }
+    }
     if (form.hasHeader && (!form.header_type || !form.header_content)) {
       toast.error("Escolha o tipo do cabeçalho e preencha o conteúdo (ou desligue o cabeçalho).");
       return;
