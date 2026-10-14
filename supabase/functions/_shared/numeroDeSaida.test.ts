@@ -154,3 +154,28 @@ Deno.test("integração desativada fica de fora da lista da equipe", async () =>
   const r = await numerosAtivosDaEquipe(cenario({ comercial2Desativado: true }), { tenantId: T, leadNumberId: OFICIAL });
   assertEquals(r.map((c) => c.numberId), [OFICIAL]);
 });
+
+// Transferência entre equipes (14/10/2026): lead do closer que escreveu no oficial.
+Deno.test("lead do closer que escreveu na central há 1h: envio manual sai pela central (janela)", async () => {
+  const s = cenario({ entradas: [{ lead_id: "LT", whatsapp_number_id: OFICIAL, created_at: horasAtras(1) }] });
+  const r = await numeroDeSaida(s, { leadId: "LT", tenantId: T, leadNumberId: CLOSER_ATIVO, pipelineId: null, permitirOutraEquipe: true });
+  assertEquals(r.ok && r.numberId, OFICIAL);
+});
+
+Deno.test("mesmo caso sem a permissão (modelo, automação, ligação): só o número do closer", async () => {
+  const s = cenario({ entradas: [{ lead_id: "LT", whatsapp_number_id: OFICIAL, created_at: horasAtras(1) }] });
+  const r = await numeroDeSaida(s, { leadId: "LT", tenantId: T, leadNumberId: CLOSER_ATIVO, pipelineId: null });
+  assertEquals(r.ok && r.numberId, CLOSER_ATIVO);
+});
+
+Deno.test("closer escolhe responder pelo número dele com a janela da central aberta", async () => {
+  const s = cenario({ entradas: [{ lead_id: "LT", whatsapp_number_id: OFICIAL, created_at: horasAtras(1) }] });
+  const r = await numeroDeSaida(s, { leadId: "LT", tenantId: T, leadNumberId: CLOSER_ATIVO, pipelineId: null, permitirOutraEquipe: true, numeroEscolhidoId: CLOSER_ATIVO });
+  assertEquals(r.ok && r.numberId, CLOSER_ATIVO);
+});
+
+Deno.test("escolha da central com a janela fechada não vale: volta ao número do closer", async () => {
+  const s = cenario({ entradas: [{ lead_id: "LT", whatsapp_number_id: OFICIAL, created_at: horasAtras(30) }] });
+  const r = await numeroDeSaida(s, { leadId: "LT", tenantId: T, leadNumberId: CLOSER_ATIVO, pipelineId: null, permitirOutraEquipe: true, numeroEscolhidoId: OFICIAL });
+  assertEquals(r.ok && r.numberId, CLOSER_ATIVO);
+});

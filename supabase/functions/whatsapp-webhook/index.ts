@@ -1353,6 +1353,35 @@ Deno.serve(async (req) => {
               }
             }
 
+            // A conversa segue o paciente (dono, 14/10/2026): quem foi
+            // TRANSFERIDO desta equipe para outra (ex.: central → closer) e
+            // volta a escrever neste número cai na conversa de quem cuida dele
+            // agora — sem lead novo, sem rodízio. A mensagem fica com o número
+            // em que chegou; quem atende pode responder por ele na janela.
+            if (!lead) {
+              const { data: transferidoId } = await supabase.rpc("lead_transferido_de_equipe", {
+                p_tenant: tenantId, p_phone: fromCanonico, p_mundo: mundoDoNumero,
+              });
+              if (transferidoId) {
+                const { data: transferido } = await supabase
+                  .from("crm_leads").select(LEAD_COLS + ", assigned_to").eq("id", transferidoId).maybeSingle();
+                if (transferido) {
+                  lead = transferido;
+                  const dona = (transferido as any).assigned_to as string | null;
+                  if (dona) {
+                    const hora = new Date().toISOString().slice(0, 13); // um aviso por lead por hora
+                    await supabase.from("crm_notifications").insert({
+                      user_id: dona, type: "info", lead_id: (transferido as any).id,
+                      title: "Paciente escreveu em outro número",
+                      body: `${(transferido as any).name || "Paciente"} escreveu no número ${(matchedIntegration as any)?.config?.display_name || "da outra equipe"}. A conversa está com você — dá para responder por esse número em "Responder por" enquanto a janela de 24h estiver aberta.`,
+                      dedupe_key: `outro_numero:${(transferido as any).id}:${hora}`,
+                    }).then(() => {}, () => {});
+                  }
+                  console.log(`[WEBHOOK] ${from} foi transferido para outra equipe — mensagem vai para o lead ${(transferido as any).id}`);
+                }
+              }
+            }
+
             // 🚫 Blocked lead: drop the inbound message entirely
             if (lead && (lead as any).is_blocked) {
               console.log(`[WEBHOOK] Lead ${lead.id} (${from}) está BLOQUEADO — mensagem descartada.`);

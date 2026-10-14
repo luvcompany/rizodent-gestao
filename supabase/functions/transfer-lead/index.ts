@@ -142,6 +142,7 @@ Deno.serve(async (req) => {
     let numeroDestinoId: string | null = null;
     let funilDestino: { id: string; name: string } | null = null;
     let etapaDestino: { id: string; name: string } | null = null;
+    let equipeDeOrigem: string | null = null;
     if (!destinoVeTudo) {
       const { data: mundoDoLead, error: mundoErr } = await supabase.rpc("mundo_numero_whatsapp", {
         p_tenant: (lead as any).tenant_id,
@@ -149,6 +150,7 @@ Deno.serve(async (req) => {
       });
       if (mundoErr) return json({ error: "Não foi possível conferir a equipe do lead: " + mundoErr.message }, 500);
       const equipeOrigem = String(mundoDoLead || MUNDO_CENTRAL);
+      equipeDeOrigem = equipeOrigem;
       if (equipeOrigem !== equipeDestino) {
         mudouDeEquipe = true;
         const { data: numerosDoTenant, error: numErr } = await supabase
@@ -174,7 +176,9 @@ Deno.serve(async (req) => {
             });
             if (mErr) return json({ error: "Não foi possível juntar com o lead da outra equipe: " + mErr.message }, 500);
             await supabase.rpc("lead_transferir_autorizado", {
-              p_lead_id: (alvo as any).id, p_payload: { assigned_to: newUserId },
+              // veio_da_equipe: mensagem que chegar no número da equipe de
+              // origem vem para este lead (a conversa segue o paciente).
+              p_lead_id: (alvo as any).id, p_payload: { assigned_to: newUserId, veio_da_equipe: equipeOrigem },
             });
             await supabase.from("crm_lead_atribuicoes").insert({
               tenant_id: (lead as any).tenant_id, lead_id: (alvo as any).id,
@@ -274,6 +278,7 @@ Deno.serve(async (req) => {
       updatePayload.stage_id = etapaDestino.id;
       // Central sem número cadastrado (cliente antigo) = número legado (NULL).
       updatePayload.whatsapp_number_id = numeroDestinoId;
+      updatePayload.veio_da_equipe = equipeDeOrigem;
       movedPipelineName = funilDestino.name;
       movedStageName = etapaDestino.name;
     }

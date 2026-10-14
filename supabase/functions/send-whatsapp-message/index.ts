@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
 
     const { data: leadData } = await supabase
       .from("crm_leads")
-      .select("pipeline_id, tenant_id, whatsapp_number_id, phone")
+      .select("pipeline_id, tenant_id, whatsapp_number_id, phone, numero_resposta_id")
       .eq("id", lead_id)
       .maybeSingle();
     const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
@@ -411,6 +411,11 @@ Deno.serve(async (req) => {
       leadNumberId: leadWaNumberId,
       pipelineId: (leadData as any)?.pipeline_id ?? null,
       mensagemReferenciaId: reaction_to_message_id || reply_to_message_id || null,
+      // "Responder por" de quem atende e a janela aberta em número de outra
+      // equipe (lead transferido) — só para texto/mídia: o modelo é da conta
+      // (WABA) do número da equipe e não existe na conta do outro número.
+      numeroEscolhidoId: (leadData as any)?.numero_resposta_id ?? null,
+      permitirOutraEquipe: !template_name,
     });
     if (!saida.ok) {
       console.warn(`[send-whatsapp-message] sem número de saída (lead ${lead_id}): ${saida.error}`);

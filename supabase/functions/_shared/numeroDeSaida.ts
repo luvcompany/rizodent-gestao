@@ -11,6 +11,14 @@
  *  4. o último número em que o paciente escreveu (mesmo fora da janela);
  *  5. o número padrão da equipe do lead (is_default), depois o canal do funil,
  *     a integração herdada whatsapp_config e qualquer número ativo da equipe.
+ *
+ * Exceção da TRANSFERÊNCIA entre equipes (dono, 14/10/2026, opção "b"): o
+ * paciente que passou para o closer e escreveu no número da central tem a
+ * mensagem na conversa do closer; com `permitirOutraEquipe` (envio manual,
+ * não modelo), a resposta pode sair pelo número em que ele escreveu enquanto a
+ * janela de 24h estiver aberta. E quem atende escolhe o número em "Responder
+ * por" (`numeroEscolhidoId`, crm_leads.numero_resposta_id): vale se for da
+ * equipe do lead ou, com a mesma exceção, o número da janela aberta.
  * Todo candidato precisa ser da MESMA EQUIPE (mundo) do lead, estar ativo, ter
  * credencial e não estar com a integração desativada — número desligado ou
  * trocado não trava mais a conversa: o próximo candidato assume.
@@ -165,6 +173,10 @@ export async function numeroDeSaida(
     pipelineId: string | null;
     /** Mensagem respondida ou reagida (o envio tem de sair pelo número dela). */
     mensagemReferenciaId?: string | null;
+    /** Número escolhido em "Responder por" (crm_leads.numero_resposta_id). */
+    numeroEscolhidoId?: string | null;
+    /** Pode responder pelo número de OUTRA equipe em que o paciente escreveu (janela aberta). */
+    permitirOutraEquipe?: boolean;
   },
 ): Promise<SaidaOk | SaidaErro> {
   const [{ data: nums }, { data: ints }, { data: entradas }] = await Promise.all([
@@ -218,6 +230,26 @@ export async function numeroDeSaida(
     return { ok: true, numberId: n?.id ?? null, phoneNumberId: pnid, token, mmLite: cfg.mm_lite === true, integrationKey: intg.key, motivo };
   };
 
+  const ultima = ((entradas || []) as any[])[0] ?? null;
+  const ultimaMs = ultima?.created_at ? new Date(ultima.created_at).getTime() : 0;
+  const janelaAberta = !!ultima && Date.now() - ultimaMs < JANELA_MS;
+  // Número de outra equipe só vale se for o da janela aberta (onde o paciente escreveu).
+  const tentarNumeroDaJanela = (id: string | null | undefined, motivo: string): SaidaOk | null => {
+    if (!id || !p.permitirOutraEquipe || !janelaAberta || id !== ultima?.whatsapp_number_id) return null;
+    const n = porId.get(id);
+    if (!n) return null;
+    const c = credencialDoNumero(n, integracoes, motivo);
+    if (c === "desativada") { viuDesativada = true; return null; }
+    return c;
+  };
+
+  // 0) Escolha de quem atende ("Responder por").
+  if (p.numeroEscolhidoId) {
+    const r0 = tentarNumero(p.numeroEscolhidoId, "número escolhido em Responder por")
+      ?? tentarNumeroDaJanela(p.numeroEscolhidoId, "número escolhido em Responder por (onde o paciente escreveu)");
+    if (r0) return r0;
+  }
+
   // 1) Resposta/reação: o número da mensagem de referência.
   if (p.mensagemReferenciaId) {
     const { data: ref } = await supabase
@@ -229,10 +261,9 @@ export async function numeroDeSaida(
   }
 
   // 2) Janela aberta: o número em que o paciente escreveu nas últimas 24h.
-  const ultima = ((entradas || []) as any[])[0] ?? null;
-  const ultimaMs = ultima?.created_at ? new Date(ultima.created_at).getTime() : 0;
-  if (ultima && Date.now() - ultimaMs < JANELA_MS) {
-    const r = tentarNumero(ultima.whatsapp_number_id, "número em que o paciente escreveu (janela de 24h aberta)");
+  if (janelaAberta) {
+    const r = tentarNumero(ultima.whatsapp_number_id, "número em que o paciente escreveu (janela de 24h aberta)")
+      ?? tentarNumeroDaJanela(ultima.whatsapp_number_id, "número de outra equipe em que o paciente escreveu (janela de 24h aberta)");
     if (r) return r;
   }
 
