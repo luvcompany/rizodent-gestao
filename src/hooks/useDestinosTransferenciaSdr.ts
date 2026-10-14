@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
  * Cache por USUÁRIO: trocar de conta na mesma aba (login é SPA, sem reload)
  * não pode mostrar a lista da SDR anterior.
  */
-export interface DestinoSdr { user_id: string; nome: string; papel: "sdr" | "gestor" | "posvenda" }
+export interface DestinoSdr { user_id: string; nome: string; papel: "sdr" | "gestor" | "posvenda" | "closer" | "recepcao" }
 
 let cache: { uid: string; destinos: DestinoSdr[]; em: number } | null = null;
 const TTL = 5 * 60 * 1000;
