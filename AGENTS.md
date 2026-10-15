@@ -33,6 +33,7 @@ Each rule below fixed a production incident. Read them before touching WhatsApp 
 
 ## One phone = one lead per world
 - Phone comparisons always use `telefone_canonico()` (the exact normalization of `trg_normalize_lead_phone`); never compare the raw WhatsApp `from` (Meta sends DDD 11–28 with the 9th digit and the lead is stored without it).
+- The `to` sent to Meta (messages, call permission, calls, block) always comes from `_shared/destinoWhatsapp.ts` (`destinoDoLead`): the exact WhatsApp ID the patient wrote from (read from the inbound wamid), else the canonical phone with the 9th digit for DDD 11–28. Never send the stored canonical phone as-is — without the 9 Meta answers 131026 for many DDD 11–28 patients (case Gilma, 15/10/2026). `src/test/destinoWhatsappGuard.test.ts` fails the build if a function sends to Meta without it.
 - Inbound lookup (messages, echoes, calls) goes through `lead_whatsapp_existente` (world-scoped, includes legacy and inactive numbers); a duplicate created in a world that already has that phone is merged by `mesclar_lead_duplicado_mesmo_mundo` (webhook + periodic sweep).
 
 ## Security
