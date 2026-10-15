@@ -5,6 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { integracaoDoPnid, numeroDeSaida, numerosAtivosDaEquipe } from "../_shared/numeroDeSaida.ts";
 import { mundoDoUsuario } from "../_shared/mundoNumero.ts";
+import { destinoDoLead } from "../_shared/destinoWhatsapp.ts";
 
 const API_VERSION = "v25.0";
 
@@ -322,7 +323,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           messaging_product: "whatsapp",
           recipient_type: "individual",
-          to: toPhone,
+          to: await destinoDoLead(supabase, body.lead_id ?? null, toPhone),
           type: "interactive",
           interactive: {
             type: "call_permission_request",
@@ -405,12 +406,16 @@ Deno.serve(async (req) => {
     }
 
     // Monta body para Graph API
+    let consumerPhone = "";
     const graphBody: Record<string, any> = {
       messaging_product: "whatsapp",
       action,
     };
     if (action === "connect") {
-      graphBody.to = body.to_phone!.replace(/\D/g, "");
+      // Para a Meta vai o WhatsApp ID (com o 9 nos DDD 11-28); a permissão
+      // segue gravada pelo telefone canônico do lead (consumer_phone).
+      consumerPhone = body.to_phone!.replace(/\D/g, "");
+      graphBody.to = await destinoDoLead(supabase, body.lead_id ?? null, consumerPhone);
       graphBody.session = { sdp_type: "offer", sdp };
     } else {
       graphBody.call_id = waCallId;
@@ -454,10 +459,10 @@ Deno.serve(async (req) => {
       // como aprovada (paciente revogou no WhatsApp, prazo de 7 dias), marca
       // como revogada — senão o painel segue mostrando "Ligar" para quem não
       // atende mais.
-      if (graphCode === 138006 && action === "connect" && phoneNumberId && graphBody.to) {
+      if (graphCode === 138006 && action === "connect" && phoneNumberId && consumerPhone) {
         await supabase.from("whatsapp_call_permissions")
           .update({ status: "revoked", updated_at: new Date().toISOString() } as any)
-          .eq("phone_number_id", phoneNumberId).eq("consumer_phone", String(graphBody.to)).eq("status", "approved");
+          .eq("phone_number_id", phoneNumberId).eq("consumer_phone", consumerPhone).eq("status", "approved");
       }
       if (mapped) {
         return new Response(

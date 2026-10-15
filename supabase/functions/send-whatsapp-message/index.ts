@@ -7,6 +7,7 @@ const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 import { motivoMidiaIncompleta } from "../_shared/mediaIntegrity.ts";
 import { escopoDoLead } from "../_shared/wabaEscopo.ts";
 import { numeroDeSaida } from "../_shared/numeroDeSaida.ts";
+import { destinoDoLead } from "../_shared/destinoWhatsapp.ts";
 import { formatarDataDoModelo, registroDoModeloEnviado, textoAntesDoMarcador } from "../_shared/modeloEnviado.ts";
 import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
 import { dadosDaTelaInicial } from "../_shared/flowTelas.ts";
@@ -371,12 +372,15 @@ Deno.serve(async (req) => {
       .eq("id", lead_id)
       .maybeSingle();
     const leadTenantId: string | null = (leadData as any)?.tenant_id ?? null;
-    const to = String((leadData as any)?.phone || "").replace(/\D/g, "");
-    if (!to) {
+    const telefoneLead = String((leadData as any)?.phone || "").replace(/\D/g, "");
+    if (!telefoneLead) {
       return new Response(JSON.stringify({ error: "Lead sem telefone cadastrado" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    // WhatsApp ID de destino: o telefone salvo não tem o 9, e nos DDD 11-28 a
+    // Meta não acha o paciente sem ele (131026). Ver _shared/destinoWhatsapp.ts.
+    const to = await destinoDoLead(supabase, lead_id, telefoneLead);
 
     // Visibilidade por número (papel recepcao): quem não tem acesso ao número do
     // lead não envia por ele. Lead sem carimbo (NULL) libera — caso Rizodent hoje.

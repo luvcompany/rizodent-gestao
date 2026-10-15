@@ -18,6 +18,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { resolveCaller, callerHasRole } from "../_shared/authz.ts";
 import { numerosAtivosDaEquipe } from "../_shared/numeroDeSaida.ts";
 import { BASE_GRAPH_META } from "../_shared/metaVersao.ts";
+import { destinoDoLead } from "../_shared/destinoWhatsapp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,6 +100,8 @@ Deno.serve(async (req) => {
 
     const telefone = String((lead as any).phone || "").replace(/\D/g, "");
     if (!telefone) return json({ error: "Lead sem telefone", ok: false }, 400);
+    // WhatsApp ID real (com o 9 nos DDD 11-28), o mesmo destino do envio.
+    const waDestino = await destinoDoLead(admin, leadId, telefone);
 
     // Todos os números ATIVOS da equipe (mundo) do lead — a mesma regra de
     // equipe do envio (_shared/numeroDeSaida.ts). A lista de bloqueados da Meta
@@ -124,7 +127,7 @@ Deno.serve(async (req) => {
 
     for (const numero of numeros) {
       const url = `${BASE_GRAPH_META}/${encodeURIComponent(numero.phoneNumberId)}/block_users`;
-      const payload = { messaging_product: "whatsapp", block_users: [{ user: telefone }] };
+      const payload = { messaging_product: "whatsapp", block_users: [{ user: waDestino }] };
 
       let resposta: any = null;
       let httpStatus = 0;
