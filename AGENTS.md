@@ -31,6 +31,8 @@ Each rule below fixed a production incident. Read them before touching WhatsApp 
 ## Sending results
 - Any function that calls `send-whatsapp-message` must read the result with `_shared/envioWhatsapp.ts` (`erroDoEnvio`/`conferirEnvio`/`linhaDaFila`): it answers HTTP 200 with `{ok:false}` when Meta refuses, so `resp.ok` alone records refusals as "sent". Definitive Meta refusals (`falhaDefinitiva`) are never retried in a loop.
 
+- Every video the chat sends (camera recording or a file from the attach menu) goes through `src/lib/videoParaEnvio.ts` (`prepararVideoParaEnvio`): MP4 H.264 without B-frames + AAC, one audio track, moov first, at most 15 MB, checked before upload. Never upload a recorded/picked video as-is — the server maps `.webm` to AUDIO and Meta rejects MOV/HEVC, WebM and files over 16 MB.
+
 ## One phone = one lead per world
 - Phone comparisons always use `telefone_canonico()` (the exact normalization of `trg_normalize_lead_phone`); never compare the raw WhatsApp `from` (Meta sends DDD 11–28 with the 9th digit and the lead is stored without it).
 - The `to` sent to Meta (messages, call permission, calls, block) always comes from `_shared/destinoWhatsapp.ts` (`destinoDoLead`): the exact WhatsApp ID the patient wrote from (read from the inbound wamid), else the canonical phone with the 9th digit for DDD 11–28. Never send the stored canonical phone as-is — without the 9 Meta answers 131026 for many DDD 11–28 patients (case Gilma, 15/10/2026). `src/test/destinoWhatsappGuard.test.ts` fails the build if a function sends to Meta without it.

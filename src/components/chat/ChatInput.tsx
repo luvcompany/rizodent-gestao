@@ -7,7 +7,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 import {
   Send, Paperclip, FileText, Image, File, Video, X,
-  Loader2, Clock, AlertTriangle, Bot, MessageCircle, Reply
+  Loader2, Clock, AlertTriangle, Bot, MessageCircle, Reply, Camera
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,6 +22,8 @@ import SlashCommandMenu, { type RespostaRapida, type SlashCommandMenuHandle } fr
 import EnviarModeloDialog, { type ComponentesDoModelo, type ModeloParaEnviar } from "./EnviarModeloDialog";
 import AvisoDeEnvio from "./AvisoDeEnvio";
 import AudioRecorderComposer from "./AudioRecorderComposer";
+import GravadorDeVideoDialog from "./GravadorDeVideoDialog";
+import { ErroDeVideo, foiCancelado, prepararVideoParaEnvio } from "@/lib/videoParaEnvio";
 import EmojiPickerButton from "./EmojiPickerButton";
 import { convertAudioBlobToInstagramWav } from "@/lib/audioConverter";
 import { createChatMediaPath } from "@/lib/mediaUtils";
@@ -32,6 +34,9 @@ import { textoDaRespostaRapida } from "@/lib/modeloDoChat";
 import { motivoFigurinhaInvalida, pareceWebp, webpParaJpeg } from "@/lib/figurinhaWebp";
 import { useEnvioDoLead } from "@/hooks/useEnvioDoLead";
 import { carregarModelosDoLead, enviarModeloAoLead } from "@/hooks/useChatConversation";
+
+/** Arquivo enviado direto por uma janela (vídeo gravado), sem passar pelo anexo do campo. */
+type EnvioDireto = { file: globalThis.File; type: string; legenda: string };
 
 /** Item do menu de anexo que abriu o seletor de arquivo (CONV-20). */
 type OrigemDoArquivo = "imagem" | "video" | "documento" | "figurinha";
@@ -173,6 +178,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
   const [newMessage, setNewMessage] = useState(externalMessage || "");
   const [attachedFile, setAttachedFile] = useState<{ file: globalThis.File; type: string } | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  // Conversão de vídeo escolhido no clipe: texto/percentual da faixa e o cancelar.
+  const [otimizandoVideo, setOtimizandoVideo] = useState<number | null>(null);
+  const conversaoVideoRef = useRef<AbortController | null>(null);
+  const [gravadorDeVideoAberto, setGravadorDeVideoAberto] = useState(false);
   const [uploading] = useState(false);
   const [botPopoverOpen, setBotPopoverOpen] = useState(false);
   const [bots, setBots] = useState<{ id: string; name: string }[]>([]);
@@ -450,45 +459,55 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     return "document";
   };
 
-  const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !attachedFile) || (!leadPhone && !isInstagram)) return;
+  /**
+   * Envia o texto do campo e/ou o anexo — ou, com `direto`, um arquivo vindo de
+   * uma janela (vídeo gravado) com a legenda dela, sem mexer no campo nem no
+   * anexo. Devolve false quando uma barreira impede o envio (quem chama mantém
+   * a janela aberta); true quando a mensagem foi despachada.
+   */
+  const handleSendMessage = async (direto?: EnvioDireto): Promise<boolean> => {
+    const anexo = direto ? { file: direto.file, type: direto.type } : attachedFile;
+    const textoBase = direto ? direto.legenda : newMessage;
+    if ((!textoBase.trim() && !anexo) || (!leadPhone && !isInstagram)) return false;
 
     // WABA pausada ou cliente sem número: o campo já está travado, mas o
     // texto pode ter vindo de fora (externalMessage/atalho).
     if (bloqueioWa) {
       toast.error(bloqueioWa.texto);
-      return;
+      return false;
     }
 
     // Block if 24h window expired (WhatsApp only — IG has its own 24h logic but no template fallback)
     if (!isInstagram && windowInfo.expired) {
       toast.error("Janela de 24h expirada. Use um modelo para reabrir a conversa.");
-      return;
+      return false;
     }
 
     // Instagram: janela de Direct fechada. O campo já está desabilitado, mas o texto
     // pode ter vindo de fora (externalMessage/atalho), então o envio é barrado aqui também.
     if (igDirectBloqueado) {
       toast.error(igAvisoBloqueio);
-      return;
+      return false;
     }
 
     let type = "text";
     // Figurinha não leva legenda (a Meta descarta): o texto fica na caixa.
-    const ehFigurinha = attachedFile?.type === "sticker";
-    const rawMessage = ehFigurinha ? "" : newMessage.trim();
+    const ehFigurinha = anexo?.type === "sticker";
+    const rawMessage = ehFigurinha ? "" : textoBase.trim();
     // Assinatura (profiles.signature_enabled), no formato único de
     // assinaturaMensagem — só quando há texto: mídia sem legenda não leva uma
     // legenda que seja só a assinatura.
     const sigEnabled = profile?.signature_enabled && profile?.nome?.trim();
     const message = sigEnabled && rawMessage ? comAssinatura(profile.nome, rawMessage) : rawMessage;
-    let fileToUpload = attachedFile?.file;
-    const originalFileName = attachedFile?.file.name;
+    let fileToUpload = anexo?.file;
+    const originalFileName = anexo?.file.name;
 
-    // Clear input immediately for optimistic UX
+    // Clear input immediately for optimistic UX (o envio direto não usa o campo)
     const currentReplyTo = replyTo;
-    if (!ehFigurinha) setNewMessage("");
-    else if (newMessage.trim()) toast.info("A figurinha vai sem legenda — o texto ficou na caixa para você enviar em seguida.");
+    if (!direto) {
+      if (!ehFigurinha) setNewMessage("");
+      else if (newMessage.trim()) toast.info("A figurinha vai sem legenda — o texto ficou na caixa para você enviar em seguida.");
+    }
     onReplySent?.();
 
     // CRC-11: envio de texto que falhou devolve o texto à caixa (se a pessoa
@@ -498,9 +517,9 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       setNewMessage((atual) => (atual.trim() ? atual : rawMessage));
     };
 
-    if (attachedFile && fileToUpload) {
-      type = attachedFile.type;
-      setAttachedFile(null);
+    if (anexo && fileToUpload) {
+      type = anexo.type;
+      if (!direto) setAttachedFile(null);
 
       // Create optimistic message immediately with blob URL
       const blobUrl = URL.createObjectURL(fileToUpload);
@@ -553,10 +572,10 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           toast.error("Não foi possível enviar o arquivo. Confira a conexão e tente de novo.");
         }
       })();
-      return;
+      return true;
     }
 
-    if (type === "text" && !message) return;
+    if (type === "text" && !message) return false;
 
     // Text-only optimistic message
     const tempId = crypto.randomUUID();
@@ -595,12 +614,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       devolverTexto();
       toast.error("Não foi possível enviar a mensagem. Confira a conexão e tente de novo.");
     }
+    return true;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      void handleSendMessage();
     }
   };
 
@@ -649,6 +669,43 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       }
     }
 
+    // Vídeo sempre sai como MP4 H.264 + AAC de até 15 MB: o .MOV/HEVC do
+    // iPhone, WebM e vídeo acima de 16 MB eram recusados pela Meta (e .webm o
+    // servidor ainda trata como áudio).
+    if (type === "video" || origem === "video") {
+      const controle = new AbortController();
+      conversaoVideoRef.current?.abort();
+      conversaoVideoRef.current = controle;
+      setOptimizing(true);
+      setOtimizandoVideo(0);
+      try {
+        const pronto = await prepararVideoParaEnvio(file, {
+          signal: controle.signal,
+          // Progresso só da conversão atual (uma cancelada não pode reacender a faixa).
+          onProgresso: (p) => {
+            if (conversaoVideoRef.current === controle) setOtimizandoVideo(p);
+          },
+        });
+        if (controle.signal.aborted) return;
+        setAttachedFile({ file: pronto.arquivo, type: "video" });
+        if (pronto.recodificado) {
+          const mb = (b: number) => (b / 1024 / 1024).toFixed(1).replace(".", ",");
+          toast.success(`Vídeo ajustado para o WhatsApp (${mb(file.size)} MB → ${mb(pronto.arquivo.size)} MB)`);
+        }
+      } catch (err) {
+        if (!foiCancelado(err)) {
+          toast.error(err instanceof ErroDeVideo ? err.message : "Não foi possível preparar o vídeo. Tente outro arquivo.");
+        }
+      } finally {
+        if (conversaoVideoRef.current === controle) {
+          conversaoVideoRef.current = null;
+          setOptimizing(false);
+          setOtimizandoVideo(null);
+        }
+      }
+      return;
+    }
+
     if (type === "audio" && file.size > 15 * 1024 * 1024) {
       toast.warning("Áudio muito longo. Considere enviar em partes menores.");
       return;
@@ -676,6 +733,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
     }
 
     setAttachedFile({ file, type });
+  };
+
+  // Sair da conversa no meio da conversão de um vídeo: cancela.
+  useEffect(() => () => conversaoVideoRef.current?.abort(), []);
+
+  const cancelarConversaoDeVideo = () => {
+    conversaoVideoRef.current?.abort();
+    conversaoVideoRef.current = null;
+    setOptimizing(false);
+    setOtimizandoVideo(null);
   };
 
   // 24h window logic
@@ -793,6 +860,8 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
 
   // Campo, anexo, emoji, gravador e enviar ficam travados juntos.
   const envioTravado = optimizing || uploading || igDirectBloqueado || !!bloqueioWa;
+  // Resposta por comentário do Instagram não leva mídia (buildSendBody descarta).
+  const igComentario = isInstagram && igReplyMode === "comment";
   const tituloTravado = bloqueioWa ? bloqueioWa.texto : igDirectBloqueado ? igAvisoBloqueio : undefined;
 
   const sendRecordedAudio = useCallback(async (oggBlob: Blob) => {
@@ -961,7 +1030,16 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
       {(optimizing || uploading) && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-primary/15 bg-primary-soft px-3 py-2 text-sm text-primary-soft-fg">
           <Loader2 size={16} className="animate-spin" />
-          <span>{optimizing ? "Otimizando arquivo..." : "Enviando arquivo..."}</span>
+          <span className="flex-1">
+            {otimizandoVideo !== null
+              ? `Ajustando o vídeo para o WhatsApp… ${Math.round(otimizandoVideo * 100)}%`
+              : optimizing ? "Otimizando arquivo..." : "Enviando arquivo..."}
+          </span>
+          {otimizandoVideo !== null && (
+            <button type="button" onClick={cancelarConversaoDeVideo} className="text-xs font-medium underline-offset-2 hover:underline">
+              Cancelar
+            </button>
+          )}
         </div>
       )}
 
@@ -1157,6 +1235,19 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              {/* Gravar vídeo pela câmera (webcam ou celular). No celular some
+                  enquanto há texto/anexo, como o microfone, para sobrar campo. */}
+              <button
+                type="button"
+                onClick={() => setGravadorDeVideoAberto(true)}
+                className={`${newMessage.trim() || attachedFile ? "hidden sm:flex" : "flex"} h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary-soft hover:text-primary disabled:cursor-not-allowed disabled:opacity-50`}
+                disabled={envioTravado || igComentario}
+                title={envioTravado ? tituloTravado : igComentario ? "Resposta por comentário não leva vídeo — use o Direct" : "Gravar vídeo"}
+                aria-label="Gravar vídeo"
+              >
+                <Camera size={20} />
+              </button>
+
                <div className="relative min-w-0 flex-1">
                 <SlashCommandMenu
                   ref={slashMenuRef}
@@ -1273,7 +1364,7 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
               {(newMessage.trim() || attachedFile) && (
                 <Button
                    size="icon"
-                  onClick={handleSendMessage}
+                  onClick={() => void handleSendMessage()}
                   disabled={envioTravado}
                    title={tituloTravado}
                     className="h-9 w-9 shrink-0 rounded-full border border-primary/20 bg-primary-soft text-primary-soft-fg shadow-none hover:bg-primary-soft-2"
@@ -1311,6 +1402,13 @@ export default function ChatInput({ leadId, leadPhone, onLoadTemplates, external
           <span>A sessão de mensagens termina em: <span className="font-medium text-foreground">{windowInfo.remaining}</span></span>
         </div>
       )}
+
+      <GravadorDeVideoDialog
+        open={gravadorDeVideoAberto}
+        onOpenChange={setGravadorDeVideoAberto}
+        aceitaLegenda={!isInstagram}
+        onEnviar={(file, legenda) => handleSendMessage({ file, type: "video", legenda })}
+      />
 
       {/* Modelo escolhido no "/": prévia preenchida + variáveis antes de enviar (CONV-1, CONV-15) */}
       {!isInstagram && (

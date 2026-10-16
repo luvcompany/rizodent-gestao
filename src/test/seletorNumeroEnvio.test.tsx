@@ -1,44 +1,50 @@
 /**
- * "Enviar por" (SeletorNumeroEnvio) e o rótulo do número (item 10, 09/10/2026).
+ * "Responder por" (SeletorNumeroEnvio) e o rótulo do número.
  *
- * Antes: o seletor listava número desativado, oferecia "Padrão" ao closer e à
- * recepção (o padrão é da central), trocava sem conferir se alguma linha mudou
- * (RLS devolve sucesso com 0 linhas) e o selo "Vai sair por" do compositor
- * continuava mostrando o número antigo.
+ * 09/10/2026 (item 10): nada de número desativado, troca conferida no banco e o
+ * selo "Vai sair por" do compositor reconsultado.
+ * 14/10/2026 (0037, a conversa segue o paciente): a lista vem do banco
+ * (opcoes_numero_resposta) — números da equipe do lead e, com a janela de 24h
+ * aberta, o de outra equipe em que o paciente escreveu — e a escolha fica no
+ * lead por definir_numero_resposta ("Automático" = null).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-let papel: string | null = "crc";
-let resultadoUpdate: { data: { id: string }[] | null; error: unknown } = { data: [{ id: "lead-1" }], error: null };
-const chamadas: { tabela: string; valores: unknown; colunas?: string }[] = [];
+type Opcao = {
+  numero_id: string;
+  display_name: string | null;
+  phone_e164: string | null;
+  motivo: "equipe" | "janela";
+  janela_ate: string | null;
+  escolhido: boolean;
+};
+
+let opcoes: Opcao[] = [];
+let erroAoDefinir: unknown = null;
+const definicoes: { p_lead: string; p_numero: string | null }[] = [];
 const toastErro = vi.fn();
 const toastOk = vi.fn();
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
-    from: (tabela: string) => ({
-      update: (valores: unknown) => ({
-        eq: () => ({
-          select: (colunas: string) => {
-            chamadas.push({ tabela, valores, colunas });
-            return Promise.resolve(resultadoUpdate);
-          },
-        }),
-      }),
-    }),
-    rpc: vi.fn(),
+    rpc: (nome: string, args: { p_lead: string; p_numero?: string | null }) => {
+      if (nome === "opcoes_numero_resposta") return Promise.resolve({ data: opcoes, error: null });
+      if (nome === "definir_numero_resposta") {
+        definicoes.push({ p_lead: args.p_lead, p_numero: args.p_numero ?? null });
+        return Promise.resolve({ data: null, error: erroAoDefinir });
+      }
+      return Promise.resolve({ data: null, error: { message: `rpc inesperada ${nome}` } });
+    },
   },
 }));
-vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ userRole: papel }) }));
 vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastErro(...a), success: (...a: unknown[]) => toastOk(...a) } }));
 // Select nativo no lugar do Radix (o Radix não abre no jsdom).
 vi.mock("@/components/ui/select", () => ({
   Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: ReactNode }) => (
-    <select aria-label="Enviar por" value={value} onChange={(e) => onValueChange(e.target.value)}>
-      <option value="">—</option>
+    <select aria-label="Responder por" value={value} onChange={(e) => onValueChange(e.target.value)}>
       {children}
     </select>
   ),
@@ -51,28 +57,27 @@ vi.mock("@/components/ui/select", () => ({
 import SeletorNumeroEnvio from "@/components/chat/SeletorNumeroEnvio";
 import { rotuloDoNumero, telefoneDoNumero } from "@/lib/numeroWhatsapp";
 
-const NUMEROS = [
-  { id: "oficial", display_name: "Whatsapp - Comercial", phone_e164: null, is_active: true },
-  { id: "comercial2", display_name: "Rizodent - Comercial 2", phone_e164: "+557781085179", is_active: true },
-  { id: "contingencia", display_name: "Whatsapp Contingência", phone_e164: "+557781281211", is_active: false },
+const EQUIPE: Opcao[] = [
+  { numero_id: "oficial", display_name: "Whatsapp - Comercial", phone_e164: null, motivo: "equipe", janela_ate: null, escolhido: false },
+  { numero_id: "comercial2", display_name: "Rizodent - Comercial 2", phone_e164: "+557781085179", motivo: "equipe", janela_ate: null, escolhido: false },
 ];
 
-function montar(atual: string | null = null) {
-  const qc = new QueryClient();
+function montar() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidar = vi.spyOn(qc, "invalidateQueries");
   const onChange = vi.fn();
   render(
     <QueryClientProvider client={qc}>
-      <SeletorNumeroEnvio leadId="lead-1" atual={atual} numeros={NUMEROS} onChange={onChange} />
+      <SeletorNumeroEnvio leadId="lead-1" atual={null} onChange={onChange} />
     </QueryClientProvider>,
   );
-  return { invalidar, onChange, seletor: screen.getByLabelText("Enviar por") as HTMLSelectElement };
+  return { invalidar, onChange, seletor: () => screen.getByLabelText("Responder por") as HTMLSelectElement };
 }
 
 beforeEach(() => {
-  papel = "crc";
-  resultadoUpdate = { data: [{ id: "lead-1" }], error: null };
-  chamadas.length = 0;
+  opcoes = EQUIPE.map((o) => ({ ...o }));
+  erroAoDefinir = null;
+  definicoes.length = 0;
   toastErro.mockReset();
   toastOk.mockReset();
 });
@@ -90,57 +95,71 @@ describe("rótulo do número", () => {
   });
 });
 
-describe("Enviar por", () => {
-  it("lista só números ativos, com nome · telefone, e a opção Padrão para a central", () => {
+describe("Responder por", () => {
+  it("lista Automático e os números do banco, com nome · telefone", async () => {
     const { seletor } = montar();
-    const rotulos = Array.from(seletor.options).map((o) => o.textContent);
-    expect(rotulos).toContain("Padrão (número padrão de envio)");
-    expect(rotulos).toContain("Rizodent - Comercial 2 · (77) 8108-5179");
-    expect(rotulos).toContain("Whatsapp - Comercial");
-    expect(rotulos.some((r) => r?.includes("Contingência"))).toBe(false);
-    expect(seletor.value).toBe("padrao");
+    await screen.findByLabelText("Responder por");
+    const rotulos = Array.from(seletor().options).map((o) => o.textContent);
+    expect(rotulos).toEqual(["Automático", "Whatsapp - Comercial", "Rizodent - Comercial 2 · (77) 8108-5179"]);
+    expect(seletor().value).toBe("auto");
   });
 
-  it.each(["closer", "recepcao"])("esconde a opção Padrão para %s", (p) => {
-    papel = p;
-    const { seletor } = montar("comercial2");
-    expect(Array.from(seletor.options).map((o) => o.value)).not.toContain("padrao");
-    expect(seletor.value).toBe("comercial2");
+  it("número de outra equipe com janela aberta aparece com o horário em que a janela fecha", async () => {
+    const ate = new Date(2026, 9, 16, 9, 47).toISOString();
+    opcoes.push({ numero_id: "closer", display_name: "Closer", phone_e164: "+557781294026", motivo: "janela", janela_ate: ate, escolhido: false });
+    const { seletor } = montar();
+    await screen.findByLabelText("Responder por");
+    const rotulos = Array.from(seletor().options).map((o) => o.textContent);
+    expect(rotulos[0]).toBe("Automático (onde o paciente escreveu, até 09:47)");
+    expect(rotulos).toContain("Closer · (77) 8129-4026 — paciente escreveu aqui (até 09:47)");
   });
 
-  it("troca com .select('id'), avisa o chat e reconsulta o número de envio", async () => {
+  it("mostra o número escolhido no lead", async () => {
+    opcoes[1].escolhido = true;
+    const { seletor } = montar();
+    await waitFor(() => expect(seletor().value).toBe("comercial2"));
+  });
+
+  it("escolher um número grava no lead, avisa o chat e reconsulta o número de envio", async () => {
     const { seletor, invalidar, onChange } = montar();
-    fireEvent.change(seletor, { target: { value: "comercial2" } });
-    await waitFor(() => expect(toastOk).toHaveBeenCalledWith("Número de envio alterado"));
-    expect(chamadas).toEqual([{ tabela: "crm_leads", valores: { whatsapp_number_id: "comercial2" }, colunas: "id" }]);
+    await screen.findByLabelText("Responder por");
+    fireEvent.change(seletor(), { target: { value: "comercial2" } });
+    await waitFor(() => expect(toastOk).toHaveBeenCalledWith("Resposta vai sair por esse número"));
+    expect(definicoes).toEqual([{ p_lead: "lead-1", p_numero: "comercial2" }]);
     expect(onChange).toHaveBeenCalledWith("comercial2");
     expect(invalidar).toHaveBeenCalledWith({ queryKey: ["envio-do-lead"] });
   });
 
-  it("0 linhas alteradas é erro (não finge sucesso) e volta o valor", async () => {
-    resultadoUpdate = { data: [], error: null };
-    const { seletor, invalidar, onChange } = montar();
-    fireEvent.change(seletor, { target: { value: "comercial2" } });
-    await waitFor(() => expect(toastErro).toHaveBeenCalled());
+  it("voltar para Automático grava null", async () => {
+    opcoes[1].escolhido = true;
+    const { seletor, onChange } = montar();
+    await waitFor(() => expect(seletor().value).toBe("comercial2"));
+    fireEvent.change(seletor(), { target: { value: "auto" } });
+    await waitFor(() => expect(toastOk).toHaveBeenCalledWith("Número de resposta automático"));
+    expect(definicoes).toEqual([{ p_lead: "lead-1", p_numero: null }]);
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("recusa do banco aparece em PT-BR e o valor volta", async () => {
+    erroAoDefinir = { code: "42501", message: "Este número não pode responder este lead agora (a janela de 24h dele fechou ou ele é de outra equipe)." };
+    const { seletor, onChange, invalidar } = montar();
+    await screen.findByLabelText("Responder por");
+    fireEvent.change(seletor(), { target: { value: "comercial2" } });
+    await waitFor(() =>
+      expect(toastErro).toHaveBeenCalledWith("Não foi possível trocar o número", {
+        description: "Este número não pode responder este lead agora (a janela de 24h dele fechou ou ele é de outra equipe).",
+      }),
+    );
     expect(toastOk).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
     expect(invalidar).not.toHaveBeenCalled();
-    await waitFor(() => expect(seletor.value).toBe("padrao"));
+    await waitFor(() => expect(seletor().value).toBe("auto"));
   });
 
-  it("erro do banco aparece em PT-BR (mensagemDeErro)", async () => {
-    resultadoUpdate = { data: null, error: { code: "42501", message: "Você não tem acesso a este número de WhatsApp." } };
-    const { seletor } = montar();
-    fireEvent.change(seletor, { target: { value: "comercial2" } });
-    await waitFor(() =>
-      expect(toastErro).toHaveBeenCalledWith("Não foi possível trocar o número", {
-        description: "Você não tem acesso a este número de WhatsApp.",
-      }),
-    );
-  });
-
-  it("lead carimbado com número desativado fica sem valor (pede para escolher outro)", () => {
-    const { seletor } = montar("contingencia");
-    expect(seletor.value).toBe("");
+  it("sem nenhum número disponível, não mostra o seletor", async () => {
+    opcoes = [];
+    montar();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByLabelText("Responder por")).toBeNull();
   });
 });
