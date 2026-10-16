@@ -128,16 +128,65 @@ async function listLeads(tenantId: string, p: URLSearchParams) {
   return json({ data, count, limit, offset });
 }
 
+/** Equipe ("mundo") do número do lead: crc (central), closer ou recepcao. Sem número = central. */
+async function mundoDoNumero(tenantId: string, numeroId: string | null): Promise<string | null> {
+  const { data, error } = await admin.rpc("mundo_numero_whatsapp", { p_tenant: tenantId, p_number_id: numeroId });
+  return error ? null : (data as string | null);
+}
+
 async function getLead(tenantId: string, id: string) {
   const { data, error } = await admin.from("crm_leads").select("*")
     .eq("tenant_id", tenantId).eq("id", id).maybeSingle();
   if (error) return json({ error: error.message }, 500);
   if (!data) return json({ error: "not_found" }, 404);
-  return json(data);
+  // `mundo` diz de que equipe é o lead — quem integra (site) decide por ele, não
+  // por whatsapp_number_id (lead da central também fica carimbado com o número).
+  return json({ ...data, mundo: await mundoDoNumero(tenantId, (data as any).whatsapp_number_id ?? null) });
 }
 
+/**
+ * Um telefone = um lead por equipe. Se a equipe do lead novo já tem esse
+ * telefone (mesma regra do webhook: lead_whatsapp_existente), devolve o lead
+ * que existe (200, `existente: true`) em vez de criar outro — só soma as tags
+ * e preenche campos vazios (serviço, cidade); funil, etapa, dona e origem
+ * ficam como estão. Antes, o formulário do site criava um segundo lead para
+ * quem já conversava pelo WhatsApp (o da central carimbado com o número
+ * oficial não casava com o lead novo sem número): Eliete e Adendra, 13–14/10.
+ */
 async function createLead(tenantId: string, body: any) {
   const payload = { ...body, tenant_id: tenantId };
+  const telefone = String(payload.phone ?? "").trim();
+  if (telefone && !payload.instagram_user_id) {
+    const mundo = await mundoDoNumero(tenantId, payload.whatsapp_number_id ?? null);
+    if (mundo) {
+      const { data: existenteId } = await admin.rpc("lead_whatsapp_existente", {
+        p_tenant: tenantId, p_phone: telefone, p_mundo: mundo,
+      });
+      if (existenteId) {
+        const { data: atual } = await admin.from("crm_leads").select("*")
+          .eq("tenant_id", tenantId).eq("id", existenteId).maybeSingle();
+        if (atual) {
+          const a = atual as any;
+          const extra: Record<string, unknown> = {};
+          const tags = Array.isArray(payload.tags) ? payload.tags.filter((t: unknown) => typeof t === "string") : [];
+          const novas = tags.filter((t: string) => !(a.tags ?? []).includes(t));
+          if (novas.length) extra.tags = [...(a.tags ?? []), ...novas];
+          if (!a.servico_interesse && payload.servico_interesse) extra.servico_interesse = payload.servico_interesse;
+          if (!a.cidade && payload.cidade) extra.cidade = payload.cidade;
+          if (typeof payload.notes === "string" && payload.notes.trim() && !String(a.notes ?? "").includes(payload.notes.trim())) {
+            extra.notes = [a.notes, payload.notes.trim()].filter(Boolean).join("\n\n");
+          }
+          let lead = a;
+          if (Object.keys(extra).length) {
+            const { data: upd } = await admin.from("crm_leads").update(extra)
+              .eq("tenant_id", tenantId).eq("id", a.id).select().maybeSingle();
+            if (upd) lead = upd;
+          }
+          return json({ ...lead, mundo, existente: true }, 200);
+        }
+      }
+    }
+  }
   const { data, error } = await admin.from("crm_leads").insert(payload).select().single();
   if (error) return json({ error: error.message }, 400);
   return json(data, 201);
@@ -2772,7 +2821,7 @@ Deno.serve(async (req) => {
         endpoints: [
           "GET /leads?search=&stage_id=&pipeline_id=&limit=&offset=",
           "GET /leads/:id",
-          "POST /leads",
+          "POST /leads  (se a equipe já tem o telefone, devolve o lead existente: 200 + existente:true)",
           "PATCH /leads/:id",
           "DELETE /leads/:id",
           "GET /leads/:id/messages?limit=&sign=true&expires_in=3600",
